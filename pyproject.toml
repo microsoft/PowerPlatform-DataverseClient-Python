@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataverse-sdk-poc"
+version = "0.1.0"
+description = "POC: Dataverse Python SDK with TDS reads and OData CRUD via SQL router"
+authors = [{ name = "POC" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "azure-identity>=1.17.0",
+  "azure-core>=1.30.2",
+  "requests>=2.32.0",
+  "pytest>=8.3.1",
+  "pandas>=2.2.0",
+]
+
+[tool.setuptools]
+# Use the src/ layout
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+# Discover packages under src/, include our package, and exclude non-package folders
+where = ["src"]
+include = ["dataverse_sdk*"]
+exclude = ["tests*", "examples*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]

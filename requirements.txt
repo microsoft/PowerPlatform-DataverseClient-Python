@@ -1,0 +1,4 @@
+msal>=1.28.0
+requests>=2.32.0
+pyodbc>=5.1.0
+pytest>=8.3.1
