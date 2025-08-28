@@ -13,7 +13,16 @@ from dataverse_sdk import DataverseClient
 from azure.identity import InteractiveBrowserCredential
 
 # ---------------- Configuration ----------------
-base_url = "https://aurorabapenv0f528.crm10.dynamics.com"  # <-- change to your environment
+if not sys.stdin.isatty():
+	print("Interactive input required for org URL. Run this script in a TTY.")
+	sys.exit(1)
+entered = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
+if not entered:
+	print("No URL entered; exiting.")
+	sys.exit(1)
+base_url = entered.rstrip('/')
+client = DataverseClient(base_url=base_url, credential=InteractiveBrowserCredential())
+
 CUSTOM_API_UNIQUE_NAME = "new_EchoMessage"     # Must be globally unique in the org
 REQUEST_PARAM_UNIQUE = "new_EchoMessage_Message"
 RESPONSE_PROP_UNIQUE = "new_EchoMessage_Response"
