@@ -335,10 +335,19 @@ class ODataClient:
             return r.json()
         # unique name path
         flt = f"uniquename eq '{unique_name}'"
-        items = self.list_custom_apis(filter_expr=flt)
+        # First, get just the id via a narrow select, then fetch full record
+        items = self.list_custom_apis(select=["customapiid"], filter_expr=flt)
         if not items:
             return None
-        return items[0]
+        cid = items[0].get("customapiid")
+        if not cid:
+            return None
+        url = f"{self.api}/customapis({cid})"
+        r = self._request("get", url, headers=self._headers())
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
 
     def get_custom_api(self, unique_name: Optional[str] = None, customapiid: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Public accessor for a Custom API metadata record."""
@@ -452,7 +461,22 @@ class ODataClient:
         return created
 
     def update_custom_api(self, *, unique_name: Optional[str] = None, customapiid: Optional[str] = None, changes: Dict[str, Any]) -> Dict[str, Any]:
-        """Patch an existing Custom API."""
+        """Update an existing Custom API metadata record.
+
+        Parameters
+        ----------
+        unique_name : str, optional
+            The ``uniquename`` of the Custom API (e.g. ``new_EchoMessage``). Provide this OR ``customapiid``.
+        customapiid : str, optional
+            The GUID of the Custom API. Provide this OR ``unique_name``. If both are supplied, ``customapiid`` takes precedence.
+        changes : dict
+            A mapping of field names to new values. These are sent directly in the PATCH body.
+
+        Returns
+        -------
+        dict
+            The updated Custom API record (server representation) because ``Prefer: return=representation`` is used.
+        """
         rec = self._get_custom_api(unique_name=unique_name, customapiid=customapiid)
         if not rec:
             raise RuntimeError("Custom API not found")
@@ -579,56 +603,6 @@ class ODataClient:
         r.raise_for_status()
         return r.json().get("value", [])
 
-    def create_custom_api_request_parameter(
-        self,
-        *,
-        customapiid: Optional[str] = None,
-        custom_api_unique_name: Optional[str] = None,
-        unique_name: str,
-        name: Optional[str] = None,
-        data_type: Any = "string",
-        description: Optional[str] = None,
-        is_optional: bool = False,
-        logical_entity_name: Optional[str] = None,
-        extra: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Create a Custom API Request Parameter.
-
-        If customapiid is not supplied, custom_api_unique_name is resolved first.
-        data_type can be an int (raw option set) or a friendly string (see _DATA_TYPE_MAP).
-        """
-        if not customapiid:
-            if not custom_api_unique_name:
-                raise ValueError("Provide customapiid or custom_api_unique_name")
-            api_meta = self._get_custom_api(unique_name=custom_api_unique_name)
-            if not api_meta:
-                raise RuntimeError(f"Custom API '{custom_api_unique_name}' not found")
-            customapiid = api_meta.get("customapiid")
-        body: Dict[str, Any] = (extra or {}).copy()
-        body.setdefault("uniquename", unique_name)
-        body.setdefault("name", name or unique_name)
-        body.setdefault("displayname", name or unique_name)
-        body.setdefault("isoptional", bool(is_optional))
-        body.setdefault("type", self._resolve_data_type(data_type))
-        if description:
-            body.setdefault("description", description)
-        if logical_entity_name:
-            body.setdefault("logicalentityname", logical_entity_name)
-        # Associate to parent Custom API via navigation property
-        body.setdefault("customapiid@odata.bind", f"/customapis({customapiid})")
-        url = f"{self.api}/customapirequestparameters"
-        r = self._request("post", url, headers=self._headers(), json=body)
-        r.raise_for_status()
-        return r.json()
-
-    def delete_custom_api_request_parameter(self, request_parameter_id: str) -> None:
-        url = f"{self.api}/customapirequestparameters({request_parameter_id})"
-        headers = self._headers().copy()
-        headers["If-Match"] = "*"
-        r = self._request("delete", url, headers=headers)
-        if r.status_code not in (200, 204, 404):
-            r.raise_for_status()
-
     # --------------- Custom API response properties --------------------
     def list_custom_api_response_properties(self, customapiid: str) -> List[Dict[str, Any]]:
         params = {
@@ -639,50 +613,3 @@ class ODataClient:
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
         return r.json().get("value", [])
-
-    def create_custom_api_response_property(
-        self,
-        *,
-        customapiid: Optional[str] = None,
-        custom_api_unique_name: Optional[str] = None,
-        unique_name: str,
-        name: Optional[str] = None,
-        data_type: Any = "string",
-        description: Optional[str] = None,
-        logical_entity_name: Optional[str] = None,
-        extra: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Create a Custom API Response Property.
-
-        If customapiid is not supplied, custom_api_unique_name is resolved first.
-        data_type can be an int (raw option set) or a friendly string (see _DATA_TYPE_MAP).
-        """
-        if not customapiid:
-            if not custom_api_unique_name:
-                raise ValueError("Provide customapiid or custom_api_unique_name")
-            api_meta = self._get_custom_api(unique_name=custom_api_unique_name)
-            if not api_meta:
-                raise RuntimeError(f"Custom API '{custom_api_unique_name}' not found")
-            customapiid = api_meta.get("customapiid")
-        body: Dict[str, Any] = (extra or {}).copy()
-        body.setdefault("uniquename", unique_name)
-        body.setdefault("name", name or unique_name)
-        body.setdefault("displayname", name or unique_name)
-        body.setdefault("type", self._resolve_data_type(data_type))
-        if description:
-            body.setdefault("description", description)
-        if logical_entity_name:
-            body.setdefault("logicalentityname", logical_entity_name)
-        body.setdefault("customapiid@odata.bind", f"/customapis({customapiid})")
-        url = f"{self.api}/customapiresponseproperties"
-        r = self._request("post", url, headers=self._headers(), json=body)
-        r.raise_for_status()
-        return r.json()
-
-    def delete_custom_api_response_property(self, response_property_id: str) -> None:
-        url = f"{self.api}/customapiresponseproperties({response_property_id})"
-        headers = self._headers().copy()
-        headers["If-Match"] = "*"
-        r = self._request("delete", url, headers=headers)
-        if r.status_code not in (200, 204, 404):
-            r.raise_for_status()

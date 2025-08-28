@@ -6,6 +6,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
+- Custom API — CRUD for Custom API that wraps over Dataverse Web API
 - Auth — Azure Identity (`TokenCredential`) injection.
 
 ## Features
@@ -13,6 +14,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
 - SQL-over-API: T-SQL routed through Custom API endpoint (no ODBC / TDS driver required).
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
+- Custom API support for CRUD and invoking
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
 Auth:
@@ -139,7 +141,9 @@ Notes:
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
 - SQL is routed through the Custom API named in `DataverseConfig.sql_api_name` (default: `McpExecuteSqlQuery`).
 
+### Custom API functionalities
 
+See `examples/quickstart_custom_api.py` for a Custom API workflow from create -> read- > call -> update -> delete.
 
 ### Pandas helpers
 
@@ -152,6 +156,7 @@ VS Code Tasks
 ## Limitations / Future Work
 - No batching, upsert, or association operations yet.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
+- Custom API SDK doesn't support adding service logic like Plug-in currently, so it can only function like business events.
 
 ## Contributing
 
