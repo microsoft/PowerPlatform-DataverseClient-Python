@@ -5,7 +5,7 @@ outputs for common CRUD + query operations.
 
 Design notes:
 * All methods are thin convenience wrappers for pandas-specific functionality.
-* For creating records, use the core ODataClient.create() method directly - it now
+* For creating records, use the core ODataClient.create() method directly - it
   natively supports pandas DataFrames and Series with batch processing.
 * update: updates records based on an id column; returns a DataFrame with
   per-row success booleans and optional error messages.
