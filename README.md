@@ -4,6 +4,8 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 
 - Read (SQL) — Execute read-only T‑SQL via the McpExecuteSqlQuery Custom API. Returns `list[dict]`.
 - OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
+- Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs.
+- Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
 - Auth — Azure Identity (`TokenCredential`) injection.
@@ -13,6 +15,8 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
 - SQL-over-API: T-SQL routed through Custom API endpoint (no ODBC / TDS driver required).
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
+- Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
+- Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
 Auth:
@@ -62,6 +66,8 @@ python examples/quickstart.py
 The quickstart demonstrates:
 - Creating a simple custom table (metadata APIs)
 - Creating, reading, updating, and deleting records (OData)
+- Bulk create (CreateMultiple) to insert many records in one call
+- Retrieve multiple with paging (contrasting `$top` vs `page_size`)
 - Executing a read-only SQL query
 
 ## Examples
@@ -101,6 +107,95 @@ client.delete("accounts", account_id)
 rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
 for r in rows:
 	print(r.get("accountid"), r.get("name"))
+
+## Bulk create (CreateMultiple)
+
+Pass a list of payloads to `create(entity_set, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns a `list[str]` of created record IDs.
+
+```python
+# Bulk create accounts (returns list of GUIDs)
+payloads = [
+	{"name": "Contoso"},
+	{"name": "Fabrikam"},
+	{"name": "Northwind"},
+]
+ids = client.create("accounts", payloads)
+assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
+print({"created_ids": ids})
+```
+
+Notes:
+- The bulk create response typically includes IDs only; the SDK returns the list of GUID strings.
+- Single-record `create` still returns the full entity representation.
+
+## Retrieve multiple with paging
+
+Use `get_multiple(entity_set, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
+
+```python
+# Iterate pages of accounts ordered by name, selecting a few columns
+pages = client.get_multiple(
+	"accounts",
+	select=["accountid", "name", "createdon"],
+	orderby=["name asc"],
+	top=10,          # stop after 10 total rows (optional)
+	page_size=3,     # ask for ~3 per page (optional)
+)
+
+total = 0
+for page in pages:         # each page is a list[dict]
+	print({"page_size": len(page), "sample": page[:2]})
+	total += len(page)
+print({"total_rows": total})
+```
+
+Parameters
+- `entity`: str — Entity set name (plural logical name), e.g., `"accounts"`.
+- `select`: list[str] | None — Columns to include; joined into `$select`.
+- `filter`: str | None — OData `$filter` expression (e.g., `"contains(name,'Acme') and statecode eq 0"`).
+- `orderby`: list[str] | None — Sort expressions (e.g., `["name asc", "createdon desc"]`).
+- `top`: int | None — Cap on total rows across all pages (sent as `$top` on first request).
+- `expand`: list[str] | None — Navigation expansions as raw OData strings. Example:
+	- `"primarycontactid($select=fullname,emailaddress1)"`
+	- `"parentaccountid($select=name)"`
+- `page_size`: int | None — Per-page hint via Prefer: `odata.maxpagesize=N`.
+
+Example (all parameters + expected response)
+
+```python
+pages = client.get_multiple(
+		"accounts",
+		select=["accountid", "name", "createdon", "primarycontactid"],
+		filter="contains(name,'Acme') and statecode eq 0",
+		orderby=["name asc", "createdon desc"],
+		top=5,
+		expand=["primarycontactid($select=fullname,emailaddress1)"],
+		page_size=2,
+)
+
+for page in pages:  # page is list[dict]
+		# Expected page shape (illustrative):
+		# [
+		#   {
+		#     "accountid": "00000000-0000-0000-0000-000000000001",
+		#     "name": "Acme West",
+		#     "createdon": "2025-08-01T12:34:56Z",
+		#     "primarycontactid": {
+		#         "contactid": "00000000-0000-0000-0000-0000000000aa",
+		#         "fullname": "Jane Doe",
+		#         "emailaddress1": "jane@acme.com"
+		#     },
+		#     "@odata.etag": "W/\"123456\""
+		#   },
+		#   ...
+		# ]
+		print({"page_size": len(page)})
+```
+
+Semantics:
+- `$top`: caps the total number of rows returned across all pages.
+- `page_size`: per-page size hint via Prefer: `odata.maxpagesize`; the service may return fewer/more.
+- The generator follows `@odata.nextLink` until exhausted or `$top` is satisfied.
 ```
 
 ### Custom table (metadata) example
@@ -136,6 +231,8 @@ client.delete_table("SampleItem")        # delete the table
 
 Notes:
 - `create/update` return the full record using `Prefer: return=representation`.
+- Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
+- Use `get_multiple` for paging through result sets; prefer `select` to limit columns.
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
 - SQL is routed through the Custom API named in `DataverseConfig.sql_api_name` (default: `McpExecuteSqlQuery`).
 
@@ -148,7 +245,8 @@ VS Code Tasks
 - Run example: `Run Quickstart (Dataverse SDK)`
 
 ## Limitations / Future Work
-- No batching, upsert, or association operations yet.
+- No general-purpose OData batching, upsert, or association operations yet.
+- `DeleteMultiple`/`UpdateMultiple` are not exposed; quickstart may demonstrate faster deletes using client-side concurrency only.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
 - Entity naming conventions in Dataverse (schema/logical/entity set plural & publisher prefix) using the SDK is currently not well-defined
 

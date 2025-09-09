@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Union, Iterable
 import re
 import json
 
@@ -39,13 +39,85 @@ class ODataClient:
         return self._http.request(method, url, **kwargs)
 
     # ----------------------------- CRUD ---------------------------------
-    def create(self, entity_set: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def create(self, entity_set: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[str]]:
+        """Create one or many records.
+
+        Behaviour:
+        - Single (dict): POST /{entity_set} with Prefer: return=representation and return the created record (dict).
+        - Multiple (list[dict]): POST bound action /{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
+          and return a list[str] of created record GUIDs (server only returns Ids for this action).
+
+        @odata.type is auto-inferred (Microsoft.Dynamics.CRM.<logical>) for each item when doing multi-create
+        if not already supplied.
+        """
+        if isinstance(data, dict):
+            return self._create_single(entity_set, data)
+        if isinstance(data, list):
+            return self._create_multiple(entity_set, data)
+        raise TypeError("data must be dict or list[dict]")
+
+    # --- Internal helpers ---
+    def _create_single(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.api}/{entity_set}"
         headers = self._headers().copy()
+        # Always request the created representation; server may ignore but for single create
+        # Dataverse typically returns the full body when asked.
         headers["Prefer"] = "return=representation"
-        r = self._request("post", url, headers=headers, json=data)
+        r = self._request("post", url, headers=headers, json=record)
         r.raise_for_status()
-        return r.json()
+        # If empty body, return {} (server might not honour prefer)
+        try:
+            return r.json() if r.text else {}
+        except ValueError:
+            return {}
+
+    def _infer_logical(self, entity_set: str) -> str:
+        # Basic heuristic: drop trailing 's'. (Metadata lookup could be added later.)
+        return entity_set[:-1] if entity_set.endswith("s") else entity_set
+
+    def _create_multiple(self, entity_set: str, records: List[Dict[str, Any]]) -> List[str]:
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
+        logical = self._infer_logical(entity_set)
+        enriched: List[Dict[str, Any]] = []
+        for r in records:
+            if "@odata.type" in r:
+                enriched.append(r)
+            else:
+                nr = r.copy()
+                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical}"
+                enriched.append(nr)
+        payload = {"Targets": enriched}
+        # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
+        # The action currently returns only Ids; no need to request representation.
+        headers = self._headers().copy()
+        r = self._request("post", url, headers=headers, json=payload)
+        r.raise_for_status()
+        try:
+            body = r.json() if r.text else {}
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            return []
+        # Expected: { "Ids": [guid, ...] }
+        ids = body.get("Ids")
+        if isinstance(ids, list):
+            return [i for i in ids if isinstance(i, str)]
+        # Future-proof: some environments might eventually return value/list of entities.
+        value = body.get("value")
+        if isinstance(value, list):
+            # Extract IDs if possible
+            out: List[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    # Heuristic: look for a property ending with 'id'
+                    for k, v in item.items():
+                        if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
+                            out.append(v)
+                            break
+            return out
+        return []
 
     def _format_key(self, key: str) -> str:
         k = key.strip()
@@ -79,6 +151,86 @@ class ODataClient:
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
         return r.json()
+
+    def get_multiple(
+        self,
+        entity_set: str,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+    ) -> Iterable[List[Dict[str, Any]]]:
+        """Iterate records from an entity set, yielding one page (list of dicts) at a time.
+
+        Parameters
+        ----------
+        entity_set : str
+            Entity set name (plural logical name).
+        select : list[str] | None
+            Columns to select; joined with commas into $select.
+        filter : str | None
+            OData $filter expression as a string.
+        orderby : list[str] | None
+            Order expressions; joined with commas into $orderby.
+        top : int | None
+            Max number of records across all pages. Passed as $top on the first request; the server will paginate via nextLink as needed.
+        expand : list[str] | None
+            Navigation properties to expand; joined with commas into $expand.
+
+        Yields
+        ------
+        list[dict]
+            A page of records from the Web API (the "value" array for each page).
+        """
+
+        # Build headers once; include odata.maxpagesize to force smaller pages for demos/testing
+        headers = self._headers().copy()
+        if page_size is not None:
+            try:
+                ps = int(page_size)
+                if ps > 0:
+                    headers["Prefer"] = f"odata.maxpagesize={ps}"
+            except Exception:
+                pass
+
+        def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            r = self._request("get", url, headers=headers, params=params)
+            r.raise_for_status()
+            try:
+                return r.json()
+            except ValueError:
+                return {}
+
+        base_url = f"{self.api}/{entity_set}"
+        params: Dict[str, Any] = {}
+        if select:
+            params["$select"] = ",".join(select)
+        if filter:
+            params["$filter"] = filter
+        if orderby:
+            params["$orderby"] = ",".join(orderby)
+        if expand:
+            params["$expand"] = ",".join(expand)
+        if top is not None:
+            params["$top"] = int(top)
+
+        data = _do_request(base_url, params=params)
+        items = data.get("value") if isinstance(data, dict) else None
+        if isinstance(items, list) and items:
+            yield [x for x in items if isinstance(x, dict)]
+
+        next_link = None
+        if isinstance(data, dict):
+            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
+
+        while next_link:
+            data = _do_request(next_link)
+            items = data.get("value") if isinstance(data, dict) else None
+            if isinstance(items, list) and items:
+                yield [x for x in items if isinstance(x, dict)]
+            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
     # --------------------------- SQL Custom API -------------------------
     def query_sql(self, tsql: str) -> list[dict[str, Any]]:

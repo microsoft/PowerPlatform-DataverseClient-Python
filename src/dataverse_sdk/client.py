@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union, List, Iterable
 
 from azure.core.credentials import TokenCredential
 
@@ -63,25 +63,31 @@ class DataverseClient:
         return self._odata
 
     # CRUD
-    def create(self, entity: str, record_data: dict) -> dict:
-        """Create a record and return its full representation.
+    def create(self, entity: str, record_data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[str]]:
+        """Create one or more records.
+
+        Behaviour:
+        - Single: returns the created record (dict) using Prefer: return=representation.
+        - Multiple: uses bound CreateMultiple action and returns list[str] of created record IDs.
 
         Parameters
         ----------
         entity : str
             Entity set name (plural logical name), e.g., ``"accounts"``.
-        record_data : dict
-            Field-value pairs to set on the new record.
+        record_data : dict | list[dict]
+            Single record payload or list of records for multi-create.
 
         Returns
         -------
-        dict
-            The created record as returned by the Web API (``Prefer: return=representation``).
+        dict | list[str]
+            Dict for single create, list of GUID strings for multi-create.
 
         Raises
         ------
         requests.exceptions.HTTPError
-            If the request fails (via ``raise_for_status`` in the underlying client).
+            If the request fails.
+        TypeError
+            If ``record_data`` is not a dict or list of dict.
         """
         return self._get_odata().create(entity, record_data)
 
@@ -132,6 +138,31 @@ class DataverseClient:
             The record JSON payload.
         """
         return self._get_odata().get(entity, record_id)
+
+    def get_multiple(
+        self,
+        entity: str,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+    expand: Optional[List[str]] = None,
+    page_size: Optional[int] = None,
+    ) -> Iterable[List[Dict[str, Any]]]:
+        """Fetch multiple records page-by-page as a generator.
+
+        Yields a list of records per page, following @odata.nextLink until exhausted.
+        Parameters mirror standard OData query options.
+        """
+        return self._get_odata().get_multiple(
+            entity,
+            select=select,
+            filter=filter,
+            orderby=orderby,
+            top=top,
+            expand=expand,
+            page_size=page_size,
+        )
 
     # SQL via Custom API
     def query_sql(self, tsql: str):
