@@ -5,7 +5,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Read (SQL) — Execute read-only T‑SQL via the McpExecuteSqlQuery Custom API. Returns `list[dict]`.
 - OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If `@odata.type` is absent the SDK resolves the logical name from metadata (cached).
-- Bulk update — Call `update_multiple(entity_set, records)` to invoke the bound `UpdateMultiple` action; returns nothing (transactional fire-and-forget). Each record must include the real primary key attribute (e.g. `accountid`).
+- Bulk update — Call `update_multiple(entity_set, records)` to invoke the bound `UpdateMultiple` action; returns nothing. Each record must include the real primary key attribute (e.g. `accountid`).
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
@@ -135,7 +135,7 @@ print({"created_ids": ids})
 
 ## Bulk update (UpdateMultiple)
 
-Use `update_multiple(entity_set, records)` for a transactional batch update. The method returns `None` regardless of service response; this avoids exposing inconsistent behavior across environments that may or may not emit updated IDs.
+Use `update_multiple(entity_set, records)` for a transactional batch update. The method returns `None`.
 
 ```python
 ids = client.create("accounts", [
@@ -283,7 +283,7 @@ VS Code Tasks
 
 ## Limitations / Future Work
 - No general-purpose OData batching, upsert, or association operations yet.
-- `DeleteMultiple` not yet exposed; `UpdateMultiple` is available but returns no IDs (fire-and-forget semantics in this SDK version).
+- `DeleteMultiple` not yet exposed.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
 - Entity naming conventions in Dataverse: for multi-create the SDK resolves logical names from entity set metadata.
 

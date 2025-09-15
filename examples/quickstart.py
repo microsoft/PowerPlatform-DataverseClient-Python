@@ -305,9 +305,8 @@ try:
 		backoff_retry(lambda: client.update_multiple(entity_set, bulk_updates))
 		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
 		# Verify the updated count values by refetching the subset
-		# (Individual gets keep the example simple and avoid crafting a complex $filter.)
 		verification = []
-		# Small delay to reduce risk of any brief replication delay (usually unnecessary)
+		# Small delay to reduce risk of any brief replication delay
 		time.sleep(1)
 		for rid in subset:
 			rec = backoff_retry(lambda rid=rid: client.get(entity_set, rid))

@@ -250,11 +250,7 @@ class ODataClient:
         headers = self._headers().copy()
         r = self._request("post", url, headers=headers, json=payload)
         r.raise_for_status()
-        try:
-            body = r.json() if r.text else {}
-        except ValueError:
-            body = {}
-        # Intentionally ignore response content: no stable contract for IDs across environments.
+       # Intentionally ignore response content: no stable contract for IDs across environments.
         return None
 
     def delete(self, entity_set: str, key: str) -> None:

@@ -123,8 +123,7 @@ class DataverseClient:
         Returns
         -------
         None
-            On success returns nothing. The underlying action does not reliably emit updated IDs across
-            environments; for predictable semantics the SDK returns None.
+            On success returns nothing.
         """
         self._get_odata().update_multiple(entity, records)
         return None
