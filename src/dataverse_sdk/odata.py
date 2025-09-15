@@ -540,7 +540,10 @@ class ODataClient:
         for col_name, dtype in schema.items():
             # Use same publisher prefix segment as entity_schema if present; else default to 'new_'.
             publisher = entity_schema.split("_", 1)[0] if "_" in entity_schema else "new"
-            attr_schema = f"{publisher}_{self._to_pascal(col_name)}"
+            if col_name.lower().startswith(f"{publisher}_"):
+                attr_schema = col_name
+            else:
+                attr_schema = f"{publisher}_{self._to_pascal(col_name)}"
             payload = self._attribute_payload(attr_schema, dtype)
             if not payload:
                 raise ValueError(f"Unsupported column type '{dtype}' for '{col_name}'.")
