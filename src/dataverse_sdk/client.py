@@ -110,6 +110,25 @@ class DataverseClient:
         """
         return self._get_odata().update(entity, record_id, record_data)
 
+    def update_multiple(self, entity: str, records: List[Dict[str, Any]]) -> None:
+        """Bulk update multiple records via the bound UpdateMultiple action.
+
+        Parameters
+        ----------
+        entity : str
+            Entity set name (plural logical name).
+        records : list[dict]
+            Each record must include the primary key attribute (e.g. ``accountid``) plus fields to update.
+
+        Returns
+        -------
+        None
+            On success returns nothing. The underlying action does not reliably emit updated IDs across
+            environments; for predictable semantics the SDK returns None.
+        """
+        self._get_odata().update_multiple(entity, records)
+        return None
+
     def delete(self, entity: str, record_id: str) -> None:
         """Delete a record by ID.
 

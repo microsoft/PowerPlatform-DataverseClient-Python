@@ -286,6 +286,41 @@ try:
 except Exception as e:
 	print(f"Update/verify failed: {e}")
 	sys.exit(1)
+
+# 3.6) Bulk update (UpdateMultiple) demo: update count field on up to first 5 remaining records
+print("Bulk update (UpdateMultiple) demo:")
+try:
+	if len(record_ids) > 1:
+		# Prepare a small subset to update (skip the first already updated one)
+		subset = record_ids[1:6]
+		bulk_updates = []
+		for idx, rid in enumerate(subset, start=1):
+			# Simple deterministic changes so user can observe
+			bulk_updates.append({
+				id_key: rid,
+				count_key: 100 + idx,  # new count values
+			})
+		log_call(f"client.update_multiple('{entity_set}', <{len(bulk_updates)} records>)")
+		# update_multiple returns nothing (fire-and-forget success semantics)
+		backoff_retry(lambda: client.update_multiple(entity_set, bulk_updates))
+		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
+		# Verify the updated count values by refetching the subset
+		# (Individual gets keep the example simple and avoid crafting a complex $filter.)
+		verification = []
+		# Small delay to reduce risk of any brief replication delay (usually unnecessary)
+		time.sleep(1)
+		for rid in subset:
+			rec = backoff_retry(lambda rid=rid: client.get(entity_set, rid))
+			verification.append({
+				"id": rid,
+				"count": rec.get(count_key),
+			})
+		print({"bulk_update_verification": verification})
+	else:
+		print({"bulk_update_skipped": True, "reason": "not enough records"})
+except Exception as e:
+	print(f"Bulk update failed: {e}")
+
 # 4) Query records via SQL Custom API
 print("Query (SQL via Custom API):")
 try:

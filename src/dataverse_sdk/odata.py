@@ -196,6 +196,67 @@ class ODataClient:
         r.raise_for_status()
         return r.json()
 
+    def update_multiple(self, entity_set: str, records: List[Dict[str, Any]]) -> None:
+        """Bulk update existing records via the collection-bound UpdateMultiple action.
+
+        Parameters
+        ----------
+        entity_set : str
+            Entity set (plural logical name), e.g. "accounts".
+        records : list[dict]
+            Each dict must include the real primary key attribute for the entity (e.g. ``accountid``) and one or more
+            fields to update. If ``@odata.type`` is omitted in any payload, the logical name is resolved once and
+            stamped into those payloads as ``Microsoft.Dynamics.CRM.<logical>`` (same behaviour as bulk create).
+
+        Behaviour
+        ---------
+        - POST ``/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple`` with body ``{"Targets": [...]}``.
+        - Expects Dataverse transactional semantics: if any individual update fails the entire request is rolled back
+          and an error HTTP status is returned (no partial success handling in V1).
+        - Response is expected to include an ``Ids`` list (mirrors CreateMultiple); if absent an empty list is
+          returned.
+
+        Returns
+        -------
+        None
+            This method does not return IDs or record bodies. The Dataverse UpdateMultiple action does not
+            consistently emit identifiers across environments; to keep semantics predictable the SDK returns
+            nothing on success. Use follow-up queries (e.g. get / get_multiple) if you need refreshed data.
+
+        Notes
+        -----
+        - Caller must include the correct primary key attribute (e.g. ``accountid``) in every record.
+        - No representation of updated records is returned; for a single record representation use ``update``.
+        """
+        if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
+            raise TypeError("records must be a non-empty list[dict]")
+
+        # Determine whether we need logical name resolution (@odata.type missing in any payload)
+        need_logical = any("@odata.type" not in r for r in records)
+        logical: Optional[str] = None
+        if need_logical:
+            logical = self._logical_from_entity_set(entity_set)
+        enriched: List[Dict[str, Any]] = []
+        for r in records:
+            if "@odata.type" in r or not logical:
+                enriched.append(r)
+            else:
+                nr = r.copy()
+                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical}"
+                enriched.append(nr)
+
+        payload = {"Targets": enriched}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple"
+        headers = self._headers().copy()
+        r = self._request("post", url, headers=headers, json=payload)
+        r.raise_for_status()
+        try:
+            body = r.json() if r.text else {}
+        except ValueError:
+            body = {}
+        # Intentionally ignore response content: no stable contract for IDs across environments.
+        return None
+
     def delete(self, entity_set: str, key: str) -> None:
         """Delete a record by GUID or alternate key."""
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
