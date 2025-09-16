@@ -10,6 +10,11 @@ from .http import HttpClient
 class ODataClient:
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
+    @staticmethod
+    def _escape_odata_quotes(value: str) -> str:
+        """Escape single quotes for OData queries (by doubling them)."""
+        return value.replace("'", "''")
+
     def __init__(self, auth, base_url: str, config=None) -> None:
         self.auth = auth
         self.base_url = (base_url or "").rstrip("/")
@@ -97,9 +102,11 @@ class ODataClient:
         if cached:
             return cached
         url = f"{self.api}/EntityDefinitions"
+        # Escape single quotes in entity set name
+        es_escaped = self._escape_odata_quotes(es)
         params = {
             "$select": "LogicalName,EntitySetName",
-            "$filter": f"EntitySetName eq '{es}'",
+            "$filter": f"EntitySetName eq '{es_escaped}'",
         }
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
@@ -167,6 +174,13 @@ class ODataClient:
         k = key.strip()
         if k.startswith("(") and k.endswith(")"):
             return k
+        # Escape single quotes in alternate key values
+        if "=" in k and "'" in k:
+            def esc(match):
+                # match.group(1) is the key, match.group(2) is the value
+                return f"{match.group(1)}='{self._escape_odata_quotes(match.group(2))}'"
+            k = re.sub(r"(\w+)=\'([^\']*)\'", esc, k)
+            return f"({k})"
         if len(k) == 36 and "-" in k:
             return f"({k})"
         return f"({k})"
@@ -360,9 +374,11 @@ class ODataClient:
 
     def _get_entity_by_schema(self, schema_name: str) -> Optional[Dict[str, Any]]:
         url = f"{self.api}/EntityDefinitions"
+        # Escape single quotes in schema name
+        schema_escaped = self._escape_odata_quotes(schema_name)
         params = {
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
-            "$filter": f"SchemaName eq '{schema_name}'",
+            "$filter": f"SchemaName eq '{schema_escaped}'",
         }
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
