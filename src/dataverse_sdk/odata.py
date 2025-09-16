@@ -493,6 +493,130 @@ class ODataClient:
                 },
             }
         return None
+    
+    def _build_instant_entity_payload(
+        self,
+        schema_name: str,
+        display_name: str,
+        primary_attribute: str,
+        columns: Dict[str, str],
+        lookups: List[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        """Build an expando entity definition for CreateInstantEntities.
+
+        Parameters
+        ----------
+        schema_name : str
+            Entity SchemaName (e.g. new_SampleItem).
+        display_name : str
+            Singular display label (Collection name will append 's').
+        primary_attribute : str
+            Logical name for the primary name attribute (e.g. new_name).
+        columns : dict[str, str]
+            Mapping of column logical (or friendly) name -> datatype. Only "text" is currently supported.
+        lookups : list[dict]
+            Lookup definitions required by CreateInstantEntities internal API.
+            Required keys per item: AttributeName, AttributeDisplayName, ReferencedEntityName, RelationshipName.
+
+        Returns
+        -------
+        dict
+            A payload body usable as the JSON for POST /CreateInstantEntities (already wrapped with ExecuteInParallel/Entities structure).
+
+        Notes
+        -----
+        All columns must be text; any other types are not supported.
+        """
+        if not schema_name or "_" not in schema_name:
+            raise ValueError("schema_name must be a full schema (with publisher prefix).")
+        if not display_name:
+            raise ValueError("display_name is required.")
+        if not primary_attribute:
+            raise ValueError("primary_attribute is required.")
+        if not columns:
+            raise ValueError("At least one column required for instant creation.")
+        if not lookups:
+            raise ValueError("At least one lookup is required for instant creation.")
+
+        # Validate columns are all text types
+        expando_attrs: List[Dict[str, Any]] = []
+        publisher_prefix = schema_name.split('_', 1)[0] if "_" in schema_name else "new"
+        for original_name, dtype in columns.items():
+            dt = (dtype or "").strip().lower()
+            if dt not in ("text"):
+                raise ValueError(f"Unsupported column type '{dtype}' for '{original_name}'. Only text columns are allowed.")
+            # Ensure logical name has publisher prefix; if caller omitted it, prepend automatically.
+            if original_name.lower().startswith(f"{publisher_prefix.lower()}_"):
+                logical_name = original_name
+            else:
+                logical_name = f"{publisher_prefix}_{original_name}" if original_name else original_name
+            display_label = original_name or logical_name
+            expando_attrs.append({
+                "@odata.type": "Microsoft.Dynamics.CRM.expando",
+                "Name": logical_name,
+                "DisplayName": display_label,
+                "Type": "text",
+                "TypeMetadata": {
+                    "@odata.type": "Microsoft.Dynamics.CRM.expando",
+                    "Length": 200,
+                },
+            })
+
+        expando_lookups: List[Dict[str, Any]] = []
+        required = {"AttributeName", "AttributeDisplayName", "ReferencedEntityName", "RelationshipName"}
+        for lk in lookups:
+            if not required.issubset(lk.keys()):
+                raise ValueError(f"Lookup missing required keys: {lk}")
+            expando_lookups.append(
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.expando",
+                    "AttributeName": lk["AttributeName"],
+                    "AttributeDisplayName": lk["AttributeDisplayName"],
+                    "ReferencedEntityName": lk["ReferencedEntityName"],
+                    "RelationshipName": lk["RelationshipName"],
+                }
+            )
+
+        entity_expando = {
+            "@odata.type": "Microsoft.Dynamics.CRM.expando",
+            "Name": schema_name,
+            "DisplayName": display_name,
+            "CollectionDisplayName": display_name + "s",
+            "NameAttribute": primary_attribute.lower(), # API only works with lowercase here
+            "Attributes@odata.type": "#Collection(Microsoft.Dynamics.CRM.expando)",
+            "Attributes": expando_attrs,
+            "Lookups@odata.type": "#Collection(Microsoft.Dynamics.CRM.expando)",
+            "Lookups": expando_lookups,
+        }
+        return {"ExecuteInParallel": "true", "Entities": [entity_expando]}
+    
+    def _create_entity_instant(
+        self,
+        schema_name: str,
+        display_name: str,
+        primary_attribute: str,
+        columns: Dict[str, str],
+        lookups: List[Dict[str, str]],
+    ) -> str:
+        payload = self._build_instant_entity_payload(
+            schema_name=schema_name,
+            display_name=display_name,
+            primary_attribute=primary_attribute,
+            columns=columns,
+            lookups=lookups,
+        )
+        headers = self._headers()
+
+        # CreateInstantEntities must always be called after CreateInstantEntityWarmUp
+        create_url = f"{self.base_url}/api/data/v9.0/CreateInstantEntities"
+        r = self._request("post", create_url, headers=headers, json=payload)
+        r.raise_for_status()
+        ent = self._wait_for_entity_ready(schema_name)
+        if not ent or not ent.get("EntitySetName"):
+            raise RuntimeError(
+                f"Failed to create or retrieve entity '{schema_name}' (EntitySetName not available)."
+            )
+        return ent["MetadataId"]
 
     def get_table_info(self, tablename: str) -> Optional[Dict[str, Any]]:
         """Return basic metadata for a custom table if it exists.
@@ -540,7 +664,34 @@ class ODataClient:
         r = self._request("delete", url, headers=headers)
         r.raise_for_status()
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def create_table(
+        self,
+        tablename: str,
+        schema: Dict[str, str],
+        use_instant: bool = False,
+        display_name: Optional[str] = None,
+        lookups: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Create a custom table (entity).
+
+        Parameters
+        ----------
+        tablename : str
+            Friendly name (without publisher prefix) or full SchemaName (with prefix underscore form).
+        schema : dict[str,str]
+            Mapping of column friendly/logical name -> datatype (string/int/decimal/datetime/bool, etc.).
+        use_instant : bool, default False
+            If True, attempt creation via CreateInstantEntities API (fast path). Must call warm_up_instant_create before using it.
+        display_name : str | None
+            Required when use_instant=True; used for DisplayName / CollectionDisplayName.
+        lookups : list[dict] | None
+            Required when use_instant=True. Items must include AttributeName, AttributeDisplayName, ReferencedEntityName, RelationshipName.
+
+        Returns
+        -------
+        dict
+            { entity_schema, entity_logical_name, entity_set_name, metadata_id, columns_created }
+        """
         # Accept a friendly name and construct a default schema under 'new_'.
         # If a full SchemaName is passed (contains '_'), use as-is.
         entity_schema = tablename if "_" in tablename else f"new_{self._to_pascal(tablename)}"
@@ -549,13 +700,12 @@ class ODataClient:
         if ent:
             raise RuntimeError(f"Table '{entity_schema}' already exists. No update performed.")
 
-        created_cols: List[str] = []
         primary_attr_schema = "new_Name" if "_" not in entity_schema else f"{entity_schema.split('_',1)[0]}_Name"
+        created_cols: List[str] = []
         attributes: List[Dict[str, Any]] = []
-        attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True))
+        publisher = entity_schema.split("_", 1)[0] if "_" in entity_schema else "new"
         for col_name, dtype in schema.items():
             # Use same publisher prefix segment as entity_schema if present; else default to 'new_'.
-            publisher = entity_schema.split("_", 1)[0] if "_" in entity_schema else "new"
             if col_name.lower().startswith(f"{publisher}_"):
                 attr_schema = col_name
             else:
@@ -566,7 +716,18 @@ class ODataClient:
             attributes.append(payload)
             created_cols.append(attr_schema)
 
-        metadata_id = self._create_entity(entity_schema, tablename, attributes)
+        if use_instant:
+            metadata_id = self._create_entity_instant(
+                schema_name=entity_schema,
+                display_name=display_name,
+                primary_attribute=primary_attr_schema,
+                columns=schema,
+                lookups=lookups,
+            )
+        else:
+            attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True))
+            metadata_id = self._create_entity(entity_schema, tablename, attributes)
+        
         ent2: Dict[str, Any] = self._wait_for_entity_ready(entity_schema) or {}
         logical_name = ent2.get("LogicalName")
 
@@ -577,3 +738,24 @@ class ODataClient:
             "metadata_id": metadata_id,
             "columns_created": created_cols,
         }
+    
+    def warm_up_instant_create(self) -> None:
+        """Explicit warm-up required before using the instant table creation.
+
+        Raises
+        ------
+        RuntimeError
+            If the warm-up request fails or returns a non-success status code.
+        """
+        headers = self._headers().copy()
+        warm_url = f"{self.base_url}/api/data/v9.0/CreateInstantEntityWarmUp"
+        resp = self._request("post", warm_url, headers=headers, json={})
+        if resp.status_code not in (200, 202, 204):
+            body_preview = None
+            try:
+                body_preview = resp.text[:400] if resp.text else None
+            except Exception:
+                body_preview = None
+            raise RuntimeError(
+                f"CreateInstantEntityWarmUp failed: {resp.status_code} {body_preview or ''}".strip()
+            )

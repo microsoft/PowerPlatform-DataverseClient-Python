@@ -39,6 +39,7 @@ Direct TDS via ODBC is not used; SQL reads are executed via the Custom API over 
 
 - For Web API (OData), tokens target your Dataverse org URL scope: https://yourorg.crm.dynamics.com/.default. The SDK requests this scope from the provided TokenCredential.
 - For complete functionalities, please use one of the PREPROD BAP environments, otherwise McpExecuteSqlQuery might not work.
+- For CreateInstantEntities call, it's a prerequisite to import solution https://microsoft-my.sharepoint.com/:u:/p/cdietric/EXuJB0ZywshPuVAc54b2HxUBpnlv9jjQl47QCrx-VhSErA?e=4cdYm0
 
 ### Configuration (DataverseConfig)
 
@@ -69,6 +70,7 @@ The quickstart demonstrates:
 - Bulk create (CreateMultiple) to insert many records in one call
 - Retrieve multiple with paging (contrasting `$top` vs `page_size`)
 - Executing a read-only SQL query
+- Use CreateInstantEntities API to quickly create entities
 
 ## Examples
 
@@ -217,6 +219,26 @@ info = client.create_table(
 		"active": "bool",
 	},
 )
+
+# Alternatively create a custom table with use_instant option
+# Only text type column is supported and lookups and display_name are required inputs
+# info = client.create_table(
+# 	"new_SampleItemInstant",
+# 	{
+# 		"code": "text",
+# 		"count": "text",
+# 	},
+# 	use_instant=True,
+# 	display_name="Sample Item",
+# 	lookups=[
+# 		{
+# 			"AttributeName": "new_Account",
+# 			"AttributeDisplayName": "Account (Demo Lookup)",
+# 			"ReferencedEntityName": "account",
+# 			"RelationshipName": "new_newSampleItem_account",
+# 		}
+# 	],
+# )
 
 entity_set = info["entity_set_name"]  # e.g., "new_sampleitems"
 logical = info["entity_logical_name"]  # e.g., "new_sampleitem"
