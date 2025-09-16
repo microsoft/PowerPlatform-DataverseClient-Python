@@ -26,6 +26,8 @@ delete_table_at_end = (str(delete_choice).lower() in ("y", "yes", "true", "1"))
 # Ask once whether to pause between steps during this run
 pause_choice = input("Pause between test steps? (y/N): ").strip() or "n"
 pause_between_steps = (str(pause_choice).lower() in ("y", "yes", "true", "1"))
+instant_create_choice = input("Run instant create demo? (y/N): ").strip() or "n"
+run_instant_create = (str(instant_create_choice).lower() in ("y", "yes", "true", "1"))
 # Create a credential we can reuse (for DataverseClient)
 credential = InteractiveBrowserCredential()
 client = DataverseClient(base_url=base_url, credential=credential)
@@ -41,6 +43,20 @@ def pause(next_step: str) -> None:
 		except EOFError:
 			# If stdin is not available, just proceed
 			pass
+
+# Helper: delete a table if it exists
+def delete_table_if_exists(table_name: str) -> None:
+	try:
+		log_call(f"client.get_table_info('{table_name}')")
+		info = client.get_table_info(table_name)
+		if info:
+			log_call(f"client.delete_table('{table_name}')")
+			client.delete_table(table_name)
+			print({"table_deleted": True})
+		else:
+			print({"table_deleted": False, "reason": "not found"})
+	except Exception as e:
+		print({f"Delete table failed": str(e)})
 
 # Small generic backoff helper used only in this quickstart
 # Include common transient statuses like 429/5xx to improve resilience.
@@ -68,6 +84,11 @@ print("Ensure custom table exists (Metadata):")
 table_info = None
 created_this_run = False
 
+# Timing metrics for comparison (seconds)
+instant_create_seconds: float | None = None
+standard_create_seconds: float | None = None
+warm_up_seconds: float | None = None
+
 # Check for existing table using list_tables
 log_call("client.list_tables()")
 tables = client.list_tables()
@@ -87,6 +108,7 @@ else:
 	# Create it since it doesn't exist
 	try:
 		log_call("client.create_table('new_SampleItem', schema={code,count,amount,when,active})")
+		_t0_standard = time.perf_counter()
 		table_info = client.create_table(
 			"new_SampleItem",
 			{
@@ -97,6 +119,7 @@ else:
 				"active": "bool",
 			},
 		)
+		standard_create_seconds = time.perf_counter() - _t0_standard
 		created_this_run = True if table_info and table_info.get("columns_created") else False
 		print({
 			"table": table_info.get("entity_schema") if table_info else None,
@@ -123,6 +146,19 @@ else:
 		sys.exit(1)
 entity_set = table_info.get("entity_set_name")
 logical = table_info.get("entity_logical_name") or entity_set.rstrip("s")
+
+if run_instant_create:
+	# call early to warm up for instant create
+	log_call("client.warm_up_instant_create()")
+	try:
+		_t0_warm = time.perf_counter()
+		client.warm_up_instant_create()
+		warm_up_seconds = time.perf_counter() - _t0_warm
+		print({"warm_up_for_instant_create": True, "warm_up_seconds": warm_up_seconds})
+	except Exception as warm_ex:
+		print({"warm_up_for_instant_create_error": str(warm_ex)})
+		# Abort instant demo if warm-up fails
+		sys.exit(1)
 
 # Derive attribute logical name prefix from the entity logical name (segment before first underscore)
 attr_prefix = logical.split("_", 1)[0] if "_" in logical else logical
@@ -410,21 +446,77 @@ try:
 except Exception as e:
 	print(f"Delete failed: {e}")
 
+# 6) (Optional) Instant create path demo
+if not run_instant_create:
+	print("Skipping instant create demo as per user choice.")
+else:
+	pause("Next: instant create demo")
+
+	print("Instant create demo")
+	print("Delete Instant table first if exists")
+	# Delete instant table first
+	delete_table_if_exists("new_SampleItemInstant")
+
+	# Create Instant
+	log_call("client.create_table('new_SampleItemInstant', instant_create)")
+	instant_schema = {
+		"code": "text",
+		"count": "text",
+	}
+	# Demo dummy lookup definition (must supply at least one for instant path)
+	instant_lookups = [
+		{
+			"AttributeName": "new_Account",
+			"AttributeDisplayName": "Account (Demo Lookup)",
+			"ReferencedEntityName": "account",
+			"RelationshipName": "new_newSampleItem_account",
+		}
+	]
+	try:
+		_t0_instant = time.perf_counter()
+		_table_instant = client.create_table(
+			"new_SampleItemInstant",
+			instant_schema,
+			use_instant=True,
+			display_name="Sample Item",
+			lookups=instant_lookups,
+		)
+		instant_create_seconds = time.perf_counter() - _t0_instant
+		table_info = _table_instant
+		logical = table_info.get("entity_logical_name") if isinstance(table_info, dict) else None
+		print(table_info)
+	except Exception as instant_ex:
+		print({"instant_create_error": str(instant_ex)})
+		sys.exit(1)
+
+	# Timing comparison summary for table creation
+	_standard_create_ran = standard_create_seconds is not None
+	_instant_create_ran = instant_create_seconds is not None
+	print({
+		"table_creation_timing_compare": {
+			"warm_up_seconds": warm_up_seconds,
+			"instant_seconds": instant_create_seconds,
+			"warm_up+instant_seconds": warm_up_seconds + instant_create_seconds,
+			"standard_seconds": standard_create_seconds if _standard_create_ran else "standard table pre-existed; omitted",
+			"delta_standard_minus_instant": (
+				(standard_create_seconds - instant_create_seconds)
+				if (_standard_create_ran and _instant_create_ran)
+				else None
+			),
+		}
+	})
+
+
 pause("Next: Cleanup table")
 
-# 6) Cleanup: delete the custom table if it exists
+# 7) Cleanup: delete the custom table if it exists
 print("Cleanup (Metadata):")
 if delete_table_at_end:
-	try:
-		log_call("client.get_table_info('new_SampleItem')")
-		info = client.get_table_info("new_SampleItem")
-		if info:
-			log_call("client.delete_table('new_SampleItem')")
-			client.delete_table("new_SampleItem")
-			print({"table_deleted": True})
-		else:
-			print({"table_deleted": False, "reason": "not found"})
-	except Exception as e:
-		print(f"Delete table failed: {e}")
+	delete_table_if_exists("new_SampleItem")
 else:
 	print({"table_deleted": False, "reason": "user opted to keep table"})
+
+# Put instant table delete at the end to avoid metadata cache issues when deletion immediately follows creation
+if run_instant_create:
+	print("Cleanup instant (Metadata):")
+	delete_table_if_exists("new_SampleItemInstant")

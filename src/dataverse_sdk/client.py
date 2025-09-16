@@ -198,8 +198,22 @@ class DataverseClient:
         """
         return self._get_odata().get_table_info(tablename)
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
-        """Create a simple custom table.
+    def create_table(
+        self,
+        tablename: str,
+        schema: Dict[str, str],
+        use_instant: bool = False,
+        display_name: Optional[str] = None,
+        lookups: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        """Create a custom table (standard or instant path).
+
+        Standard path (default): uses supported metadata APIs and allows a variety of column types
+        (``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``).
+
+        Instant path (``use_instant=True``): attempts creation via the CreateInstantEntities API.
+        This path currently only supports ``text`` columns and requires at least one lookup
+        relationship
 
         Parameters
         ----------
@@ -207,7 +221,15 @@ class DataverseClient:
             Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
         schema : dict[str, str]
             Column definitions mapping logical names (without prefix) to types.
-            Supported: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+            Supported for standard path: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+            For instant path you must supply only text columns (``text``).
+        use_instant : bool, default False
+            If True, use the instant entity creation path. Must call warm_up_instant_create before using it
+        display_name : str | None
+            Required when ``use_instant`` is True. Singular display label (collection name pluralized with an ``s``).
+        lookups : list[dict] | None
+            Required when ``use_instant`` is True. Each item must include:
+            ``AttributeName``, ``AttributeDisplayName``, ``ReferencedEntityName``, ``RelationshipName``.
 
         Returns
         -------
@@ -215,7 +237,13 @@ class DataverseClient:
             Metadata summary including ``entity_schema``, ``entity_set_name``,
             ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
         """
-        return self._get_odata().create_table(tablename, schema)
+        return self._get_odata().create_table(
+            tablename,
+            schema,
+            use_instant=use_instant,
+            display_name=display_name,
+            lookups=lookups,
+        )
 
     def delete_table(self, tablename: str) -> None:
         """Delete a custom table by name.
@@ -236,6 +264,15 @@ class DataverseClient:
             A list of table names.
         """
         return self._get_odata().list_tables()
+
+    # Instant create warm-up
+    def warm_up_instant_create(self) -> None:
+        """Perform required warm-up for instant table creation.
+
+        Must be called (and succeed) before invoking ``create_table``
+        with ``use_instant=True``.
+        """
+        self._get_odata().warm_up_instant_create()
 
 
 __all__ = ["DataverseClient"]
