@@ -198,16 +198,32 @@ class DataverseClient:
         """
         return self._get_odata().get_table_info(tablename)
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def create_table(self, tablename: str, schema: Dict[str, Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
         """Create a simple custom table.
 
         Parameters
         ----------
         tablename : str
             Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
-        schema : dict[str, str]
-            Column definitions mapping logical names (without prefix) to types.
-            Supported: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+        schema : dict[str, str | dict]
+            Column definitions mapping logical names to types or lookup configurations.
+            
+            For standard columns, use string type names:
+            ``"name": "string", "count": "int", "price": "decimal"``
+            
+            Supported types: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+            
+            For lookup fields, use a dictionary with configuration options:
+            ``"project": {"lookup": "new_project", "display_name": "Project", "cascade_delete": "Cascade"}``
+            
+            Lookup field options:
+            - ``lookup``: Target table (required)
+            - ``display_name``: Display name for the field (optional)
+            - ``description``: Description for the field (optional)
+            - ``required_level``: "None", "Recommended", or "ApplicationRequired" (default: "None")
+            - ``relationship_name``: Custom name for the relationship (optional)
+            - ``relationship_behavior``: "UseLabel", "UseCollectionName", "DoNotDisplay" (default: "UseLabel")
+            - ``cascade_delete``: "Cascade", "RemoveLink", "Restrict" (default: "RemoveLink")
 
         Returns
         -------
@@ -216,6 +232,59 @@ class DataverseClient:
             ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
         """
         return self._get_odata().create_table(tablename, schema)
+
+    def create_lookup_field(
+        self,
+        table_name: str, 
+        field_name: str, 
+        target_table: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        required_level: str = "None",
+        relationship_name: Optional[str] = None,
+        relationship_behavior: str = "UseLabel",
+        cascade_delete: str = "RemoveLink",
+    ) -> Dict[str, Any]:
+        """Create a lookup field (n:1 relationship) between two tables.
+        
+        Parameters
+        ----------
+        table_name : str
+            The table where the lookup field will be created.
+        field_name : str
+            The name of the lookup field to create.
+        target_table : str
+            The table the lookup will reference.
+        display_name : str, optional
+            The display name for the lookup field. If not provided, will use target table name.
+        description : str, optional
+            The description for the lookup field.
+        required_level : str, optional
+            The requirement level: "None", "Recommended", or "ApplicationRequired".
+        relationship_name : str, optional
+            The name of the relationship. If not provided, one will be generated.
+        relationship_behavior : str, optional
+            The relationship menu behavior: "UseLabel", "UseCollectionName", "DoNotDisplay".
+        cascade_delete : str, optional
+            The cascade behavior on delete: "Cascade", "RemoveLink", "Restrict".
+            
+        Returns
+        -------
+        dict
+            Details about the created relationship including relationship_id, relationship_name,
+            lookup_field, referenced_entity, and referencing_entity.
+        """
+        return self._get_odata().create_lookup_field(
+            table_name,
+            field_name,
+            target_table,
+            display_name,
+            description,
+            required_level,
+            relationship_name,
+            relationship_behavior,
+            cascade_delete
+        )
 
     def delete_table(self, tablename: str) -> None:
         """Delete a custom table by name.
