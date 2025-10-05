@@ -14,7 +14,7 @@ Design notes:
   DataFrame summarizing success/failure.
 * get_ids: fetches a set of ids returning a DataFrame of the merged JSON
   objects (outer union of keys). Missing keys are NaN.
-* query_sql_df: runs a SQL query via Custom API and returns the result rows as
+* query_sql_df: runs a SQL query via the Web API `?sql=` parameter and returns the result rows as
   a DataFrame (empty DataFrame if no rows).
 
 Edge cases & behaviors:
@@ -140,8 +140,9 @@ class PandasODataClient:
 
     # --------------------------- Query SQL -------------------------------
     def query_sql_df(self, tsql: str) -> pd.DataFrame:
-        """Execute a SQL query via Custom API and return a DataFrame.
+        """Execute a SQL query via the Dataverse Web API `?sql=` parameter and return a DataFrame.
 
+        The statement must adhere to the supported subset (single SELECT, optional WHERE/TOP/ORDER BY, no joins).
         Empty result -> empty DataFrame (columns inferred only if rows present).
         """
         rows: Any = self._c.query_sql(tsql)

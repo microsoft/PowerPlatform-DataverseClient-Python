@@ -2,7 +2,7 @@
 
 A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Foundry–style apps.
 
-- Read (SQL) — Execute read-only T‑SQL via the McpExecuteSqlQuery Custom API. Returns `list[dict]`.
+- Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
 - OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If `@odata.type` is absent the SDK resolves the logical name from metadata (cached).
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
@@ -13,7 +13,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 ## Features
 
 - Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
-- SQL-over-API: T-SQL routed through Custom API endpoint (no ODBC / TDS driver required).
+- SQL-over-API: Constrained T-SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
@@ -33,12 +33,12 @@ Create and activate a Python 3.13+ environment, then install dependencies:
 python -m pip install -r requirements.txt
 ```
 
-Direct TDS via ODBC is not used; SQL reads are executed via the Custom API over OData.
+Direct TDS via ODBC is not used; SQL reads are executed via the Web API using the `?sql=` query parameter.
 
 ## Configuration Notes
 
 - For Web API (OData), tokens target your Dataverse org URL scope: https://yourorg.crm.dynamics.com/.default. The SDK requests this scope from the provided TokenCredential.
-- For complete functionalities, please use one of the PREPROD BAP environments, otherwise McpExecuteSqlQuery might not work.
+	(Preprod environments may surface newest SQL subset capabilities sooner than production.)
 
 ### Configuration (DataverseConfig)
 
@@ -48,7 +48,7 @@ Pass a `DataverseConfig` or rely on sane defaults:
 from dataverse_sdk import DataverseClient
 from dataverse_sdk.config import DataverseConfig
 
-cfg = DataverseConfig()  # defaults: language_code=1033, sql_api_name="McpExecuteSqlQuery"
+cfg = DataverseConfig()  # defaults: language_code=1033
 client = DataverseClient(base_url="https://yourorg.crm.dynamics.com", config=cfg)
 
 # Optional HTTP tunables (timeouts/retries)
@@ -68,7 +68,7 @@ The quickstart demonstrates:
 - Creating, reading, updating, and deleting records (OData)
 - Bulk create (CreateMultiple) to insert many records in one call
 - Retrieve multiple with paging (contrasting `$top` vs `page_size`)
-- Executing a read-only SQL query
+- Executing a read-only SQL query (Web API `?sql=`)
 
 ## Examples
 
@@ -103,7 +103,7 @@ updated = client.update("accounts", account_id, {"telephone1": "555-0199"})
 # Delete
 client.delete("accounts", account_id)
 
-# SQL (read-only) via Custom API
+# SQL (read-only) via Web API `?sql=`
 rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
 for r in rows:
 	print(r.get("accountid"), r.get("name"))
@@ -239,7 +239,7 @@ Notes:
 - Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
 - Use `get_multiple` for paging through result sets; prefer `select` to limit columns.
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
-- SQL is routed through the Custom API named in `DataverseConfig.sql_api_name` (default: `McpExecuteSqlQuery`).
+* SQL queries are executed directly against entity set endpoints using the `?sql=` parameter. Supported subset only (single SELECT, optional WHERE/TOP/ORDER BY, alias). Unsupported constructs will be rejected by the service.
 
 ### Pandas helpers
 

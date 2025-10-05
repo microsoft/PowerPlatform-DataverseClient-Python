@@ -286,15 +286,17 @@ try:
 except Exception as e:
 	print(f"Update/verify failed: {e}")
 	sys.exit(1)
-# 4) Query records via SQL Custom API
-print("Query (SQL via Custom API):")
+# 4) Query records via SQL (Web API ?sql=)
+print("Query (SQL via Web API ?sql=):")
 try:
 	import time
 	pause("Execute SQL Query")
 
 	def _run_query():
-		log_call(f"client.query_sql(\"SELECT TOP 2 * FROM {logical} ORDER BY {attr_prefix}_amount DESC\")")
-		return client.query_sql(f"SELECT TOP 2 * FROM {logical} ORDER BY {attr_prefix}_amount DESC")
+		cols = f"{id_key}, {code_key}, {amount_key}, {when_key}"
+		query = f"SELECT TOP 2 {cols} FROM {logical} ORDER BY {attr_prefix}_amount DESC"
+		log_call(f"client.query_sql(\"{query}\") (Web API ?sql=)")
+		return client.query_sql(query)
 
 	def _retry_if(ex: Exception) -> bool:
 		msg = str(ex) if ex else ""
@@ -317,7 +319,7 @@ try:
 		)
 	print_line_summaries("TDS record summaries (top 2 by amount):", tds_summaries)
 except Exception as e:
-	print(f"SQL via Custom API failed: {e}")
+	print(f"SQL query failed: {e}")
 
 # Pause between SQL query and retrieve-multiple demos
 pause("Retrieve multiple (OData paging demos)")
