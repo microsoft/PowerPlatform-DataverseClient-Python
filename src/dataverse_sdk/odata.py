@@ -29,6 +29,8 @@ class ODataClient:
         )
         # Cache: entity set name -> logical name (resolved via metadata lookup)
         self._entityset_logical_cache = {}
+        # Cache: logical name -> entity set name (reverse lookup for SQL endpoint)
+        self._logical_to_entityset_cache: dict[str, str] = {}
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -375,41 +377,105 @@ class ODataClient:
 
     # --------------------------- SQL Custom API -------------------------
     def query_sql(self, tsql: str) -> list[dict[str, Any]]:
-        """Execute a read-only T-SQL query via the configured Custom API.
+        """Execute a read-only SQL query using the Dataverse Web API `?sql=` capability.
+
+        The platform supports a constrained subset of SQL SELECT statements directly on entity set endpoints:
+            GET /{entity_set}?sql=<encoded select statement>
+
+        This client extracts the logical table name from the query, resolves the corresponding
+        entity set name (cached) and invokes the Web API using the `sql` query parameter.
 
         Parameters
         ----------
         tsql : str
-            SELECT-style Dataverse-supported T-SQL (read-only).
+            Single SELECT statement within supported subset.
 
         Returns
         -------
         list[dict]
-            Rows materialised as list of dictionaries (empty list if no rows).
+            Result rows (empty list if none).
 
         Raises
         ------
+        ValueError
+            If the SQL is empty or malformed, or if the table logical name cannot be determined.
         RuntimeError
-            If the Custom API response is missing the expected ``queryresult`` property or type is unexpected.
+            If metadata lookup for the logical name fails.
         """
-        payload = {"querytext": tsql}
-        headers = self._headers()
-        api_name = self.config.sql_api_name
-        url = f"{self.api}/{api_name}"
-        r = self._request("post", url, headers=headers, json=payload)
+        if not isinstance(tsql, str) or not tsql.strip():
+            raise ValueError("tsql must be a non-empty string")
+        sql = tsql.strip()
+
+        # Naive parse: find token after FROM (ignore brackets); stop at whitespace/newline
+        # Example: SELECT name FROM account AS a WHERE a.name LIKE 'Acme%'
+        m = re.search(r"from\s+([a-zA-Z0-9_]+)\b", sql, flags=re.IGNORECASE)
+        if not m:
+            raise ValueError("Unable to determine table logical name from SQL (expected 'FROM <logical>').")
+        logical_candidate = m.group(1)
+        logical = logical_candidate.lower()
+
+        entity_set = self._entity_set_from_logical(logical)
+        # Issue GET /{entity_set}?sql=<query>
+        headers = self._headers().copy()
+        url = f"{self.api}/{entity_set}"
+        params = {"sql": sql}
+        r = self._request("get", url, headers=headers, params=params)
+        try:
+            r.raise_for_status()
+        except Exception as e:
+            # Attach response snippet to aid debugging unsupported SQL patterns
+            resp_text = None
+            try:
+                resp_text = r.text[:500] if getattr(r, 'text', None) else None
+            except Exception:
+                pass
+            detail = f" SQL query failed (status={getattr(r, 'status_code', '?')}): {resp_text}" if resp_text else ""
+            raise RuntimeError(str(e) + detail) from e
+        try:
+            body = r.json()
+        except ValueError:
+            return []
+        if isinstance(body, dict):
+            value = body.get("value")
+            if isinstance(value, list):
+                # Ensure dict rows only
+                return [row for row in value if isinstance(row, dict)]
+        # Fallbacks: if body itself is a list
+        if isinstance(body, list):
+            return [row for row in body if isinstance(row, dict)]
+        return []
+
+    # ---------------------- Entity set resolution -----------------------
+    def _entity_set_from_logical(self, logical: str) -> str:
+        """Resolve entity set name (plural) from a logical (singular) name using metadata.
+
+        Caches results for subsequent SQL queries.
+        """
+        if not logical:
+            raise ValueError("logical name required")
+        cached = self._logical_to_entityset_cache.get(logical)
+        if cached:
+            return cached
+        url = f"{self.api}/EntityDefinitions"
+        logical_escaped = self._escape_odata_quotes(logical)
+        params = {
+            "$select": "LogicalName,EntitySetName",
+            "$filter": f"LogicalName eq '{logical_escaped}'",
+        }
+        r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
-        data = r.json()
-        if "queryresult" not in data:
-            raise RuntimeError(f"{api_name} response missing 'queryresult'.")
-        q = data["queryresult"]
-        if q is None:
-            parsed = []
-        elif isinstance(q, str):
-            s = q.strip()
-            parsed = [] if not s else json.loads(s)
-        else:
-            raise RuntimeError(f"Unexpected queryresult type: {type(q)}")
-        return parsed
+        try:
+            body = r.json()
+            items = body.get("value", []) if isinstance(body, dict) else []
+        except ValueError:
+            items = []
+        if not items:
+            raise RuntimeError(f"Unable to resolve entity set for logical name '{logical}'.")
+        es = items[0].get("EntitySetName")
+        if not es:
+            raise RuntimeError(f"Metadata response missing EntitySetName for logical '{logical}'.")
+        self._logical_to_entityset_cache[logical] = es
+        return es
 
     # ---------------------- Table metadata helpers ----------------------
     def _label(self, text: str) -> Dict[str, Any]:

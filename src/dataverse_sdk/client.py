@@ -182,19 +182,23 @@ class DataverseClient:
             page_size=page_size,
         )
 
-    # SQL via Custom API
+    # SQL via Web API sql parameter
     def query_sql(self, tsql: str):
-        """Execute a read-only SQL query via the configured Custom API.
+        """Execute a read-only SQL query using the Dataverse Web API `?sql=` capability.
+
+        The query must follow the currently supported subset: single SELECT with optional WHERE,
+        TOP (integer), ORDER BY (columns only), and simple alias after FROM. Example:
+            ``SELECT TOP 3 accountid, name FROM account ORDER BY name DESC``
 
         Parameters
         ----------
         tsql : str
-            A SELECT-only T-SQL statement (e.g., ``"SELECT TOP 3 * FROM account"``).
+            Supported single SELECT statement.
 
         Returns
         -------
         list[dict]
-            Rows as a list of dictionaries.
+            Result rows (empty list if none).
         """
         return self._get_odata().query_sql(tsql)
 

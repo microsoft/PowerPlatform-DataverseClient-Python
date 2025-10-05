@@ -320,15 +320,17 @@ try:
 except Exception as e:
 	print(f"Bulk update failed: {e}")
 
-# 4) Query records via SQL Custom API
-print("Query (SQL via Custom API):")
+# 4) Query records via SQL (?sql parameter))
+print("Query (SQL via ?sql query parameter):")
 try:
 	import time
 	pause("Execute SQL Query")
 
 	def _run_query():
-		log_call(f"client.query_sql(\"SELECT TOP 2 * FROM {logical} ORDER BY {attr_prefix}_amount DESC\")")
-		return client.query_sql(f"SELECT TOP 2 * FROM {logical} ORDER BY {attr_prefix}_amount DESC")
+		cols = f"{id_key}, {code_key}, {amount_key}, {when_key}"
+		query = f"SELECT TOP 2 {cols} FROM {logical} ORDER BY {attr_prefix}_amount DESC"
+		log_call(f"client.query_sql(\"{query}\") (Web API ?sql=)")
+		return client.query_sql(query)
 
 	def _retry_if(ex: Exception) -> bool:
 		msg = str(ex) if ex else ""
@@ -338,9 +340,9 @@ try:
 	id_key = f"{logical}id"
 	ids = [r.get(id_key) for r in rows if isinstance(r, dict) and r.get(id_key)]
 	print({"entity": logical, "rows": len(rows) if isinstance(rows, list) else 0, "ids": ids})
-	tds_summaries = []
+	record_summaries = []
 	for row in rows if isinstance(rows, list) else []:
-		tds_summaries.append(
+		record_summaries.append(
 			{
 				"id": row.get(id_key),
 				"code": row.get(code_key),
@@ -349,9 +351,9 @@ try:
 				"when": row.get(when_key),
 			}
 		)
-	print_line_summaries("TDS record summaries (top 2 by amount):", tds_summaries)
+	print_line_summaries("SQL record summaries (top 2 by amount):", record_summaries)
 except Exception as e:
-	print(f"SQL via Custom API failed: {e}")
+	print(f"SQL query failed: {e}")
 
 # Pause between SQL query and retrieve-multiple demos
 pause("Retrieve multiple (OData paging demos)")

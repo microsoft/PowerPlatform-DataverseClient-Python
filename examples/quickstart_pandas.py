@@ -183,8 +183,8 @@ except Exception as e:
 	print(f"Update/verify failed: {e}")
 	sys.exit(1)
 
-# 4) Query records via SQL Custom API
-print("(Pandas) Query (SQL via Custom API):")
+# 4) Query records via SQL (Web API ?sql=)
+print("(Pandas) Query (SQL via Web API ?sql=):")
 try:
 	# Try singular logical name first, then plural entity set, with short backoff
 	import time
@@ -196,7 +196,9 @@ try:
 	df_rows = None
 	for name in candidates:
 		def _run_query():
-			return PANDAS.query_sql_df(f"SELECT TOP 3 * FROM {name} ORDER BY createdon DESC")
+			id_key = f"{logical}id"
+			cols = f"{id_key}, {attr_prefix}_code, {attr_prefix}_amount, {attr_prefix}_when"
+			return PANDAS.query_sql_df(f"SELECT TOP 3 {cols} FROM {name} ORDER BY {attr_prefix}_amount DESC")
 		def _retry_if(ex: Exception) -> bool:
 			msg = str(ex) if ex else ""
 			return ("Invalid table name" in msg) or ("Invalid object name" in msg)
@@ -211,7 +213,7 @@ try:
 except SystemExit:
 	pass
 except Exception as e:
-	print(f"SQL via Custom API failed: {e}")
+	print(f"SQL query failed: {e}")
 
 # 5) Delete record
 print("(Pandas) Delete (OData via Pandas wrapper):")
