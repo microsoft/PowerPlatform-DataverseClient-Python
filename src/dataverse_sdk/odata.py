@@ -48,37 +48,30 @@ class ODataClient:
         return self._http.request(method, url, **kwargs)
 
     # ----------------------------- CRUD ---------------------------------
-    def create(self, entity_set: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[str]]:
-        """Create one or many records.
+    def create(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a single record and return its representation.
 
-        Parameters
-        ----------
-        entity_set : str
-            Entity set (plural logical name), e.g. "accounts".
-        data : dict | list[dict]
-            Single entity payload or list of payloads for batch create.
-
-        Behaviour
-        ---------
-        - Single (dict): POST /{entity_set} with Prefer: return=representation. Returns created record (dict).
-        - Multiple (list[dict]): POST /{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple. Returns list[str] of created GUIDs.
-
-        Multi-create logical name resolution
-        ------------------------------------
-        - If any payload omits ``@odata.type`` the client performs a metadata lookup (once per entity set, cached)
-          to resolve the logical name and stamps ``Microsoft.Dynamics.CRM.<logical>`` into missing payloads.
-        - If all payloads already include ``@odata.type`` no lookup or modification occurs.
-
-        Returns
-        -------
-        dict | list[str]
-            Created entity (single) or list of created IDs (multi).
+        POST /{entity_set} with Prefer: return=representation.
         """
-        if isinstance(data, dict):
-            return self._create_single(entity_set, data)
-        if isinstance(data, list):
-            return self._create_multiple(entity_set, data)
-        raise TypeError("data must be dict or list[dict]")
+        if not isinstance(record, dict):
+            raise TypeError("record must be a dict for single create")
+        return self._create_single(entity_set, record)
+
+    def create_multiple(self, entity_set: str, records: List[Dict[str, Any]]) -> List[str]:
+        """Create multiple records via the bound CreateMultiple action.
+
+        POST /{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
+
+        Returns list[str] of created GUIDs.
+
+        Multi-create logical name resolution:
+        - If any payload omits @odata.type the client performs metadata lookup (cached per entity set)
+          to resolve the logical name and injects Microsoft.Dynamics.CRM.<logical>.
+        - If all payloads include @odata.type no lookup occurs.
+        """
+        if not isinstance(records, list) or not all(isinstance(r, dict) for r in records):
+            raise TypeError("records must be list[dict] for create_multiple")
+        return self._create_multiple(entity_set, records)
 
     # --- Internal helpers ---
     def _create_single(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:

@@ -63,33 +63,19 @@ class DataverseClient:
         return self._odata
 
     # CRUD
-    def create(self, entity: str, record_data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[str]]:
-        """Create one or more records.
+    def create(self, entity: str, record_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a single record.
 
-        Behaviour:
-        - Single: returns the created record (dict) using Prefer: return=representation.
-        - Multiple: uses bound CreateMultiple action and returns list[str] of created record IDs.
-
-        Parameters
-        ----------
-        entity : str
-            Entity set name (plural logical name), e.g., ``"accounts"``.
-        record_data : dict | list[dict]
-            Single record payload or list of records for multi-create.
-
-        Returns
-        -------
-        dict | list[str]
-            Dict for single create, list of GUID strings for multi-create.
-
-        Raises
-        ------
-        requests.exceptions.HTTPError
-            If the request fails.
-        TypeError
-            If ``record_data`` is not a dict or list of dict.
+        Returns the created record representation (if provided by the service).
         """
         return self._get_odata().create(entity, record_data)
+
+    def create_multiple(self, entity: str, records: List[Dict[str, Any]]) -> List[str]:
+        """Create multiple records via the bound CreateMultiple action.
+
+        Returns list of created record GUID strings.
+        """
+        return self._get_odata().create_multiple(entity, records)
 
     def update(self, entity: str, record_id: str, record_data: dict) -> dict:
         """Update a record and return its full representation.

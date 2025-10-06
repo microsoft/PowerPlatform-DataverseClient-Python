@@ -119,7 +119,7 @@ for r in rows:
 
 ## Bulk create (CreateMultiple)
 
-Pass a list of payloads to `create(entity_set, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns a `list[str]` of created record IDs.
+Call `create_multiple(entity_set, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns a `list[str]` of created record IDs.
 
 ```python
 # Bulk create accounts (returns list of GUIDs)
@@ -128,7 +128,7 @@ payloads = [
 	{"name": "Fabrikam"},
 	{"name": "Northwind"},
 ]
-ids = client.create("accounts", payloads)
+ids = client.create_multiple("accounts", payloads)
 assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
 print({"created_ids": ids})
 ```
@@ -268,7 +268,7 @@ client.delete_table("SampleItem")        # delete the table
 
 Notes:
 - `create/update` return the full record using `Prefer: return=representation`.
-- Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
+- Use `create_multiple` for bulk create; single `create` only accepts a dict payload.
 - Use `get_multiple` for paging through result sets; prefer `select` to limit columns.
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
 * SQL queries are executed directly against entity set endpoints using the `?sql=` parameter. Supported subset only (single SELECT, optional WHERE/TOP/ORDER BY, alias). Unsupported constructs will be rejected by the service.

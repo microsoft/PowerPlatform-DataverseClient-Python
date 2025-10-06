@@ -188,9 +188,9 @@ try:
 	if rid1:
 		record_ids.append(rid1)
 
-	# Multi create (list) now returns list[str] of IDs
-	log_call(f"client.create('{entity_set}', multi_payloads)")
-	multi_ids = backoff_retry(lambda: client.create(entity_set, multi_payloads))
+	# Multi create via create_multiple now returns list[str] of IDs
+	log_call(f"client.create_multiple('{entity_set}', multi_payloads)")
+	multi_ids = backoff_retry(lambda: client.create_multiple(entity_set, multi_payloads))
 	if isinstance(multi_ids, list):
 		for mid in multi_ids:
 			if isinstance(mid, str):
