@@ -5,6 +5,7 @@ import re
 import json
 
 from .http import HttpClient
+from .record_reference import RecordReference
 
 
 class ODataClient:
@@ -172,14 +173,22 @@ class ODataClient:
             return out
         return []
 
-    def _format_key(self, key: str) -> str:
+    def _format_key(self, key: Union[str, RecordReference]) -> str:
+        """Format a key segment for GUID, alternate key expression, or RecordReference.
+
+        Accepts:
+          * GUID string (hyphenated)
+          * Alternate key expression already in the form attr='v',attr2=123 (adds parentheses)
+          * RecordReference (resolves entity set if needed; partition id support)
+        """
+        if isinstance(key, RecordReference):
+            return self._record_reference_key_segment(key)
         k = key.strip()
         if k.startswith("(") and k.endswith(")"):
             return k
         # Escape single quotes in alternate key values
         if "=" in k and "'" in k:
             def esc(match):
-                # match.group(1) is the key, match.group(2) is the value
                 return f"{match.group(1)}='{self._escape_odata_quotes(match.group(2))}'"
             k = re.sub(r"(\w+)=\'([^\']*)\'", esc, k)
             return f"({k})"
@@ -187,7 +196,48 @@ class ODataClient:
             return f"({k})"
         return f"({k})"
 
-    def update(self, entity_set: str, key: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_alternate_key_map(self, alt: Dict[str, Any]) -> str:
+        if not alt:
+            raise ValueError("alternate key map cannot be empty")
+        parts: List[str] = []
+        for name in sorted(alt.keys()):
+            val = alt[name]
+            if val is None:
+                raise ValueError(f"Alternate key attribute '{name}' cannot be None")
+            if isinstance(val, bool):
+                parts.append(f"{name}={'true' if val else 'false'}")
+            elif isinstance(val, (int, float)) and not isinstance(val, bool):
+                parts.append(f"{name}={val}")
+            elif isinstance(val, str):
+                vv = val.strip()
+                if len(vv) == 36 and '-' in vv and re.fullmatch(r"[0-9a-fA-F-]{36}", vv):
+                    parts.append(f"{name}={vv}")
+                else:
+                    esc = self._escape_odata_quotes(vv)
+                    parts.append(f"{name}='{esc}'")
+            else:
+                sv = str(val)
+                esc = self._escape_odata_quotes(sv)
+                parts.append(f"{name}='{esc}'")
+        return ",".join(parts)
+
+    def _record_reference_key_segment(self, rr: RecordReference) -> str:
+        # Determine entity set (prefer rr.entity_set else derive from logical name)
+        entity_set = rr.entity_set or self._entity_set_from_logical((rr.logical_name or '').lower())
+        # Build key expression inside parentheses
+        if rr.id:
+            inner = rr.id
+            if rr.partition_id:
+                inner = f"partitionid={rr.partition_id},id={rr.id}"
+        else:
+            alt_expr = self._format_alternate_key_map(rr.alternate_keys or {})
+            if rr.partition_id:
+                inner = f"partitionid={rr.partition_id},{alt_expr}"
+            else:
+                inner = alt_expr
+        return f"({inner})"
+
+    def update(self, entity_set: str, key: Union[str, RecordReference], data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing record and return the updated representation.
 
         Parameters
@@ -212,7 +262,7 @@ class ODataClient:
         r.raise_for_status()
         return r.json()
 
-    def delete(self, entity_set: str, key: str) -> None:
+    def delete(self, entity_set: str, key: Union[str, RecordReference]) -> None:
         """Delete a record by GUID or alternate key."""
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         headers = self._headers().copy()
@@ -220,7 +270,7 @@ class ODataClient:
         r = self._request("delete", url, headers=headers)
         r.raise_for_status()
 
-    def get(self, entity_set: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
+    def get(self, entity_set: str, key: Union[str, RecordReference], select: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve a single record.
 
         Parameters

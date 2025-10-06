@@ -7,6 +7,7 @@ from azure.core.credentials import TokenCredential
 from .auth import AuthManager
 from .config import DataverseConfig
 from .odata import ODataClient
+from .record_reference import RecordReference
 
 
 class DataverseClient:
@@ -91,7 +92,7 @@ class DataverseClient:
         """
         return self._get_odata().create(entity, record_data)
 
-    def update(self, entity: str, record_id: str, record_data: dict) -> dict:
+    def update(self, entity: str, record_id: Union[str, RecordReference], record_data: dict) -> dict:
         """Update a record and return its full representation.
 
         Parameters
@@ -110,7 +111,7 @@ class DataverseClient:
         """
         return self._get_odata().update(entity, record_id, record_data)
 
-    def delete(self, entity: str, record_id: str) -> None:
+    def delete(self, entity: str, record_id: Union[str, RecordReference]) -> None:
         """Delete a record by ID.
 
         Parameters
@@ -122,7 +123,7 @@ class DataverseClient:
         """
         self._get_odata().delete(entity, record_id)
 
-    def get(self, entity: str, record_id: str) -> dict:
+    def get(self, entity: str, record_id: Union[str, RecordReference]) -> dict:
         """Fetch a record by ID.
 
         Parameters
