@@ -5,6 +5,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Read (SQL) — Execute read-only T‑SQL via the McpExecuteSqlQuery Custom API. Returns `list[dict]`.
 - OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If `@odata.type` is absent the SDK resolves the logical name from metadata (cached).
+- Bulk update — Call `update_multiple(entity_set, records)` to invoke the bound `UpdateMultiple` action; returns nothing. Each record must include the real primary key attribute (e.g. `accountid`).
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
@@ -16,6 +17,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - SQL-over-API: T-SQL routed through Custom API endpoint (no ODBC / TDS driver required).
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
+- Bulk update via `UpdateMultiple` by calling `update_multiple(entity_set, records)` with primary key attribute present in each record; returns nothing.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
@@ -100,6 +102,13 @@ account = client.get("accounts", account_id)
 # Update (returns updated record)
 updated = client.update("accounts", account_id, {"telephone1": "555-0199"})
 
+# Bulk update (collection-bound UpdateMultiple)
+# Each record must include the primary key attribute (accountid). The call returns None.
+client.update_multiple("accounts", [
+	{"accountid": account_id, "telephone1": "555-0200"},
+])
+print({"bulk_update": "ok"})
+
 # Delete
 client.delete("accounts", account_id)
 
@@ -123,6 +132,29 @@ ids = client.create("accounts", payloads)
 assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
 print({"created_ids": ids})
 ```
+
+## Bulk update (UpdateMultiple)
+
+Use `update_multiple(entity_set, records)` for a transactional batch update. The method returns `None`.
+
+```python
+ids = client.create("accounts", [
+    {"name": "Fourth Coffee"},
+    {"name": "Tailspin"},
+])
+
+client.update_multiple("accounts", [
+    {"accountid": ids[0], "telephone1": "555-1111"},
+    {"accountid": ids[1], "telephone1": "555-2222"},
+])
+print({"bulk_update": "ok"})
+```
+
+Notes:
+- Each record must include the primary key attribute (e.g. `accountid`). No `id` alias yet.
+- If any payload omits `@odata.type`, the logical name is resolved once and stamped (same as bulk create).
+- Entire request fails (HTTP error) if any individual update fails; no partial success list is returned.
+- If you need refreshed records post-update, issue individual `get` calls or a `get_multiple` query.
 
 Notes:
 - The bulk create response typically includes IDs only; the SDK returns the list of GUID strings.
@@ -251,7 +283,7 @@ VS Code Tasks
 
 ## Limitations / Future Work
 - No general-purpose OData batching, upsert, or association operations yet.
-- `DeleteMultiple`/`UpdateMultiple` are not exposed; quickstart may demonstrate faster deletes using client-side concurrency only.
+- `DeleteMultiple` not yet exposed.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
 - Entity naming conventions in Dataverse: for multi-create the SDK resolves logical names from entity set metadata.
 
