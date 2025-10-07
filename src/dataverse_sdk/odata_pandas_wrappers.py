@@ -139,13 +139,13 @@ class PandasODataClient:
         return pd.DataFrame(rows)
 
     # --------------------------- Query SQL -------------------------------
-    def query_sql_df(self, tsql: str) -> pd.DataFrame:
+    def query_sql_df(self, sql: str) -> pd.DataFrame:
         """Execute a SQL query via the Dataverse Web API `?sql=` parameter and return a DataFrame.
 
         The statement must adhere to the supported subset (single SELECT, optional WHERE/TOP/ORDER BY, no joins).
         Empty result -> empty DataFrame (columns inferred only if rows present).
         """
-        rows: Any = self._c.query_sql(tsql)
+        rows: Any = self._c.query_sql(sql)
 
         # If API returned a JSON string, parse it
         if isinstance(rows, str):

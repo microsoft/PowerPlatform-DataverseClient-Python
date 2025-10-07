@@ -376,7 +376,7 @@ class ODataClient:
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
     # --------------------------- SQL Custom API -------------------------
-    def query_sql(self, tsql: str) -> list[dict[str, Any]]:
+    def query_sql(self, sql: str) -> list[dict[str, Any]]:
         """Execute a read-only SQL query using the Dataverse Web API `?sql=` capability.
 
         The platform supports a constrained subset of SQL SELECT statements directly on entity set endpoints:
@@ -387,7 +387,7 @@ class ODataClient:
 
         Parameters
         ----------
-        tsql : str
+        sql : str
             Single SELECT statement within supported subset.
 
         Returns
@@ -402,17 +402,12 @@ class ODataClient:
         RuntimeError
             If metadata lookup for the logical name fails.
         """
-        if not isinstance(tsql, str) or not tsql.strip():
-            raise ValueError("tsql must be a non-empty string")
-        sql = tsql.strip()
+        if not isinstance(sql, str) or not sql.strip():
+            raise ValueError("sql must be a non-empty string")
+        sql = sql.strip()
 
-        # Naive parse: find token after FROM (ignore brackets); stop at whitespace/newline
-        # Example: SELECT name FROM account AS a WHERE a.name LIKE 'Acme%'
-        m = re.search(r"from\s+([a-zA-Z0-9_]+)\b", sql, flags=re.IGNORECASE)
-        if not m:
-            raise ValueError("Unable to determine table logical name from SQL (expected 'FROM <logical>').")
-        logical_candidate = m.group(1)
-        logical = logical_candidate.lower()
+        # Extract logical table name via helper (robust to identifiers ending with 'from')
+        logical = self._extract_logical_table(sql)
 
         entity_set = self._entity_set_from_logical(logical)
         # Issue GET /{entity_set}?sql=<query>
@@ -444,6 +439,25 @@ class ODataClient:
         if isinstance(body, list):
             return [row for row in body if isinstance(row, dict)]
         return []
+
+    @staticmethod
+    def _extract_logical_table(sql: str) -> str:
+        """Extract the logical table name after the first standalone FROM.
+
+        Examples:
+            SELECT * FROM account
+            SELECT col1, startfrom FROM new_sampleitem WHERE col1 = 1
+
+        """
+        if not isinstance(sql, str):
+            raise ValueError("sql must be a string")
+        # Mask out single-quoted string literals to avoid matching FROM inside them.
+        masked = re.sub(r"'([^']|'')*'", "'x'", sql)
+        pattern = r"\bfrom\b\s+([A-Za-z0-9_]+)"  # minimal, single-line regex
+        m = re.search(pattern, masked, flags=re.IGNORECASE)
+        if not m:
+            raise ValueError("Unable to determine table logical name from SQL (expected 'FROM <name>').")
+        return m.group(1).lower()
 
     # ---------------------- Entity set resolution -----------------------
     def _entity_set_from_logical(self, logical: str) -> str:

@@ -14,7 +14,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 ## Features
 
 - Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
-- SQL-over-API: Constrained T-SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
+- SQL-over-API: Constrained SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
 - Bulk update via `UpdateMultiple` by calling `update_multiple(entity_set, records)` with primary key attribute present in each record; returns nothing.

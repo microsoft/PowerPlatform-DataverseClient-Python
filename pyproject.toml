@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dataverse-sdk-poc"
+name = "dataverse-python-client"
 version = "0.1.0"
-description = "POC: Dataverse Python SDK with TDS reads and OData CRUD via SQL router"
+description = "Dataverse Python client"
 authors = [{ name = "POC" }]
 readme = "README.md"
 requires-python = ">=3.10"
