@@ -180,7 +180,7 @@ client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf', mode='
 Notes:
 - upload_file picks one of the three methods to use based on file size: if file is less than 128 MB uses upload_file_small, otherwise uses upload_file_chunk. upload_file_block is used when explicitly requested
 - upload_file_small makes a single Web API call and only supports file size < 128 MB
-- upload_file_chunk uses PATCH with Content-Range to upload the file (more aligned with HTTP standard compared to Dataverse messages). It consists of 2 stages 1. PATCH request to get the headers used for actual upload. 2. Actual upload in chunks. It uses x-ms-chunk-size returned in the first stage to determine chunk size (normally 4 MB), and use Content-Range and Content-Length as metadata for the upload.
+- upload_file_chunk uses PATCH with Content-Range to upload the file (more aligned with HTTP standard compared to Dataverse messages). It consists of 2 stages 1. PATCH request to get the headers used for actual upload. 2. Actual upload in chunks. It uses x-ms-chunk-size returned in the first stage to determine chunk size (normally 4 MB), and use Content-Range and Content-Length as metadata for the upload. Total number of Web API calls is number of chunks + 1. It's slightly more efficient than the block method because encoding is not needed and the Base64 encoding makes data larger by ~33%.
 - upload_file_block uses Dataverse messages and upload the file in Base64 encoded blocks (size limit is 4 MB for the Base64 encoded string), it consists of 3 stages: InitializeFileBlocksUpload, UploadBlock, and CommitFileBlocksUpload. Total number of Web API calls is number of blocks + 2.
 
 ## Retrieve multiple with paging
