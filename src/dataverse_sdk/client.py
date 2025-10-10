@@ -220,16 +220,32 @@ class DataverseClient:
         """
         return self._get_odata().get_table_info(tablename)
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def create_table(self, tablename: str, schema: Dict[str, Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
         """Create a simple custom table.
 
         Parameters
         ----------
         tablename : str
             Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
-        schema : dict[str, str]
-            Column definitions mapping logical names (without prefix) to types.
-            Supported: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+        schema : dict[str, str | dict]
+            Column definitions mapping logical names to types or lookup configurations.
+            
+            For standard columns, use string type names:
+            ``"name": "string", "count": "int", "price": "decimal"``
+            
+            Supported types: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+            
+            For lookup fields, use a dictionary with configuration options:
+            ``"project": {"lookup": "new_project", "display_name": "Project", "cascade_delete": "Cascade"}``
+            
+            Lookup field options:
+            - ``lookup``: Target table (required)
+            - ``display_name``: Display name for the field (optional)
+            - ``description``: Description for the field (optional)
+            - ``required_level``: "None", "Recommended", or "ApplicationRequired" (default: "None")
+            - ``relationship_name``: Custom name for the relationship (optional)
+            - ``relationship_behavior``: "UseLabel", "UseCollectionName", "DoNotDisplay" (default: "UseLabel")
+            - ``cascade_delete``: "Cascade", "RemoveLink", "Restrict" (default: "RemoveLink")
 
         Returns
         -------

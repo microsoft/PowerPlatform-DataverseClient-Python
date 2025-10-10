@@ -104,11 +104,9 @@ class ODataClient:
         if cached:
             return cached
         url = f"{self.api}/EntityDefinitions"
-        # Escape single quotes in entity set name
-        es_escaped = self._escape_odata_quotes(es)
         params = {
             "$select": "LogicalName,EntitySetName",
-            "$filter": f"EntitySetName eq '{es_escaped}'",
+            "$filter": f"EntitySetName eq '{es}'",
         }
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
@@ -511,11 +509,9 @@ class ODataClient:
 
     def _get_entity_by_schema(self, schema_name: str) -> Optional[Dict[str, Any]]:
         url = f"{self.api}/EntityDefinitions"
-        # Escape single quotes in schema name
-        schema_escaped = self._escape_odata_quotes(schema_name)
         params = {
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
-            "$filter": f"SchemaName eq '{schema_escaped}'",
+            "$filter": f"SchemaName eq '{schema_name}'",
         }
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
@@ -677,7 +673,176 @@ class ODataClient:
         r = self._request("delete", url, headers=headers)
         r.raise_for_status()
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def create_lookup_field(
+        self,
+        table_name: str, 
+        field_name: str, 
+        target_table: str,
+        display_name: str = None,
+        description: str = None,
+        required_level: str = "None",
+        relationship_name: str = None,
+        relationship_behavior: str = "UseLabel",
+        cascade_delete: str = "RemoveLink",
+    ) -> Dict[str, Any]:
+        """
+        Create a lookup field (n:1 relationship) between two tables.
+        
+        Parameters
+        ----------
+        table_name : str
+            The logical name of the table where the lookup field will be created (referencing entity).
+        field_name : str
+            The name of the lookup field to create (without _id suffix).
+        target_table : str
+            The logical name of the table the lookup will reference (referenced entity).
+        display_name : str, optional
+            The display name for the lookup field.
+        description : str, optional
+            The description for the lookup field.
+        required_level : str, optional
+            The requirement level: "None", "Recommended", or "ApplicationRequired".
+        relationship_name : str, optional
+            The name of the relationship. If not provided, one will be generated.
+        relationship_behavior : str, optional
+            The relationship menu behavior: "UseLabel", "UseCollectionName", "DoNotDisplay".
+        cascade_delete : str, optional
+            The cascade behavior on delete: "Cascade", "RemoveLink", "Restrict".
+            
+        Returns
+        -------
+        dict
+            Details about the created relationship.
+        """
+        # Get information about both tables
+        referencing_entity = self._get_entity_by_schema(table_name)
+        referenced_entity = self._get_entity_by_schema(target_table)
+        
+        if not referencing_entity:
+            raise ValueError(f"Table '{table_name}' not found.")
+        if not referenced_entity:
+            raise ValueError(f"Target table '{target_table}' not found.")
+            
+        referencing_logical_name = referencing_entity.get("LogicalName")
+        referenced_logical_name = referenced_entity.get("LogicalName")
+        
+        if not referencing_logical_name or not referenced_logical_name:
+            raise ValueError("Could not determine logical names for the tables.")
+            
+        # If no relationship name provided, generate one
+        if not relationship_name:
+            relationship_name = f"{referenced_logical_name}_{referencing_logical_name}"
+            
+        # If no display name provided, use the target table name
+        if not display_name:
+            display_name = self._to_pascal(referenced_logical_name)
+            
+        # Prepare relationship metadata
+        one_to_many_relationship = {
+            "@odata.type": "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            "SchemaName": relationship_name,
+            "ReferencedEntity": referenced_logical_name,
+            "ReferencingEntity": referencing_logical_name,
+            "ReferencedAttribute": f"{referenced_logical_name}id",  # Usually the primary key attribute
+            "AssociatedMenuConfiguration": {
+                "Behavior": relationship_behavior,
+                "Group": "Details",
+                "Label": {
+                    "@odata.type": "Microsoft.Dynamics.CRM.Label",
+                    "LocalizedLabels": [
+                        {
+                            "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                            "Label": display_name or referenced_logical_name,
+                            "LanguageCode": int(self.config.language_code),
+                        }
+                    ],
+                    "UserLocalizedLabel": {
+                        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                        "Label": display_name or referenced_logical_name,
+                        "LanguageCode": int(self.config.language_code),
+                    }
+                },
+                "Order": 10000
+            },
+            "CascadeConfiguration": {
+                "Assign": "NoCascade",
+                "Delete": cascade_delete,
+                "Merge": "NoCascade",
+                "Reparent": "NoCascade",
+                "Share": "NoCascade",
+                "Unshare": "NoCascade"
+            }
+        }
+        
+        # Prepare lookup attribute metadata
+        lookup_field_schema_name = f"{field_name}"
+        if not lookup_field_schema_name.lower().startswith(f"{referencing_logical_name.split('_')[0]}_"):
+            lookup_field_schema_name = f"{referencing_logical_name.split('_')[0]}_{field_name}"
+            
+        lookup_attribute = {
+            "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
+            "SchemaName": lookup_field_schema_name,
+            "DisplayName": {
+                "@odata.type": "Microsoft.Dynamics.CRM.Label",
+                "LocalizedLabels": [
+                    {
+                        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                        "Label": display_name or field_name,
+                        "LanguageCode": int(self.config.language_code),
+                    }
+                ]
+            }
+        }
+        
+        if description:
+            lookup_attribute["Description"] = {
+                "@odata.type": "Microsoft.Dynamics.CRM.Label",
+                "LocalizedLabels": [
+                    {
+                        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                        "Label": description,
+                        "LanguageCode": int(self.config.language_code),
+                    }
+                ]
+            }
+            
+        lookup_attribute["RequiredLevel"] = {
+            "Value": required_level,
+            "CanBeChanged": True,
+            "ManagedPropertyLogicalName": "canmodifyrequirementlevelsettings"
+        }
+        
+        # Create the relationship
+        url = f"{self.api}/RelationshipDefinitions"
+        headers = self._headers().copy()
+        
+        # Add the lookup attribute to the relationship definition
+        one_to_many_relationship["Lookup"] = lookup_attribute
+        
+        # POST the relationship definition
+        r = self._request("post", url, headers=headers, json=one_to_many_relationship)
+        r.raise_for_status()
+        
+        # Get the relationship ID from the OData-EntityId header
+        relationship_id = None
+        if "OData-EntityId" in r.headers:
+            entity_id_url = r.headers["OData-EntityId"]
+            # Extract GUID from the URL
+            import re
+            match = re.search(r'RelationshipDefinitions\((.*?)\)', entity_id_url)
+            if match:
+                relationship_id = match.group(1)
+                
+        # Return relationship info
+        return {
+            "relationship_id": relationship_id,
+            "relationship_name": relationship_name,
+            "lookup_field": lookup_field_schema_name,
+            "referenced_entity": referenced_logical_name,
+            "referencing_entity": referencing_logical_name
+        }
+
+    def create_table(self, tablename: str, schema: Dict[str, Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
         # Accept a friendly name and construct a default schema under 'new_'.
         # If a full SchemaName is passed (contains '_'), use as-is.
         entity_schema = tablename if "_" in tablename else f"new_{self._to_pascal(tablename)}"
@@ -690,9 +855,30 @@ class ODataClient:
         primary_attr_schema = "new_Name" if "_" not in entity_schema else f"{entity_schema.split('_',1)[0]}_Name"
         attributes: List[Dict[str, Any]] = []
         attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True))
-        for col_name, dtype in schema.items():
+        
+        # Track lookups to create after table creation
+        lookup_fields = []
+        
+        for col_name, col_info in schema.items():
             # Use same publisher prefix segment as entity_schema if present; else default to 'new_'.
             publisher = entity_schema.split("_", 1)[0] if "_" in entity_schema else "new"
+            
+            # Handle lookup fields (dictionary values in schema)
+            if isinstance(col_info, dict) and "lookup" in col_info:
+                lookup_fields.append({
+                    "field_name": col_name,
+                    "target_table": col_info["lookup"],
+                    "display_name": col_info.get("display_name"),
+                    "description": col_info.get("description"),
+                    "required_level": col_info.get("required_level", "None"),
+                    "relationship_name": col_info.get("relationship_name"),
+                    "relationship_behavior": col_info.get("relationship_behavior", "UseLabel"),
+                    "cascade_delete": col_info.get("cascade_delete", "RemoveLink"),
+                })
+                continue
+                
+            # Handle regular fields (string type values)
+            dtype = col_info if isinstance(col_info, str) else "string"
             if col_name.lower().startswith(f"{publisher}_"):
                 attr_schema = col_name
             else:
@@ -706,6 +892,25 @@ class ODataClient:
         metadata_id = self._create_entity(entity_schema, tablename, attributes)
         ent2: Dict[str, Any] = self._wait_for_entity_ready(entity_schema) or {}
         logical_name = ent2.get("LogicalName")
+        
+        # Create lookup fields after table is created
+        for lookup in lookup_fields:
+            try:
+                lookup_result = self.create_lookup_field(
+                    table_name=logical_name,
+                    field_name=lookup["field_name"],
+                    target_table=lookup["target_table"],
+                    display_name=lookup["display_name"],
+                    description=lookup["description"],
+                    required_level=lookup["required_level"],
+                    relationship_name=lookup["relationship_name"],
+                    relationship_behavior=lookup["relationship_behavior"],
+                    cascade_delete=lookup["cascade_delete"]
+                )
+                created_cols.append(lookup_result["lookup_field"])
+            except Exception as e:
+                # Continue creating other lookup fields even if one fails
+                print(f"Warning: Could not create lookup field '{lookup['field_name']}': {str(e)}")
 
         return {
             "entity_schema": entity_schema,
