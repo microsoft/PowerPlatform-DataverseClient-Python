@@ -290,9 +290,10 @@ if run_original:
         backoff(lambda: client.upload_file(
             entity_set,
             record_id,
-            pk_attr,
             file_attr_logical,
             str(DATASET_FILE),
+            mode="block",
+            id_attribute=pk_attr,
         ))
         print({"block_upload_completed": True})
         # Immediate download + verify
@@ -319,9 +320,10 @@ if run_original:
         backoff(lambda: client.upload_file(
             entity_set,
             record_id,
-            pk_attr,
             file_attr_logical,
             str(replacement_file),
+            mode="block",
+            id_attribute=pk_attr,
         ))
         print({"block_replace_upload_completed": True})
         # Download and verify replacement
@@ -347,11 +349,12 @@ if run_small:
     print("Small single-request upload demo:")
     try:
         DATASET_FILE, small_file_size, src_hash = get_dataset_info(_GENERATED_TEST_FILE)
-        backoff(lambda: client.upload_file_small(
+        backoff(lambda: client.upload_file(
             entity_set,
             record_id,
             small_file_attr_logical,
             str(DATASET_FILE),
+            mode="small",
         ))
         print({"small_upload_completed": True, "small_source_size": small_file_size})
         odata = client._get_odata()
@@ -374,11 +377,12 @@ if run_small:
         # Now test replacing with an 8MB file
         print("Small single-request upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_small, replace_hash_small = get_dataset_info(_GENERATED_TEST_FILE_8MB)
-        backoff(lambda: client.upload_file_small(
+        backoff(lambda: client.upload_file(
             entity_set,
             record_id,
             small_file_attr_logical,
             str(replacement_file),
+            mode="small",
         ))
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
         resp_single_replace = odata._request("get", dl_url_single, headers=odata._headers())
@@ -402,11 +406,12 @@ if run_chunk:
     print("Streaming chunk upload demo (upload_file_chunk):")
     try:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
-        backoff(lambda: client.upload_file_chunk(
+        backoff(lambda: client.upload_file(
             entity_set,
             record_id,
             chunk_file_attr_logical,
             str(DATASET_FILE),
+            mode="chunk",
         ))
         print({"chunk_upload_completed": True})
         odata = client._get_odata()
@@ -429,11 +434,12 @@ if run_chunk:
         # Now test replacing with an 8MB file
         print("Streaming chunk upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_chunk, replace_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE_8MB)
-        backoff(lambda: client.upload_file_chunk(
+        backoff(lambda: client.upload_file(
             entity_set,
             record_id,
             chunk_file_attr_logical,
             str(replacement_file),
+            mode="chunk",
         ))
         print({"chunk_replace_upload_completed": True})
         resp_chunk_replace = odata._request("get", dl_url_chunk, headers=odata._headers())

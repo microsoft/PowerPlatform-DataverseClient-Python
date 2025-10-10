@@ -490,7 +490,7 @@ class ODataClient:
             raise RuntimeError(f"Metadata response missing EntitySetName for logical '{logical}'.")
         self._logical_to_entityset_cache[logical] = es
         return es
-
+    
     # ---------------------- Table metadata helpers ----------------------
     def _label(self, text: str) -> Dict[str, Any]:
         lang = int(self.config.language_code)
@@ -715,8 +715,98 @@ class ODataClient:
             "columns_created": created_cols,
         }
 
-    # --------------------------- File upload---------------
+    # --------------------------- File upload ---------------
     def upload_file(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+        path: str,
+        *,
+        mode: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        id_attribute: Optional[str] = None,
+        if_none_match: bool = True,
+    ) -> None:
+        """Upload a file to a Dataverse file column with automatic method selection.
+        
+        Parameters
+        ----------
+        entity_set : str
+            Target entity set (plural logical name), e.g. "accounts".
+        record_id : str
+            GUID of the target record.
+        file_name_attribute : str
+            Logical name of the primary key attribute for the record (e.g. ``accountid``).
+        path : str
+            Local filesystem path to the file.
+        mode : str | None, keyword-only, optional
+            Upload strategy: "auto" (default), "block", "small", or "chunk".
+            - "auto": Automatically selects best method based on file size
+            - "small": Single PATCH request (files <128MB only)
+            - "chunk": Streaming chunked upload (any size, most efficient for large files)
+            - "block": Message-based block upload (any size, compatibility fallback)
+        mime_type : str | None, keyword-only, optional
+            Explicit MIME type to persist with the file (e.g. "application/pdf"). If omitted the
+            lower-level client attempts to infer from the filename extension and falls back to
+            ``application/octet-stream``.
+        id_attribute : str | None, keyword-only, optional
+            Logical name of the primary key attribute for the record (e.g. ``accountid``).
+            **Required** when using "block" mode; raises ValueError if omitted.
+            Not used for "small" or "chunk" modes.
+        if_none_match : bool, keyword-only, optional
+            When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
+            currently empty. Set False to always overwrite (uses ``If-Match: *``).
+            Used for "small" and "chunk" modes only.
+        
+        Returns
+        -------
+        None
+            Returns nothing on success. Any failure raises an exception.
+        """
+        import os
+        
+        mode = (mode or "auto").lower()
+        
+        # Auto-select based on file size
+        if mode == "auto":
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"File not found: {path}")
+            size = os.path.getsize(path)
+            
+            # < 128MB: use simple single PATCH (fastest for small files)
+            if size < 128 * 1024 * 1024:
+                mode = "small"
+            else:
+                # >= 128MB: prefer chunked streaming (most efficient for large files)
+                mode = "chunk"
+        
+        # Dispatch to appropriate internal method
+        if mode == "small":
+            return self._upload_file_small(
+                entity_set, record_id, file_name_attribute, path, 
+                content_type=mime_type, if_none_match=if_none_match
+            )
+        elif mode == "chunk":
+            return self._upload_file_chunk(
+                entity_set, record_id, file_name_attribute, path, 
+                if_none_match=if_none_match
+            )
+        elif mode == "block":
+            # For block mode, id_attribute is required
+            if not id_attribute:
+                raise ValueError(
+                    "id_attribute is required for block mode upload. "
+                    "Please provide the primary key attribute name (e.g., 'accountid')."
+                )
+            return self._upload_file_block(
+                entity_set, record_id, id_attribute, file_name_attribute, path, 
+                mime_type=mime_type
+            )
+        else:
+            raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', 'chunk', or 'block'.")
+
+    def _upload_file_block(
         self,
         entity_set: str,
         record_id: str,
@@ -725,8 +815,8 @@ class ODataClient:
         path: str,
         *,
         mime_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Upload a local file into a Dataverse file column.
+    ) -> None:
+        """Upload file using block upload protocol (base64-encoded chunks).
 
         This implements the block upload protocol directly:
           1. InitializeFileBlocksUpload
@@ -764,8 +854,7 @@ class ODataClient:
             raise ValueError("file_name_attribute (file column logical name) is required")
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
-        # Use 2 MB chunks: after base64 encoding the raw data grows by ~33% so leaving some headroom to be less than 4 MB as required
-        block_size = 2 * 1024 * 1024
+        block_size = 4 * 1024 * 1024
 
         with open(path, 'rb') as fh:
             data = fh.read()
@@ -859,10 +948,9 @@ class ODataClient:
             except Exception:
                 pass
             raise RuntimeError(f"CommitFileBlocksUpload failed: {getattr(r_commit,'status_code','?')} {snippet or ''}") from e
-        
         return None
 
-    def upload_file_small(
+    def _upload_file_small(
         self,
         entity_set: str,
         record_id: str,
@@ -939,7 +1027,7 @@ class ODataClient:
             ) from e
         return None
 
-    def upload_file_chunk(
+    def _upload_file_chunk(
         self,
         entity_set: str,
         record_id: str,

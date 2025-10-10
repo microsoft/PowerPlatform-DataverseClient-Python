@@ -264,13 +264,15 @@ class DataverseClient:
         self,
         entity_set: str,
         record_id: str,
-        id_attribute: str,
         file_name_attribute: str,
         path: str,
         *,
+        mode: Optional[str] = None,
         mime_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Upload a local file into a Dataverse file column.
+        id_attribute: Optional[str] = None,
+        if_none_match: bool = True,
+    ) -> None:
+        """Upload a file to a Dataverse file column with automatic method selection.
 
         Parameters
         ----------
@@ -278,16 +280,28 @@ class DataverseClient:
             Target entity set (plural logical name), e.g. "accounts".
         record_id : str
             GUID of the target record.
-        id_attribute : str
-            Logical name of the record primary key attribute (e.g. ``accountid``).
         file_name_attribute : str
             Logical name of the file column attribute.
         path : str
             Local filesystem path to the file. Stored filename will be the basename of this path.
+        mode : str | None, keyword-only, optional
+            Upload strategy: "auto" (default), "block", "small", or "chunk".
+            - "auto": Automatically selects best method based on file size
+            - "small": Single PATCH request (files <128MB only)
+            - "chunk": Streaming chunked upload (any size, most efficient for large files)
+            - "block": Message-based block upload (any size, compatibility fallback)
         mime_type : str | None, keyword-only, optional
             Explicit MIME type to persist with the file (e.g. "application/pdf"). If omitted the
             lower-level client attempts to infer from the filename extension and falls back to
             ``application/octet-stream``.
+        id_attribute : str | None, keyword-only, optional
+            Logical name of the primary key attribute for the record (e.g. ``accountid``).
+            **Required** when using "block" mode; raises ValueError if omitted.
+            Not used for "small" or "chunk" modes.
+        if_none_match : bool, keyword-only, optional
+            When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
+            currently empty. Set False to always overwrite (uses ``If-Match: *``).
+            Used for "small" and "chunk" modes only.
 
         Returns
         -------
@@ -297,95 +311,13 @@ class DataverseClient:
         self._get_odata().upload_file(
             entity_set,
             record_id,
-            id_attribute,
             file_name_attribute,
             path,
+            mode=mode,
             mime_type=mime_type,
-        )
-        return None
-
-    def upload_file_small(
-        self,
-        entity_set: str,
-        record_id: str,
-        file_name_attribute: str,
-        path: str,
-        *,
-        content_type: Optional[str] = None,
-        if_none_match: bool = True,
-    ) -> None:
-        """Upload a file (<128MB) in one PATCH request to a file column.
-
-        Parameters
-        ----------
-        entity_set : str
-            Target entity set (plural logical name), e.g. "accounts".
-        record_id : str
-            GUID of the target record (with or without braces / parentheses).
-        file_name_attribute : str
-            Logical name of the file column attribute.
-        path : str
-            Local filesystem path to the file.
-        content_type : str | None
-            Optional explicit MIME type. If omitted a basic guess isn't performed here; defaults to application/octet-stream.
-        if_none_match : bool
-            When True sends ``If-None-Match: null`` to only succeed if the column is currently empty.
-            Set False to always overwrite (uses ``If-Match: *``).
-
-        Returns
-        -------
-        None
-            Returns nothing on success. Raises on failure.
-        """
-        self._get_odata().upload_file_small(
-            entity_set,
-            record_id,
-            file_name_attribute,
-            path,
-            content_type=content_type,
+            id_attribute=id_attribute,
             if_none_match=if_none_match,
         )
         return None
-
-    def upload_file_chunk(
-        self,
-        entity_set: str,
-        record_id: str,
-        file_name_attribute: str,
-        path: str,
-        *,
-        if_none_match: bool = True,
-    ) -> None:
-        """Stream a local file using native chunked PATCH protocol (x-ms-transfer-mode: chunked).
-
-        Parameters
-        ----------
-        entity_set : str
-            Target entity set (plural logical name), e.g. "accounts".
-        record_id : str
-            GUID of the target record.
-        file_name_attribute : str
-            Logical name of the file column attribute.
-        path : str
-            Local filesystem path to the file.
-        if_none_match : bool
-            When True sends ``If-None-Match: null`` to only succeed if the column is currently empty.
-            Set False to always overwrite (uses ``If-Match: *``).
-            
-        Returns
-        -------
-        None
-            Returns nothing on success. Raises on failure.
-        """
-        self._get_odata().upload_file_chunk(
-            entity_set,
-            record_id,
-            file_name_attribute,
-            path,
-            if_none_match=if_none_match,
-        )
-        return None
-
 
 __all__ = ["DataverseClient"]
-        
