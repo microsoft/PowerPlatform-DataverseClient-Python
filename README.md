@@ -7,6 +7,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If `@odata.type` is absent the SDK resolves the logical name from metadata (cached).
 - Bulk update — Call `update_multiple(entity_set, records)` to invoke the bound `UpdateMultiple` action; returns nothing. Each record must include the real primary key attribute (e.g. `accountid`).
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
+- Upload files — 3 methods to upload files to file column. See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
 - Auth — Azure Identity (`TokenCredential`) injection.
@@ -19,6 +20,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
 - Bulk update via `UpdateMultiple` by calling `update_multiple(entity_set, records)` with primary key attribute present in each record; returns nothing.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
+- Upload files either with dv message blocks, a single request (supports file size up to 128 MB), or in chunks
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
 Auth:
@@ -71,6 +73,8 @@ The quickstart demonstrates:
 - Bulk create (CreateMultiple) to insert many records in one call
 - Retrieve multiple with paging (contrasting `$top` vs `page_size`)
 - Executing a read-only SQL query (Web API `?sql=`)
+
+For upload files functionalities, run quickstart_file_upload.py instead
 
 ## Examples
 
@@ -162,6 +166,22 @@ Notes:
 - `@odata.type` handling: If any payload in the list omits `@odata.type`, the SDK performs a one-time metadata query (`EntityDefinitions?$filter=EntitySetName eq '<entity_set>'`) to resolve the logical name, caches it, and stamps each missing item with `Microsoft.Dynamics.CRM.<logical>`. If **all** payloads already include `@odata.type`, no metadata call is made.
 - The metadata lookup is per entity set and reused across subsequent multi-create calls in the same client instance (in-memory cache only).
 
+## File upload
+
+3 methods are supported: `upload_file(entity_set, ...)`, `upload_file_small(entity_set, ...)`, `upload_file_chunk(entity_set, ...)`. All returns `None`.
+
+```python
+client.upload_file('account', record_id, 'accountid', 'sample_filecolumn', 'test.pdf')
+
+client.upload_file_small('account', record_id, 'sample_filecolumn', 'test.pdf')
+
+client.upload_file_chunk('account', record_id, 'sample_filecolumn', 'test.pdf')
+```
+
+Notes:
+- upload_file uses Dataverse messages and upload the file in Base64 encoded blocks (size limit is 4 MB for the Base64 encoded string), it consists of 3 stages: InitializeFileBlocksUpload, UploadBlock, and CommitFileBlocksUpload. Total number of Web API calls is number of blocks + 2.
+- upload_file_small makes a single Web API call and only supports file size < 128 MB
+- upload_file_chunk uses PATCH with Content-Range to upload the file (more aligned with HTTP standard compared to Dataverse messages). It consists of 2 stages 1. PATCH request to get the headers used for actual upload. 2. Actual upload in chunks. It uses x-ms-chunk-size returned in the first stage to determine chunk size (normally 4 MB), and use Content-Range and Content-Length as metadata for the upload.
 
 ## Retrieve multiple with paging
 
