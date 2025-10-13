@@ -168,8 +168,6 @@ Notes:
 
 ## File upload
 
-3 methods are supported: `upload_file(entity_set, ...)`, `upload_file_small(entity_set, ...)`, `upload_file_chunk(entity_set, ...)`. All returns `None`.
-
 ```python
 client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf')
 

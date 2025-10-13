@@ -491,7 +491,7 @@ class ODataClient(ODataFileUpload):
             raise RuntimeError(f"Metadata response missing EntitySetName for logical '{logical}'.")
         self._logical_to_entityset_cache[logical] = es
         return es
-    
+
     # ---------------------- Table metadata helpers ----------------------
     def _label(self, text: str) -> Dict[str, Any]:
         lang = int(self.config.language_code)
@@ -715,4 +715,3 @@ class ODataClient(ODataFileUpload):
             "metadata_id": metadata_id,
             "columns_created": created_cols,
         }
-
