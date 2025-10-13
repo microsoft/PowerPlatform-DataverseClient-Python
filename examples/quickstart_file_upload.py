@@ -19,20 +19,18 @@ if not entered:
 
 base_url = entered.rstrip('/')
 # Mode selection (numeric):
-# 1 = dv message (original in-memory block upload)
-# 2 = small (single PATCH)
-# 3 = chunk (streaming block upload)
-# 4 = all (dv message + small + chunk)
-mode_raw = input("Choose mode: 1) dv message  2) small  3) chunk  4) all [default 4]: ").strip()
+# 1 = small (single PATCH <128MB)
+# 2 = chunk (streaming for any size)
+# 3 = all (small + chunk)
+mode_raw = input("Choose mode: 1) small  2) chunk  3) all [default 3]: ").strip()
 if not mode_raw:
-    mode_raw = '4'
-if mode_raw not in {'1','2','3','4'}:
-    print({"invalid_mode": mode_raw, "fallback": 4})
-    mode_raw = '4'
+    mode_raw = '3'
+if mode_raw not in {'1','2','3'}:
+    print({"invalid_mode": mode_raw, "fallback": 3})
+    mode_raw = '3'
 mode_int = int(mode_raw)
-run_original = mode_int in (1,4)   # dv message
-run_small = mode_int in (2,4)
-run_chunk = mode_int in (3,4)
+run_small = mode_int in (1,3)
+run_chunk = mode_int in (2,3)
 
 delete_table_choice = input("Delete the table at end? (y/N): ").strip() or 'n'
 cleanup_table = delete_table_choice.lower() in ("y", "yes", "true", "1")
@@ -176,8 +174,6 @@ entity_set = table_info.get("entity_set_name")
 logical = table_info.get("entity_logical_name") or entity_set.rstrip("s")
 attr_prefix = logical.split('_',1)[0] if '_' in logical else logical
 name_attr = f"{attr_prefix}_name"
-file_attr_schema = f"{attr_prefix}_Document"  # SchemaName for file attribute
-file_attr_logical = f"{attr_prefix}_document"  # expected logical name (lowercase)
 small_file_attr_schema = f"{attr_prefix}_SmallDocument"  # second file attribute for small single-request demo
 small_file_attr_logical = f"{attr_prefix}_smalldocument"  # expected logical name (lowercase)
 chunk_file_attr_schema = f"{attr_prefix}_ChunkDocument"  # attribute for streaming chunk upload demo
@@ -239,8 +235,6 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
         return False
 
 # Conditionally ensure each attribute only if its mode is selected
-if run_original:
-    ensure_file_attribute_generic(file_attr_schema, "Document", "primary")
 if run_small:
     ensure_file_attribute_generic(small_file_attr_schema, "Small Document", "small")
 if run_chunk:
@@ -262,7 +256,6 @@ if not record_id:
     print("No record id; aborting upload.")
     sys.exit(1)
 
-size_bytes = None  # will set if original mode runs
 src_hash_block = None
 
 # --------------------------- Shared dataset helpers ---------------------------
@@ -278,71 +271,6 @@ def get_dataset_info(file_path: Path):
     info = (file_path, size, sha_hex)
     _DATASET_INFO_CACHE[file_path] = info
     return info
-
-# --------------------------- dv message block upload demo ---------------------------
-if run_original:
-    try:
-        # Derive primary key attribute from logical name (table_info earlier)
-        pk_attr = f"{logical}id" if logical else f"{entity_set.rstrip('s')}id"
-        # Prepare file info (moved here from earlier section)
-        print("dv message block upload demo:")
-        DATASET_FILE, size_bytes, src_hash_block = get_dataset_info(_GENERATED_TEST_FILE)
-        backoff(lambda: client.upload_file(
-            entity_set,
-            record_id,
-            file_attr_logical,
-            str(DATASET_FILE),
-            mode="block",
-            id_attribute=pk_attr,
-        ))
-        print({"block_upload_completed": True})
-        # Immediate download + verify
-        odata = client._get_odata()
-        dl_url_block = f"{odata.api}/{entity_set}({record_id})/{file_attr_logical}/$value"
-        resp_block = odata._request("get", dl_url_block, headers=odata._headers())
-        resp_block.raise_for_status()
-        content_block = resp_block.content or b""
-        import hashlib  # noqa: WPS433
-        dst_hash_block = hashlib.sha256(content_block).hexdigest() if content_block else None
-        hash_match_block_inline = (dst_hash_block == src_hash_block) if (dst_hash_block and src_hash_block) else None
-        print({
-            "block_source_size": size_bytes,
-            "block_download_size": len(content_block),
-            "block_size_match": len(content_block) == size_bytes,
-            "block_source_sha256_prefix": src_hash_block[:16] if src_hash_block else None,
-            "block_download_sha256_prefix": dst_hash_block[:16] if dst_hash_block else None,
-            "block_hash_match": hash_match_block_inline,
-        })
-        
-        # Now test replacing with an 8MB file
-        print("dv message block upload demo - REPLACE with 8MB file:")
-        replacement_file, replace_size, replace_hash = get_dataset_info(_GENERATED_TEST_FILE_8MB)
-        backoff(lambda: client.upload_file(
-            entity_set,
-            record_id,
-            file_attr_logical,
-            str(replacement_file),
-            mode="block",
-            id_attribute=pk_attr,
-        ))
-        print({"block_replace_upload_completed": True})
-        # Download and verify replacement
-        resp_block_replace = odata._request("get", dl_url_block, headers=odata._headers())
-        resp_block_replace.raise_for_status()
-        content_block_replace = resp_block_replace.content or b""
-        dst_hash_block_replace = hashlib.sha256(content_block_replace).hexdigest() if content_block_replace else None
-        hash_match_block_replace = (dst_hash_block_replace == replace_hash) if (dst_hash_block_replace and replace_hash) else None
-        print({
-            "block_replace_source_size": replace_size,
-            "block_replace_download_size": len(content_block_replace),
-            "block_replace_size_match": len(content_block_replace) == replace_size,
-            "block_replace_source_sha256_prefix": replace_hash[:16] if replace_hash else None,
-            "block_replace_download_sha256_prefix": dst_hash_block_replace[:16] if dst_hash_block_replace else None,
-            "block_replace_hash_match": hash_match_block_replace,
-        })
-    except Exception as e:  # noqa: BLE001
-        print({"upload_failed": str(e)})
-        sys.exit(1)
 
 # --------------------------- Small single-request file upload demo ---------------------------
 if run_small:

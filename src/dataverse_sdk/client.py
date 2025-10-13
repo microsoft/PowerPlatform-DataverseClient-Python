@@ -266,10 +266,8 @@ class DataverseClient:
         record_id: str,
         file_name_attribute: str,
         path: str,
-        *,
         mode: Optional[str] = None,
         mime_type: Optional[str] = None,
-        id_attribute: Optional[str] = None,
         if_none_match: bool = True,
     ) -> None:
         """Upload a file to a Dataverse file column with automatic method selection.
@@ -289,15 +287,10 @@ class DataverseClient:
             - "auto": Automatically selects best method based on file size
             - "small": Single PATCH request (files <128MB only)
             - "chunk": Streaming chunked upload (any size, most efficient for large files)
-            - "block": Message-based block upload (any size, compatibility fallback)
         mime_type : str | None, keyword-only, optional
             Explicit MIME type to persist with the file (e.g. "application/pdf"). If omitted the
             lower-level client attempts to infer from the filename extension and falls back to
             ``application/octet-stream``.
-        id_attribute : str | None, keyword-only, optional
-            Logical name of the primary key attribute for the record (e.g. ``accountid``).
-            **Required** when using "block" mode; raises ValueError if omitted.
-            Not used for "small" or "chunk" modes.
         if_none_match : bool, keyword-only, optional
             When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
             currently empty. Set False to always overwrite (uses ``If-Match: *``).
@@ -315,7 +308,6 @@ class DataverseClient:
             path,
             mode=mode,
             mime_type=mime_type,
-            id_attribute=id_attribute,
             if_none_match=if_none_match,
         )
         return None
