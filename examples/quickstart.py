@@ -7,6 +7,7 @@ from typing import Optional
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
 from dataverse_sdk import DataverseClient
+from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 import traceback
 import requests
@@ -15,20 +16,35 @@ from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-entered = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
+# entered = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
+entered = 'https://aurorabapenv4a0f9.crm10.dynamics.com/'
 if not entered:
 	print("No URL entered; exiting.")
 	sys.exit(1)
 
 base_url = entered.rstrip('/')
-delete_choice = input("Delete the new_SampleItem table at end? (Y/n): ").strip() or "y"
+# delete_choice = input("Delete the new_SampleItem table at end? (Y/n): ").strip() or "y"
+delete_choice = "n"
 delete_table_at_end = (str(delete_choice).lower() in ("y", "yes", "true", "1"))
 # Ask once whether to pause between steps during this run
-pause_choice = input("Pause between test steps? (y/N): ").strip() or "n"
+# pause_choice = input("Pause between test steps? (y/N): ").strip() or "n"
+pause_choice = 'n'
 pause_between_steps = (str(pause_choice).lower() in ("y", "yes", "true", "1"))
 # Create a credential we can reuse (for DataverseClient)
 credential = InteractiveBrowserCredential()
 client = DataverseClient(base_url=base_url, credential=credential)
+
+# print("Cleanup (Metadata):")
+# try:
+# 	info = client.get_table_info("new_SampleItem")
+# 	if info:
+# 		client.delete_table("new_SampleItem")
+# 		print({"table_deleted": True})
+# 	else:
+# 		print({"table_deleted": False, "reason": "not found"})
+# except Exception as e:
+# 	print(f"Delete table failed: {e}")
+# sys.exit(0)
 
 # Small helpers: call logging and step pauses
 def log_call(call: str) -> None:
@@ -44,7 +60,8 @@ def pause(next_step: str) -> None:
 
 # Small generic backoff helper used only in this quickstart
 # Include common transient statuses like 429/5xx to improve resilience.
-def backoff_retry(op, *, delays=(0, 2, 5, 10, 20), retry_http_statuses=(400, 403, 404, 409, 412, 429, 500, 502, 503, 504), retry_if=None):
+# def backoff_retry(op, *, delays=(0, 2, 5, 10, 20), retry_http_statuses=(400, 403, 404, 409, 412, 429, 500, 502, 503, 504), retry_if=None):
+def backoff_retry(op, *, delays=(0, 1), retry_http_statuses=(400, 403, 404, 409, 412, 429, 500, 502, 503, 504), retry_if=None):
 	last_exc = None
 	for delay in delays:
 		if delay:
@@ -65,6 +82,26 @@ def backoff_retry(op, *, delays=(0, 2, 5, 10, 20), retry_http_statuses=(400, 403
 		raise last_exc
 
 print("Ensure custom table exists (Metadata):")
+
+# Enum demonstrating local option set creation with multilingual labels (example English only here)
+class Status(IntEnum):
+	Active = 1
+	Inactive = 2
+	Archived = 5
+	__labels__ = {
+		1033: {
+			"Active": "Active",
+			"Inactive": "Inactive",
+			"Archived": "Archived",
+		},
+		1036: {
+			"Active": "Actif",
+			"Inactive": "Inactif",
+			"Archived": "Archivé",
+		}
+	}
+# use_french_labels = (input("Use French status labels instead of numeric enum values? (y/N): ").strip().lower() in ("y","yes","1"))
+use_french_labels = 'y'
 table_info = None
 created_this_run = False
 
@@ -86,7 +123,7 @@ if existing_table:
 else:
 	# Create it since it doesn't exist
 	try:
-		log_call("client.create_table('new_SampleItem', schema={code,count,amount,when,active})")
+		log_call("client.create_table('new_SampleItem', schema={code,count,amount,when,active,status<enum>})")
 		table_info = client.create_table(
 			"new_SampleItem",
 			{
@@ -95,6 +132,7 @@ else:
 				"amount": "decimal",
 				"when": "datetime",
 				"active": "bool",
+				"status": Status,  # Enum -> local option set (picklist)
 			},
 		)
 		created_this_run = True if table_info and table_info.get("columns_created") else False
@@ -130,6 +168,7 @@ code_key = f"{attr_prefix}_code"
 count_key = f"{attr_prefix}_count"
 amount_key = f"{attr_prefix}_amount"
 when_key = f"{attr_prefix}_when"
+status_key = f"{attr_prefix}_status"  # enum-generated picklist column
 id_key = f"{logical}id"
 
 def summary_from_record(rec: dict) -> dict:
@@ -148,6 +187,11 @@ def print_line_summaries(label: str, summaries: list[dict]) -> None:
 			f"count={s.get('count')} amount={s.get('amount')} when={s.get('when')}"
 		)
 
+french_present = 'y'
+use_french_labels_effective = (use_french_labels == 'y' and french_present)
+if use_french_labels == 'y' and not french_present:
+	print({"warning_missing_french_labels": True, "fallback_to_numeric": True})
+
 # 2) Create a record in the new table
 print("Create records (OData) demonstrating single create and bound CreateMultiple (multi):")
 
@@ -159,11 +203,22 @@ single_payload = {
 	amount_key: 123.45,
 	when_key: "2025-01-01",
 	f"{attr_prefix}_active": True,
+	status_key: ("Actif" if use_french_labels_effective else Status.Active.value),  # label or int
 }
 # Generate multiple payloads
+# New behaviour: first half use English labels ("Active"/"Inactive"), second half use French labels ("Actif"/"Inactif")
+# (If French labels not actually provisioned, those will fall back to numeric conversion logic.)
 multi_payloads: list[dict] = []
+total_multi = 4
+half_point = total_multi // 2  # for 15 -> 7 (indices >7 use French)
 base_date = date(2025, 1, 2)
-for i in range(1, 16):
+for i in range(1, total_multi + 1):
+	use_french_this = french_present and (i > half_point)
+	if use_french_this:
+		status_label = "Actif" if (i % 2) else "Inactif"
+	else:
+		# English label side
+		status_label = "Active" if (i % 2) else "Inactive"
 	multi_payloads.append(
 		{
 			f"{attr_prefix}_name": f"Sample {i:02d}",
@@ -172,6 +227,7 @@ for i in range(1, 16):
 			amount_key: round(10.0 * i, 2),
 			when_key: (base_date + timedelta(days=i - 1)).isoformat(),
 			f"{attr_prefix}_active": True,
+			status_key: status_label,
 		}
 	)
 
@@ -181,12 +237,39 @@ try:
 	# Single create returns list[str] (length 1)
 	log_call(f"client.create('{entity_set}', single_payload)")
 	single_ids = backoff_retry(lambda: client.create(entity_set, single_payload))
-	if not (isinstance(single_ids, list) and len(single_ids) == 1):
-		raise RuntimeError("Unexpected single create return shape (expected one-element list)")
+	# Defensive normalization: ensure result is list[str]
+	if isinstance(single_ids, (str, int)):
+		print({"debug_single_create_raw_type": type(single_ids).__name__, "raw_value": str(single_ids)})
+		single_ids = [str(single_ids)]
+	elif isinstance(single_ids, list):
+		# Coerce any non-str members to str
+		single_ids = [str(x) for x in single_ids]
+	else:
+		raise RuntimeError(f"Unexpected single create return type {type(single_ids).__name__}")
+	if len(single_ids) != 1:
+		raise RuntimeError(f"Unexpected single create list length {len(single_ids)} (expected 1)")
 	record_ids.extend(single_ids)
 
 	# Multi create returns list[str]
 	log_call(f"client.create('{entity_set}', multi_payloads)")
+	# Debug: print full bulk create input plus a concise preview
+	try:
+		preview = [
+			{
+				"code": p.get(code_key),
+				"when": p.get(when_key),
+				"status": p.get(status_key),
+			}
+			for p in multi_payloads[:5]
+		]
+		print({
+			"bulk_create_input_preview": preview,
+			"bulk_create_count": len(multi_payloads),
+		})
+		# Full payload (small enough at 15 records) for deep debugging
+		print({"bulk_create_input_full": multi_payloads})
+	except Exception as _ex:
+		print({"bulk_create_input_debug_error": str(_ex)})
 	multi_ids = backoff_retry(lambda: client.create(entity_set, multi_payloads))
 	if isinstance(multi_ids, list):
 		record_ids.extend([mid for mid in multi_ids if isinstance(mid, str)])
@@ -239,11 +322,13 @@ try:
 		f"{attr_prefix}_amount": 543.21,
 		f"{attr_prefix}_when": "2025-02-02",
 		f"{attr_prefix}_active": False,
+		status_key: ("Inactif" if use_french_labels else Status.Inactive.value),  # switch enum value or label
 	}
 	expected_checks = {
 		f"{attr_prefix}_code": "X002",
 		f"{attr_prefix}_count": 99,
 		f"{attr_prefix}_active": False,
+		status_key: Status.Inactive.value,  # verification uses numeric after coercion
 	}
 	amount_key = f"{attr_prefix}_amount"
 
@@ -280,72 +365,72 @@ except Exception as e:
 	sys.exit(1)
 
 # 3.6) Bulk update (UpdateMultiple) demo: update count field on up to first 5 remaining records
-print("Bulk update (UpdateMultiple) demo:")
-try:
-	if len(record_ids) > 1:
-		# Prepare a small subset to update (skip the first already updated one)
-		subset = record_ids[1:6]
-		bulk_updates = []
-		for idx, rid in enumerate(subset, start=1):
-			# Simple deterministic changes so user can observe
-			bulk_updates.append({
-				id_key: rid,
-				count_key: 100 + idx,  # new count values
-			})
-		log_call(f"client.update('{entity_set}', <{len(bulk_updates)} ids>, <patches>)")
-		# Unified update handles multiple via list of patches (returns None)
-		backoff_retry(lambda: client.update(entity_set, subset, bulk_updates))
-		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
-		# Verify the updated count values by refetching the subset
-		verification = []
-		# Small delay to reduce risk of any brief replication delay
-		time.sleep(1)
-		for rid in subset:
-			rec = backoff_retry(lambda rid=rid: client.get(entity_set, rid))
-			verification.append({
-				"id": rid,
-				"count": rec.get(count_key),
-			})
-		print({"bulk_update_verification": verification})
-	else:
-		print({"bulk_update_skipped": True, "reason": "not enough records"})
-except Exception as e:
-	print(f"Bulk update failed: {e}")
+# print("Bulk update (UpdateMultiple) demo:")
+# try:
+# 	if len(record_ids) > 1:
+# 		# Prepare a small subset to update (skip the first already updated one)
+# 		subset = record_ids[1:6]
+# 		bulk_updates = []
+# 		for idx, rid in enumerate(subset, start=1):
+# 			# Simple deterministic changes so user can observe
+# 			bulk_updates.append({
+# 				id_key: rid,
+# 				count_key: 100 + idx,  # new count values
+# 			})
+# 		log_call(f"client.update('{entity_set}', <{len(bulk_updates)} ids>, <patches>)")
+# 		# Unified update handles multiple via list of patches (returns None)
+# 		backoff_retry(lambda: client.update(entity_set, subset, bulk_updates))
+# 		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
+# 		# Verify the updated count values by refetching the subset
+# 		verification = []
+# 		# Small delay to reduce risk of any brief replication delay
+# 		time.sleep(1)
+# 		for rid in subset:
+# 			rec = backoff_retry(lambda rid=rid: client.get(entity_set, rid))
+# 			verification.append({
+# 				"id": rid,
+# 				"count": rec.get(count_key),
+# 			})
+# 		print({"bulk_update_verification": verification})
+# 	else:
+# 		print({"bulk_update_skipped": True, "reason": "not enough records"})
+# except Exception as e:
+# 	print(f"Bulk update failed: {e}")
 
 # 4) Query records via SQL (?sql parameter))
-print("Query (SQL via ?sql query parameter):")
-try:
-	import time
-	pause("Execute SQL Query")
+# print("Query (SQL via ?sql query parameter):")
+# try:
+# 	import time
+# 	pause("Execute SQL Query")
 
-	def _run_query():
-		cols = f"{id_key}, {code_key}, {amount_key}, {when_key}"
-		query = f"SELECT TOP 2 {cols} FROM {logical} ORDER BY {attr_prefix}_amount DESC"
-		log_call(f"client.query_sql(\"{query}\") (Web API ?sql=)")
-		return client.query_sql(query)
+# 	def _run_query():
+# 		cols = f"{id_key}, {code_key}, {amount_key}, {when_key}"
+# 		query = f"SELECT TOP 2 {cols} FROM {logical} ORDER BY {attr_prefix}_amount DESC"
+# 		log_call(f"client.query_sql(\"{query}\") (Web API ?sql=)")
+# 		return client.query_sql(query)
 
-	def _retry_if(ex: Exception) -> bool:
-		msg = str(ex) if ex else ""
-		return ("Invalid table name" in msg) or ("Invalid object name" in msg)
+# 	def _retry_if(ex: Exception) -> bool:
+# 		msg = str(ex) if ex else ""
+# 		return ("Invalid table name" in msg) or ("Invalid object name" in msg)
 
-	rows = backoff_retry(_run_query, delays=(0, 2, 5), retry_http_statuses=(), retry_if=_retry_if)
-	id_key = f"{logical}id"
-	ids = [r.get(id_key) for r in rows if isinstance(r, dict) and r.get(id_key)]
-	print({"entity": logical, "rows": len(rows) if isinstance(rows, list) else 0, "ids": ids})
-	record_summaries = []
-	for row in rows if isinstance(rows, list) else []:
-		record_summaries.append(
-			{
-				"id": row.get(id_key),
-				"code": row.get(code_key),
-				"count": row.get(count_key),
-				"amount": row.get(amount_key),
-				"when": row.get(when_key),
-			}
-		)
-	print_line_summaries("SQL record summaries (top 2 by amount):", record_summaries)
-except Exception as e:
-	print(f"SQL query failed: {e}")
+# 	rows = backoff_retry(_run_query, delays=(0, 2, 5), retry_http_statuses=(), retry_if=_retry_if)
+# 	id_key = f"{logical}id"
+# 	ids = [r.get(id_key) for r in rows if isinstance(r, dict) and r.get(id_key)]
+# 	print({"entity": logical, "rows": len(rows) if isinstance(rows, list) else 0, "ids": ids})
+# 	record_summaries = []
+# 	for row in rows if isinstance(rows, list) else []:
+# 		record_summaries.append(
+# 			{
+# 				"id": row.get(id_key),
+# 				"code": row.get(code_key),
+# 				"count": row.get(count_key),
+# 				"amount": row.get(amount_key),
+# 				"when": row.get(when_key),
+# 			}
+# 		)
+# 	print_line_summaries("SQL record summaries (top 2 by amount):", record_summaries)
+# except Exception as e:
+# 	print(f"SQL query failed: {e}")
 
 # Pause between SQL query and retrieve-multiple demos
 pause("Retrieve multiple (OData paging demos)")
@@ -357,6 +442,8 @@ def run_paging_demo(label: str, *, top: Optional[int], page_size: Optional[int])
 	total = 0
 	page_index = 0
 	_select = [id_key, code_key, amount_key, when_key]
+	# Include status column in select so we can show picklist numeric value
+	_select.append(status_key)
 	_orderby = [f"{code_key} asc"]
 	for page in client.get_multiple(
 		entity_set,
@@ -373,7 +460,13 @@ def run_paging_demo(label: str, *, top: Optional[int], page_size: Optional[int])
 			"page": page_index,
 			"page_size": len(page),
 			"sample": [
-				{"id": r.get(id_key), "code": r.get(code_key), "amount": r.get(amount_key), "when": r.get(when_key)}
+				{
+					"id": r.get(id_key),
+					"code": r.get(code_key),
+					"amount": r.get(amount_key),
+					"when": r.get(when_key),
+					"status": r.get(status_key),
+				}
 				for r in page[:5]
 			],
 		})

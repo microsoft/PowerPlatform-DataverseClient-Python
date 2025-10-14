@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, List, Union, Iterable
+from enum import Enum
+import unicodedata
 import re
 import json
 
@@ -94,6 +96,7 @@ class ODataClient:
         Relies on OData-EntityId (canonical) or Location header. No response body parsing is performed.
         Raises RuntimeError if neither header contains a GUID.
         """
+        record = self._convert_labels_to_ints(entity_set, record)
         url = f"{self.api}/{entity_set}"
         headers = self._headers().copy()
         r = self._request("post", url, headers=headers, json=record)
@@ -158,6 +161,7 @@ class ODataClient:
             logical = self._logical_from_entity_set(entity_set)
         enriched: List[Dict[str, Any]] = []
         for r in records:
+            r = self._convert_labels_to_ints(entity_set, r)
             if "@odata.type" in r or not logical:
                 enriched.append(r)
             else:
@@ -280,6 +284,7 @@ class ODataClient:
         -------
         None
         """
+        data = self._convert_labels_to_ints(entity_set, data)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         headers = self._headers().copy()
         headers["If-Match"] = "*"
@@ -324,6 +329,7 @@ class ODataClient:
             logical = self._logical_from_entity_set(entity_set)
         enriched: List[Dict[str, Any]] = []
         for r in records:
+            r = self._convert_labels_to_ints(entity_set, r)
             if "@odata.type" in r or not logical:
                 enriched.append(r)
             else:
@@ -633,7 +639,249 @@ class ODataClient:
                 return ent
         return ent
 
-    def _attribute_payload(self, schema_name: str, dtype: str, *, is_primary_name: bool = False) -> Optional[Dict[str, Any]]:
+    # ---------------------- Enum / Option Set helpers ------------------
+    def _build_localizedlabels_payload(self, translations: Dict[int, str]) -> Dict[str, Any]:
+        """Build a Dataverse Label object from {<language_code>: <text>} entries.
+
+        Ensures at least one localized label. Does not deduplicate language codes; last wins.
+        """
+        locs: List[Dict[str, Any]] = []
+        for lang, text in translations.items():
+            if not isinstance(lang, int):
+                raise ValueError(f"Language code '{lang}' must be int")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"Label for lang {lang} must be non-empty string")
+            locs.append({
+                "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                "Label": text,
+                "LanguageCode": lang,
+            })
+        if not locs:
+            raise ValueError("At least one translation required")
+        return {
+            "@odata.type": "Microsoft.Dynamics.CRM.Label",
+            "LocalizedLabels": locs,
+        }
+
+    def _enum_optionset_payload(self, schema_name: str, enum_cls: type[Enum], *, is_primary_name: bool = False) -> Dict[str, Any]:
+        """Create local (IsGlobal=False) PicklistAttributeMetadata from an Enum subclass.
+
+        Supported translation mapping via optional class attribute `__labels__`:
+            __labels__ = { 1033: { "Active": "Active", "Inactive": "Inactive" },
+                           1036: { "Active": "Actif",  "Inactive": "Inactif" } }
+
+        Keys inside per-language dict may be either enum member objects or their names.
+        If a language lacks a label for a member, member.name is used as fallback.
+        The client's configured language code is always ensured to exist.
+        """
+        members = list(enum_cls)
+        if not members:
+            raise ValueError(f"Enum {enum_cls.__name__} has no members")
+        # Validate integer values & uniqueness
+        seen_vals: set[int] = set()
+        for m in members:
+            if not isinstance(m.value, int):
+                raise ValueError(f"Enum member '{m.name}' has non-int value '{m.value}' (only int values supported)")
+            if m.value in seen_vals:
+                raise ValueError(f"Duplicate enum value {m.value} in {enum_cls.__name__}")
+            seen_vals.add(m.value)
+
+        raw_labels = getattr(enum_cls, "__labels__", None)
+        labels_by_lang: Dict[int, Dict[str, str]] = {}
+        if raw_labels is not None:
+            if not isinstance(raw_labels, dict):
+                raise ValueError("__labels__ must be a dict {lang:int -> {member: label}}")
+            for lang, mapping in raw_labels.items():
+                if not isinstance(lang, int):
+                    raise ValueError("Language codes in __labels__ must be ints")
+                if not isinstance(mapping, dict):
+                    raise ValueError(f"__labels__[{lang}] must be a dict of member names to strings")
+                labels_by_lang.setdefault(lang, {})
+                for k, v in mapping.items():
+                    member_name = k.name if isinstance(k, enum_cls) else str(k)
+                    if not isinstance(v, str) or not v.strip():
+                        raise ValueError(f"Label for {member_name} lang {lang} must be non-empty string")
+                    labels_by_lang[lang][member_name] = v
+
+        config_lang = int(self.config.language_code)
+        # Ensure config language appears (fallback to names)
+        all_langs = set(labels_by_lang.keys()) | {config_lang}
+
+        options: List[Dict[str, Any]] = []
+        for m in sorted(members, key=lambda x: x.value):
+            per_lang: Dict[int, str] = {}
+            for lang in all_langs:
+                label_text = labels_by_lang.get(lang, {}).get(m.name, m.name)
+                per_lang[lang] = label_text
+            options.append({
+                "@odata.type": "Microsoft.Dynamics.CRM.OptionMetadata",
+                "Value": m.value,
+                "Label": self._build_localizedlabels_payload(per_lang),
+            })
+
+        attr_label = schema_name.split("_")[-1]
+        return {
+            "@odata.type": "Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
+            "SchemaName": schema_name,
+            "DisplayName": self._label(attr_label),
+            "RequiredLevel": {"Value": "None"},
+            "IsPrimaryName": bool(is_primary_name),
+            "OptionSet": {
+                "@odata.type": "Microsoft.Dynamics.CRM.OptionSetMetadata",
+                "IsGlobal": False,
+                "Options": options,
+            },
+        }
+
+    # ---------------------- Picklist label coercion ----------------------
+    def _normalize_picklist_label(self, label: str) -> str:
+        """Normalize a label for case / diacritic insensitive comparison."""
+        if not isinstance(label, str):
+            return ""
+        # Strip accents
+        norm = unicodedata.normalize("NFD", label)
+        norm = "".join(c for c in norm if unicodedata.category(c) != "Mn")
+        # Collapse whitespace, lowercase
+        norm = re.sub(r"\s+", " ", norm).strip().lower()
+        return norm
+
+    def _optionset_map(self, entity_set: str, attr_logical: str) -> Optional[Dict[str, int]]:
+        """Build or return cached mapping of normalized label -> value for a picklist attribute.
+
+        Returns None if attribute is not a picklist or no options available.
+        """
+        if not entity_set or not attr_logical:
+            return None
+        logical = self._logical_from_entity_set(entity_set)
+        cache_key = (logical, attr_logical.lower())
+        if not hasattr(self, "_picklist_label_cache"):
+            self._picklist_label_cache = {}
+        if cache_key in self._picklist_label_cache:
+            return self._picklist_label_cache[cache_key]
+        debug_attr = attr_logical.lower().endswith("_status")
+
+        attr_esc = self._escape_odata_quotes(attr_logical)
+        logical_esc = self._escape_odata_quotes(logical)
+
+        # Step 1: lightweight fetch (no expand) to determine attribute type
+        url_type = (
+            f"{self.api}/EntityDefinitions(LogicalName='{logical_esc}')/Attributes"
+            f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
+        )
+        r_type = self._request("get", url_type, headers=self._headers())
+        if debug_attr:
+            try:
+                print({"debug_picklist_probe_type": {"attr": attr_logical, "status": r_type.status_code}})
+            except Exception:
+                pass
+        if r_type.status_code == 404:
+            # Do not permanently cache negative result; metadata may appear later.
+            return None
+        r_type.raise_for_status()
+        body_type = r_type.json()
+        items = body_type.get("value", []) if isinstance(body_type, dict) else []
+        if not items:
+            return None
+        attr_md = items[0]
+        if debug_attr:
+            try:
+                print({"debug_picklist_attr_type": attr_md.get("AttributeType")})
+            except Exception:
+                pass
+        if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
+            return None
+
+        # Step 2: fetch with expand only now that we know it's a picklist
+        # Need to cast to the derived PicklistAttributeMetadata type; OptionSet is not a nav on base AttributeMetadata.
+        cast_url = (
+            f"{self.api}/EntityDefinitions(LogicalName='{logical_esc}')/Attributes(LogicalName='{attr_esc}')/"
+            "Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)"
+        )
+        r_opts = self._request("get", cast_url, headers=self._headers())
+        if debug_attr:
+            try:
+                print({"debug_picklist_cast_fetch": {"status": r_opts.status_code}})
+            except Exception:
+                pass
+        if r_opts.status_code == 404:
+            # Fallback: try non-cast form (older behaviour) just in case environment differs
+            alt_url = (
+                f"{self.api}/EntityDefinitions(LogicalName='{logical_esc}')/Attributes(LogicalName='{attr_esc}')"
+                f"?$select=LogicalName&$expand=OptionSet($select=Options)"
+            )
+            r_opts = self._request("get", alt_url, headers=self._headers())
+            if r_opts.status_code == 404:
+                return None
+        try:
+            r_opts.raise_for_status()
+        except Exception:
+            # If expansion still fails, skip caching negative to allow future retry.
+            return None
+        attr_full = {}
+        try:
+            attr_full = r_opts.json() if r_opts.text else {}
+        except ValueError:
+            return None
+        option_set = attr_full.get("OptionSet") or {}
+        options = option_set.get("Options") if isinstance(option_set, dict) else None
+        if not isinstance(options, list):
+            return None
+        if debug_attr:
+            try:
+                print({"debug_picklist_options_count": len(options)})
+            except Exception:
+                pass
+        mapping: Dict[str, int] = {}
+        for opt in options:
+            if not isinstance(opt, dict):
+                continue
+            val = opt.get("Value")
+            if not isinstance(val, int):
+                continue
+            label_def = opt.get("Label") or {}
+            locs = label_def.get("LocalizedLabels")
+            if isinstance(locs, list):
+                for loc in locs:
+                    if isinstance(loc, dict):
+                        lab = loc.get("Label")
+                        if isinstance(lab, str) and lab.strip():
+                            normalized = self._normalize_picklist_label(lab)
+                            mapping.setdefault(normalized, val)
+        if debug_attr:
+            try:
+                print({"debug_picklist_mapping_keys": sorted(mapping.keys())})
+            except Exception:
+                pass
+        if mapping:
+            self._picklist_label_cache[cache_key] = mapping
+            return mapping
+        return None
+
+    def _convert_labels_to_ints(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a copy of record with any labels converted to option ints.
+
+        Heuristic: For each string value, attempt to resolve against picklist metadata.
+        If attribute isn't a picklist or label not found, value left unchanged.
+        """
+        out = record.copy()
+        for k, v in list(out.items()):
+            if not isinstance(v, str) or not v.strip():
+                continue
+            mapping = self._optionset_map(entity_set, k)
+            if not mapping:
+                continue
+            norm = self._normalize_picklist_label(v)
+            val = mapping.get(norm)
+            if val is not None:
+                out[k] = val
+        return out
+
+    def _attribute_payload(self, schema_name: str, dtype: Any, *, is_primary_name: bool = False) -> Optional[Dict[str, Any]]:
+        # Enum-based local option set support
+        if isinstance(dtype, type) and issubclass(dtype, Enum):
+            return self._enum_optionset_payload(schema_name, dtype, is_primary_name=is_primary_name)
+        if not isinstance(dtype, str):
+            raise ValueError(f"Unsupported column spec type for '{schema_name}': {type(dtype)} (expected str or Enum subclass)")
         dtype_l = dtype.lower().strip()
         label = schema_name.split("_")[-1]
         if dtype_l in ("string", "text"):
@@ -752,7 +1000,7 @@ class ODataClient:
         r = self._request("delete", url, headers=headers)
         r.raise_for_status()
 
-    def _create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def _create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         # Accept a friendly name and construct a default schema under 'new_'.
         # If a full SchemaName is passed (contains '_'), use as-is.
         entity_schema = tablename if "_" in tablename else f"new_{self._to_pascal(tablename)}"

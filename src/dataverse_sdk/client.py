@@ -206,16 +206,19 @@ class DataverseClient:
         """
         return self._get_odata()._get_table_info(tablename)
 
-    def create_table(self, tablename: str, schema: Dict[str, str]) -> Dict[str, Any]:
+    def create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         """Create a simple custom table.
 
         Parameters
         ----------
         tablename : str
             Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
-        schema : dict[str, str]
+        schema : dict[str, Any]
             Column definitions mapping logical names (without prefix) to types.
-            Supported: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``.
+            Supported:
+              - Primitive type tokens: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``
+              - Enum subclass (IntEnum preferred): generates a local option set with each member value.
+                Optional multilingual labels via ``__labels__ = {1033: {"Active": "Active"}, 1036: {"Active": "Actif"}}``
 
         Returns
         -------
