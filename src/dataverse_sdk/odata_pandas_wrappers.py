@@ -72,18 +72,14 @@ class PandasODataClient:
         if not isinstance(record, pd.Series):
             raise TypeError("record must be a pandas Series")
         payload = {k: v for k, v in record.items()}
-        created = self._c.create(entity_set, payload)
-        # Extract primary id from returned representation (first '*id' that looks like a GUID)
-        if isinstance(created, dict):
-            for k, v in created.items():
-                if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, (str,)):
-                    if re.fullmatch(r"[0-9a-fA-F-]{36}", v.strip() or ""):
-                        return v
-        raise RuntimeError("Could not determine created record id from returned representation")
+        created_ids = self._c.create(entity_set, payload)
+        if not isinstance(created_ids, list) or len(created_ids) != 1 or not isinstance(created_ids[0], str):
+            raise RuntimeError("Unexpected create return shape (expected single-element list of GUID str)")
+        return created_ids[0]
 
     # ---------------------------- Update ---------------------------------
     def update(self, entity_set: str, record_id: str, entity_data: pd.Series) -> None:
-        """Update a single record.
+        """Update a single record (returns None).
 
         Parameters
         ----------

@@ -176,33 +176,25 @@ for i in range(1, 16):
 	)
 
 record_ids: list[str] = []
-created_recs: list[dict] = []
 
 try:
-	# Single create (always returns full representation)
+	# Single create returns list[str] (length 1)
 	log_call(f"client.create('{entity_set}', single_payload)")
-	# Retry in case the custom table isn't fully provisioned immediately (404)
-	rec1 = backoff_retry(lambda: client.create(entity_set, single_payload))
-	created_recs.append(rec1)
-	rid1 = rec1.get(id_key)
-	if rid1:
-		record_ids.append(rid1)
+	single_ids = backoff_retry(lambda: client.create(entity_set, single_payload))
+	if not (isinstance(single_ids, list) and len(single_ids) == 1):
+		raise RuntimeError("Unexpected single create return shape (expected one-element list)")
+	record_ids.extend(single_ids)
 
-	# Multi create (list) now returns list[str] of IDs
+	# Multi create returns list[str]
 	log_call(f"client.create('{entity_set}', multi_payloads)")
 	multi_ids = backoff_retry(lambda: client.create(entity_set, multi_payloads))
 	if isinstance(multi_ids, list):
-		for mid in multi_ids:
-			if isinstance(mid, str):
-				record_ids.append(mid)
+		record_ids.extend([mid for mid in multi_ids if isinstance(mid, str)])
 	else:
 		print({"multi_unexpected_type": type(multi_ids).__name__, "value_preview": str(multi_ids)[:300]})
 
 	print({"entity": logical, "created_ids": record_ids})
-	summaries = []
-	for rec in created_recs:
-		summaries.append({"id": rec.get(id_key), **summary_from_record(rec)})
-	print_line_summaries("Created record summaries (single only; multi-create returns IDs only):", summaries)
+	print_line_summaries("Created record summaries (IDs only; representation not fetched):", [{"id": rid} for rid in record_ids[:1]])
 except Exception as e:
 	# Surface detailed info for debugging (especially multi-create failures)
 	print(f"Create failed: {e}")
@@ -273,16 +265,16 @@ try:
 
 	# Update only the chosen record and summarize
 	log_call(f"client.update('{entity_set}', '{target_id}', update_data)")
-	new_rec = backoff_retry(lambda: client.update(entity_set, target_id, update_data))
-	# Verify string/int/bool fields
+	# Perform update (returns None); follow-up read to verify
+	backoff_retry(lambda: client.update(entity_set, target_id, update_data))
+	verify_rec = backoff_retry(lambda: client.get(entity_set, target_id))
 	for k, v in expected_checks.items():
-		assert new_rec.get(k) == v, f"Field {k} expected {v}, got {new_rec.get(k)}"
-	# Verify decimal with tolerance
-	got = new_rec.get(amount_key)
+		assert verify_rec.get(k) == v, f"Field {k} expected {v}, got {verify_rec.get(k)}"
+	got = verify_rec.get(amount_key)
 	got_f = float(got) if got is not None else None
 	assert got_f is not None and abs(got_f - 543.21) < 1e-6, f"Field {amount_key} expected 543.21, got {got}"
 	print({"entity": logical, "updated": True})
-	print_line_summaries("Updated record summary:", [{"id": target_id, **summary_from_record(new_rec)}])
+	print_line_summaries("Updated record summary:", [{"id": target_id, **summary_from_record(verify_rec)}])
 except Exception as e:
 	print(f"Update/verify failed: {e}")
 	sys.exit(1)
@@ -300,9 +292,9 @@ try:
 				id_key: rid,
 				count_key: 100 + idx,  # new count values
 			})
-		log_call(f"client.update_multiple('{entity_set}', <{len(bulk_updates)} records>)")
-		# update_multiple returns nothing (fire-and-forget success semantics)
-		backoff_retry(lambda: client.update_multiple(entity_set, bulk_updates))
+		log_call(f"client.update('{entity_set}', <{len(bulk_updates)} ids>, <patches>)")
+		# Unified update handles multiple via list of patches (returns None)
+		backoff_retry(lambda: client.update(entity_set, subset, bulk_updates))
 		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
 		# Verify the updated count values by refetching the subset
 		verification = []

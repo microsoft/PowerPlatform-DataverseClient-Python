@@ -3,9 +3,9 @@
 A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Foundry–style apps.
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
-- OData CRUD — Thin wrappers over Dataverse Web API (create/get/update/delete).
-- Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If `@odata.type` is absent the SDK resolves the logical name from metadata (cached).
-- Bulk update — Call `update_multiple(entity_set, records)` to invoke the bound `UpdateMultiple` action; returns nothing. Each record must include the real primary key attribute (e.g. `accountid`).
+- OData CRUD — Unified methods `create(entity, record|records)`, `update(entity, id|ids, patch|patches)`, `delete(entity, id|ids)` plus `get` / `get_multiple`.
+- Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
+- Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Upload files — Call `upload_file(entity_set, ...)` and a upload method will be auto picked (user can also overwrite the upload mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
@@ -18,7 +18,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - SQL-over-API: Constrained SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
 - Table metadata ops: create simple custom tables with primitive columns (string/int/decimal/float/datetime/bool) and delete them.
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
-- Bulk update via `UpdateMultiple` by calling `update_multiple(entity_set, records)` with primary key attribute present in each record; returns nothing.
+- Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(entity_set, ids, patch|patches)`; returns nothing.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
 - Upload files, using either a single request (supports file size up to 128 MB) or chunk upload under the hood
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
@@ -27,6 +27,36 @@ Auth:
 - Credential is optional; if omitted, the SDK uses `DefaultAzureCredential`.
 - You can pass any `azure.core.credentials.TokenCredential` you prefer; examples use `InteractiveBrowserCredential` for local runs.
 - Token scope used by the SDK: `https://<yourorg>.crm.dynamics.com/.default` (derived from `base_url`).
+
+## API Reference (Summary)
+
+| Method | Signature (simplified) | Returns | Notes |
+|--------|------------------------|---------|-------|
+| `create` | `create(entity_set, record_dict)` | `list[str]` (len 1) | Single create; GUID from `OData-EntityId`. |
+| `create` | `create(entity_set, list[record_dict])` | `list[str]` | Uses `CreateMultiple`; stamps `@odata.type` if missing. |
+| `get` | `get(entity_set, id)` | `dict` | One record; supply GUID (with/without parentheses). |
+| `get_multiple` | `get_multiple(entity_set, ..., page_size=None)` | `Iterable[list[dict]]` | Pages yielded (non-empty only). |
+| `update` | `update(entity_set, id, patch)` | `None` | Single update; no representation returned. |
+| `update` | `update(entity_set, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs. Calls UpdateMultiple web API internally. |
+| `update` | `update(entity_set, list[id], list[patch])` | `None` | 1:1 patches; lengths must match. Calls UpdateMultiple web API internally. |
+| `delete` | `delete(entity_set, id)` | `None` | Delete one record. |
+| `delete` | `delete(entity_set, list[id])` | `None` | Delete many (sequential). |
+| `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
+| `create_table` | `create_table(name, schema)` | `dict` | Creates custom table + columns. |
+| `get_table_info` | `get_table_info(name)` | `dict | None` | Basic table metadata. |
+| `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
+| `delete_table` | `delete_table(name)` | `None` | Drops custom table. |
+| `PandasODataClient.create_df` | `create_df(entity_set, series)` | `str` | Returns GUID (wrapper). |
+| `PandasODataClient.update` | `update(entity_set, id, series)` | `None` | Ignores empty Series. |
+| `PandasODataClient.get_ids` | `get_ids(entity_set, ids, select=None)` | `DataFrame` | One row per ID (errors inline). |
+| `PandasODataClient.query_sql_df` | `query_sql_df(sql)` | `DataFrame` | DataFrame for SQL results. |
+
+Guidelines:
+- `create` always returns a list of GUIDs (1 for single, N for bulk).
+- `update`/`delete` always return `None` (single and multi forms).
+- Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
+- Paging and SQL operations never mutate inputs.
+- Metadata lookups for logical name stamping cached per entity set (in-memory).
 
 ## Install
 
@@ -71,7 +101,8 @@ The quickstart demonstrates:
 - Creating a simple custom table (metadata APIs)
 - Creating, reading, updating, and deleting records (OData)
 - Bulk create (CreateMultiple) to insert many records in one call
-- Retrieve multiple with paging (contrasting `$top` vs `page_size`)
+- Bulk update via unified `update` (multi-ID broadcast & per‑record patches)
+- Retrieve multiple with paging (`$top` vs `page_size`)
 - Executing a read-only SQL query (Web API `?sql=`)
 
 For upload files functionalities, run quickstart_file_upload.py instead
@@ -96,22 +127,28 @@ from dataverse_sdk import DataverseClient
 base_url = "https://yourorg.crm.dynamics.com"
 client = DataverseClient(base_url=base_url, credential=DefaultAzureCredential())
 
-# Create (returns created record)
-created = client.create("accounts", {"name": "Acme, Inc.", "telephone1": "555-0100"})
-account_id = created["accountid"]
+# Create (returns list[str] of new GUIDs)
+account_id = client.create("accounts", {"name": "Acme, Inc.", "telephone1": "555-0100"})[0]
 
 # Read
 account = client.get("accounts", account_id)
 
-# Update (returns updated record)
-updated = client.update("accounts", account_id, {"telephone1": "555-0199"})
+# Update (returns None)
+client.update("accounts", account_id, {"telephone1": "555-0199"})
 
-# Bulk update (collection-bound UpdateMultiple)
-# Each record must include the primary key attribute (accountid). The call returns None.
-client.update_multiple("accounts", [
-	{"accountid": account_id, "telephone1": "555-0200"},
+# Bulk update (broadcast) – apply same patch to several IDs
+ids = client.create("accounts", [
+	{"name": "Contoso"},
+	{"name": "Fabrikam"},
 ])
-print({"bulk_update": "ok"})
+client.update("accounts", ids, {"telephone1": "555-0200"})  # broadcast patch
+
+# Bulk update (1:1) – list of patches matches list of IDs
+client.update("accounts", ids, [
+	{"telephone1": "555-1200"},
+	{"telephone1": "555-1300"},
+])
+print({"multi_update": "ok"})
 
 # Delete
 client.delete("accounts", account_id)
@@ -123,7 +160,7 @@ for r in rows:
 
 ## Bulk create (CreateMultiple)
 
-Pass a list of payloads to `create(entity_set, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns a `list[str]` of created record IDs.
+Pass a list of payloads to `create(entity_set, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns `list[str]` of created record IDs.
 
 ```python
 # Bulk create accounts (returns list of GUIDs)
@@ -137,34 +174,31 @@ assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
 print({"created_ids": ids})
 ```
 
-## Bulk update (UpdateMultiple)
+## Bulk update (UpdateMultiple under the hood)
 
-Use `update_multiple(entity_set, records)` for a transactional batch update. The method returns `None`.
+Use the unified `update` method for both single and bulk scenarios:
 
 ```python
-ids = client.create("accounts", [
-    {"name": "Fourth Coffee"},
-    {"name": "Tailspin"},
-])
+# Broadcast
+client.update("accounts", ids, {"telephone1": "555-0200"})
 
-client.update_multiple("accounts", [
-    {"accountid": ids[0], "telephone1": "555-1111"},
-    {"accountid": ids[1], "telephone1": "555-2222"},
+# 1:1 patches (length must match)
+client.update("accounts", ids, [
+	{"telephone1": "555-1200"},
+	{"telephone1": "555-1300"},
 ])
-print({"bulk_update": "ok"})
 ```
 
 Notes:
-- Each record must include the primary key attribute (e.g. `accountid`). No `id` alias yet.
-- If any payload omits `@odata.type`, the logical name is resolved once and stamped (same as bulk create).
-- Entire request fails (HTTP error) if any individual update fails; no partial success list is returned.
-- If you need refreshed records post-update, issue individual `get` calls or a `get_multiple` query.
+- Returns `None` (same as single update) to keep semantics consistent.
+- Broadcast vs per-record determined by whether `changes` is a dict or list.
+- Primary key attribute is injected automatically when constructing UpdateMultiple targets.
+- If any payload omits `@odata.type`, it's stamped automatically (cached logical name lookup).
 
-Notes:
-- The bulk create response typically includes IDs only; the SDK returns the list of GUID strings.
-- Single-record `create` still returns the full entity representation.
-- `@odata.type` handling: If any payload in the list omits `@odata.type`, the SDK performs a one-time metadata query (`EntityDefinitions?$filter=EntitySetName eq '<entity_set>'`) to resolve the logical name, caches it, and stamps each missing item with `Microsoft.Dynamics.CRM.<logical>`. If **all** payloads already include `@odata.type`, no metadata call is made.
-- The metadata lookup is per entity set and reused across subsequent multi-create calls in the same client instance (in-memory cache only).
+Bulk create notes:
+- Response includes only IDs; the SDK returns those GUID strings.
+- Single-record `create` returns a one-element list of GUIDs.
+- Metadata lookup for `@odata.type` is performed once per entity set (cached in-memory).
 
 ## File upload
 
@@ -284,7 +318,8 @@ client.delete_table("SampleItem")        # delete the table
 ```
 
 Notes:
-- `create/update` return the full record using `Prefer: return=representation`.
+- `create` always returns a list of GUIDs (length 1 for single input).
+- `update` and `delete` return `None` for both single and multi.
 - Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
 - Use `get_multiple` for paging through result sets; prefer `select` to limit columns.
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
@@ -302,7 +337,7 @@ VS Code Tasks
 - No general-purpose OData batching, upsert, or association operations yet.
 - `DeleteMultiple` not yet exposed.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
-- Entity naming conventions in Dataverse: for multi-create the SDK resolves logical names from entity set metadata.
+- Entity naming conventions in Dataverse: for bulk create the SDK resolves logical names from entity set metadata.
 
 ## Contributing
 
