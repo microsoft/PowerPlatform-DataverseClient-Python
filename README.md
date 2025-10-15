@@ -7,6 +7,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
 - Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
+- Upload files — Call `upload_file(entity_set, ...)` and a upload method will be auto picked (user can also overwrite the upload mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
 - Auth — Azure Identity (`TokenCredential`) injection.
@@ -19,6 +20,7 @@ A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Found
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
 - Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(entity_set, ids, patch|patches)`; returns nothing.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
+- Upload files, using either a single request (supports file size up to 128 MB) or chunk upload under the hood
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
 Auth:
@@ -102,6 +104,8 @@ The quickstart demonstrates:
 - Bulk update via unified `update` (multi-ID broadcast & per‑record patches)
 - Retrieve multiple with paging (`$top` vs `page_size`)
 - Executing a read-only SQL query (Web API `?sql=`)
+
+For upload files functionalities, run quickstart_file_upload.py instead
 
 ## Examples
 
@@ -196,6 +200,19 @@ Bulk create notes:
 - Single-record `create` returns a one-element list of GUIDs.
 - Metadata lookup for `@odata.type` is performed once per entity set (cached in-memory).
 
+## File upload
+
+```python
+client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf')
+
+client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf', mode='chunk', if_none_match=True)
+
+```
+
+Notes:
+- upload_file picks one of the three methods to use based on file size: if file is less than 128 MB uses upload_file_small, otherwise uses upload_file_chunk
+- upload_file_small makes a single Web API call and only supports file size < 128 MB
+- upload_file_chunk uses PATCH with Content-Range to upload the file (more aligned with HTTP standard compared to Dataverse messages). It consists of 2 stages 1. PATCH request to get the headers used for actual upload. 2. Actual upload in chunks. It uses x-ms-chunk-size returned in the first stage to determine chunk size (normally 4 MB), and use Content-Range and Content-Length as metadata for the upload. Total number of Web API calls is number of chunks + 1
 
 ## Retrieve multiple with paging
 

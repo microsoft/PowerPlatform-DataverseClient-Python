@@ -245,6 +245,58 @@ class DataverseClient:
         """
         return self._get_odata()._list_tables()
 
+    # File upload
+    def upload_file(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+        path: str,
+        mode: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        if_none_match: bool = True,
+    ) -> None:
+        """Upload a file to a Dataverse file column with automatic method selection.
+
+        Parameters
+        ----------
+        entity_set : str
+            Target entity set (plural logical name), e.g. "accounts".
+        record_id : str
+            GUID of the target record.
+        file_name_attribute : str
+            Logical name of the file column attribute.
+        path : str
+            Local filesystem path to the file. Stored filename will be the basename of this path.
+        mode : str | None, keyword-only, optional
+            Upload strategy: "auto" (default), "block", "small", or "chunk".
+            - "auto": Automatically selects best method based on file size
+            - "small": Single PATCH request (files <128MB only)
+            - "chunk": Streaming chunked upload (any size, most efficient for large files)
+        mime_type : str | None, keyword-only, optional
+            Explicit MIME type to persist with the file (e.g. "application/pdf"). If omitted the
+            lower-level client attempts to infer from the filename extension and falls back to
+            ``application/octet-stream``.
+        if_none_match : bool, keyword-only, optional
+            When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
+            currently empty. Set False to always overwrite (uses ``If-Match: *``).
+            Used for "small" and "chunk" modes only.
+
+        Returns
+        -------
+        None
+            Returns nothing on success. Raises on failure.
+        """
+        self._get_odata().upload_file(
+            entity_set,
+            record_id,
+            file_name_attribute,
+            path,
+            mode=mode,
+            mime_type=mime_type,
+            if_none_match=if_none_match,
+        )
+        return None
 
 __all__ = ["DataverseClient"]
 

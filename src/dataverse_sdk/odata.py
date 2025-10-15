@@ -5,12 +5,13 @@ import re
 import json
 
 from .http import HttpClient
+from .odata_upload_files import ODataFileUpload
 
 
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
-class ODataClient:
+class ODataClient(ODataFileUpload):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     @staticmethod
