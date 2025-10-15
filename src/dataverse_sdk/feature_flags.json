@@ -1,0 +1,6 @@
+{
+  "option_set_label_conversion": {
+    "default": false,
+    "description": "Convert option set label strings to their integer values using metadata. Enable when data includes option set."
+  }
+}

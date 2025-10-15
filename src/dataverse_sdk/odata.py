@@ -6,6 +6,7 @@ import unicodedata
 import time
 import re
 import json
+import importlib.resources as ir
 
 from .http import HttpClient
 
@@ -21,7 +22,13 @@ class ODataClient:
         """Escape single quotes for OData queries (by doubling them)."""
         return value.replace("'", "''")
 
-    def __init__(self, auth, base_url: str, config=None) -> None:
+    def __init__(
+        self,
+        auth,
+        base_url: str,
+        config=None,
+        feature_flags: Optional[Dict[str, bool]] = None,
+    ) -> None:
         self.auth = auth
         self.base_url = (base_url or "").rstrip("/")
         if not self.base_url:
@@ -41,8 +48,75 @@ class ODataClient:
         self._entityset_primaryid_cache: dict[str, str] = {}
         # Cache: logical name -> primary id attribute
         self._logical_primaryid_cache: dict[str, str] = {}
-        # Cache: (logical_name, attribute_logical) -> {normalized_label: option_value}
+        # Picklist label cache: (logical_name, attribute_logical) -> {'map': {...}, 'ts': epoch_seconds}
         self._picklist_label_cache = {}
+        self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
+        # Load required feature flags from bundled JSON resource; fail hard if missing or invalid.
+        try:
+            data = ir.files("dataverse_sdk").joinpath("feature_flags.json").read_text(encoding="utf-8")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load feature_flags.json resource: {e}") from e
+        try:
+            loaded = json.loads(data) if data else {}
+        except Exception as e:
+            raise RuntimeError(f"feature_flags.json is not valid JSON: {e}") from e
+        if not isinstance(loaded, dict):
+            raise RuntimeError("feature_flags.json root must be a JSON object mapping feature -> (bool | object)")
+
+        self._features: Dict[str, bool] = {}
+        self._feature_metadata: Dict[str, Dict[str, Any]] = {}
+
+        for raw_key, raw_val in loaded.items():
+            # Enforce key type and non-empty constraint
+            if not isinstance(raw_key, str):
+                raise RuntimeError(f"feature_flags.json key '{raw_key}' is not a string")
+            key = raw_key.strip().lower()
+            if not key:
+                raise RuntimeError("feature_flags.json contains an empty feature name")
+            # Object form with strict schema: { "default": bool, "description": str }
+            if isinstance(raw_val, dict):
+                required_keys = {"default", "description"}
+                unknown = set(raw_val.keys()) - required_keys
+                if unknown:
+                    raise RuntimeError(
+                        f"Feature '{raw_key}' has unknown metadata keys: {', '.join(sorted(unknown))}. Allowed: default, description"
+                    )
+                missing = required_keys - set(raw_val.keys())
+                if missing:
+                    raise RuntimeError(
+                        f"Feature '{raw_key}' object missing required key(s): {', '.join(sorted(missing))} (requires: default, description)"
+                    )
+                if not isinstance(raw_val["default"], bool):
+                    raise RuntimeError(f"Feature '{raw_key}' field 'default' must be boolean")
+                desc = raw_val["description"]
+                if not isinstance(desc, str) or not desc.strip():
+                    raise RuntimeError(f"Feature '{raw_key}' field 'description' must be a non-empty string")
+                self._features[key] = raw_val["default"]
+                self._feature_metadata[key] = {"description": desc.strip()}
+                continue
+            # Any other type is invalid
+            raise RuntimeError(
+                f"Feature '{raw_key}' must be an object with 'default' (bool) and required 'description' (non-empty str)"
+            )
+
+        # Overlay user overrides (if supplied). Overrides must:
+        #   - use existing feature names declared in feature_flags.json
+        #   - provide boolean values only (no coercion of truthy/falsy non-bools)
+        #   - use non-empty string keys
+        if isinstance(feature_flags, dict):
+            for k, v in feature_flags.items():
+                if not isinstance(k, str) or not k.strip():
+                    raise ValueError("feature_flags override keys must be non-empty strings")
+                norm = k.strip().lower()
+                if norm not in self._features:
+                    raise ValueError(
+                        f"Unknown feature flag override '{k}' (not declared in feature_flags.json)"
+                    )
+                if not isinstance(v, bool):
+                    raise ValueError(
+                        f"Override value for feature '{k}' must be boolean (got {type(v).__name__})"
+                    )
+                self._features[norm] = v
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -769,15 +843,18 @@ class ODataClient:
     def _optionset_map(self, entity_set: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
 
-        Returns None if attribute is not a picklist or no options available.
+        Returns empty dict if attribute is not a picklist or has no options. Returns None only
+        for invalid inputs or unexpected metadata parse failures.
         """
         if not entity_set or not attr_logical:
             return None
         logical = self._logical_from_entity_set(entity_set)
         cache_key = (logical, attr_logical.lower())
-        if cache_key in self._picklist_label_cache:
-            # Empty dict cached => known non-picklist (negative cache sentinel)
-            return self._picklist_label_cache[cache_key]
+        now = time.time()
+        entry = self._picklist_label_cache.get(cache_key)
+        if isinstance(entry, dict) and 'map' in entry and (now - entry.get('ts', 0)) < self._picklist_cache_ttl_seconds:
+            return entry['map']
+
         attr_esc = self._escape_odata_quotes(attr_logical)
         logical_esc = self._escape_odata_quotes(logical)
 
@@ -808,9 +885,8 @@ class ODataClient:
             return None
         attr_md = items[0]
         if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
-            # Negative cache sentinel: attribute confirmed not a picklist; avoid future metadata calls
-            self._picklist_label_cache[cache_key] = {}
-            return self._picklist_label_cache[cache_key]
+            self._picklist_label_cache[cache_key] = {'map': {}, 'ts': now}
+            return {}
 
         # Step 2: fetch with expand only now that we know it's a picklist
         # Need to cast to the derived PicklistAttributeMetadata type; OptionSet is not a nav on base AttributeMetadata.
@@ -856,9 +932,11 @@ class ODataClient:
                             normalized = self._normalize_picklist_label(lab)
                             mapping.setdefault(normalized, val)
         if mapping:
-            self._picklist_label_cache[cache_key] = mapping
+            self._picklist_label_cache[cache_key] = {'map': mapping, 'ts': now}
             return mapping
-        return None
+        # No options available
+        self._picklist_label_cache[cache_key] = {'map': {}, 'ts': now}
+        return {}
 
     def _convert_labels_to_ints(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
@@ -866,6 +944,9 @@ class ODataClient:
         Heuristic: For each string value, attempt to resolve against picklist metadata.
         If attribute isn't a picklist or label not found, value left unchanged.
         """
+        # Fast-path: feature disabled (default). Return original record without copy to avoid overhead.
+        if not self.is_feature_enabled("option_set_label_conversion"):
+            return record
         out = record.copy()
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
@@ -1040,3 +1121,50 @@ class ODataClient:
             "metadata_id": metadata_id,
             "columns_created": created_cols,
         }
+
+    # ---------------------- Cache maintenance -------------------------
+    def _flush_cache(
+        self,
+        kind,
+    ) -> int:
+        """Flush cached client metadata/state.
+
+        Currently supported kinds:
+          - 'picklist': clears entries from the picklist label cache used by label -> int conversion.
+
+        Parameters
+        ----------
+        kind : str
+            Cache kind to flush. Only 'picklist' is implemented today. Future kinds
+            (e.g. 'entityset', 'primaryid') can be added without breaking the signature.
+
+        Returns
+        -------
+        int
+            Number of cache entries removed.
+
+        """
+        k = (kind or "").strip().lower()
+        if k != "picklist":
+            raise ValueError(f"Unsupported cache kind '{kind}' (only 'picklist' is implemented)")
+
+        removed = len(self._picklist_label_cache)
+        self._picklist_label_cache.clear()
+        return removed
+
+    # ---------------------- Feature flags / toggles --------------------
+    def set_feature(self, name: str, enabled: bool) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Feature name must be a non-empty string")
+        self._features[name.strip().lower()] = bool(enabled)
+
+    def enable_feature(self, name: str) -> None:
+        self.set_feature(name, True)
+
+    def disable_feature(self, name: str) -> None:
+        self.set_feature(name, False)
+
+    def is_feature_enabled(self, name: str) -> bool:
+        if not isinstance(name, str):
+            return False
+        return bool(self._features.get(name.strip().lower()))

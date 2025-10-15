@@ -42,6 +42,7 @@ class DataverseClient:
         base_url: str,
         credential: Optional[TokenCredential] = None,
         config: Optional[DataverseConfig] = None,
+        feature_flags: Optional[Dict[str, bool]] = None,
     ) -> None:
         self.auth = AuthManager(credential)
         self._base_url = (base_url or "").rstrip("/")
@@ -49,6 +50,7 @@ class DataverseClient:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
         self._odata: Optional[ODataClient] = None
+        self._feature_flags = dict(feature_flags) if isinstance(feature_flags, dict) else None
 
     def _get_odata(self) -> ODataClient:
         """Get or create the internal OData client instance.
@@ -59,7 +61,12 @@ class DataverseClient:
             The lazily-initialized low-level client used to perform requests.
         """
         if self._odata is None:
-            self._odata = ODataClient(self.auth, self._base_url, self._config)
+            self._odata = ODataClient(
+                self.auth,
+                self._base_url,
+                self._config,
+                feature_flags=self._feature_flags,
+            )
         return self._odata
 
     # ---------------- Unified CRUD: create/update/delete ----------------
@@ -248,6 +255,39 @@ class DataverseClient:
         """
         return self._get_odata()._list_tables()
 
+    # ---------------------- Cache utilities ----------------------
+    def flush_cache(self, kind) -> int:
+        """Flush cached client metadata/state.
+
+        Currently supported kinds:
+          - 'picklist': clears entries from the picklist label cache used by label -> int conversion.
+
+        Parameters
+        ----------
+        kind : str
+            Cache kind to flush. Only 'picklist' is implemented today. Future kinds
+            (e.g. 'entityset', 'primaryid') can be added without breaking the signature.
+
+        Returns
+        -------
+        int
+            Number of cache entries removed.
+
+        """
+        return self._get_odata()._flush_cache(kind)
+
+    # ---------------------- Feature flags / toggles ----------------------
+    def set_feature(self, name: str, enabled: bool) -> None:
+        self._get_odata().set_feature(name, enabled)
+        
+    def enable_feature(self, name: str) -> None:
+        self.set_feature(name, True)
+
+    def disable_feature(self, name: str) -> None:
+        self.set_feature(name, False)
+
+    def is_feature_enabled(self, name: str) -> bool:
+        return self._get_odata().is_feature_enabled(name)
 
 __all__ = ["DataverseClient"]
 
