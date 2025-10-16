@@ -54,13 +54,13 @@ class PandasODataClient:
         self._c = odata_client
 
     # ---------------------------- Create ---------------------------------
-    def create_df(self, entity_set: str, record: pd.Series) -> str:
+    def create_df(self, logical_name: str, record: pd.Series) -> str:
         """Create a single record from a pandas Series and return the GUID.
 
         Parameters
         ----------
-        entity_set : str
-            Target Dataverse entity set name (entity set logical plural).
+        logical_name : str
+            Logical (singular) entity name, e.g. "account".
         record : pandas.Series
             Series whose index labels are field logical names.
 
@@ -72,19 +72,19 @@ class PandasODataClient:
         if not isinstance(record, pd.Series):
             raise TypeError("record must be a pandas Series")
         payload = {k: v for k, v in record.items()}
-        created_ids = self._c.create(entity_set, payload)
+        created_ids = self._c.create(logical_name, payload)
         if not isinstance(created_ids, list) or len(created_ids) != 1 or not isinstance(created_ids[0], str):
             raise RuntimeError("Unexpected create return shape (expected single-element list of GUID str)")
         return created_ids[0]
 
     # ---------------------------- Update ---------------------------------
-    def update(self, entity_set: str, record_id: str, entity_data: pd.Series) -> None:
+    def update(self, logical_name: str, record_id: str, entity_data: pd.Series) -> None:
         """Update a single record (returns None).
 
         Parameters
         ----------
-        entity_set : str
-            Target Dataverse entity set name (plural logical name).
+        logical_name : str
+            Logical (singular) entity name.
         record_id : str
             GUID of the record to update.
         entity_data : pandas.Series
@@ -103,16 +103,39 @@ class PandasODataClient:
         payload = {k: v for k, v in entity_data.items()}
         if not payload:
             return  # nothing to send
-        self._c.update(entity_set, record_id, payload)
+        self._c.update(logical_name, record_id, payload)
 
     # ---------------------------- Delete ---------------------------------
-    def delete_ids(self, entity_set: str, record_id: str) -> None:
-        """Delete a collection of record IDs.
+    def delete_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index) -> pd.DataFrame:
+        """Delete a collection of record IDs and return a summary DataFrame.
+
+        Parameters
+        ----------
+        logical_name : str
+            Logical (singular) entity name.
+        ids : sequence[str] | pandas.Series | pandas.Index
+            Collection of GUIDs to delete.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns: id, success (bool), error (str nullable)
         """
-        self._c.delete(entity_set, record_id)
+        if isinstance(ids, (pd.Series, pd.Index)):
+            id_list = [str(x) for x in ids.tolist()]
+        else:
+            id_list = [str(x) for x in ids]
+        results = []
+        for rid in id_list:
+            try:
+                self._c.delete(logical_name, rid)
+                results.append({"id": rid, "success": True, "error": None})
+            except Exception as e:  # noqa: BLE001
+                results.append({"id": rid, "success": False, "error": str(e)})
+        return pd.DataFrame(results)
 
     # ------------------------------ Get ----------------------------------
-    def get_ids(self, entity_set: str, ids: Sequence[str] | pd.Series | pd.Index, select: Optional[Iterable[str]] = None) -> pd.DataFrame:
+    def get_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index, select: Optional[Iterable[str]] = None) -> pd.DataFrame:
         """Fetch multiple records by ID and return a DataFrame.
 
         Missing records are included with NaN for fields and an error column entry.
@@ -123,9 +146,15 @@ class PandasODataClient:
             id_list = [str(x) for x in ids]
         rows = []
         any_errors = False
+        select_arg = None
+        if select:
+            # ensure iterable of strings -> list -> join
+            select_list = [str(c) for c in select]
+            if select_list:
+                select_arg = ",".join(select_list)
         for rec_id in id_list:
             try:
-                data = self._c.get(entity_set, rec_id, select=",".join(select) if select else None)
+                data = self._c.get(logical_name, rec_id, select=select_arg)
                 rows.append(data)
             except Exception as e:  # noqa: BLE001
                 any_errors = True

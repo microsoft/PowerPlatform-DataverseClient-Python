@@ -3,11 +3,11 @@
 A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
-- OData CRUD — Unified methods `create(entity, record|records)`, `update(entity, id|ids, patch|patches)`, `delete(entity, id|ids)` plus `get` / `get_multiple`.
+- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` / `get_multiple`.
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
 - Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
 - Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
-- Upload files — Call `upload_file(entity_set, ...)` and a upload method will be auto picked (user can also overwrite the upload mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
+- Upload files — Call `upload_file(logical_name, ...)` and an upload method will be auto picked (you can override the mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
 - Auth — Azure Identity (`TokenCredential`) injection.
@@ -17,8 +17,8 @@ A Python package allowing developers to connect to Dataverse environments for DD
 - Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
 - SQL-over-API: Constrained SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
 - Table metadata ops: create simple custom tables (supports string/int/decimal/float/datetime/bool/optionset) and delete them.
-- Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(entity_set, payloads)`; returns list of created IDs.
-- Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(entity_set, ids, patch|patches)`; returns nothing.
+- Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(logical_name, payloads)`; returns list of created IDs.
+- Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(logical_name, ids, patch|patches)`; returns nothing.
 - Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
 - Upload files, using either a single request (supports file size up to 128 MB) or chunk upload under the hood
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
@@ -32,23 +32,23 @@ Auth:
 
 | Method | Signature (simplified) | Returns | Notes |
 |--------|------------------------|---------|-------|
-| `create` | `create(entity_set, record_dict)` | `list[str]` (len 1) | Single create; GUID from `OData-EntityId`. |
-| `create` | `create(entity_set, list[record_dict])` | `list[str]` | Uses `CreateMultiple`; stamps `@odata.type` if missing. |
-| `get` | `get(entity_set, id)` | `dict` | One record; supply GUID (with/without parentheses). |
-| `get_multiple` | `get_multiple(entity_set, ..., page_size=None)` | `Iterable[list[dict]]` | Pages yielded (non-empty only). |
-| `update` | `update(entity_set, id, patch)` | `None` | Single update; no representation returned. |
-| `update` | `update(entity_set, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs. Calls UpdateMultiple web API internally. |
-| `update` | `update(entity_set, list[id], list[patch])` | `None` | 1:1 patches; lengths must match. Calls UpdateMultiple web API internally. |
-| `delete` | `delete(entity_set, id)` | `None` | Delete one record. |
-| `delete` | `delete(entity_set, list[id])` | `None` | Delete many (sequential). |
+| `create` | `create(logical_name, record_dict)` | `list[str]` (len 1) | Single create; GUID from `OData-EntityId`. |
+| `create` | `create(logical_name, list[record_dict])` | `list[str]` | Uses `CreateMultiple`; stamps `@odata.type` if missing. |
+| `get` | `get(logical_name, id)` | `dict` | One record; supply GUID (with/without parentheses). |
+| `get_multiple` | `get_multiple(logical_name, ..., page_size=None)` | `Iterable[list[dict]]` | Pages yielded (non-empty only). |
+| `update` | `update(logical_name, id, patch)` | `None` | Single update; no representation returned. |
+| `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
+| `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
+| `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
+| `delete` | `delete(logical_name, list[id])` | `None` | Delete many (sequential). |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
-| `create_table` | `create_table(name, schema)` | `dict` | Creates custom table + columns. |
-| `get_table_info` | `get_table_info(name)` | `dict | None` | Basic table metadata. |
+| `create_table` | `create_table(tablename, schema)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. |
+| `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted (current limitation). |
 | `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
-| `delete_table` | `delete_table(name)` | `None` | Drops custom table. |
-| `PandasODataClient.create_df` | `create_df(entity_set, series)` | `str` | Returns GUID (wrapper). |
-| `PandasODataClient.update` | `update(entity_set, id, series)` | `None` | Ignores empty Series. |
-| `PandasODataClient.get_ids` | `get_ids(entity_set, ids, select=None)` | `DataFrame` | One row per ID (errors inline). |
+| `delete_table` | `delete_table(tablename)` | `None` | Drops custom table. Accepts friendly or schema name; friendly converted to `new_<PascalCase>`. |
+| `PandasODataClient.create_df` | `create_df(logical_name, series)` | `str` | Create one record (returns GUID). |
+| `PandasODataClient.update` | `update(logical_name, id, series)` | `None` | Returns None; ignored if Series empty. |
+| `PandasODataClient.get_ids` | `get_ids(logical_name, ids, select=None)` | `DataFrame` | One row per ID (errors inline). |
 | `PandasODataClient.query_sql_df` | `query_sql_df(sql)` | `DataFrame` | DataFrame for SQL results. |
 
 Guidelines:
@@ -128,30 +128,30 @@ base_url = "https://yourorg.crm.dynamics.com"
 client = DataverseClient(base_url=base_url, credential=DefaultAzureCredential())
 
 # Create (returns list[str] of new GUIDs)
-account_id = client.create("accounts", {"name": "Acme, Inc.", "telephone1": "555-0100"})[0]
+account_id = client.create("account", {"name": "Acme, Inc.", "telephone1": "555-0100"})[0]
 
 # Read
-account = client.get("accounts", account_id)
+account = client.get("account", account_id)
 
 # Update (returns None)
-client.update("accounts", account_id, {"telephone1": "555-0199"})
+client.update("account", account_id, {"telephone1": "555-0199"})
 
 # Bulk update (broadcast) – apply same patch to several IDs
-ids = client.create("accounts", [
+ids = client.create("account", [
 	{"name": "Contoso"},
 	{"name": "Fabrikam"},
 ])
-client.update("accounts", ids, {"telephone1": "555-0200"})  # broadcast patch
+client.update("account", ids, {"telephone1": "555-0200"})  # broadcast patch
 
 # Bulk update (1:1) – list of patches matches list of IDs
-client.update("accounts", ids, [
+client.update("account", ids, [
 	{"telephone1": "555-1200"},
 	{"telephone1": "555-1300"},
 ])
 print({"multi_update": "ok"})
 
 # Delete
-client.delete("accounts", account_id)
+client.delete("account", account_id)
 
 # SQL (read-only) via Web API `?sql=`
 rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
@@ -169,7 +169,7 @@ payloads = [
 	{"name": "Fabrikam"},
 	{"name": "Northwind"},
 ]
-ids = client.create("accounts", payloads)
+ids = client.create("account", payloads)
 assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
 print({"created_ids": ids})
 ```
@@ -180,10 +180,10 @@ Use the unified `update` method for both single and bulk scenarios:
 
 ```python
 # Broadcast
-client.update("accounts", ids, {"telephone1": "555-0200"})
+client.update("account", ids, {"telephone1": "555-0200"})
 
 # 1:1 patches (length must match)
-client.update("accounts", ids, [
+client.update("account", ids, [
 	{"telephone1": "555-1200"},
 	{"telephone1": "555-1300"},
 ])
@@ -216,12 +216,11 @@ Notes:
 
 ## Retrieve multiple with paging
 
-Use `get_multiple(entity_set, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
+Use `get_multiple(logical_name, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
 
 ```python
-# Iterate pages of accounts ordered by name, selecting a few columns
 pages = client.get_multiple(
-	"accounts",
+	"account",
 	select=["accountid", "name", "createdon"],
 	orderby=["name asc"],
 	top=10,          # stop after 10 total rows (optional)
@@ -235,8 +234,8 @@ for page in pages:         # each page is a list[dict]
 print({"total_rows": total})
 ```
 
-Parameters (all optional except `entity_set`)
-- `entity_set`: str — Entity set (plural logical name), e.g., `"accounts"`.
+Parameters (all optional except `logical_name`)
+- `logical_name`: str — Logical (singular) name, e.g., `"account"`.
 - `select`: list[str] | None — Columns -> `$select` (comma joined).
 - `filter`: str | None — OData `$filter` expression (e.g., `contains(name,'Acme') and statecode eq 0`).
 - `orderby`: list[str] | None — Sort expressions -> `$orderby` (comma joined).
@@ -257,7 +256,7 @@ Example (all parameters + expected response)
 
 ```python
 pages = client.get_multiple(
-		"accounts",
+		"account",
 		select=["accountid", "name", "createdon", "primarycontactid"],
 		filter="contains(name,'Acme') and statecode eq 0",
 		orderby=["name asc", "createdon desc"],
@@ -320,7 +319,6 @@ info = client.create_table(
 	},
 )
 
-entity_set = info["entity_set_name"]  # e.g., "new_sampleitems"
 logical = info["entity_logical_name"]  # e.g., "new_sampleitem"
 
 # Create a record in the new table
@@ -329,11 +327,11 @@ prefix = "new"
 name_attr = f"{prefix}_name"
 id_attr = f"{logical}id"
 
-rec = client.create(entity_set, {name_attr: "Sample A"})
+rec_id = client.create(logical, {name_attr: "Sample A"})[0]
 
 # Clean up
-client.delete(entity_set, rec[id_attr])  # delete record
-client.delete_table("SampleItem")        # delete the table
+client.delete(logical, rec_id)          # delete record
+client.delete_table("SampleItem")       # delete table (friendly name or explicit schema new_SampleItem)
 ```
 
 Notes:
@@ -346,7 +344,7 @@ Notes:
 
 ### Pandas helpers
 
-See `examples/quickstart_pandas.py` for a DataFrame workflow via `PandasODataClient`.
+`PandasODataClient` is a thin wrapper around the low-level client. All methods accept logical (singular) names (e.g. `account`, `new_sampleitem`), not entity set (plural) names. See `examples/quickstart_pandas.py` for a DataFrame workflow.
 
 VS Code Tasks
 - Install deps: `Install deps (pip)`
@@ -356,7 +354,6 @@ VS Code Tasks
 - No general-purpose OData batching, upsert, or association operations yet.
 - `DeleteMultiple` not yet exposed.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
-- Entity naming conventions in Dataverse: for bulk create the SDK resolves logical names from entity set metadata.
 
 ## Contributing
 

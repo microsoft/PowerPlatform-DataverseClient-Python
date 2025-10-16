@@ -261,15 +261,15 @@ record_ids: list[str] = []
 
 try:
 	# Single create returns list[str] (length 1)
-	log_call(f"client.create('{entity_set}', single_payload)")
-	single_ids = backoff_retry(lambda: client.create(entity_set, single_payload))
+	log_call(f"client.create('{logical}', single_payload)")
+	single_ids = backoff_retry(lambda: client.create(logical, single_payload))
 	if not (isinstance(single_ids, list) and len(single_ids) == 1):
 		raise RuntimeError("Unexpected single create return shape (expected one-element list)")
 	record_ids.extend(single_ids)
 
 	# Multi create returns list[str]
-	log_call(f"client.create('{entity_set}', multi_payloads)")
-	multi_ids = backoff_retry(lambda: client.create(entity_set, multi_payloads))
+	log_call(f"client.create('{logical}', multi_payloads)")
+	multi_ids = backoff_retry(lambda: client.create(logical, multi_payloads))
 	if isinstance(multi_ids, list):
 		record_ids.extend([mid for mid in multi_ids if isinstance(mid, str)])
 	else:
@@ -301,8 +301,8 @@ try:
 	if record_ids:
 		# Read only the first record and move on
 		target = record_ids[0]
-		log_call(f"client.get('{entity_set}', '{target}')")
-		rec = backoff_retry(lambda: client.get(entity_set, target))
+		log_call(f"client.get('{logical}', '{target}')")
+		rec = backoff_retry(lambda: client.get(logical, target))
 		print_line_summaries("Read record summary:", [{"id": target, **summary_from_record(rec)}])
 	else:
 		raise RuntimeError("No record created; skipping read.")
@@ -348,10 +348,10 @@ try:
 	pause("Execute Update")
 
 	# Update only the chosen record and summarize
-	log_call(f"client.update('{entity_set}', '{target_id}', update_data)")
+	log_call(f"client.update('{logical}', '{target_id}', update_data)")
 	# Perform update (returns None); follow-up read to verify
-	backoff_retry(lambda: client.update(entity_set, target_id, update_data))
-	verify_rec = backoff_retry(lambda: client.get(entity_set, target_id))
+	backoff_retry(lambda: client.update(logical, target_id, update_data))
+	verify_rec = backoff_retry(lambda: client.get(logical, target_id))
 	for k, v in expected_checks.items():
 		assert verify_rec.get(k) == v, f"Field {k} expected {v}, got {verify_rec.get(k)}"
 	got = verify_rec.get(amount_key)
@@ -376,16 +376,16 @@ try:
 				id_key: rid,
 				count_key: 100 + idx,  # new count values
 			})
-		log_call(f"client.update('{entity_set}', <{len(bulk_updates)} ids>, <patches>)")
+		log_call(f"client.update('{logical}', <{len(bulk_updates)} ids>, <patches>)")
 		# Unified update handles multiple via list of patches (returns None)
-		backoff_retry(lambda: client.update(entity_set, subset, bulk_updates))
+		backoff_retry(lambda: client.update(logical, subset, bulk_updates))
 		print({"bulk_update_requested": len(bulk_updates), "bulk_update_completed": True})
 		# Verify the updated count values by refetching the subset
 		verification = []
 		# Small delay to reduce risk of any brief replication delay
 		time.sleep(1)
 		for rid in subset:
-			rec = backoff_retry(lambda rid=rid: client.get(entity_set, rid))
+			rec = backoff_retry(lambda rid=rid: client.get(logical, rid))
 			verification.append({
 				"id": rid,
 				"count": rec.get(count_key),
@@ -443,7 +443,7 @@ def run_paging_demo(label: str, *, top: Optional[int], page_size: Optional[int])
 	_select = [id_key, code_key, amount_key, when_key, status_key]
 	_orderby = [f"{code_key} asc"]
 	for page in client.get_multiple(
-		entity_set,
+		logical,
 		select=_select,
 		filter=None,
 		orderby=_orderby,
@@ -496,15 +496,15 @@ pause("Execute Delete (concurrent SDK calls)")
 try:
 	if record_ids:
 		max_workers = min(8, len(record_ids))
-		log_call(f"concurrent delete {len(record_ids)} items from '{entity_set}' (workers={max_workers})")
+		log_call(f"concurrent delete {len(record_ids)} items from '{logical}' (workers={max_workers})")
 
 		successes: list[str] = []
 		failures: list[dict] = []
 
 		def _del_one(rid: str) -> tuple[str, bool, str | None]:
 			try:
-				log_call(f"client.delete('{entity_set}', '{rid}')")
-				backoff_retry(lambda: client.delete(entity_set, rid))
+				log_call(f"client.delete('{logical}', '{rid}')")
+				backoff_retry(lambda: client.delete(logical, rid))
 				return (rid, True, None)
 			except Exception as ex:
 				return (rid, False, str(ex))
