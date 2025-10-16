@@ -125,8 +125,6 @@ class ODataClient(ODataFileUpload):
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    # Removed _logical_from_entity_set: public surface now exclusively uses logical names.
-
     def _create_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> List[str]:
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
@@ -174,14 +172,18 @@ class ODataClient(ODataFileUpload):
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, logical_name: str) -> str:
-        """Return primary key attribute using metadata (fallback to <logical_name>id)."""
+        """Return primary key attribute using metadata; error if unavailable."""
         pid = self._logical_primaryid_cache.get(logical_name)
         if pid:
             return pid
-        # Resolve metadata (populates _logical_primaryid_cache)
+        # Resolve metadata (populates _logical_primaryid_cache or raises if logical unknown)
         self._entity_set_from_logical(logical_name)
         pid2 = self._logical_primaryid_cache.get(logical_name)
-        return pid2 or f"{logical_name}id"
+        if pid2:
+            return pid2
+        raise RuntimeError(
+            f"PrimaryIdAttribute not resolved for logical name '{logical_name}'. Metadata did not include PrimaryIdAttribute."
+        )
 
     def _update_by_ids(self, logical_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
         """Update many records by GUID list using UpdateMultiple under the hood.
@@ -518,10 +520,6 @@ class ODataClient(ODataFileUpload):
         """
         if not logical:
             raise ValueError("logical name required")
-        # Heuristic: warn if caller passed a plural (common mistake after logical_name pivot)
-        if logical.endswith("s") and not logical.endswith("ss"):
-            # Soft validation: if lookup fails we will raise a descriptive error below.
-            pass
         cached = self._logical_to_entityset_cache.get(logical)
         if cached:
             return cached
@@ -581,7 +579,6 @@ class ODataClient(ODataFileUpload):
         r.raise_for_status()
         items = r.json().get("value", [])
         return items[0] if items else None
-
 
     def _create_entity(self, schema_name: str, display_name: str, attributes: List[Dict[str, Any]]) -> str:
         url = f"{self.api}/EntityDefinitions"
