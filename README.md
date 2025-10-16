@@ -1,6 +1,6 @@
-# Dataverse SDK (Python) — Proof of Concept
+# Dataverse SDK for Python
 
-A minimal Python SDK to use Microsoft Dataverse as a database for Azure AI Foundry–style apps.
+A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
 - OData CRUD — Unified methods `create(entity, record|records)`, `update(entity, id|ids, patch|patches)`, `delete(entity, id|ids)` plus `get` / `get_multiple`.
