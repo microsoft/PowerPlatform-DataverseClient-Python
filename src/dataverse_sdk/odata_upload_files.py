@@ -43,9 +43,6 @@ class ODataFileUpload:
             Local filesystem path to the file.
         mode : str | None
             Upload strategy: "auto" (default), "small", or "chunk".
-            - "auto": Automatically selects based on size
-            - "small": Single PATCH request (files <128MB only)
-            - "chunk": Streaming chunked upload (any size)
         mime_type : str | None
             Explicit MIME type. If omitted falls back to application/octet-stream.
         if_none_match : bool

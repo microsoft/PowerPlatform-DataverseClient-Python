@@ -40,13 +40,9 @@ class ODataClient(ODataFileUpload):
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
         )
-        # Cache: entity set name -> logical name (resolved via metadata lookup)
-        self._entityset_logical_cache = {}
-        # Cache: logical name -> entity set name (reverse lookup for SQL endpoint)
+        # Cache: logical name -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
-        # Cache: entity set name -> primary id attribute (metadata PrimaryIdAttribute)
-        self._entityset_primaryid_cache: dict[str, str] = {}
-        # Cache: logical name -> primary id attribute
+        # Cache: logical name -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
         # Picklist label cache: (logical_name, attribute_logical) -> {'map': {...}, 'ts': epoch_seconds}
         self._picklist_label_cache = {}
@@ -68,46 +64,47 @@ class ODataClient(ODataFileUpload):
         return self._http.request(method, url, **kwargs)
 
     # ----------------------------- CRUD ---------------------------------
-    def _create(self, entity_set: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[str, List[str]]:
-        """Create one or many records.
+    def _create(self, logical_name: str, data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[str, List[str]]:
+        """Create one or many records by logical (singular) name.
 
         Parameters
         ----------
-        entity_set : str
-            Entity set (plural logical name), e.g. "accounts".
+        logical_name : str
+            Logical (singular) entity name, e.g. "account".
         data : dict | list[dict]
             Single entity payload or list of payloads for batch create.
 
         Behaviour
         ---------
+        - Resolves entity set once per call via metadata (cached) then issues requests.
         - Single (dict): POST /{entity_set}. Returns GUID string (no representation fetched).
         - Multiple (list[dict]): POST /{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple. Returns list[str] of created GUIDs.
 
         Multi-create logical name resolution
         ------------------------------------
-        - If any payload omits ``@odata.type`` the client performs a metadata lookup (once per entity set, cached)
-          to resolve the logical name and stamps ``Microsoft.Dynamics.CRM.<logical>`` into missing payloads.
-        - If all payloads already include ``@odata.type`` no lookup or modification occurs.
+        - If any payload omits ``@odata.type`` the client stamps ``Microsoft.Dynamics.CRM.<logical_name>``.
+        - If all payloads already include ``@odata.type`` no modification occurs.
 
         Returns
         -------
         str | list[str]
             Created record GUID (single) or list of created IDs (multi).
         """
+        entity_set = self._entity_set_from_logical(logical_name)
         if isinstance(data, dict):
-            return self._create_single(entity_set, data)
+            return self._create_single(entity_set, logical_name, data)
         if isinstance(data, list):
-            return self._create_multiple(entity_set, data)
+            return self._create_multiple(entity_set, logical_name, data)
         raise TypeError("data must be dict or list[dict]")
 
     # --- Internal helpers ---
-    def _create_single(self, entity_set: str, record: Dict[str, Any]) -> str:
+    def _create_single(self, entity_set: str, logical_name: str, record: Dict[str, Any]) -> str:
         """Create a single record and return its GUID.
 
         Relies on OData-EntityId (canonical) or Location header. No response body parsing is performed.
         Raises RuntimeError if neither header contains a GUID.
         """
-        record = self._convert_labels_to_ints(entity_set, record)
+        record = self._convert_labels_to_ints(logical_name, record)
         url = f"{self.api}/{entity_set}"
         headers = self._headers().copy()
         r = self._request("post", url, headers=headers, json=record)
@@ -128,56 +125,18 @@ class ODataClient(ODataFileUpload):
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    def _logical_from_entity_set(self, entity_set: str) -> str:
-        """Resolve logical name from an entity set using metadata (cached)."""
-        es = (entity_set or "").strip()
-        if not es:
-            raise ValueError("entity_set is required")
-        cached = self._entityset_logical_cache.get(es)
-        if cached:
-            return cached
-        url = f"{self.api}/EntityDefinitions"
-        # Escape single quotes in entity set name
-        es_escaped = self._escape_odata_quotes(es)
-        params = {
-            "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
-            "$filter": f"EntitySetName eq '{es_escaped}'",
-        }
-        r = self._request("get", url, headers=self._headers(), params=params)
-        r.raise_for_status()
-        try:
-            body = r.json()
-            items = body.get("value", []) if isinstance(body, dict) else []
-        except ValueError:
-            items = []
-        if not items:
-            raise RuntimeError(f"Unable to resolve logical name for entity set '{es}'. Provide @odata.type explicitly.")
-        md = items[0]
-        logical = md.get("LogicalName")
-        if not logical:
-            raise RuntimeError(f"Metadata response missing LogicalName for entity set '{es}'.")
-        primary_id_attr = md.get("PrimaryIdAttribute")
-        self._entityset_logical_cache[es] = logical
-        if isinstance(primary_id_attr, str) and primary_id_attr:
-            self._entityset_primaryid_cache[es] = primary_id_attr
-            self._logical_primaryid_cache[logical] = primary_id_attr
-        return logical
-
-    def _create_multiple(self, entity_set: str, records: List[Dict[str, Any]]) -> List[str]:
+    def _create_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> List[str]:
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
         need_logical = any("@odata.type" not in r for r in records)
-        logical: Optional[str] = None
-        if need_logical:
-            logical = self._logical_from_entity_set(entity_set)
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            r = self._convert_labels_to_ints(entity_set, r)
-            if "@odata.type" in r or not logical:
+            r = self._convert_labels_to_ints(logical_name, r)
+            if "@odata.type" in r or not need_logical:
                 enriched.append(r)
             else:
                 nr = r.copy()
-                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical}"
+                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
                 enriched.append(nr)
         payload = {"Targets": enriched}
         # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
@@ -212,24 +171,27 @@ class ODataClient(ODataFileUpload):
         return []
 
     # --- Derived helpers for high-level client ergonomics ---
-    def _primary_id_attr(self, entity_set: str) -> str:
-        """Return primary key attribute using metadata (fallback to <logical>id)."""
-        pid = self._entityset_primaryid_cache.get(entity_set)
+    def _primary_id_attr(self, logical_name: str) -> str:
+        """Return primary key attribute using metadata; error if unavailable."""
+        pid = self._logical_primaryid_cache.get(logical_name)
         if pid:
             return pid
-        logical = self._logical_from_entity_set(entity_set)
-        pid = self._entityset_primaryid_cache.get(entity_set) or self._logical_primaryid_cache.get(logical)
-        if pid:
-            return pid
-        return f"{logical}id"
+        # Resolve metadata (populates _logical_primaryid_cache or raises if logical unknown)
+        self._entity_set_from_logical(logical_name)
+        pid2 = self._logical_primaryid_cache.get(logical_name)
+        if pid2:
+            return pid2
+        raise RuntimeError(
+            f"PrimaryIdAttribute not resolved for logical name '{logical_name}'. Metadata did not include PrimaryIdAttribute."
+        )
 
-    def _update_by_ids(self, entity_set: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
+    def _update_by_ids(self, logical_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
         """Update many records by GUID list using UpdateMultiple under the hood.
 
         Parameters
         ----------
-        entity_set : str
-            Entity set (plural logical name).
+        logical_name : str
+            Logical name (singular).
         ids : list[str]
             GUIDs of target records.
         changes : dict | list[dict]
@@ -239,10 +201,11 @@ class ODataClient(ODataFileUpload):
             raise TypeError("ids must be list[str]")
         if not ids:
             return None
-        pk_attr = self._primary_id_attr(entity_set)
+        pk_attr = self._primary_id_attr(logical_name)
+        entity_set = self._entity_set_from_logical(logical_name)
         if isinstance(changes, dict):
             batch = [{pk_attr: rid, **changes} for rid in ids]
-            self._update_multiple(entity_set, batch)
+            self._update_multiple(entity_set, logical_name, batch)
             return None
         if not isinstance(changes, list):
             raise TypeError("changes must be dict or list[dict]")
@@ -253,15 +216,15 @@ class ODataClient(ODataFileUpload):
             if not isinstance(patch, dict):
                 raise TypeError("Each patch must be a dict")
             batch.append({pk_attr: rid, **patch})
-        self._update_multiple(entity_set, batch)
+        self._update_multiple(entity_set, logical_name, batch)
         return None
 
-    def _delete_multiple(self, entity_set: str, ids: List[str]) -> None:
+    def _delete_multiple(self, logical_name: str, ids: List[str]) -> None:
         """Delete many records by GUID list (simple loop; potential future optimization point)."""
         if not isinstance(ids, list):
             raise TypeError("ids must be list[str]")
         for rid in ids:
-            self.delete(entity_set, rid)
+            self._delete(logical_name, rid)
         return None
 
     def _format_key(self, key: str) -> str:
@@ -279,13 +242,13 @@ class ODataClient(ODataFileUpload):
             return f"({k})"
         return f"({k})"
 
-    def _update(self, entity_set: str, key: str, data: Dict[str, Any]) -> None:
+    def _update(self, logical_name: str, key: str, data: Dict[str, Any]) -> None:
         """Update an existing record.
 
         Parameters
         ----------
-        entity_set : str
-            Entity set name (plural logical name).
+        logical_name : str
+            Logical (singular) entity name.
         key : str
             Record GUID (with or without parentheses) or alternate key.
         data : dict
@@ -295,20 +258,23 @@ class ODataClient(ODataFileUpload):
         -------
         None
         """
-        data = self._convert_labels_to_ints(entity_set, data)
+        data = self._convert_labels_to_ints(logical_name, data)
+        entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         headers = self._headers().copy()
         headers["If-Match"] = "*"
         r = self._request("patch", url, headers=headers, json=data)
         r.raise_for_status()
 
-    def _update_multiple(self, entity_set: str, records: List[Dict[str, Any]]) -> None:
+    def _update_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound UpdateMultiple action.
 
         Parameters
         ----------
         entity_set : str
-            Entity set (plural logical name), e.g. "accounts".
+            Resolved entity set name.
+        logical_name : str
+            Logical (singular) name, e.g. "account".
         records : list[dict]
             Each dict must include the real primary key attribute for the entity (e.g. ``accountid``) and one or more
             fields to update. If ``@odata.type`` is omitted in any payload, the logical name is resolved once and
@@ -335,17 +301,14 @@ class ODataClient(ODataFileUpload):
 
         # Determine whether we need logical name resolution (@odata.type missing in any payload)
         need_logical = any("@odata.type" not in r for r in records)
-        logical: Optional[str] = None
-        if need_logical:
-            logical = self._logical_from_entity_set(entity_set)
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            r = self._convert_labels_to_ints(entity_set, r)
-            if "@odata.type" in r or not logical:
+            r = self._convert_labels_to_ints(logical_name, r)
+            if "@odata.type" in r or not need_logical:
                 enriched.append(r)
             else:
                 nr = r.copy()
-                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical}"
+                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
                 enriched.append(nr)
 
         payload = {"Targets": enriched}
@@ -356,21 +319,22 @@ class ODataClient(ODataFileUpload):
         # Intentionally ignore response content: no stable contract for IDs across environments.
         return None
 
-    def _delete(self, entity_set: str, key: str) -> None:
+    def _delete(self, logical_name: str, key: str) -> None:
         """Delete a record by GUID or alternate key."""
+        entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         headers = self._headers().copy()
         headers["If-Match"] = "*"
         r = self._request("delete", url, headers=headers)
         r.raise_for_status()
 
-    def _get(self, entity_set: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
+    def _get(self, logical_name: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve a single record.
 
         Parameters
         ----------
-        entity_set : str
-            Entity set name.
+        logical_name : str
+            Logical (singular) name.
         key : str
             Record GUID (with or without parentheses) or alternate key syntax.
         select : str | None
@@ -379,6 +343,7 @@ class ODataClient(ODataFileUpload):
         params = {}
         if select:
             params["$select"] = select
+        entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("get", url, headers=self._headers(), params=params)
         r.raise_for_status()
@@ -386,7 +351,7 @@ class ODataClient(ODataFileUpload):
 
     def _get_multiple(
         self,
-        entity_set: str,
+        logical_name: str,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
         orderby: Optional[List[str]] = None,
@@ -398,8 +363,8 @@ class ODataClient(ODataFileUpload):
 
         Parameters
         ----------
-        entity_set : str
-            Entity set name (plural logical name).
+        logical_name : str
+            Logical (singular) entity name.
         select : list[str] | None
             Columns to select; joined with commas into $select.
         filter : str | None
@@ -433,6 +398,7 @@ class ODataClient(ODataFileUpload):
             except ValueError:
                 return {}
 
+        entity_set = self._entity_set_from_logical(logical_name)
         base_url = f"{self.api}/{entity_set}"
         params: Dict[str, Any] = {}
         if select:
@@ -571,7 +537,8 @@ class ODataClient(ODataFileUpload):
         except ValueError:
             items = []
         if not items:
-            raise RuntimeError(f"Unable to resolve entity set for logical name '{logical}'.")
+            plural_hint = " (did you pass a plural entity set name instead of the singular logical name?)" if logical.endswith("s") and not logical.endswith("ss") else ""
+            raise RuntimeError(f"Unable to resolve entity set for logical name '{logical}'. Provide the singular logical name.{plural_hint}")
         md = items[0]
         es = md.get("EntitySetName")
         if not es:
@@ -580,7 +547,6 @@ class ODataClient(ODataFileUpload):
         primary_id_attr = md.get("PrimaryIdAttribute")
         if isinstance(primary_id_attr, str) and primary_id_attr:
             self._logical_primaryid_cache[logical] = primary_id_attr
-            self._entityset_primaryid_cache[es] = primary_id_attr
         return es
 
     # ---------------------- Table metadata helpers ----------------------
@@ -774,7 +740,7 @@ class ODataClient(ODataFileUpload):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
-    def _optionset_map(self, entity_set: str, attr_logical: str) -> Optional[Dict[str, int]]:
+    def _optionset_map(self, logical_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
 
         Returns empty dict if attribute is not a picklist or has no options. Returns None only
@@ -784,17 +750,16 @@ class ODataClient(ODataFileUpload):
         -----
         - This method calls the Web API twice per attribute so it could have perf impact when there are lots of columns on the entity.
         """
-        if not entity_set or not attr_logical:
+        if not logical_name or not attr_logical:
             return None
-        logical = self._logical_from_entity_set(entity_set)
-        cache_key = (logical, attr_logical.lower())
+        cache_key = (logical_name, attr_logical.lower())
         now = time.time()
         entry = self._picklist_label_cache.get(cache_key)
         if isinstance(entry, dict) and 'map' in entry and (now - entry.get('ts', 0)) < self._picklist_cache_ttl_seconds:
             return entry['map']
 
         attr_esc = self._escape_odata_quotes(attr_logical)
-        logical_esc = self._escape_odata_quotes(logical)
+        logical_esc = self._escape_odata_quotes(logical_name)
 
         # Step 1: lightweight fetch (no expand) to determine attribute type
         url_type = (
@@ -813,7 +778,7 @@ class ODataClient(ODataFileUpload):
         if r_type.status_code == 404:
             # After retries we still cannot find the attribute definition – treat as fatal so caller sees a clear error.
             raise RuntimeError(
-                f"Picklist attribute metadata not found after retries: entity='{logical}' attribute='{attr_logical}' (404)"
+                f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
             )
         r_type.raise_for_status()
         
@@ -841,7 +806,7 @@ class ODataClient(ODataFileUpload):
             if attempt < 2:
                 time.sleep(0.4 * (2 ** attempt))  # 0.4s, 0.8s
         if r_opts.status_code == 404:
-            raise RuntimeError(f"Picklist OptionSet metadata not found after retries: entity='{logical}' attribute='{attr_logical}' (404)")
+            raise RuntimeError(f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)")
         r_opts.raise_for_status()
         
         attr_full = {}
@@ -876,7 +841,7 @@ class ODataClient(ODataFileUpload):
         self._picklist_label_cache[cache_key] = {'map': {}, 'ts': now}
         return {}
 
-    def _convert_labels_to_ints(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_labels_to_ints(self, logical_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
@@ -886,7 +851,7 @@ class ODataClient(ODataFileUpload):
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
                 continue
-            mapping = self._optionset_map(entity_set, k)
+            mapping = self._optionset_map(logical_name, k)
             if not mapping:
                 continue
             norm = self._normalize_picklist_label(v)
@@ -1056,7 +1021,6 @@ class ODataClient(ODataFileUpload):
             "metadata_id": metadata_id,
             "columns_created": created_cols,
         }
-
     # ---------------------- Cache maintenance -------------------------
     def _flush_cache(
         self,

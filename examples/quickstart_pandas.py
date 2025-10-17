@@ -102,8 +102,7 @@ else:
 		# Fail fast: all operations must use the custom table
 		sys.exit(1)
 
-entity_set = table_info.get("entity_set_name")
-logical = table_info.get("entity_logical_name") or entity_set.rstrip("s")
+logical = table_info.get("entity_logical_name")
 # Derive attribute logical name prefix from the entity logical name
 attr_prefix = logical.split("_", 1)[0] if "_" in logical else logical
 record_data = {
@@ -119,7 +118,7 @@ record_data = {
 print("(Pandas) Create record (OData via Pandas wrapper):")
 record_id = None
 try:
-	record_id = backoff_retry(lambda: PANDAS.create_df(entity_set, pd.Series(record_data)))
+	record_id = backoff_retry(lambda: PANDAS.create_df(logical, pd.Series(record_data)))
 	print({"entity": logical, "created_id": record_id})
 except Exception as e:
 	print(f"Create failed: {e}")
@@ -129,8 +128,7 @@ except Exception as e:
 print("(Pandas) Read (OData via Pandas wrapper):")
 try:
 	if record_id:
-		# get_ids returns a DataFrame; fetch single row
-		df = backoff_retry(lambda: PANDAS.get_ids(entity_set, pd.Series([record_id])))
+		df = backoff_retry(lambda: PANDAS.get_ids(logical, pd.Series([record_id])))
 		print(df.head())
 		id_key = f"{logical}id"
 		rid = df.iloc[0].get(id_key) if not df.empty else None
@@ -161,11 +159,11 @@ try:
 	amount_key = f"{attr_prefix}_amount"
 
 	# Perform update via Pandas wrapper (returns None), then re-fetch to verify
-	backoff_retry(lambda: PANDAS.update(entity_set, record_id, pd.Series(update_data)))
+	backoff_retry(lambda: PANDAS.update(logical, record_id, pd.Series(update_data)))
 	print({"entity": logical, "updated": True})
 
 	# Re-read and verify from DataFrame
-	after_df = backoff_retry(lambda: PANDAS.get_ids(entity_set, pd.Series([record_id])))
+	after_df = backoff_retry(lambda: PANDAS.get_ids(logical, pd.Series([record_id])))
 	row = after_df.iloc[0] if not after_df.empty else {}
 
 	# Verify string/int/bool fields
@@ -186,32 +184,19 @@ except Exception as e:
 # 4) Query records via SQL (Web API ?sql=)
 print("(Pandas) Query (SQL via Web API ?sql=):")
 try:
-	# Try singular logical name first, then plural entity set, with short backoff
 	import time
 
-	candidates = [logical]
-	if entity_set and entity_set != logical:
-		candidates.append(entity_set)
-
-	df_rows = None
-	for name in candidates:
-		def _run_query():
-			id_key = f"{logical}id"
-			cols = f"{id_key}, {attr_prefix}_code, {attr_prefix}_amount, {attr_prefix}_when"
-			return PANDAS.query_sql_df(f"SELECT TOP 3 {cols} FROM {name} ORDER BY {attr_prefix}_amount DESC")
-		def _retry_if(ex: Exception) -> bool:
-			msg = str(ex) if ex else ""
-			return ("Invalid table name" in msg) or ("Invalid object name" in msg)
-		try:
-			df_rows = backoff_retry(_run_query, delays=(0, 2, 5), retry_http_statuses=(), retry_if=_retry_if)
-			id_key = f"{logical}id"
-			ids = df_rows[id_key].dropna().tolist() if (df_rows is not None and id_key in df_rows.columns) else []
-			print({"entity": name, "rows": (0 if df_rows is None else len(df_rows)), "ids": ids})
-			raise SystemExit
-		except Exception:
-			continue
-except SystemExit:
-	pass
+	def _run_query():
+		id_key = f"{logical}id"
+		cols = f"{id_key}, {attr_prefix}_code, {attr_prefix}_amount, {attr_prefix}_when"
+		return PANDAS.query_sql_df(f"SELECT TOP 3 {cols} FROM {logical} ORDER BY {attr_prefix}_amount DESC")
+	def _retry_if(ex: Exception) -> bool:
+		msg = str(ex) if ex else ""
+		return ("Invalid table name" in msg) or ("Invalid object name" in msg)
+	df_rows = backoff_retry(_run_query, delays=(0, 2, 5), retry_http_statuses=(), retry_if=_retry_if)
+	id_key = f"{logical}id"
+	ids = df_rows[id_key].dropna().tolist() if (df_rows is not None and id_key in df_rows.columns) else []
+	print({"entity": logical, "rows": (0 if df_rows is None else len(df_rows)), "ids": ids})
 except Exception as e:
 	print(f"SQL query failed: {e}")
 
@@ -219,7 +204,7 @@ except Exception as e:
 print("(Pandas) Delete (OData via Pandas wrapper):")
 try:
 	if record_id:
-		backoff_retry(lambda: PANDAS.delete_ids(entity_set, record_id))
+		backoff_retry(lambda: PANDAS.delete_ids(logical, record_id))
 		print({"entity": logical, "deleted": True})
 	else:
 		raise RuntimeError("No record created; skipping delete.")

@@ -244,10 +244,13 @@ if run_chunk:
 record_id = None
 try:
     payload = {name_attr: "File Sample Record"}
-    log(f"client.create('{entity_set}', payload)")
-    rec = backoff(lambda: client.create(entity_set, payload))
-    record_id = rec.get(f"{logical}id")
-    print({"record_created": True, "id": record_id})
+    log(f"client.create('{logical}', payload)")
+    created_ids = backoff(lambda: client.create(logical, payload))
+    if isinstance(created_ids, list) and created_ids:
+        record_id = created_ids[0]
+    else:
+        raise RuntimeError("Unexpected create return; expected list[str] with at least one GUID")
+    print({"record_created": True, "id": record_id, "logical": logical})
 except Exception as e:  # noqa: BLE001
     print({"record_created": False, "error": str(e)})
     sys.exit(1)
@@ -278,7 +281,7 @@ if run_small:
     try:
         DATASET_FILE, small_file_size, src_hash = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(lambda: client.upload_file(
-            entity_set,
+            logical,
             record_id,
             small_file_attr_logical,
             str(DATASET_FILE),
@@ -286,7 +289,7 @@ if run_small:
         ))
         print({"small_upload_completed": True, "small_source_size": small_file_size})
         odata = client._get_odata()
-        dl_url_single = f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"
+        dl_url_single = f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"  # raw entity_set URL OK
         resp_single = odata._request("get", dl_url_single, headers=odata._headers())
         resp_single.raise_for_status()
         content_single = resp_single.content or b""
@@ -306,7 +309,7 @@ if run_small:
         print("Small single-request upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_small, replace_hash_small = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(lambda: client.upload_file(
-            entity_set,
+            logical,
             record_id,
             small_file_attr_logical,
             str(replacement_file),
@@ -335,7 +338,7 @@ if run_chunk:
     try:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(lambda: client.upload_file(
-            entity_set,
+            logical,
             record_id,
             chunk_file_attr_logical,
             str(DATASET_FILE),
@@ -343,7 +346,7 @@ if run_chunk:
         ))
         print({"chunk_upload_completed": True})
         odata = client._get_odata()
-        dl_url_chunk = f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"
+        dl_url_chunk = f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"  # raw entity_set for download
         resp_chunk = odata._request("get", dl_url_chunk, headers=odata._headers())
         resp_chunk.raise_for_status()
         content_chunk = resp_chunk.content or b""
@@ -358,12 +361,11 @@ if run_chunk:
             "chunk_download_sha256_prefix": dst_hash_chunk[:16] if dst_hash_chunk else None,
             "chunk_hash_match": hash_match_chunk,
         })
-        
         # Now test replacing with an 8MB file
         print("Streaming chunk upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_chunk, replace_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(lambda: client.upload_file(
-            entity_set,
+            logical,
             record_id,
             chunk_file_attr_logical,
             str(replacement_file),

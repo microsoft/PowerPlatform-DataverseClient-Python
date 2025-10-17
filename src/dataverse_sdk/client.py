@@ -67,13 +67,13 @@ class DataverseClient:
         return self._odata
 
     # ---------------- Unified CRUD: create/update/delete ----------------
-    def create(self, entity: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
-        """Create one or many records; always return list[str] of created IDs.
+    def create(self, logical_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
+        """Create one or many records by logical (singular) name; returns list[str] of created IDs.
 
         Parameters
         ----------
-        entity : str
-            Entity set name (plural logical name), e.g. "accounts".
+        logical_name : str
+            Logical (singular) entity name, e.g. "account".
         records : dict | list[dict]
             A single record dict or a list of record dicts.
 
@@ -84,18 +84,19 @@ class DataverseClient:
         """
         od = self._get_odata()
         if isinstance(records, dict):
-            rid = od._create_single(entity, records)
+            rid = od._create(logical_name, records)
+            # _create returns str on single input
             if not isinstance(rid, str):
-                raise TypeError("_create_single did not return GUID string")
+                raise TypeError("_create (single) did not return GUID string")
             return [rid]
         if isinstance(records, list):
-            ids = od._create_multiple(entity, records)
+            ids = od._create(logical_name, records)
             if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
-                raise TypeError("_create_multiple did not return list[str]")
+                raise TypeError("_create (multi) did not return list[str]")
             return ids
         raise TypeError("records must be dict or list[dict]")
 
-    def update(self, entity: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
+    def update(self, logical_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
         """Update one or many records. Returns None.
 
         Usage patterns:
@@ -112,31 +113,31 @@ class DataverseClient:
         if isinstance(ids, str):
             if not isinstance(changes, dict):
                 raise TypeError("For single id, changes must be a dict")
-            od._update(entity, ids, changes)  # discard representation
+            od._update(logical_name, ids, changes)  # discard representation
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
-        od._update_by_ids(entity, ids, changes)
+        od._update_by_ids(logical_name, ids, changes)
         return None
 
-    def delete(self, entity: str, ids: Union[str, List[str]]) -> None:
+    def delete(self, logical_name: str, ids: Union[str, List[str]]) -> None:
         """Delete one or many records (GUIDs). Returns None."""
         od = self._get_odata()
         if isinstance(ids, str):
-            od._delete(entity, ids)
+            od._delete(logical_name, ids)
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
-        od._delete_multiple(entity, ids)
+        od._delete_multiple(logical_name, ids)
         return None
 
-    def get(self, entity: str, record_id: str) -> dict:
+    def get(self, logical_name: str, record_id: str) -> dict:
         """Fetch a record by ID.
 
         Parameters
         ----------
-        entity : str
-            Entity set name (plural logical name).
+        logical_name : str
+            Logical (singular) entity name.
         record_id : str
             The record GUID (with or without parentheses).
 
@@ -145,17 +146,17 @@ class DataverseClient:
         dict
             The record JSON payload.
         """
-        return self._get_odata()._get(entity, record_id)
+        return self._get_odata()._get(logical_name, record_id)
 
     def get_multiple(
         self,
-        entity: str,
+        logical_name: str,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
         orderby: Optional[List[str]] = None,
         top: Optional[int] = None,
-    expand: Optional[List[str]] = None,
-    page_size: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Fetch multiple records page-by-page as a generator.
 
@@ -163,7 +164,7 @@ class DataverseClient:
         Parameters mirror standard OData query options.
         """
         return self._get_odata()._get_multiple(
-            entity,
+            logical_name,
             select=select,
             filter=filter,
             orderby=orderby,
@@ -255,7 +256,7 @@ class DataverseClient:
     # File upload
     def upload_file(
         self,
-        entity_set: str,
+        logical_name: str,
         record_id: str,
         file_name_attribute: str,
         path: str,
@@ -263,12 +264,12 @@ class DataverseClient:
         mime_type: Optional[str] = None,
         if_none_match: bool = True,
     ) -> None:
-        """Upload a file to a Dataverse file column with automatic method selection.
+        """Upload a file to a Dataverse file column using a logical (singular) name.
 
         Parameters
         ----------
-        entity_set : str
-            Target entity set (plural logical name), e.g. "accounts".
+        logical_name : str
+            Singular logical table name, e.g. "account".
         record_id : str
             GUID of the target record.
         file_name_attribute : str
@@ -276,14 +277,9 @@ class DataverseClient:
         path : str
             Local filesystem path to the file. Stored filename will be the basename of this path.
         mode : str | None, keyword-only, optional
-            Upload strategy: "auto" (default), "block", "small", or "chunk".
-            - "auto": Automatically selects best method based on file size
-            - "small": Single PATCH request (files <128MB only)
-            - "chunk": Streaming chunked upload (any size, most efficient for large files)
+            Upload strategy: "auto" (default), "small", or "chunk".
         mime_type : str | None, keyword-only, optional
-            Explicit MIME type to persist with the file (e.g. "application/pdf"). If omitted the
-            lower-level client attempts to infer from the filename extension and falls back to
-            ``application/octet-stream``.
+            Explicit MIME type to persist with the file (e.g. "application/pdf").
         if_none_match : bool, keyword-only, optional
             When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
             currently empty. Set False to always overwrite (uses ``If-Match: *``).
@@ -294,7 +290,9 @@ class DataverseClient:
         None
             Returns nothing on success. Raises on failure.
         """
-        self._get_odata().upload_file(
+        od = self._get_odata()
+        entity_set = od._entity_set_from_logical(logical_name)
+        od.upload_file(
             entity_set,
             record_id,
             file_name_attribute,
