@@ -141,8 +141,7 @@ else:
 				pass
 		# Fail fast: all operations must use the custom table
 		sys.exit(1)
-entity_set = table_info.get("entity_set_name")
-logical = table_info.get("entity_logical_name") or entity_set.rstrip("s")
+logical = table_info.get("entity_logical_name")
 
 # Derive attribute logical name prefix from the entity logical name (segment before first underscore)
 attr_prefix = logical.split("_", 1)[0] if "_" in logical else logical
