@@ -92,19 +92,19 @@ class ODataClient(ODataFileUpload):
         """
         entity_set = self._entity_set_from_logical(logical_name)
         if isinstance(data, dict):
-            return self._create_single(entity_set, data)
+            return self._create_single(entity_set, logical_name, data)
         if isinstance(data, list):
             return self._create_multiple(entity_set, logical_name, data)
         raise TypeError("data must be dict or list[dict]")
 
     # --- Internal helpers ---
-    def _create_single(self, entity_set: str, record: Dict[str, Any]) -> str:
+    def _create_single(self, entity_set: str, logical_name: str, record: Dict[str, Any]) -> str:
         """Create a single record and return its GUID.
 
         Relies on OData-EntityId (canonical) or Location header. No response body parsing is performed.
         Raises RuntimeError if neither header contains a GUID.
         """
-        record = self._convert_labels_to_ints(entity_set, record)
+        record = self._convert_labels_to_ints(logical_name, record)
         url = f"{self.api}/{entity_set}"
         headers = self._headers().copy()
         r = self._request("post", url, headers=headers, json=record)
@@ -131,7 +131,7 @@ class ODataClient(ODataFileUpload):
         need_logical = any("@odata.type" not in r for r in records)
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            r = self._convert_labels_to_ints(entity_set, r)
+            r = self._convert_labels_to_ints(logical_name, r)
             if "@odata.type" in r or not need_logical:
                 enriched.append(r)
             else:
@@ -258,7 +258,7 @@ class ODataClient(ODataFileUpload):
         -------
         None
         """
-        data = self._convert_labels_to_ints(entity_set, data)
+        data = self._convert_labels_to_ints(logical_name, data)
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         headers = self._headers().copy()
@@ -303,7 +303,7 @@ class ODataClient(ODataFileUpload):
         need_logical = any("@odata.type" not in r for r in records)
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            r = self._convert_labels_to_ints(entity_set, r)
+            r = self._convert_labels_to_ints(logical_name, r)
             if "@odata.type" in r or not need_logical:
                 enriched.append(r)
             else:
@@ -740,7 +740,7 @@ class ODataClient(ODataFileUpload):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
-    def _optionset_map(self, entity_set: str, attr_logical: str) -> Optional[Dict[str, int]]:
+    def _optionset_map(self, logical_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
 
         Returns empty dict if attribute is not a picklist or has no options. Returns None only
@@ -750,17 +750,16 @@ class ODataClient(ODataFileUpload):
         -----
         - This method calls the Web API twice per attribute so it could have perf impact when there are lots of columns on the entity.
         """
-        if not entity_set or not attr_logical:
+        if not logical_name or not attr_logical:
             return None
-        logical = self._logical_from_entity_set(entity_set)
-        cache_key = (logical, attr_logical.lower())
+        cache_key = (logical_name, attr_logical.lower())
         now = time.time()
         entry = self._picklist_label_cache.get(cache_key)
         if isinstance(entry, dict) and 'map' in entry and (now - entry.get('ts', 0)) < self._picklist_cache_ttl_seconds:
             return entry['map']
 
         attr_esc = self._escape_odata_quotes(attr_logical)
-        logical_esc = self._escape_odata_quotes(logical)
+        logical_esc = self._escape_odata_quotes(logical_name)
 
         # Step 1: lightweight fetch (no expand) to determine attribute type
         url_type = (
@@ -779,7 +778,7 @@ class ODataClient(ODataFileUpload):
         if r_type.status_code == 404:
             # After retries we still cannot find the attribute definition – treat as fatal so caller sees a clear error.
             raise RuntimeError(
-                f"Picklist attribute metadata not found after retries: entity='{logical}' attribute='{attr_logical}' (404)"
+                f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
             )
         r_type.raise_for_status()
         
@@ -807,7 +806,7 @@ class ODataClient(ODataFileUpload):
             if attempt < 2:
                 time.sleep(0.4 * (2 ** attempt))  # 0.4s, 0.8s
         if r_opts.status_code == 404:
-            raise RuntimeError(f"Picklist OptionSet metadata not found after retries: entity='{logical}' attribute='{attr_logical}' (404)")
+            raise RuntimeError(f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)")
         r_opts.raise_for_status()
         
         attr_full = {}
@@ -842,7 +841,7 @@ class ODataClient(ODataFileUpload):
         self._picklist_label_cache[cache_key] = {'map': {}, 'ts': now}
         return {}
 
-    def _convert_labels_to_ints(self, entity_set: str, record: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_labels_to_ints(self, logical_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
@@ -852,7 +851,7 @@ class ODataClient(ODataFileUpload):
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
                 continue
-            mapping = self._optionset_map(entity_set, k)
+            mapping = self._optionset_map(logical_name, k)
             if not mapping:
                 continue
             norm = self._normalize_picklist_label(v)
