@@ -10,13 +10,17 @@ class DummyHTTP:
     def __init__(self, headers):
         self._headers = headers
     def request(self, method, url, **kwargs):
-        # Simulate minimal Response-like object
+        # Simulate minimal Response-like object (subset of requests.Response API used by code)
         resp = types.SimpleNamespace()
         resp.headers = self._headers
         resp.status_code = 204
+        resp.text = ""
         def raise_for_status():
             return None
+        def json_func():
+            return {}
         resp.raise_for_status = raise_for_status
+        resp.json = json_func
         return resp
 
 class TestableOData(ODataClient):
@@ -24,23 +28,30 @@ class TestableOData(ODataClient):
         super().__init__(DummyAuth(), "https://org.example", None)
         # Monkey-patch http client
         self._http = types.SimpleNamespace(request=lambda method, url, **kwargs: DummyHTTP(headers).request(method, url, **kwargs))
+    # Bypass optionset label conversion to keep response sequence stable for tests
+    def _convert_labels_to_ints(self, logical_name, record):  # pragma: no cover - test shim
+        return record
 
 def test__create_single_uses_odata_entityid():
     guid = "11111111-2222-3333-4444-555555555555"
     headers = {"OData-EntityId": f"https://org.example/api/data/v9.2/accounts({guid})"}
     c = TestableOData(headers)
-    result = c._create_single("accounts", {"name": "x"})
+    # Current signature requires logical name explicitly
+    result = c._create_single("accounts", "account", {"name": "x"})
     assert result == guid
 
 def test__create_single_fallback_location():
     guid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     headers = {"Location": f"https://org.example/api/data/v9.2/contacts({guid})"}
     c = TestableOData(headers)
-    result = c._create_single("contacts", {"firstname": "x"})
+    result = c._create_single("contacts", "contact", {"firstname": "x"})
     assert result == guid
 
 def test__create_single_missing_headers_raises():
     c = TestableOData({})
     import pytest
-    with pytest.raises(RuntimeError):
-        c._create_single("accounts", {"name": "x"})
+    from dataverse_sdk.errors import MetadataError
+    from dataverse_sdk.error_codes import METADATA_CREATE_GUID_MISSING
+    with pytest.raises(RuntimeError) as ei:
+        c._create_single("accounts", "account", {"name": "x"})
+    assert ei.value.subcode == METADATA_CREATE_GUID_MISSING
