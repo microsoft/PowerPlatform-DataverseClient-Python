@@ -13,27 +13,20 @@ class DummyHTTPClient:
         self.calls = []
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
-        # Pop next prepared response tuple
         if not self._responses:
             raise AssertionError("No more dummy responses configured")
         status, headers, body = self._responses.pop(0)
         resp = types.SimpleNamespace()
         resp.status_code = status
         resp.headers = headers
-        resp.text = body if isinstance(body, str) else (body and "{}")
+        resp.text = "" if body is None else ("{}" if isinstance(body, dict) else str(body))
         def raise_for_status():
             if status >= 400:
                 raise RuntimeError(f"HTTP {status}")
             return None
-        resp.raise_for_status = raise_for_status
         def json_func():
-            import json as _json
-            if isinstance(body, dict):
-                return body
-            try:
-                return _json.loads(body) if isinstance(body, str) else {}
-            except Exception:
-                return {}
+            return body if isinstance(body, dict) else {}
+        resp.raise_for_status = raise_for_status
         resp.json = json_func
         return resp
 
@@ -41,6 +34,8 @@ class TestableClient(ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTPClient(responses)
+    def _convert_labels_to_ints(self, logical_name, record):  # pragma: no cover - test shim
+        return record
 
 # Helper metadata response for logical name resolution
 MD_ACCOUNT = {
