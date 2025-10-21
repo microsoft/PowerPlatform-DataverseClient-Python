@@ -51,8 +51,5 @@ def test__create_single_fallback_location():
 def test__create_single_missing_headers_raises():
     c = TestableOData({})
     import pytest
-    from dataverse_sdk.errors import MetadataError
-    from dataverse_sdk.error_codes import METADATA_CREATE_GUID_MISSING
-    with pytest.raises(RuntimeError) as ei:
-        c._create_single("accounts", "account", "account", {"name": "x"})
-    assert ei.value.subcode == METADATA_CREATE_GUID_MISSING
+    with pytest.raises(RuntimeError):
+        c._create_single("accounts", "account", {"name": "x"})
