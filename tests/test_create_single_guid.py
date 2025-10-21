@@ -11,6 +11,7 @@ class DummyHTTP:
         self._headers = headers
     def request(self, method, url, **kwargs):
         # Simulate minimal Response-like object (subset of requests.Response API used by code)
+        # Simulate minimal Response-like object (subset of requests.Response API used by code)
         resp = types.SimpleNamespace()
         resp.headers = self._headers
         resp.status_code = 204
@@ -50,5 +51,8 @@ def test__create_single_fallback_location():
 def test__create_single_missing_headers_raises():
     c = TestableOData({})
     import pytest
-    with pytest.raises(RuntimeError):
-        c._create_single("accounts", "account", {"name": "x"})
+    from dataverse_sdk.errors import MetadataError
+    from dataverse_sdk.error_codes import METADATA_CREATE_GUID_MISSING
+    with pytest.raises(RuntimeError) as ei:
+        c._create_single("accounts", "account", "account", {"name": "x"})
+    assert ei.value.subcode == METADATA_CREATE_GUID_MISSING
