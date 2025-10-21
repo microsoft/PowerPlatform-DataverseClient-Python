@@ -54,13 +54,23 @@ class ODataClient(ODataFileUpload):
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
         token = self.auth.acquire_token(scope).access_token
+        # TODO: add version to User-Agent
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
+            "User-Agent": "DataversePythonSDK",
         }
+
+    def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        base = self._headers()
+        if not headers:
+            return base
+        merged = base.copy()
+        merged.update(headers)
+        return merged
 
     def _raw_request(self, method: str, url: str, **kwargs):
         return self._http.request(method, url, **kwargs)
@@ -71,6 +81,8 @@ class ODataClient(ODataFileUpload):
         Returns the raw response for success codes; raises HttpError with extracted
         Dataverse error payload fields and correlation identifiers otherwise.
         """
+        headers = kwargs.pop("headers", None)
+        kwargs["headers"] = self._merge_headers(headers)
         r = self._raw_request(method, url, **kwargs)
         if r.status_code in expected:
             return r
@@ -149,8 +161,7 @@ class ODataClient(ODataFileUpload):
         """
         record = self._convert_labels_to_ints(logical_name, record)
         url = f"{self.api}/{entity_set}"
-        headers = self._headers().copy()
-        r = self._request("post", url, headers=headers, json=record)
+        r = self._request("post", url, json=record)
 
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
@@ -184,8 +195,7 @@ class ODataClient(ODataFileUpload):
         # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
         # The action currently returns only Ids; no need to request representation.
-        headers = self._headers().copy()
-        r = self._request("post", url, headers=headers, json=payload)
+        r = self._request("post", url, json=payload)
         try:
             body = r.json() if r.text else {}
         except ValueError:
@@ -302,9 +312,7 @@ class ODataClient(ODataFileUpload):
         data = self._convert_labels_to_ints(logical_name, data)
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        headers = self._headers().copy()
-        headers["If-Match"] = "*"
-        r = self._request("patch", url, headers=headers, json=data)
+        r = self._request("patch", url, headers={"If-Match": "*"}, json=data)
 
     def _update_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound UpdateMultiple action.
@@ -353,8 +361,7 @@ class ODataClient(ODataFileUpload):
 
         payload = {"Targets": enriched}
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple"
-        headers = self._headers().copy()
-        r = self._request("post", url, headers=headers, json=payload)
+        r = self._request("post", url, json=payload)
         # Intentionally ignore response content: no stable contract for IDs across environments.
         return None
 
@@ -362,9 +369,7 @@ class ODataClient(ODataFileUpload):
         """Delete a record by GUID or alternate key."""
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        headers = self._headers().copy()
-        headers["If-Match"] = "*"
-        self._request("delete", url, headers=headers)
+        self._request("delete", url, headers={"If-Match": "*"})
 
     def _get(self, logical_name: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve a single record.
@@ -383,7 +388,7 @@ class ODataClient(ODataFileUpload):
             params["$select"] = select
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = self._request("get", url, headers=self._headers(), params=params)
+        r = self._request("get", url, params=params)
         return r.json()
 
     def _get_multiple(
@@ -421,13 +426,14 @@ class ODataClient(ODataFileUpload):
             A page of records from the Web API (the "value" array for each page).
         """
 
-        headers = self._headers().copy()
+        extra_headers: Dict[str, str] = {}
         if page_size is not None:
             ps = int(page_size)
             if ps > 0:
-                headers["Prefer"] = f"odata.maxpagesize={ps}"
+                extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
 
         def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            headers = extra_headers if extra_headers else None
             r = self._request("get", url, headers=headers, params=params)
             try:
                 return r.json()
@@ -500,10 +506,9 @@ class ODataClient(ODataFileUpload):
 
         entity_set = self._entity_set_from_logical(logical)
         # Issue GET /{entity_set}?sql=<query>
-        headers = self._headers().copy()
         url = f"{self.api}/{entity_set}"
         params = {"sql": sql}
-        r = self._request("get", url, headers=headers, params=params)
+        r = self._request("get", url, params=params)
         try:
             body = r.json()
         except ValueError:
@@ -554,7 +559,7 @@ class ODataClient(ODataFileUpload):
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = self._request("get", url, headers=self._headers(), params=params)
+        r = self._request("get", url, params=params)
         try:
             body = r.json()
             items = body.get("value", []) if isinstance(body, dict) else []
@@ -599,7 +604,7 @@ class ODataClient(ODataFileUpload):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
             "$filter": f"SchemaName eq '{schema_escaped}'",
         }
-        r = self._request("get", url, headers=self._headers(), params=params)
+        r = self._request("get", url, params=params)
         items = r.json().get("value", [])
         return items[0] if items else None
 
@@ -617,8 +622,7 @@ class ODataClient(ODataFileUpload):
             "IsActivity": False,
             "Attributes": attributes,
         }
-        headers = self._headers()
-        r = self._request("post", url, headers=headers, json=payload)
+        r = self._request("post", url, json=payload)
         ent = self._wait_for_entity_ready(schema_name)
         if not ent or not ent.get("EntitySetName"):
             raise RuntimeError(
@@ -791,20 +795,21 @@ class ODataClient(ODataFileUpload):
         # Retry up to 3 times on 404 (new or not-yet-published attribute metadata). If still 404, raise.
         r_type = None
         for attempt in range(3):
-            r_type = self._raw_request("get", url_type, headers=self._headers())
-            if r_type.status_code != 404:
+            try:
+                r_type = self._request("get", url_type)
                 break
-            if attempt < 2:
-                # Exponential-ish backoff: 0.4s, 0.8s
-                time.sleep(0.4 * (2 ** attempt))
-        if r_type.status_code == 404:
-            # After retries we still cannot find the attribute definition – treat as fatal so caller sees a clear error.
-            raise RuntimeError(
-                f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
-            )
-        if not (200 <= r_type.status_code < 300):
-            # Re-issue via _send to raise structured HttpError (rare path)
-            self._request("get", url_type, headers=self._headers())
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404:
+                    if attempt < 2:
+                        # Exponential-ish backoff: 0.4s, 0.8s
+                        time.sleep(0.4 * (2 ** attempt))
+                        continue
+                    raise RuntimeError(
+                        f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
+                    ) from err
+                raise
+        if r_type is None:
+            raise RuntimeError("Failed to retrieve attribute metadata due to repeated request failures.")
         
         body_type = r_type.json()
         items = body_type.get("value", []) if isinstance(body_type, dict) else []
@@ -824,15 +829,20 @@ class ODataClient(ODataFileUpload):
         # Step 2 fetch with retries: expanded OptionSet (cast form first)
         r_opts = None
         for attempt in range(3):
-            r_opts = self._raw_request("get", cast_url, headers=self._headers())
-            if r_opts.status_code != 404:
+            try:
+                r_opts = self._request("get", cast_url)
                 break
-            if attempt < 2:
-                time.sleep(0.4 * (2 ** attempt))  # 0.4s, 0.8s
-        if r_opts.status_code == 404:
-            raise RuntimeError(f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)")
-        if not (200 <= r_opts.status_code < 300):
-            self._request("get", cast_url, headers=self._headers())
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404:
+                    if attempt < 2:
+                        time.sleep(0.4 * (2 ** attempt))  # 0.4s, 0.8s
+                        continue
+                    raise RuntimeError(
+                        f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
+                    ) from err
+                raise
+        if r_opts is None:
+            raise RuntimeError("Failed to retrieve picklist OptionSet metadata due to repeated request failures.")
         
         attr_full = {}
         try:
@@ -993,7 +1003,7 @@ class ODataClient(ODataFileUpload):
         params = {
             "$filter": "IsPrivate eq false"
         }
-        r = self._request("get", url, headers=self._headers(), params=params)
+        r = self._request("get", url, params=params)
         return r.json().get("value", [])
 
     def _delete_table(self, tablename: str) -> None:
@@ -1004,8 +1014,7 @@ class ODataClient(ODataFileUpload):
             raise RuntimeError(f"Table '{entity_schema}' not found.")
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
-        headers = self._headers()
-        r = self._request("delete", url, headers=headers)
+        r = self._request("delete", url)
 
     def _create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         # Accept a friendly name and construct a default schema under 'new_'.

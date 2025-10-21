@@ -94,16 +94,16 @@ class ODataFileUpload:
         fname = os.path.basename(path)
         key = self._format_key(record_id)
         url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
-        headers = self._headers().copy()
-        headers["Content-Type"] = content_type or "application/octet-stream"
-        headers["Accept"] = "application/json"
-        headers["x-ms-file-name"] = fname
+        headers = {
+            "Content-Type": content_type or "application/octet-stream",
+            "x-ms-file-name": fname,
+        }
         if if_none_match:
             headers["If-None-Match"] = "null"
         else:
             headers["If-Match"] = "*"
         # Single PATCH upload; allow default success codes (includes 204)
-        self._send("patch", url, headers=headers, data=data)
+        self._request("patch", url, headers=headers, data=data)
         return None
 
     def _upload_file_chunk(
@@ -146,14 +146,14 @@ class ODataFileUpload:
         fname = os.path.basename(path)
         key = self._format_key(record_id)
         init_url = f"{self.api}/{entity_set}{key}/{file_name_attribute}?x-ms-file-name={quote(fname)}"
-        headers = self._headers().copy()
-        headers["x-ms-transfer-mode"] = "chunked"
-        headers["Accept"] = "application/json"
+        headers = {
+            "x-ms-transfer-mode": "chunked",
+        }
         if if_none_match:
             headers["If-None-Match"] = "null"
         else:
             headers["If-Match"] = "*"
-        r_init = self._send("patch", init_url, headers=headers, data=b"")
+        r_init = self._request("patch", init_url, headers=headers, data=b"")
         location = r_init.headers.get("Location") or r_init.headers.get("location")
         if not location:
             raise RuntimeError("Missing Location header with sessiontoken for chunked upload")
@@ -174,13 +174,13 @@ class ODataFileUpload:
                     break
                 start = uploaded_bytes
                 end = start + len(chunk) - 1
-                c_headers = self._headers().copy()
-                c_headers["x-ms-file-name"] = fname
-                c_headers["Content-Type"] = "application/octet-stream"
-                c_headers["Accept"] = "application/json"
-                c_headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
-                c_headers["Content-Length"] = str(len(chunk))
+                c_headers = {
+                    "x-ms-file-name": fname,
+                    "Content-Type": "application/octet-stream",
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Content-Length": str(len(chunk)),
+                }
                 # Each chunk returns 206 (partial) or 204 (final). Accept both.
-                self._send("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
+                self._request("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
         return None
