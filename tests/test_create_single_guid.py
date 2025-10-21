@@ -11,7 +11,6 @@ class DummyHTTP:
         self._headers = headers
     def request(self, method, url, **kwargs):
         # Simulate minimal Response-like object (subset of requests.Response API used by code)
-        # Simulate minimal Response-like object (subset of requests.Response API used by code)
         resp = types.SimpleNamespace()
         resp.headers = self._headers
         resp.status_code = 204
