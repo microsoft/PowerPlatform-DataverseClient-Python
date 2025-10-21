@@ -102,18 +102,8 @@ class ODataFileUpload:
             headers["If-None-Match"] = "null"
         else:
             headers["If-Match"] = "*"
-        r = self._request("patch", url, headers=headers, data=data)
-        try:
-            r.raise_for_status()
-        except Exception as e:  # noqa: BLE001
-            snippet = None
-            try:
-                snippet = r.text[:400]
-            except Exception:  # noqa: BLE001
-                pass
-            raise RuntimeError(
-                f"Single file upload failed (status={getattr(r,'status_code','?')}): {snippet or ''}"
-            ) from e
+        # Single PATCH upload; allow default success codes (includes 204)
+        self._send("patch", url, headers=headers, data=data)
         return None
 
     def _upload_file_chunk(
@@ -163,18 +153,7 @@ class ODataFileUpload:
             headers["If-None-Match"] = "null"
         else:
             headers["If-Match"] = "*"
-        r_init = self._request("patch", init_url, headers=headers, data=b"")
-        try:
-            r_init.raise_for_status()
-        except Exception as e:  # noqa: BLE001
-            snippet = None
-            try:
-                snippet = r_init.text[:400]
-            except Exception:  # noqa: BLE001
-                pass
-            raise RuntimeError(
-                f"Chunked upload initial PATCH failed (status={getattr(r_init,'status_code','?')}): {snippet or ''}"
-            ) from e
+        r_init = self._send("patch", init_url, headers=headers, data=b"")
         location = r_init.headers.get("Location") or r_init.headers.get("location")
         if not location:
             raise RuntimeError("Missing Location header with sessiontoken for chunked upload")
@@ -201,17 +180,7 @@ class ODataFileUpload:
                 c_headers["Accept"] = "application/json"
                 c_headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
                 c_headers["Content-Length"] = str(len(chunk))
-                r_part = self._request("patch", location, headers=c_headers, data=chunk)
-                try:
-                    r_part.raise_for_status()
-                except Exception as e:  # noqa: BLE001
-                    snippet = None
-                    try:
-                        snippet = r_part.text[:400]
-                    except Exception:  # noqa: BLE001
-                        pass
-                    raise RuntimeError(
-                        f"Chunk {idx+1}/{total_chunks} failed (status={getattr(r_part,'status_code','?')}): {snippet or ''}"
-                    ) from e
+                # Each chunk returns 206 (partial) or 204 (final). Accept both.
+                self._send("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
         return None
