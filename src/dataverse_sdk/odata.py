@@ -84,7 +84,7 @@ class ODataClient(ODataFileUpload):
         svc_msg = svc_err.get("message") if isinstance(svc_err, dict) else None
         message = svc_msg or f"HTTP {r.status_code}"
         subcode = f"http_{r.status_code}"
-        # Keep subcode even if not in declared constants (preview flexibility)
+
         headers = getattr(r, 'headers', {}) or {}
         details = {
             "service_error_code": svc_code,

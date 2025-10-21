@@ -1,4 +1,4 @@
-# HTTP subcode constants (preview). Centralized so future domains (validation/metadata) can coexist.
+# HTTP subcode constants
 HTTP_400 = "http_400"
 HTTP_401 = "http_401"
 HTTP_403 = "http_403"
