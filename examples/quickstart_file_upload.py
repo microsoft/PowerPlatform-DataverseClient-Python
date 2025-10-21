@@ -192,7 +192,6 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
             f"SchemaName eq '{schema_name}'"
         )
         r = odata._request("get", url, headers=odata._headers())
-        r.raise_for_status()
         val = []
         try:
             val = r.json().get("value", [])
@@ -217,7 +216,6 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
     try:
         url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
         r = odata._request("post", url, headers=odata._headers(), json=payload)
-        r.raise_for_status()
         print({f"{key_prefix}_file_attribute_created": True})
         time.sleep(2)
         return True
@@ -291,7 +289,6 @@ if run_small:
         odata = client._get_odata()
         dl_url_single = f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"  # raw entity_set URL OK
         resp_single = odata._request("get", dl_url_single, headers=odata._headers())
-        resp_single.raise_for_status()
         content_single = resp_single.content or b""
         import hashlib  # noqa: WPS433
         downloaded_hash = hashlib.sha256(content_single).hexdigest() if content_single else None
@@ -317,7 +314,6 @@ if run_small:
         ))
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
         resp_single_replace = odata._request("get", dl_url_single, headers=odata._headers())
-        resp_single_replace.raise_for_status()
         content_single_replace = resp_single_replace.content or b""
         downloaded_hash_replace = hashlib.sha256(content_single_replace).hexdigest() if content_single_replace else None
         hash_match_replace = (downloaded_hash_replace == replace_hash_small) if (downloaded_hash_replace and replace_hash_small) else None
@@ -348,7 +344,6 @@ if run_chunk:
         odata = client._get_odata()
         dl_url_chunk = f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"  # raw entity_set for download
         resp_chunk = odata._request("get", dl_url_chunk, headers=odata._headers())
-        resp_chunk.raise_for_status()
         content_chunk = resp_chunk.content or b""
         import hashlib  # noqa: WPS433
         dst_hash_chunk = hashlib.sha256(content_chunk).hexdigest() if content_chunk else None
@@ -373,7 +368,6 @@ if run_chunk:
         ))
         print({"chunk_replace_upload_completed": True})
         resp_chunk_replace = odata._request("get", dl_url_chunk, headers=odata._headers())
-        resp_chunk_replace.raise_for_status()
         content_chunk_replace = resp_chunk_replace.content or b""
         dst_hash_chunk_replace = hashlib.sha256(content_chunk_replace).hexdigest() if content_chunk_replace else None
         hash_match_chunk_replace = (dst_hash_chunk_replace == replace_hash_chunk) if (dst_hash_chunk_replace and replace_hash_chunk) else None
