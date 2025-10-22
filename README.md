@@ -3,10 +3,10 @@
 A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
-- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` / `get_multiple`.
+- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters.
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
 - Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
-- Retrieve multiple (paging) — Generator-based `get_multiple(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
+- Retrieve multiple (paging) — Generator-based `get(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Upload files — Call `upload_file(logical_name, ...)` and an upload method will be auto picked (you can override the mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete simple custom tables (EntityDefinitions + Attributes).
 - Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
@@ -19,7 +19,7 @@ A Python package allowing developers to connect to Dataverse environments for DD
 - Table metadata ops: create simple custom tables (supports string/int/decimal/float/datetime/bool/optionset) and delete them.
 - Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(logical_name, payloads)`; returns list of created IDs.
 - Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(logical_name, ids, patch|patches)`; returns nothing.
-- Retrieve multiple with server-driven paging: `get_multiple(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
+- Retrieve multiple with server-driven paging: `get(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
 - Upload files, using either a single request (supports file size up to 128 MB) or chunk upload under the hood
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
@@ -35,7 +35,7 @@ Auth:
 | `create` | `create(logical_name, record_dict)` | `list[str]` (len 1) | Single create; GUID from `OData-EntityId`. |
 | `create` | `create(logical_name, list[record_dict])` | `list[str]` | Uses `CreateMultiple`; stamps `@odata.type` if missing. |
 | `get` | `get(logical_name, id)` | `dict` | One record; supply GUID (with/without parentheses). |
-| `get_multiple` | `get_multiple(logical_name, ..., page_size=None)` | `Iterable[list[dict]]` | Pages yielded (non-empty only). |
+| `get` | `get(logical_name, ..., page_size=None)` | `Iterable[list[dict]]` | Multiple records; Pages yielded (non-empty only). |
 | `update` | `update(logical_name, id, patch)` | `None` | Single update; no representation returned. |
 | `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
 | `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
@@ -216,10 +216,10 @@ Notes:
 
 ## Retrieve multiple with paging
 
-Use `get_multiple(logical_name, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
+Use `get(logical_name, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
 
 ```python
-pages = client.get_multiple(
+pages = client.get(
 	"account",
 	select=["accountid", "name", "createdon"],
 	orderby=["name asc"],
@@ -255,7 +255,7 @@ Return value & semantics
 Example (all parameters + expected response)
 
 ```python
-pages = client.get_multiple(
+pages = client.get(
 		"account",
 		select=["accountid", "name", "createdon", "primarycontactid"],
 		filter="contains(name,'Acme') and statecode eq 0",
@@ -338,7 +338,7 @@ Notes:
 - `create` always returns a list of GUIDs (length 1 for single input).
 - `update` and `delete` return `None` for both single and multi.
 - Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
-- Use `get_multiple` for paging through result sets; prefer `select` to limit columns.
+- `get` supports single record retrieval with record id or paging through result sets (prefer `select` to limit columns).
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
 * SQL queries are executed directly against entity set endpoints using the `?sql=` parameter. Supported subset only (single SELECT, optional WHERE/TOP/ORDER BY, alias). Unsupported constructs will be rejected by the service.
 

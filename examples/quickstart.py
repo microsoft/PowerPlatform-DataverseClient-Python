@@ -441,7 +441,7 @@ def run_paging_demo(label: str, *, top: Optional[int], page_size: Optional[int])
 	page_index = 0
 	_select = [id_key, code_key, amount_key, when_key, status_key]
 	_orderby = [f"{code_key} asc"]
-	for page in client.get_multiple(
+	for page in client.get(
 		logical,
 		select=_select,
 		filter=None,

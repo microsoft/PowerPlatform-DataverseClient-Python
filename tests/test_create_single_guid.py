@@ -32,23 +32,23 @@ class TestableOData(ODataClient):
     def _convert_labels_to_ints(self, logical_name, record):  # pragma: no cover - test shim
         return record
 
-def test__create_single_uses_odata_entityid():
+def test__create_uses_odata_entityid():
     guid = "11111111-2222-3333-4444-555555555555"
     headers = {"OData-EntityId": f"https://org.example/api/data/v9.2/accounts({guid})"}
     c = TestableOData(headers)
     # Current signature requires logical name explicitly
-    result = c._create_single("accounts", "account", {"name": "x"})
+    result = c._create("accounts", "account", {"name": "x"})
     assert result == guid
 
-def test__create_single_fallback_location():
+def test__create_fallback_location():
     guid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     headers = {"Location": f"https://org.example/api/data/v9.2/contacts({guid})"}
     c = TestableOData(headers)
-    result = c._create_single("contacts", "contact", {"firstname": "x"})
+    result = c._create("contacts", "contact", {"firstname": "x"})
     assert result == guid
 
-def test__create_single_missing_headers_raises():
+def test__create_missing_headers_raises():
     c = TestableOData({})
     import pytest
     with pytest.raises(RuntimeError):
-        c._create_single("accounts", "account", {"name": "x"})
+        c._create("accounts", "account", {"name": "x"})

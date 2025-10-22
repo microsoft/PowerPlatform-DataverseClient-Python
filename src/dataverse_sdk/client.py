@@ -83,14 +83,15 @@ class DataverseClient:
             List of created GUIDs (length 1 for single input).
         """
         od = self._get_odata()
+        entity_set = od._entity_set_from_logical(logical_name)
         if isinstance(records, dict):
-            rid = od._create(logical_name, records)
+            rid = od._create(entity_set, logical_name, records)
             # _create returns str on single input
             if not isinstance(rid, str):
                 raise TypeError("_create (single) did not return GUID string")
             return [rid]
         if isinstance(records, list):
-            ids = od._create(logical_name, records)
+            ids = od._create_multiple(entity_set, logical_name, records)
             if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                 raise TypeError("_create (multi) did not return list[str]")
             return ids
@@ -131,39 +132,28 @@ class DataverseClient:
         od._delete_multiple(logical_name, ids)
         return None
 
-    def get(self, logical_name: str, record_id: str) -> dict:
-        """Fetch a record by ID.
-
-        Parameters
-        ----------
-        logical_name : str
-            Logical (singular) entity name.
-        record_id : str
-            The record GUID (with or without parentheses).
-
-        Returns
-        -------
-        dict
-            The record JSON payload.
-        """
-        return self._get_odata()._get(logical_name, record_id)
-
-    def get_multiple(
+    def get(
         self,
         logical_name: str,
+        record_id: Optional[str] = None,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
         orderby: Optional[List[str]] = None,
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
-        """Fetch multiple records page-by-page as a generator.
-
-        Yields a list of records per page, following @odata.nextLink until exhausted.
-        Parameters mirror standard OData query options.
-        """
-        return self._get_odata()._get_multiple(
+    ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
+        """Fetch single record by ID or multiple records as a generator."""
+        od = self._get_odata()
+        if record_id is not None:
+            if not isinstance(record_id, str):
+                raise TypeError("record_id must be str")
+            return od._get(
+                logical_name,
+                record_id, 
+                select=select,
+            )
+        return od._get_multiple(
             logical_name,
             select=select,
             filter=filter,
