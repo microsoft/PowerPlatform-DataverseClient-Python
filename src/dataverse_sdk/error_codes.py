@@ -45,3 +45,27 @@ METADATA_TABLE_NOT_FOUND = "metadata_table_not_found"
 METADATA_TABLE_ALREADY_EXISTS = "metadata_table_already_exists"
 METADATA_ATTRIBUTE_RETRY_EXHAUSTED = "metadata_attribute_retry_exhausted"
 METADATA_PICKLIST_RETRY_EXHAUSTED = "metadata_picklist_retry_exhausted"
+
+# Mapping from status code -> subcode
+HTTP_STATUS_TO_SUBCODE: dict[int, str] = {
+    400: HTTP_400,
+    401: HTTP_401,
+    403: HTTP_403,
+    404: HTTP_404,
+    409: HTTP_409,
+    412: HTTP_412,
+    415: HTTP_415,
+    429: HTTP_429,
+    500: HTTP_500,
+    502: HTTP_502,
+    503: HTTP_503,
+    504: HTTP_504,
+}
+
+TRANSIENT_STATUS = {429, 502, 503, 504}
+
+def http_subcode(status: int) -> str:
+    return HTTP_STATUS_TO_SUBCODE.get(status, f"http_{status}")
+
+def is_transient_status(status: int) -> bool:
+    return status in TRANSIENT_STATUS

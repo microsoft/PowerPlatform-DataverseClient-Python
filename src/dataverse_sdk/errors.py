@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 import datetime as _dt
 
 class DataverseError(Exception):
+    """Base structured error for the Dataverse SDK."""
     def __init__(
         self,
         message: str,
@@ -55,8 +56,8 @@ class HttpError(DataverseError):
     def __init__(
         self,
         message: str,
-        *,
         status_code: int,
+        is_transient: bool = False,
         subcode: Optional[str] = None,
         service_error_code: Optional[str] = None,
         correlation_id: Optional[str] = None,
@@ -64,8 +65,7 @@ class HttpError(DataverseError):
         traceparent: Optional[str] = None,
         body_excerpt: Optional[str] = None,
         retry_after: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None,
-        is_transient: bool = False,
+        details: Optional[Dict[str, Any]] = None
     ) -> None:
         d = details or {}
         if service_error_code is not None:

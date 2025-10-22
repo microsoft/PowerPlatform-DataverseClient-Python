@@ -10,7 +10,7 @@ import importlib.resources as ir
 
 from .http import HttpClient
 from .odata_upload_files import ODataFileUpload
-from .errors import HttpError, ValidationError, MetadataError, SQLParseError
+from .errors import *
 from . import error_codes as ec
 
 
@@ -101,21 +101,7 @@ class ODataClient(ODataFileUpload):
         except Exception:
             pass
         sc = r.status_code
-        sub_map = {
-            400: ec.HTTP_400,
-            401: ec.HTTP_401,
-            403: ec.HTTP_403,
-            404: ec.HTTP_404,
-            409: ec.HTTP_409,
-            412: ec.HTTP_412,
-            415: ec.HTTP_415,
-            429: ec.HTTP_429,
-            500: ec.HTTP_500,
-            502: ec.HTTP_502,
-            503: ec.HTTP_503,
-            504: ec.HTTP_504,
-        }
-        subcode = sub_map.get(sc, f"http_{sc}")
+        subcode = ec.http_subcode(sc)
         correlation_id = headers.get("x-ms-correlation-request-id") or headers.get("x-ms-correlation-id")
         request_id = headers.get("x-ms-client-request-id") or headers.get("request-id") or headers.get("x-ms-request-id")
         traceparent = headers.get("traceparent")
@@ -126,7 +112,7 @@ class ODataClient(ODataFileUpload):
                 retry_after = int(ra)
             except Exception:
                 retry_after = None
-        is_transient = sc in (429, 502, 503, 504)
+        is_transient = ec.is_transient_status(sc)
         raise HttpError(
             msg,
             status_code=sc,
