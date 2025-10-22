@@ -10,7 +10,7 @@ import importlib.resources as ir
 
 from .http import HttpClient
 from .odata_upload_files import ODataFileUpload
-from .errors import HttpError
+from .errors import HttpError, ValidationError, MetadataError, SQLParseError
 from . import error_codes as ec
 
 
@@ -76,45 +76,67 @@ class ODataClient(ODataFileUpload):
         return self._http.request(method, url, **kwargs)
 
     def _request(self, method: str, url: str, *, expected: tuple[int, ...] = (200, 201, 202, 204), **kwargs):
-        """Execute HTTP request; raise HttpError with structured details on failure.
-
-        Returns the raw response for success codes; raises HttpError with extracted
-        Dataverse error payload fields and correlation identifiers otherwise.
-        """
-        headers = kwargs.pop("headers", None)
-        kwargs["headers"] = self._merge_headers(headers)
+        headers_in = kwargs.pop("headers", None)
+        kwargs["headers"] = self._merge_headers(headers_in)
         r = self._raw_request(method, url, **kwargs)
         if r.status_code in expected:
             return r
-        payload = {}
+        headers = getattr(r, "headers", {}) or {}
+        body_excerpt = (getattr(r, "text", "") or "")[:200]
+        svc_code = None
+        msg = f"HTTP {r.status_code}"
         try:
-            payload = r.json() if getattr(r, 'text', None) else {}
+            data = r.json() if getattr(r, "text", None) else {}
+            if isinstance(data, dict):
+                inner = data.get("error")
+                if isinstance(inner, dict):
+                    svc_code = inner.get("code")
+                    imsg = inner.get("message")
+                    if isinstance(imsg, str) and imsg.strip():
+                        msg = imsg.strip()
+                else:
+                    imsg2 = data.get("message")
+                    if isinstance(imsg2, str) and imsg2.strip():
+                        msg = imsg2.strip()
         except Exception:
-            payload = {}
-        svc_err = payload.get("error") if isinstance(payload, dict) else None
-        svc_code = svc_err.get("code") if isinstance(svc_err, dict) else None
-        svc_msg = svc_err.get("message") if isinstance(svc_err, dict) else None
-        message = svc_msg or f"HTTP {r.status_code}"
-        subcode = f"http_{r.status_code}"
-
-        headers = getattr(r, 'headers', {}) or {}
-        details = {
-            "service_error_code": svc_code,
-            "body_excerpt": (getattr(r, 'text', '') or '')[:200],
-            "correlation_id": headers.get("x-ms-correlation-request-id") or headers.get("x-ms-correlation-id"),
-            "request_id": headers.get("x-ms-client-request-id") or headers.get("request-id"),
-            "traceparent": headers.get("traceparent"),
+            pass
+        sc = r.status_code
+        sub_map = {
+            400: ec.HTTP_400,
+            401: ec.HTTP_401,
+            403: ec.HTTP_403,
+            404: ec.HTTP_404,
+            409: ec.HTTP_409,
+            412: ec.HTTP_412,
+            415: ec.HTTP_415,
+            429: ec.HTTP_429,
+            500: ec.HTTP_500,
+            502: ec.HTTP_502,
+            503: ec.HTTP_503,
+            504: ec.HTTP_504,
         }
+        subcode = sub_map.get(sc, f"http_{sc}")
+        correlation_id = headers.get("x-ms-correlation-request-id") or headers.get("x-ms-correlation-id")
+        request_id = headers.get("x-ms-client-request-id") or headers.get("request-id") or headers.get("x-ms-request-id")
+        traceparent = headers.get("traceparent")
         ra = headers.get("Retry-After")
+        retry_after = None
         if ra:
-            details["retry_after"] = ra
-        is_transient = r.status_code in (429, 502, 503, 504)
+            try:
+                retry_after = int(ra)
+            except Exception:
+                retry_after = None
+        is_transient = sc in (429, 502, 503, 504)
         raise HttpError(
-            message,
+            msg,
+            status_code=sc,
             subcode=subcode,
-            status_code=r.status_code,
-            details=details,
-            source={"method": method, "url": url},
+            service_error_code=svc_code,
+            correlation_id=correlation_id,
+            request_id=request_id,
+            traceparent=traceparent,
+            body_excerpt=body_excerpt,
+            retry_after=retry_after,
             is_transient=is_transient,
         )
 
@@ -497,8 +519,10 @@ class ODataClient(ODataFileUpload):
         RuntimeError
             If metadata lookup for the logical name fails.
         """
-        if not isinstance(sql, str) or not sql.strip():
-            raise ValueError("sql must be a non-empty string")
+        if not isinstance(sql, str):
+            raise ValidationError("sql must be a string", subcode=ec.VALIDATION_SQL_NOT_STRING)
+        if not sql.strip():
+            raise ValidationError("sql must be a non-empty string", subcode=ec.VALIDATION_SQL_EMPTY)
         sql = sql.strip()
 
         # Extract logical table name via helper (robust to identifiers ending with 'from')
@@ -567,11 +591,17 @@ class ODataClient(ODataFileUpload):
             items = []
         if not items:
             plural_hint = " (did you pass a plural entity set name instead of the singular logical name?)" if logical.endswith("s") and not logical.endswith("ss") else ""
-            raise RuntimeError(f"Unable to resolve entity set for logical name '{logical}'. Provide the singular logical name.{plural_hint}")
+            raise MetadataError(
+                f"Unable to resolve entity set for logical name '{logical}'. Provide the singular logical name.{plural_hint}",
+                subcode=ec.METADATA_ENTITYSET_NOT_FOUND,
+            )
         md = items[0]
         es = md.get("EntitySetName")
         if not es:
-            raise RuntimeError(f"Metadata response missing EntitySetName for logical '{logical}'.")
+            raise MetadataError(
+                f"Metadata response missing EntitySetName for logical '{logical}'.",
+                subcode=ec.METADATA_ENTITYSET_NAME_MISSING,
+            )
         self._logical_to_entityset_cache[logical] = es
         primary_id_attr = md.get("PrimaryIdAttribute")
         if isinstance(primary_id_attr, str) and primary_id_attr:
@@ -1011,7 +1041,10 @@ class ODataClient(ODataFileUpload):
         entity_schema = schema_name
         ent = self._get_entity_by_schema(entity_schema)
         if not ent or not ent.get("MetadataId"):
-            raise RuntimeError(f"Table '{entity_schema}' not found.")
+            raise MetadataError(
+                f"Table '{entity_schema}' not found.",
+                subcode=ec.METADATA_TABLE_NOT_FOUND,
+            )
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
@@ -1023,7 +1056,10 @@ class ODataClient(ODataFileUpload):
 
         ent = self._get_entity_by_schema(entity_schema)
         if ent:
-            raise RuntimeError(f"Table '{entity_schema}' already exists. No update performed.")
+            raise MetadataError(
+                f"Table '{entity_schema}' already exists.",
+                subcode=ec.METADATA_TABLE_ALREADY_EXISTS,
+            )
 
         created_cols: List[str] = []
         primary_attr_schema = "new_Name" if "_" not in entity_schema else f"{entity_schema.split('_',1)[0]}_Name"
@@ -1077,7 +1113,10 @@ class ODataClient(ODataFileUpload):
         """
         k = (kind or "").strip().lower()
         if k != "picklist":
-            raise ValueError(f"Unsupported cache kind '{kind}' (only 'picklist' is implemented)")
+            raise ValidationError(
+                f"Unsupported cache kind '{kind}' (only 'picklist' is implemented)",
+                subcode=ec.VALIDATION_UNSUPPORTED_CACHE_KIND,
+            )
 
         removed = len(self._picklist_label_cache)
         self._picklist_label_cache.clear()

@@ -1,6 +1,7 @@
 import types
 import pytest
 from dataverse_sdk.odata import ODataClient
+from dataverse_sdk.errors import MetadataError
 
 class DummyAuth:
     def acquire_token(self, scope):
@@ -115,5 +116,5 @@ def test_unknown_logical_name_raises():
         (200, {}, {"value": []}),  # metadata lookup returns empty
     ]
     c = TestableClient(responses)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(MetadataError):
         c._create("nonexistent", {"x": 1})
