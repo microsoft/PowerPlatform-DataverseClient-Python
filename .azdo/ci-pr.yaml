@@ -1,0 +1,56 @@
+# Azure DevOps PR validation pipeline
+# Matches GitHub Actions workflow for consistency
+
+pr:
+- main
+
+trigger: none  # Only run on PRs, not on direct pushes
+
+pool:
+  vmImage: ubuntu-latest
+
+# Simplified to single Python version (per project requirements)
+# Can expand to matrix testing later if needed
+
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.12'
+    addToPath: true
+  displayName: 'Use Python 3.12'
+
+- script: |
+    python -m pip install --upgrade pip
+    python -m pip install flake8 black build
+    if [ -f dev_dependencies.txt ]; then pip install -r dev_dependencies.txt; fi
+  displayName: 'Install dependencies'
+
+- script: |
+    black src tests --check
+  displayName: 'Check format with black'
+
+- script: |
+    # stop the build if there are Python syntax errors or undefined names
+    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    # exit-zero treats all errors as warnings
+    flake8 . --count --exit-zero --show-source --statistics
+  displayName: 'Lint with flake8'
+
+- script: |
+    python -m build
+  displayName: 'Build package'
+
+- script: |
+    python -m pip install dist/*.whl
+  displayName: 'Install wheel'
+
+- script: |
+    pytest
+  displayName: 'Test with pytest'
+
+- task: PublishTestResults@2
+  condition: succeededOrFailed()
+  inputs:
+    testResultsFiles: '**/test-*.xml'
+    testRunTitle: 'Python 3.12'
+  displayName: 'Publish test results'
