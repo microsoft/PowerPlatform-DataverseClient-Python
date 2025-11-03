@@ -156,9 +156,9 @@ Pass a list of payloads to `create(logical_name, payloads)` to invoke the collec
 ```python
 # Bulk create accounts (returns list of GUIDs)
 payloads = [
-    {"name": "Contoso"},
-    {"name": "Fabrikam"},
-    {"name": "Northwind"},
+	{"name": "Contoso"},
+	{"name": "Fabrikam"},
+	{"name": "Northwind"},
 ]
 ids = client.create("account", payloads)
 assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
