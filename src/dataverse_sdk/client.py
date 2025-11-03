@@ -25,9 +25,8 @@ class DataverseClient:
     base_url : str
         Your Dataverse environment URL, for example:
         ``"https://<org>.crm.dynamics.com"``. A trailing slash is ignored.
-    credential : azure.core.credentials.TokenCredential | None, optional
-        Any Azure Identity credential. If omitted, the SDK uses
-        ``DefaultAzureCredential`` internally.
+    credential : azure.core.credentials.TokenCredential
+        Azure Identity credential.
     config : DataverseConfig | None, optional
         Optional configuration (language code, SQL API name, HTTP timeouts/retries).
 
@@ -40,7 +39,7 @@ class DataverseClient:
     def __init__(
         self,
         base_url: str,
-        credential: Optional[TokenCredential] = None,
+        credential: TokenCredential,
         config: Optional[DataverseConfig] = None,
     ) -> None:
         self.auth = AuthManager(credential)

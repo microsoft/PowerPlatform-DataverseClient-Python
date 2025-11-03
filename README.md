@@ -24,8 +24,7 @@ A Python package allowing developers to connect to Dataverse environments for DD
 - Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
 
 Auth:
-- Credential is optional; if omitted, the SDK uses `DefaultAzureCredential`.
-- You can pass any `azure.core.credentials.TokenCredential` you prefer; examples use `InteractiveBrowserCredential` for local runs.
+- Accept only an `azure.core.credentials.TokenCredential` credential.
 - Token scope used by the SDK: `https://<yourorg>.crm.dynamics.com/.default` (derived from `base_url`).
 
 ## API Reference (Summary)
@@ -111,21 +110,13 @@ For upload files functionalities, run quickstart_file_upload.py instead
 
 ### DataverseClient (recommended)
 
-Tip: You can omit the credential and the SDK will use `DefaultAzureCredential` automatically:
-
 ```python
+from azure.identity import InteractiveBrowserCredential
 from dataverse_sdk import DataverseClient
 
 base_url = "https://yourorg.crm.dynamics.com"
-client = DataverseClient(base_url=base_url)  # uses DefaultAzureCredential by default
-```
-
-```python
-from azure.identity import DefaultAzureCredential
-from dataverse_sdk import DataverseClient
-
-base_url = "https://yourorg.crm.dynamics.com"
-client = DataverseClient(base_url=base_url, credential=DefaultAzureCredential())
+credential = InteractiveBrowserCredential()  # or DeviceCodeCredential(), ClientSecretCredential(...), etc.
+client = DataverseClient(base_url=base_url, credential=credential)
 
 # Create (returns list[str] of new GUIDs)
 account_id = client.create("account", {"name": "Acme, Inc.", "telephone1": "555-0100"})[0]
@@ -165,9 +156,9 @@ Pass a list of payloads to `create(logical_name, payloads)` to invoke the collec
 ```python
 # Bulk create accounts (returns list of GUIDs)
 payloads = [
-	{"name": "Contoso"},
-	{"name": "Fabrikam"},
-	{"name": "Northwind"},
+    {"name": "Contoso"},
+    {"name": "Fabrikam"},
+    {"name": "Northwind"},
 ]
 ids = client.create("account", payloads)
 assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
