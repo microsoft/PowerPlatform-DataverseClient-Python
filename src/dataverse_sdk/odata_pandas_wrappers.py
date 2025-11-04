@@ -1,26 +1,8 @@
-"""Pandas-friendly wrappers around the low-level `ODataClient`.
+"""
+Pandas-friendly wrappers for Dataverse OData operations.
 
-These helpers allow using pandas DataFrames / Series / Indexes as inputs and
-outputs for common CRUD + query operations.
-
-Design notes:
-* All methods are thin convenience wrappers that iterate row-by-row; no OData
-  batch requests are issued (future enhancement opportunity).
-* create_df: creates one record per row, returning a new DataFrame with an
-  added id column (default name 'id').
-* update_df: updates records based on an id column; returns a DataFrame with
-  per-row success booleans and optional error messages.
-* delete_ids: deletes a collection of ids (Series, list, or Index) returning a
-  DataFrame summarizing success/failure.
-* get_ids: fetches a set of ids returning a DataFrame of the merged JSON
-  objects (outer union of keys). Missing keys are NaN.
-* query_sql_df: runs a SQL query via the Web API `?sql=` parameter and returns the result rows as
-  a DataFrame (empty DataFrame if no rows).
-
-Edge cases & behaviors:
-* Empty inputs return empty DataFrames without calling the API.
-* Errors on individual rows are captured instead of aborting the whole batch.
-* The default id column name is 'id' but can be overridden.
+This module provides :class:`PandasODataClient`, a high-level wrapper that enables
+DataFrame-based CRUD and query operations.
 """
 
 from __future__ import annotations
@@ -37,17 +19,24 @@ from .odata import ODataClient
 
 @dataclass
 class RowError:
+    """
+    Container for row-level error information.
+
+    :param index: Zero-based row index where the error occurred.
+    :type index: int
+    :param message: Error message describing the failure.
+    :type message: str
+    """
     index: int
     message: str
 
 
 class PandasODataClient:
-    """High-level convenience wrapper exposing pandas-friendly methods.
+    """
+    High-level pandas-friendly wrapper for Dataverse OData operations.
 
-    Parameters
-    ----------
-    odata_client : ODataClient
-        An initialized low-level client (token acquisition & base URL ready).
+    :param odata_client: Initialized low-level OData client with authentication configured.
+    :type odata_client: ~dataverse_sdk.odata.ODataClient
     """
 
     def __init__(self, odata_client: ODataClient) -> None:
@@ -55,19 +44,17 @@ class PandasODataClient:
 
     # ---------------------------- Create ---------------------------------
     def create_df(self, logical_name: str, record: pd.Series) -> str:
-        """Create a single record from a pandas Series and return the GUID.
+        """
+        Create a single record from a pandas Series and return the GUID.
 
-        Parameters
-        ----------
-        logical_name : str
-            Logical (singular) entity name, e.g. "account".
-        record : pandas.Series
-            Series whose index labels are field logical names.
-
-        Returns
-        -------
-        str
-            The created record's GUID.
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param record: Series whose index labels are field logical names and values are field values.
+        :type record: pandas.Series
+        :return: The created record's GUID.
+        :rtype: str
+        :raises TypeError: If ``record`` is not a pandas Series.
+        :raises RuntimeError: If the internal create operation returns an unexpected format.
         """
         if not isinstance(record, pd.Series):
             raise TypeError("record must be a pandas Series")
@@ -79,24 +66,16 @@ class PandasODataClient:
 
     # ---------------------------- Update ---------------------------------
     def update(self, logical_name: str, record_id: str, entity_data: pd.Series) -> None:
-        """Update a single record (returns None).
+        """
+        Update a single record with values from a pandas Series.
 
-        Parameters
-        ----------
-        logical_name : str
-            Logical (singular) entity name.
-        record_id : str
-            GUID of the record to update.
-        entity_data : pandas.Series
-            Series whose index labels are field logical names; any null (NaN) values
-            are ignored (not sent). An 'id' key, if present, is ignored.
-
-        Raises
-        ------
-        TypeError
-            If entity_data is not a Series.
-        Exception
-            Propagates underlying HTTP errors from the OData client.
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param record_id: GUID of the record to update.
+        :type record_id: str
+        :param entity_data: Series whose index labels are field logical names. NaN values are ignored.
+        :type entity_data: pandas.Series
+        :raises TypeError: If ``entity_data`` is not a pandas Series.
         """
         if not isinstance(entity_data, pd.Series):
             raise TypeError("entity_data must be a pandas Series")
@@ -107,19 +86,15 @@ class PandasODataClient:
 
     # ---------------------------- Delete ---------------------------------
     def delete_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index) -> pd.DataFrame:
-        """Delete a collection of record IDs and return a summary DataFrame.
+        """
+        Delete a collection of record IDs and return a summary DataFrame.
 
-        Parameters
-        ----------
-        logical_name : str
-            Logical (singular) entity name.
-        ids : sequence[str] | pandas.Series | pandas.Index
-            Collection of GUIDs to delete.
-
-        Returns
-        -------
-        pandas.DataFrame
-            Columns: id, success (bool), error (str nullable)
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param ids: Collection of GUIDs to delete. Can be a list, pandas Series, or pandas Index.
+        :type ids: Sequence[str] or pandas.Series or pandas.Index
+        :return: DataFrame with columns: ``id`` (str), ``success`` (bool), ``error`` (str or None).
+        :rtype: pandas.DataFrame
         """
         if isinstance(ids, (pd.Series, pd.Index)):
             id_list = [str(x) for x in ids.tolist()]
@@ -136,9 +111,17 @@ class PandasODataClient:
 
     # ------------------------------ Get ----------------------------------
     def get_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index, select: Optional[Iterable[str]] = None) -> pd.DataFrame:
-        """Fetch multiple records by ID and return a DataFrame.
+        """
+        Fetch multiple records by ID and return a DataFrame.
 
-        Missing records are included with NaN for fields and an error column entry.
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param ids: Collection of GUIDs to fetch. Can be a list, pandas Series, or pandas Index.
+        :type ids: Sequence[str] or pandas.Series or pandas.Index
+        :param select: Optional iterable of field logical names to retrieve. If None, all fields are returned.
+        :type select: Iterable[str] or None
+        :return: DataFrame containing fetched records. Failed fetches will have an ``error`` column.
+        :rtype: pandas.DataFrame
         """
         if isinstance(ids, (pd.Series, pd.Index)):
             id_list = [str(x) for x in ids.tolist()]
@@ -165,10 +148,14 @@ class PandasODataClient:
 
     # --------------------------- Query SQL -------------------------------
     def query_sql_df(self, sql: str) -> pd.DataFrame:
-        """Execute a SQL query via the Dataverse Web API `?sql=` parameter and return a DataFrame.
+        """
+        Execute a SQL query via the Dataverse Web API and return a DataFrame.
 
-        The statement must adhere to the supported subset (single SELECT, optional WHERE/TOP/ORDER BY, no joins).
-        Empty result -> empty DataFrame (columns inferred only if rows present).
+        :param sql: SQL SELECT statement following Dataverse Web API SQL syntax.
+        :type sql: str
+        :return: DataFrame containing query results. Returns an empty DataFrame if no rows match.
+        :rtype: pandas.DataFrame
+        :raises ValueError: If the API returns a malformed JSON response.
         """
         rows: Any = self._c.query_sql(sql)
 

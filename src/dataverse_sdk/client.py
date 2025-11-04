@@ -10,30 +10,60 @@ from .odata import ODataClient
 
 
 class DataverseClient:
-    """High-level client for Dataverse operations.
+    """
+    High-level client for Microsoft Dataverse operations.
 
-    This client exposes a simple, stable surface for:
-    - OData CRUD: create, get, update, delete records
-    - SQL (read-only): query SQL via ?sql parameter in Web API
-    - Table metadata: create, inspect, and delete simple custom tables
+    This client provides a simple, stable interface for interacting with Dataverse environments
+    through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
+    to an internal :class:`~dataverse_sdk.odata.ODataClient`.
 
-    The client owns authentication (Azure Identity) and configuration, and delegates
-    requests to an internal OData client responsible for HTTP calls and URL shaping.
+    Key capabilities:
+        - OData CRUD operations: create, read, update, delete records
+        - SQL queries: execute read-only SQL via Web API ``?sql`` parameter
+        - Table metadata: create, inspect, and delete custom tables
+        - File uploads: upload files to file columns with chunking support
 
-    Parameters
-    ----------
-    base_url : str
-        Your Dataverse environment URL, for example:
-        ``"https://<org>.crm.dynamics.com"``. A trailing slash is ignored.
-    credential : azure.core.credentials.TokenCredential
-        Azure Identity credential.
-    config : DataverseConfig | None, optional
-        Optional configuration (language code, SQL API name, HTTP timeouts/retries).
+    :param base_url: Your Dataverse environment URL, for example
+        ``"https://org.crm.dynamics.com"``. Trailing slash is automatically removed.
+    :type base_url: str
+    :param credential: Azure Identity credential for authentication.
+    :type credential: ~azure.core.credentials.TokenCredential
+    :param config: Optional configuration for language, timeouts, and retries.
+        If not provided, defaults are loaded from :meth:`~dataverse_sdk.config.DataverseConfig.from_env`.
+    :type config: ~dataverse_sdk.config.DataverseConfig or None
 
-    Raises
-    ------
-    ValueError
-        If ``base_url`` is missing or empty after trimming.
+    :raises ValueError: If ``base_url`` is missing or empty after trimming.
+
+    .. note::
+        The client lazily initializes its internal OData client on first use, allowing
+        lightweight construction without immediate network calls.
+
+    Example:
+        Create a client and perform basic operations::
+
+            from azure.identity import DefaultAzureCredential
+            from dataverse_sdk import DataverseClient
+
+            credential = DefaultAzureCredential()
+            client = DataverseClient(
+                "https://org.crm.dynamics.com",
+                credential
+            )
+
+            # Create a record
+            record_ids = client.create("account", {"name": "Contoso Ltd"})
+            print(f"Created account: {record_ids[0]}")
+
+            # Update a record
+            client.update("account", record_ids[0], {"telephone1": "555-0100"})
+
+            # Query records
+            for batch in client.get("account", filter="name eq 'Contoso Ltd'"):
+                for account in batch:
+                    print(account["name"])
+
+            # Delete a record
+            client.delete("account", record_ids[0])
     """
 
     def __init__(
@@ -50,12 +80,14 @@ class DataverseClient:
         self._odata: Optional[ODataClient] = None
 
     def _get_odata(self) -> ODataClient:
-        """Get or create the internal OData client instance.
+        """
+        Get or create the internal OData client instance.
 
-        Returns
-        -------
-        ODataClient
-            The lazily-initialized low-level client used to perform requests.
+        This method implements lazy initialization of the low-level OData client,
+        deferring construction until the first API call.
+
+        :return: The lazily-initialized low-level client used to perform HTTP requests.
+        :rtype: ~dataverse_sdk.odata.ODataClient
         """
         if self._odata is None:
             self._odata = ODataClient(
@@ -67,19 +99,36 @@ class DataverseClient:
 
     # ---------------- Unified CRUD: create/update/delete ----------------
     def create(self, logical_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
-        """Create one or many records by logical (singular) name; returns list[str] of created IDs.
+        """
+        Create one or more records by logical (singular) entity name.
 
-        Parameters
-        ----------
-        logical_name : str
-            Logical (singular) entity name, e.g. "account".
-        records : dict | list[dict]
-            A single record dict or a list of record dicts.
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"`` or ``"contact"``.
+        :type logical_name: str
+        :param records: A single record dictionary or a list of record dictionaries.
+            Each dictionary should contain attribute logical names as keys.
+        :type records: dict or list[dict]
 
-        Returns
-        -------
-        list[str]
-            List of created GUIDs (length 1 for single input).
+        :return: List of created record GUIDs. Returns a single-element list for a single input.
+        :rtype: list[str]
+
+        :raises TypeError: If ``records`` is not a dict or list[dict], or if the internal
+            client returns an unexpected type.
+
+        Example:
+            Create a single record::
+
+                client = DataverseClient(base_url, credential)
+                ids = client.create("account", {"name": "Contoso"})
+                print(f"Created: {ids[0]}")
+
+            Create multiple records::
+
+                records = [
+                    {"name": "Contoso"},
+                    {"name": "Fabrikam"}
+                ]
+                ids = client.create("account", records)
+                print(f"Created {len(ids)} accounts")
         """
         od = self._get_odata()
         entity_set = od._entity_set_from_logical(logical_name)
@@ -97,17 +146,49 @@ class DataverseClient:
         raise TypeError("records must be dict or list[dict]")
 
     def update(self, logical_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
-        """Update one or many records. Returns None.
+        """
+        Update one or more records.
 
-        Usage patterns:
-            update("accounts", some_id, {"telephone1": "555"})
-            update("accounts", [id1, id2], {"statecode": 1})            # broadcast
-            update("accounts", [id1, id2], [{"name": "A"}, {"name": "B"}])  # 1:1
+        This method supports three usage patterns:
 
-        Rules:
-        - If ids is a list and changes is a single dict -> broadcast.
-        - If both are lists they must have equal length.
-        - Single update discards representation (performance-focused).
+        1. Single record update: ``update("account", "guid", {"name": "New Name"})``
+        2. Broadcast update: ``update("account", [id1, id2], {"status": 1})`` - applies same changes to all IDs
+        3. Paired updates: ``update("account", [id1, id2], [changes1, changes2])`` - one-to-one mapping
+
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param ids: Single GUID string or list of GUID strings to update.
+        :type ids: str or list[str]
+        :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
+            for paired mode. When ``ids`` is a list and ``changes`` is a single dict,
+            the same changes are broadcast to all records. When both are lists, they must
+            have equal length for one-to-one mapping.
+        :type changes: dict or list[dict]
+
+        :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
+
+        .. note::
+            Single updates discard the response representation for better performance.
+            For broadcast or paired updates, the method delegates to the internal client's
+            batch update logic.
+
+        Example:
+            Single record update::
+
+                client.update("account", account_id, {"telephone1": "555-0100"})
+
+            Broadcast same changes to multiple records::
+
+                client.update("account", [id1, id2, id3], {"statecode": 1})
+
+            Update multiple records with different values::
+
+                ids = [id1, id2]
+                changes = [
+                    {"name": "Updated Name 1"},
+                    {"name": "Updated Name 2"}
+                ]
+                client.update("account", ids, changes)
         """
         od = self._get_odata()
         if isinstance(ids, str):
@@ -121,7 +202,25 @@ class DataverseClient:
         return None
 
     def delete(self, logical_name: str, ids: Union[str, List[str]]) -> None:
-        """Delete one or many records (GUIDs). Returns None."""
+        """
+        Delete one or more records by GUID.
+
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param ids: Single GUID string or list of GUID strings to delete.
+        :type ids: str or list[str]
+
+        :raises TypeError: If ``ids`` is not str or list[str].
+
+        Example:
+            Delete a single record::
+
+                client.delete("account", account_id)
+
+            Delete multiple records::
+
+                client.delete("account", [id1, id2, id3])
+        """
         od = self._get_odata()
         if isinstance(ids, str):
             od._delete(logical_name, ids)
@@ -142,7 +241,57 @@ class DataverseClient:
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
     ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
-        """Fetch single record by ID or multiple records as a generator."""
+        """
+        Fetch a single record by ID or query multiple records.
+
+        When ``record_id`` is provided, returns a single record dictionary.
+        When ``record_id`` is None, returns a generator yielding batches of records.
+
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
+        :type record_id: str or None
+        :param select: Optional list of attribute logical names to retrieve.
+        :type select: list[str] or None
+        :param filter: Optional OData filter string, e.g. ``"name eq 'Contoso'"``.
+        :type filter: str or None
+        :param orderby: Optional list of attributes to sort by, e.g. ``["name asc", "createdon desc"]``.
+        :type orderby: list[str] or None
+        :param top: Optional maximum number of records to return.
+        :type top: int or None
+        :param expand: Optional list of navigation properties to expand.
+        :type expand: list[str] or None
+        :param page_size: Optional number of records per page for pagination.
+        :type page_size: int or None
+
+        :return: Single record dict if ``record_id`` is provided, otherwise a generator
+            yielding lists of record dictionaries (one list per page).
+        :rtype: dict or Iterable[list[dict]]
+
+        :raises TypeError: If ``record_id`` is provided but not a string.
+
+        Example:
+            Fetch a single record::
+
+                record = client.get("account", record_id=account_id, select=["name", "telephone1"])
+                print(record["name"])
+
+            Query multiple records with filtering::
+
+                for batch in client.get("account", filter="name eq 'Contoso'", select=["name"]):
+                    for account in batch:
+                        print(account["name"])
+
+            Query with sorting and pagination::
+
+                for batch in client.get(
+                    "account",
+                    orderby=["createdon desc"],
+                    top=100,
+                    page_size=50
+                ):
+                    print(f"Batch size: {len(batch)}")
+        """
         od = self._get_odata()
         if record_id is not None:
             if not isinstance(record_id, str):
@@ -164,81 +313,154 @@ class DataverseClient:
 
     # SQL via Web API sql parameter
     def query_sql(self, sql: str):
-        """Execute a read-only SQL query using the Dataverse Web API `?sql=` capability.
+        """
+        Execute a read-only SQL query using the Dataverse Web API ``?sql`` capability.
 
-        The query must follow the currently supported subset: single SELECT with optional WHERE,
-        TOP (integer), ORDER BY (columns only), and simple alias after FROM. Example:
-            ``SELECT TOP 3 accountid, name FROM account ORDER BY name DESC``
+        The SQL query must follow the supported subset: a single SELECT statement with
+        optional WHERE, TOP (integer literal), ORDER BY (column names only), and a simple
+        table alias after FROM.
 
-        Parameters
-        ----------
-        sql : str
-            Supported single SELECT statement.
+        :param sql: Supported SQL SELECT statement.
+        :type sql: str
 
-        Returns
-        -------
-        list[dict]
-            Result rows (empty list if none).
+        :return: List of result row dictionaries. Returns an empty list if no rows match.
+        :rtype: list[dict]
+
+        :raises ~dataverse_sdk.errors.SQLParseError: If the SQL query uses unsupported syntax.
+        :raises ~dataverse_sdk.errors.HttpError: If the Web API returns an error.
+
+        .. note::
+            The SQL support is limited to read-only queries. Complex joins, subqueries,
+            and certain SQL functions may not be supported. Consult the Dataverse
+            documentation for the current feature set.
+
+        Example:
+            Basic SQL query::
+
+                sql = "SELECT TOP 10 accountid, name FROM account WHERE name LIKE 'C%' ORDER BY name"
+                results = client.query_sql(sql)
+                for row in results:
+                    print(row["name"])
+
+            Query with alias::
+
+                sql = "SELECT a.name, a.telephone1 FROM account AS a WHERE a.statecode = 0"
+                results = client.query_sql(sql)
         """
         return self._get_odata()._query_sql(sql)
 
     # Table metadata helpers
     def get_table_info(self, tablename: str) -> Optional[Dict[str, Any]]:
-        """Get basic metadata for a custom table if it exists.
+        """
+        Get basic metadata for a custom table if it exists.
 
-        Parameters
-        ----------
-        tablename : str
-            Friendly name (e.g., ``"SampleItem"``) or full schema name
-            (e.g., ``"new_SampleItem"``).
+        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
+            (e.g. ``"new_SampleItem"``).
+        :type tablename: str
 
-        Returns
-        -------
-        dict | None
-            Dict with keys like ``entity_schema``, ``entity_logical_name``,
-            ``entity_set_name``, and ``metadata_id``; ``None`` if not found.
+        :return: Dictionary containing table metadata with keys ``entity_schema``,
+            ``entity_logical_name``, ``entity_set_name``, and ``metadata_id``.
+            Returns None if the table is not found.
+        :rtype: dict or None
+
+        Example:
+            Retrieve table metadata::
+
+                info = client.get_table_info("SampleItem")
+                if info:
+                    print(f"Logical name: {info['entity_logical_name']}")
+                    print(f"Entity set: {info['entity_set_name']}")
         """
         return self._get_odata()._get_table_info(tablename)
 
     def create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a simple custom table.
+        """
+        Create a simple custom table with specified columns.
 
-        Parameters
-        ----------
-        tablename : str
-            Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
-        schema : dict[str, Any]
-            Column definitions mapping logical names (without prefix) to types.
-            Supported:
-              - Primitive types: ``string``, ``int``, ``decimal``, ``float``, ``datetime``, ``bool``
-              - Enum subclass (IntEnum preferred): generates a local option set.
-                Optional multilingual labels via ``__labels__ = {1033: {"Active": "Active"}, 1036: {"Active": "Actif"}}``
+        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
+            (e.g. ``"new_SampleItem"``). If a publisher prefix is not included, the default
+            publisher prefix will be applied.
+        :type tablename: str
+        :param schema: Dictionary mapping column logical names (without prefix) to their types.
+            Supported types:
 
-        Returns
-        -------
-        dict
-            Metadata summary including ``entity_schema``, ``entity_set_name``,
-            ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
+            - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
+            - Enum subclass (IntEnum preferred): Creates a local option set. Optional multilingual
+              labels can be provided via ``__labels__`` class attribute, defined inside the Enum subclass::
+
+                  class ItemStatus(IntEnum):
+                      ACTIVE = 1
+                      INACTIVE = 2
+                      __labels__ = {
+                          1033: {"Active": "Active", "Inactive": "Inactive"},
+                          1036: {"Active": "Actif", "Inactive": "Inactif"}
+                      }
+
+        :type schema: dict[str, Any]
+
+        :return: Dictionary containing table metadata including ``entity_schema``,
+            ``entity_set_name``, ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
+        :rtype: dict
+
+        :raises ~dataverse_sdk.errors.MetadataError: If table creation fails or the schema is invalid.
+
+        Example:
+            Create a table with simple columns::
+
+                from enum import IntEnum
+
+                class ItemStatus(IntEnum):
+                    ACTIVE = 1
+                    INACTIVE = 2
+
+                schema = {
+                    "title": "string",
+                    "quantity": "int",
+                    "price": "decimal",
+                    "available": "bool",
+                    "status": ItemStatus
+                }
+
+                result = client.create_table("SampleItem", schema)
+                print(f"Created table: {result['entity_logical_name']}")
+                print(f"Columns: {result['columns_created']}")
         """
         return self._get_odata()._create_table(tablename, schema)
 
     def delete_table(self, tablename: str) -> None:
-        """Delete a custom table by name.
+        """
+        Delete a custom table by name.
 
-        Parameters
-        ----------
-        tablename : str
-            Friendly name (``"SampleItem"``) or a full schema name (``"new_SampleItem"``).
+        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
+            (e.g. ``"new_SampleItem"``).
+        :type tablename: str
+
+        :raises ~dataverse_sdk.errors.MetadataError: If the table does not exist or deletion fails.
+
+        .. warning::
+            This operation is irreversible and will delete all records in the table along
+            with the table definition. Use with caution.
+
+        Example:
+            Delete a custom table::
+
+                client.delete_table("SampleItem")
         """
         self._get_odata()._delete_table(tablename)
 
     def list_tables(self) -> list[str]:
-        """List all custom tables in the Dataverse environment.
+        """
+        List all custom tables in the Dataverse environment.
 
-        Returns
-        -------
-        list[str]
-            A list of table names.
+        :return: List of custom table names.
+        :rtype: list[str]
+
+        Example:
+            List all custom tables::
+
+                tables = client.list_tables()
+                for table in tables:
+                    print(table)
         """
         return self._get_odata()._list_tables()
 
@@ -253,31 +475,57 @@ class DataverseClient:
         mime_type: Optional[str] = None,
         if_none_match: bool = True,
     ) -> None:
-        """Upload a file to a Dataverse file column using a logical (singular) name.
+        """
+        Upload a file to a Dataverse file column.
 
-        Parameters
-        ----------
-        logical_name : str
-            Singular logical table name, e.g. "account".
-        record_id : str
-            GUID of the target record.
-        file_name_attribute : str
-            Logical name of the file column attribute.
-        path : str
-            Local filesystem path to the file. Stored filename will be the basename of this path.
-        mode : str | None, keyword-only, optional
-            Upload strategy: "auto" (default), "small", or "chunk".
-        mime_type : str | None, keyword-only, optional
-            Explicit MIME type to persist with the file (e.g. "application/pdf").
-        if_none_match : bool, keyword-only, optional
-            When True (default), sends ``If-None-Match: null`` to only succeed if the column is 
-            currently empty. Set False to always overwrite (uses ``If-Match: *``).
-            Used for "small" and "chunk" modes only.
+        :param logical_name: Singular logical table name, e.g. ``"account"``.
+        :type logical_name: str
+        :param record_id: GUID of the target record.
+        :type record_id: str
+        :param file_name_attribute: Logical name of the file column attribute.
+        :type file_name_attribute: str
+        :param path: Local filesystem path to the file. The stored filename will be
+            the basename of this path.
+        :type path: str
+        :param mode: Upload strategy: ``"auto"`` (default), ``"small"``, or ``"chunk"``.
+            Auto mode selects small or chunked upload based on file size.
+        :type mode: str or None
+        :param mime_type: Explicit MIME type to store with the file (e.g. ``"application/pdf"``).
+            If not provided, the MIME type may be inferred from the file extension.
+        :type mime_type: str or None
+        :param if_none_match: When True (default), sends ``If-None-Match: null`` header to only
+            succeed if the column is currently empty. Set False to always overwrite using
+            ``If-Match: *``. Used for small and chunk modes only.
+        :type if_none_match: bool
 
-        Returns
-        -------
-        None
-            Returns nothing on success. Raises on failure.
+        :raises ~dataverse_sdk.errors.HttpError: If the upload fails or the file column is not empty
+            when ``if_none_match=True``.
+        :raises FileNotFoundError: If the specified file path does not exist.
+
+        .. note::
+            Large files are automatically chunked to avoid request size limits. The chunk
+            mode performs multiple requests with resumable upload support.
+
+        Example:
+            Upload a PDF file::
+
+                client.upload_file(
+                    logical_name="account",
+                    record_id=account_id,
+                    file_name_attribute="new_contract",
+                    path="/path/to/contract.pdf",
+                    mime_type="application/pdf"
+                )
+
+            Upload with auto mode selection::
+
+                client.upload_file(
+                    logical_name="email",
+                    record_id=email_id,
+                    file_name_attribute="new_attachment",
+                    path="/path/to/large_file.zip",
+                    mode="auto"
+                )
         """
         od = self._get_odata()
         entity_set = od._entity_set_from_logical(logical_name)
@@ -294,22 +542,25 @@ class DataverseClient:
 
     # Cache utilities
     def flush_cache(self, kind) -> int:
-        """Flush cached client metadata/state.
+        """
+        Flush cached client metadata or state.
 
-        Currently supported kinds:
-          - 'picklist': clears entries from the picklist label cache used by label -> int conversion.
+        :param kind: Cache kind to flush. Currently supported values:
 
-        Parameters
-        ----------
-        kind : str
-            Cache kind to flush. Only 'picklist' is implemented today. Future kinds
-            (e.g. 'entityset', 'primaryid') can be added without breaking the signature.
+            - ``"picklist"``: Clears picklist label cache used for label-to-integer conversion
 
-        Returns
-        -------
-        int
-            Number of cache entries removed.
+            Future kinds (e.g. ``"entityset"``, ``"primaryid"``) may be added without
+            breaking this signature.
+        :type kind: str
 
+        :return: Number of cache entries removed.
+        :rtype: int
+
+        Example:
+            Clear the picklist cache::
+
+                removed = client.flush_cache("picklist")
+                print(f"Cleared {removed} cached picklist entries")
         """
         return self._get_odata()._flush_cache(kind)
 
