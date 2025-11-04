@@ -386,12 +386,15 @@ class DataverseClient:
 
             - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
             - Enum subclass (IntEnum preferred): Creates a local option set. Optional multilingual
-              labels can be provided via ``__labels__`` class attribute::
+              labels can be provided via ``__labels__`` class attribute, defined inside the Enum subclass::
 
-                  __labels__ = {
-                      1033: {"Active": "Active", "Inactive": "Inactive"},
-                      1036: {"Active": "Actif", "Inactive": "Inactif"}
-                  }
+                  class ItemStatus(IntEnum):
+                      ACTIVE = 1
+                      INACTIVE = 2
+                      __labels__ = {
+                          1033: {"Active": "Active", "Inactive": "Inactive"},
+                          1036: {"Active": "Actif", "Inactive": "Inactif"}
+                      }
 
         :type schema: dict[str, Any]
 
