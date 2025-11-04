@@ -165,9 +165,6 @@ class DataverseClient:
             have equal length for one-to-one mapping.
         :type changes: dict or list[dict]
 
-        :return: None
-        :rtype: None
-
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
 
         .. note::
@@ -212,9 +209,6 @@ class DataverseClient:
         :type logical_name: str
         :param ids: Single GUID string or list of GUID strings to delete.
         :type ids: str or list[str]
-
-        :return: None
-        :rtype: None
 
         :raises TypeError: If ``ids`` is not str or list[str].
 
@@ -438,9 +432,6 @@ class DataverseClient:
             (e.g. ``"new_SampleItem"``).
         :type tablename: str
 
-        :return: None
-        :rtype: None
-
         :raises ~dataverse_sdk.errors.MetadataError: If the table does not exist or deletion fails.
 
         .. warning::
@@ -503,9 +494,6 @@ class DataverseClient:
             succeed if the column is currently empty. Set False to always overwrite using
             ``If-Match: *``. Used for small and chunk modes only.
         :type if_none_match: bool
-
-        :return: None
-        :rtype: None
 
         :raises ~dataverse_sdk.errors.HttpError: If the upload fails or the file column is not empty
             when ``if_none_match=True``.

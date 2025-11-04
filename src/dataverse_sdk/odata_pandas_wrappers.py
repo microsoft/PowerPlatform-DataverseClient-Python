@@ -75,8 +75,6 @@ class PandasODataClient:
         :type record_id: str
         :param entity_data: Series whose index labels are field logical names. NaN values are ignored.
         :type entity_data: pandas.Series
-        :return: None
-        :rtype: None
         :raises TypeError: If ``entity_data`` is not a pandas Series.
         """
         if not isinstance(entity_data, pd.Series):
