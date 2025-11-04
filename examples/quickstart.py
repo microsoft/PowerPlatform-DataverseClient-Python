@@ -554,7 +554,6 @@ try:
 	exists_after_create = None
 	exists_after_delete = None
 	attr_type_before = None
-	attr_type_before_norm = None
 	if metadata_id and attribute_schema:
 		_ready_message = "Column metadata not yet available"
 		def _metadata_after_create():
@@ -578,7 +577,6 @@ try:
 		if isinstance(raw_type, str):
 			attr_type_before = raw_type
 			lowered = raw_type.lower()
-			attr_type_before_norm = lowered.rsplit(".", 1)[-1] if "." in lowered else lowered
 	log_call(f"client.delete_column('{entity_schema}', '{scratch_column}')")
 	column_delete = client.delete_columns(entity_schema, scratch_column)
 	if not isinstance(column_delete, list) or not column_delete:
