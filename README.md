@@ -41,7 +41,7 @@ Auth:
 | `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
 | `delete` | `delete(logical_name, list[id])` | `None` | Delete many (sequential). |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
-| `create_table` | `create_table(tablename, schema)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. |
+| `create_table` | `create_table(tablename, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
 | `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping (same shape as `create_table` schema). Returns schema names for the created columns. |
 | `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted. |
 | `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
@@ -310,6 +310,7 @@ info = client.create_table(
 		"active": "bool",
 		"status": Status,
 	},
+	solution_unique_name="my_solution_unique_name",  # optional: associate table with this solution
 )
 
 # Create or delete columns

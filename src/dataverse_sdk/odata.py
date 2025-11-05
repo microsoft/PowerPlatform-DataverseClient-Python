@@ -632,7 +632,13 @@ class ODataClient(ODataFileUpload):
         items = r.json().get("value", [])
         return items[0] if items else None
 
-    def _create_entity(self, schema_name: str, display_name: str, attributes: List[Dict[str, Any]]) -> str:
+    def _create_entity(
+        self,
+        schema_name: str,
+        display_name: str,
+        attributes: List[Dict[str, Any]],
+        solution_unique_name: Optional[str] = None,
+    ) -> str:
         url = f"{self.api}/EntityDefinitions"
         payload = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
@@ -646,7 +652,10 @@ class ODataClient(ODataFileUpload):
             "IsActivity": False,
             "Attributes": attributes,
         }
-        r = self._request("post", url, json=payload)
+        params = None
+        if solution_unique_name:
+            params = {"SolutionUniqueName": solution_unique_name}
+        r = self._request("post", url, json=payload, params=params)
         ent = self._wait_for_entity_ready(schema_name)
         if not ent or not ent.get("EntitySetName"):
             raise RuntimeError(
@@ -1086,7 +1095,12 @@ class ODataClient(ODataFileUpload):
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
 
-    def _create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_table(
+        self,
+        tablename: str,
+        schema: Dict[str, Any],
+        solution_unique_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         # Accept a friendly name and construct a default schema under 'new_'.
         # If a full SchemaName is passed (contains '_'), use as-is.
         entity_schema = self._normalize_entity_schema(tablename)
@@ -1110,7 +1124,18 @@ class ODataClient(ODataFileUpload):
             attributes.append(payload)
             created_cols.append(attr_schema)
 
-        metadata_id = self._create_entity(entity_schema, tablename, attributes)
+        if solution_unique_name is not None:
+            if not isinstance(solution_unique_name, str):
+                raise TypeError("solution_unique_name must be a string when provided")
+            if not solution_unique_name:
+                raise ValueError("solution_unique_name cannot be empty")
+
+        metadata_id = self._create_entity(
+            entity_schema,
+            tablename,
+            attributes,
+            solution_unique_name,
+        )
         ent2: Dict[str, Any] = self._wait_for_entity_ready(entity_schema) or {}
         logical_name = ent2.get("LogicalName")
 

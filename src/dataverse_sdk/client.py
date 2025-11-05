@@ -373,7 +373,12 @@ class DataverseClient:
         """
         return self._get_odata()._get_table_info(tablename)
 
-    def create_table(self, tablename: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+    def create_table(
+        self,
+        tablename: str,
+        schema: Dict[str, Any],
+        solution_unique_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Create a simple custom table with specified columns.
 
@@ -397,6 +402,9 @@ class DataverseClient:
                       }
 
         :type schema: dict[str, Any]
+        :param solution_unique_name: Optional solution unique name that should own the new table.
+            When omitted the table is created in the default solution.
+        :type solution_unique_name: str or None
 
         :return: Dictionary containing table metadata including ``entity_schema``,
             ``entity_set_name``, ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
@@ -425,7 +433,11 @@ class DataverseClient:
                 print(f"Created table: {result['entity_logical_name']}")
                 print(f"Columns: {result['columns_created']}")
         """
-        return self._get_odata()._create_table(tablename, schema)
+        return self._get_odata()._create_table(
+            tablename,
+            schema,
+            solution_unique_name,
+        )
 
     def delete_table(self, tablename: str) -> None:
         """
