@@ -1,6 +1,6 @@
 # Dataverse SDK for Python
 
-A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
+A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.  
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
 - OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters.
