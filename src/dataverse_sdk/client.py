@@ -201,7 +201,12 @@ class DataverseClient:
         od._update_by_ids(logical_name, ids, changes)
         return None
 
-    def delete(self, logical_name: str, ids: Union[str, List[str]]) -> None:
+    def delete(
+        self,
+        logical_name: str,
+        ids: Union[str, List[str]],
+        use_bulk_delete: bool = True,
+    ) -> Optional[str]:
         """
         Delete one or more records by GUID.
 
@@ -209,8 +214,15 @@ class DataverseClient:
         :type logical_name: str
         :param ids: Single GUID string or list of GUID strings to delete.
         :type ids: str or list[str]
+        :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
+            return its async job identifier. When ``False`` each record is deleted sequentially.
+        :type use_bulk_delete: bool
 
         :raises TypeError: If ``ids`` is not str or list[str].
+        :raises HttpError: If the underlying Web API delete request fails.
+        
+        :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
+        :rtype: str or None
 
         Example:
             Delete a single record::
@@ -219,7 +231,7 @@ class DataverseClient:
 
             Delete multiple records::
 
-                client.delete("account", [id1, id2, id3])
+                job_id = client.delete("account", [id1, id2, id3])
         """
         od = self._get_odata()
         if isinstance(ids, str):
@@ -227,7 +239,14 @@ class DataverseClient:
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
-        od._delete_multiple(logical_name, ids)
+        if not ids:
+            return None
+        if not all(isinstance(rid, str) for rid in ids):
+            raise TypeError("ids must contain string GUIDs")
+        if use_bulk_delete:
+            return od._delete_multiple(logical_name, ids)
+        for rid in ids:
+            od._delete(logical_name, rid)
         return None
 
     def get(

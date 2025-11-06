@@ -6,6 +6,7 @@ import unicodedata
 import time
 import re
 import json
+from datetime import datetime, timezone
 import importlib.resources as ir
 
 from .http import HttpClient
@@ -281,13 +282,68 @@ class ODataClient(ODataFileUpload):
         self._update_multiple(entity_set, logical_name, batch)
         return None
 
-    def _delete_multiple(self, logical_name: str, ids: List[str]) -> None:
-        """Delete many records by GUID list (simple loop; potential future optimization point)."""
-        if not isinstance(ids, list):
-            raise TypeError("ids must be list[str]")
-        for rid in ids:
-            self._delete(logical_name, rid)
-        return None
+    def _delete_multiple(
+        self,
+        logical_name: str,
+        ids: List[str],
+    ) -> Optional[str]:
+        """Delete many records by GUID list.
+
+        Returns the asynchronous job identifier reported by the BulkDelete action.
+        """
+        targets = [rid for rid in ids if rid]
+        if not targets:
+            return None
+        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in targets]
+
+        pk_attr = self._primary_id_attr(logical_name)
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        job_label = f"Bulk delete {logical_name} records @ {timestamp}"
+
+        query = {
+            "@odata.type": "Microsoft.Dynamics.CRM.QueryExpression",
+            "EntityName": logical_name,
+            "ColumnSet": {
+                "@odata.type": "Microsoft.Dynamics.CRM.ColumnSet",
+                "AllColumns": False,
+                "Columns": [],
+            },
+            "Criteria": {
+                "@odata.type": "Microsoft.Dynamics.CRM.FilterExpression",
+                "FilterOperator": "And",
+                "Conditions": [
+                    {
+                        "@odata.type": "Microsoft.Dynamics.CRM.ConditionExpression",
+                        "AttributeName": pk_attr,
+                        "Operator": "In",
+                        "Values": value_objects,
+                    }
+                ],
+            },
+        }
+
+        payload = {
+            "JobName": job_label,
+            "SendEmailNotification": False,
+            "ToRecipients": [],
+            "CCRecipients": [],
+            "RecurrencePattern": "",
+            "StartDateTime": timestamp,
+            "QuerySet": [query],
+        }
+
+        url = f"{self.api}/BulkDelete"
+        response = self._request("post", url, json=payload, expected=(200, 202, 204))
+
+        job_id = None
+        try:
+            body = response.json() if response.text else {}
+        except ValueError:
+            body = {}
+        if isinstance(body, dict):
+            job_id = body.get("JobId")
+
+        return job_id
 
     def _format_key(self, key: str) -> str:
         k = key.strip()
