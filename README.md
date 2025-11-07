@@ -39,10 +39,10 @@ Auth:
 | `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
 | `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
 | `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
-| `delete` | `delete(logical_name, list[id], use_bulk_delete=True)` | `Optional[str]` | Delete many with async BulkDelete or sequential single-record delete. |
+| `delete` | `delete(logical_name, list[id])` | `None` | Delete many (sequential). |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
-| `create_table` | `create_table(tablename, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
-| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping (same shape as `create_table` schema). Returns schema names for the created columns. |
+| `create_table` | `create_table(logical_name, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Requires logical name with publisher prefix (e.g. `new_sampleitem`) and column names with same prefix (e.g. `{"new_code": "string"}`). Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
+| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping with publisher prefix (e.g. `{"new_category": "string"}`). Returns schema names for the created columns. |
 | `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted. |
 | `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
 | `delete_table` | `delete_table(tablename)` | `None` | Drops custom table. Accepts friendly or schema name; friendly converted to `new_<PascalCase>`. |
@@ -54,10 +54,8 @@ Auth:
 
 Guidelines:
 - `create` always returns a list of GUIDs (1 for single, N for bulk).
-- `update` always returns `None`.
+- `update`/`delete` always return `None` (single and multi forms).
 - Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
-- `delete` returns `None` for single-record delete and sequential multi-record delete, and the BulkDelete async job ID for multi-record BulkDelete.
-- BulkDelete doesn't wait for the delete job to complete. It returns once the async delete job is scheduled.
 - Paging and SQL operations never mutate inputs.
 - Metadata lookups for logical name stamping cached per entity set (in-memory).
 
@@ -140,11 +138,8 @@ client.update("account", ids, [
 ])
 print({"multi_update": "ok"})
 
-# Delete (single)
+# Delete
 client.delete("account", account_id)
-
-# Bulk delete (schedules BulkDelete and returns job id)
-job_id = client.delete("account", ids)
 
 # SQL (read-only) via Web API `?sql=`
 rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
@@ -300,42 +295,41 @@ class Status(IntEnum):
 	}
 
 # Create a simple custom table and a few columns
+# Note: Table and column names must include your publisher prefix (e.g., "new_")
 info = client.create_table(
-	"SampleItem",  # friendly name; defaults to SchemaName new_SampleItem
+	"new_sampleitem",  # logical name with publisher prefix
 	{
-		"code": "string",
-		"count": "int",
-		"amount": "decimal",
-		"when": "datetime",
-		"active": "bool",
-		"status": Status,
+		"new_code": "string",
+		"new_count": "int",
+		"new_amount": "decimal",
+		"new_when": "datetime",
+		"new_active": "bool",
+		"new_status": Status,
 	},
 	solution_unique_name="my_solution_unique_name",  # optional: associate table with this solution
 )
 
 # Create or delete columns
-client.create_column("SampleItem", {"category": "string"})  # returns ["new_Category"]
-client.delete_column("SampleItem", "category")  # returns ["new_Category"]
+client.create_column("new_sampleitem", {"new_category": "string"})  # returns ["new_Category"]
+client.delete_column("new_sampleitem", "new_category")  # returns ["new_Category"]
 
-logical = info["entity_logical_name"]  # e.g., "new_sampleitem"
+logical = info["entity_logical_name"]  # "new_sampleitem"
 
 # Create a record in the new table
-# Set your publisher prefix (used when creating the table). If you used the default, it's "new".
-prefix = "new"
-name_attr = f"{prefix}_name"
+# The primary name column is always "name" (no prefix)
+name_attr = "name"
 id_attr = f"{logical}id"
 
 rec_id = client.create(logical, {name_attr: "Sample A"})[0]
 
 # Clean up
 client.delete(logical, rec_id)          # delete record
-client.delete_table("SampleItem")       # delete table (friendly name or explicit schema new_SampleItem)
+client.delete_table("new_sampleitem")   # delete table by logical name
 ```
 
 Notes:
 - `create` always returns a list of GUIDs (length 1 for single input).
-- `update` returns `None`.
-- `delete` returns `None` for single-record delete/sequential multi-record delete, and the BulkDelete async job ID for BulkDelete.
+- `update` and `delete` return `None` for both single and multi.
 - Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
 - `get` supports single record retrieval with record id or paging through result sets (prefer `select` to limit columns).
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
@@ -351,11 +345,22 @@ VS Code Tasks
 
 ## Limitations / Future Work
 - No general-purpose OData batching, upsert, or association operations yet.
+- `DeleteMultiple` not yet exposed.
 - Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+This project welcomes contributions and suggestions.  Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## Trademarks
 

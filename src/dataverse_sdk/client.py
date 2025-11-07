@@ -1,6 +1,3 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT license.
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Union, List, Iterable
@@ -204,12 +201,7 @@ class DataverseClient:
         od._update_by_ids(logical_name, ids, changes)
         return None
 
-    def delete(
-        self,
-        logical_name: str,
-        ids: Union[str, List[str]],
-        use_bulk_delete: bool = True,
-    ) -> Optional[str]:
+    def delete(self, logical_name: str, ids: Union[str, List[str]]) -> None:
         """
         Delete one or more records by GUID.
 
@@ -217,15 +209,8 @@ class DataverseClient:
         :type logical_name: str
         :param ids: Single GUID string or list of GUID strings to delete.
         :type ids: str or list[str]
-        :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
-            return its async job identifier. When ``False`` each record is deleted sequentially.
-        :type use_bulk_delete: bool
 
         :raises TypeError: If ``ids`` is not str or list[str].
-        :raises HttpError: If the underlying Web API delete request fails.
-        
-        :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
-        :rtype: str or None
 
         Example:
             Delete a single record::
@@ -234,7 +219,7 @@ class DataverseClient:
 
             Delete multiple records::
 
-                job_id = client.delete("account", [id1, id2, id3])
+                client.delete("account", [id1, id2, id3])
         """
         od = self._get_odata()
         if isinstance(ids, str):
@@ -242,14 +227,7 @@ class DataverseClient:
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
-        if not ids:
-            return None
-        if not all(isinstance(rid, str) for rid in ids):
-            raise TypeError("ids must contain string GUIDs")
-        if use_bulk_delete:
-            return od._delete_multiple(logical_name, ids)
-        for rid in ids:
-            od._delete(logical_name, rid)
+        od._delete_multiple(logical_name, ids)
         return None
 
     def get(
@@ -372,13 +350,13 @@ class DataverseClient:
         return self._get_odata()._query_sql(sql)
 
     # Table metadata helpers
-    def get_table_info(self, tablename: str) -> Optional[Dict[str, Any]]:
+    def get_table_info(self, logical_name: str) -> Optional[Dict[str, Any]]:
         """
         Get basic metadata for a custom table if it exists.
 
-        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
-            (e.g. ``"new_SampleItem"``).
-        :type tablename: str
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_sampleitem"``).
+            Lookup is case-insensitive (e.g., ``"new_SampleItem"`` will also work).
+        :type logical_name: str
 
         :return: Dictionary containing table metadata with keys ``entity_schema``,
             ``entity_logical_name``, ``entity_set_name``, and ``metadata_id``.
@@ -388,27 +366,26 @@ class DataverseClient:
         Example:
             Retrieve table metadata::
 
-                info = client.get_table_info("SampleItem")
+                info = client.get_table_info("new_sampleitem")
                 if info:
                     print(f"Logical name: {info['entity_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
         """
-        return self._get_odata()._get_table_info(tablename)
+        return self._get_odata()._get_table_info(logical_name)
 
     def create_table(
         self,
-        tablename: str,
+        logical_name: str,
         schema: Dict[str, Any],
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a simple custom table with specified columns.
 
-        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
-            (e.g. ``"new_SampleItem"``). If a publisher prefix is not included, the default
-            publisher prefix will be applied.
-        :type tablename: str
-        :param schema: Dictionary mapping column logical names (without prefix) to their types.
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_orders"``).
+            Both table and column names must include the publisher prefix (default is ``"new_"``).
+        :type logical_name: str
+        :param schema: Dictionary mapping column logical names (with prefix) to their types.
             Supported types:
 
             - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
@@ -432,10 +409,11 @@ class DataverseClient:
             ``entity_set_name``, ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
         :rtype: dict
 
-        :raises ~dataverse_sdk.errors.MetadataError: If table creation fails or the schema is invalid.
+        :raises ~dataverse_sdk.errors.HttpError: If server rejects the metadata (invalid names, missing prefix, etc.).
+        :raises ~dataverse_sdk.errors.MetadataError: If table creation fails.
 
         Example:
-            Create a table with simple columns::
+            Create a table with simple columns (using default publisher prefix ``new_``)::
 
                 from enum import IntEnum
 
@@ -444,30 +422,29 @@ class DataverseClient:
                     INACTIVE = 2
 
                 schema = {
-                    "title": "string",
-                    "quantity": "int",
-                    "price": "decimal",
-                    "available": "bool",
-                    "status": ItemStatus
+                    "new_title": "string",
+                    "new_quantity": "int",
+                    "new_price": "decimal",
+                    "new_available": "bool",
+                    "new_status": ItemStatus
                 }
 
-                result = client.create_table("SampleItem", schema)
+                result = client.create_table("new_sampleitem", schema)
                 print(f"Created table: {result['entity_logical_name']}")
                 print(f"Columns: {result['columns_created']}")
         """
         return self._get_odata()._create_table(
-            tablename,
+            logical_name,
             schema,
             solution_unique_name,
         )
 
-    def delete_table(self, tablename: str) -> None:
+    def delete_table(self, logical_name: str) -> None:
         """
-        Delete a custom table by name.
+        Delete a custom table by logical name.
 
-        :param tablename: Table friendly name (e.g. ``"SampleItem"``) or full schema name
-            (e.g. ``"new_SampleItem"``).
-        :type tablename: str
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_sampleitem"``).
+        :type logical_name: str
 
         :raises ~dataverse_sdk.errors.MetadataError: If the table does not exist or deletion fails.
 
@@ -478,9 +455,9 @@ class DataverseClient:
         Example:
             Delete a custom table::
 
-                client.delete_table("SampleItem")
+                client.delete_table("new_sampleitem")
         """
-        self._get_odata()._delete_table(tablename)
+        self._get_odata()._delete_table(logical_name)
 
     def list_tables(self) -> list[str]:
         """
@@ -500,63 +477,62 @@ class DataverseClient:
     
     def create_columns(
         self,
-        tablename: str,
+        logical_name: str,
         columns: Dict[str, Any],
     ) -> List[str]:
         """
         Create one or more columns on an existing table using a schema-style mapping.
 
-        :param tablename: Friendly name ("SampleItem") or full schema name ("new_SampleItem").
-        :type tablename: str
-        :param columns: Mapping of logical names (without prefix) to supported types. Primitive types include
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_sampleitem"``).
+        :type logical_name: str
+        :param columns: Mapping of column names with publisher prefix to supported types. Primitive types include
             ``string``, ``int``, ``decimal``, ``float``, ``datetime``, and ``bool``. Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
         :type columns: Dict[str, Any]
-        :returns: Schema names for the columns that were created.
+        :returns: Logical names for the columns that were created.
         :rtype: list[str]
         Example:
             Create two columns on the custom table::
 
                 created = client.create_columns(
-                    "new_SampleItem",
+                    "new_sampleitem",
                     {
-                        "scratch": "string",
-                        "flags": "bool",
+                        "new_scratch": "string",
+                        "new_flags": "bool",
                     },
                 )
                 print(created)
         """
         return self._get_odata()._create_columns(
-            tablename,
+            logical_name,
             columns,
         )
 
     def delete_columns(
         self,
-        tablename: str,
+        logical_name: str,
         columns: Union[str, List[str]],
     ) -> List[str]:
         """
         Delete one or more columns from a table.
 
-        :param tablename: Friendly or schema name of the table.
-        :type tablename: str
-        :param columns: Column name or list of column names to remove. Friendly names are normalized to schema
-            names using the same prefix logic as ``create_columns``.
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_sampleitem"``).
+        :type logical_name: str
+        :param columns: Column name or list of column names to remove with publisher prefix (e.g. ``"new_scratch"``).
         :type columns: str | list[str]
-        :returns: Schema names for the columns that were removed.
+        :returns: Logical names for the columns that were removed.
         :rtype: list[str]
         Example:
-            Remove two custom columns by schema name:
+            Remove two custom columns:
 
                 removed = client.delete_columns(
-                    "new_SampleItem",
-                    ["new_Scratch", "new_Flags"],
+                    "new_sampleitem",
+                    ["new_scratch", "new_flags"],
                 )
                 print(removed)
         """
         return self._get_odata()._delete_columns(
-            tablename,
+            logical_name,
             columns,
         )
 

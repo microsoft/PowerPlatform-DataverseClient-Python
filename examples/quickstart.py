@@ -1,6 +1,3 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT license.
-
 import sys
 from pathlib import Path
 import os
@@ -17,6 +14,7 @@ import traceback
 import requests
 import time
 from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 entered = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
@@ -25,7 +23,7 @@ if not entered:
 	sys.exit(1)
 
 base_url = entered.rstrip('/')
-delete_choice = input("Delete the new_SampleItem table at end? (Y/n): ").strip() or "y"
+delete_choice = input("Delete the new_sampleitem table at end? (Y/n): ").strip() or "y"
 delete_table_at_end = (str(delete_choice).lower() in ("y", "yes", "true", "1"))
 # Ask once whether to pause between steps during this run
 pause_choice = input("Pause between test steps? (y/N): ").strip() or "n"
@@ -59,12 +57,10 @@ def backoff_retry(op, *, delays=(0, 2, 5, 10, 20), retry_http_statuses=(400, 403
 			print(f'Request failed: {ex}')
 			last_exc = ex
 			if retry_if and retry_if(ex):
-				print("Retrying operation...")
 				continue
 			if isinstance(ex, requests.exceptions.HTTPError):
 				code = getattr(getattr(ex, 'response', None), 'status_code', None)
 				if code in retry_http_statuses:
-					print("Retrying operation...")
 					continue
 			break
 	if last_exc:
@@ -95,9 +91,10 @@ created_this_run = False
 # Check for existing table using list_tables
 log_call("client.list_tables()")
 tables = client.list_tables()
-existing_table = next((t for t in tables if t.get("SchemaName") == "new_SampleItem"), None)
+# LogicalName should be lowercase, but let's be defensive with case-insensitive comparison
+existing_table = next((t for t in tables if t.get("LogicalName", "").lower() == "new_sampleitem"), None)
 if existing_table:
-	table_info = client.get_table_info("new_SampleItem")
+	table_info = client.get_table_info("new_sampleitem")
 	created_this_run = False
 	print({
 		"table": table_info.get("entity_schema"),
@@ -110,16 +107,16 @@ if existing_table:
 else:
 	# Create it since it doesn't exist
 	try:
-		log_call("client.create_table('new_SampleItem', schema={code,count,amount,when,active,status<enum>})")
+		log_call("client.create_table('new_sampleitem', schema={new_code,new_count,new_amount,new_when,new_active,new_status<enum>})")
 		table_info = client.create_table(
-			"new_SampleItem",
+			"new_sampleitem",
 			{
-				"code": "string",
-				"count": "int",
-				"amount": "decimal",
-				"when": "datetime",
-				"active": "bool",
-				"status": Status,
+				"new_code": "string",
+				"new_count": "int",
+				"new_amount": "decimal",
+				"new_when": "datetime",
+				"new_active": "bool",
+				"new_status": Status,
 			},
 		)
 		created_this_run = True if table_info and table_info.get("columns_created") else False
@@ -146,11 +143,11 @@ else:
 				pass
 		# Fail fast: all operations must use the custom table
 		sys.exit(1)
-entity_schema = table_info.get("entity_schema") or "new_SampleItem"
-logical = table_info.get("entity_logical_name")
+entity_schema = table_info.get("entity_schema") or "new_Sampleitem"
+logical = table_info.get("entity_logical_name") or "new_sampleitem"
 metadata_id = table_info.get("metadata_id")
 if not metadata_id:
-	refreshed_info = client.get_table_info(entity_schema) or {}
+	refreshed_info = client.get_table_info(logical) or {}
 	metadata_id = refreshed_info.get("metadata_id")
 	if metadata_id:
 		table_info["metadata_id"] = metadata_id
@@ -179,6 +176,20 @@ def print_line_summaries(label: str, summaries: list[dict]) -> None:
 			f" - id={s.get('id')} code={s.get('code')} "
 			f"count={s.get('count')} amount={s.get('amount')} when={s.get('when')}"
 		)
+
+def _resolve_status_value(kind: str, raw_value, use_french: bool):
+	"""kind values:
+	  - 'label': English label
+	  - 'fr_label': French label if allowed, else fallback to English equivalent
+	  - 'int': the enum integer value
+	"""
+	if kind == "label":
+		return raw_value
+	if kind == "fr_label":
+		if use_french:
+			return raw_value
+		return "Active" if raw_value == "Actif" else "Inactive"
+	return raw_value
 
 def _has_installed_language(base_url: str, credential, lcid: int) -> bool:
 	try:
@@ -486,60 +497,39 @@ except Exception as e:
 	print(f"Retrieve multiple demos failed: {e}")
 # 5) Delete record
 print("Delete (OData):")
-# Show deletes to be executed (single + bulk)
+# Show deletes to be executed (concurrently via SDK delete)
 if 'record_ids' in locals() and record_ids:
 	print({"delete_count": len(record_ids)})
-pause("Execute Delete (single then bulk)")
+pause("Execute Delete (concurrent SDK calls)")
 try:
 	if record_ids:
-		single_target = record_ids[0]
-		rest_targets = record_ids[1:]
-		single_error: Optional[str] = None
-		bulk_job_id: Optional[str] = None
-		bulk_error: Optional[str] = None
+		max_workers = min(8, len(record_ids))
+		log_call(f"concurrent delete {len(record_ids)} items from '{logical}' (workers={max_workers})")
 
-		try:
-			log_call(f"client.delete('{logical}', '{single_target}')")
-			backoff_retry(lambda: client.delete(logical, single_target))
-		except Exception as ex:
-			single_error = str(ex)
+		successes: list[str] = []
+		failures: list[dict] = []
 
-		half = max(1, len(rest_targets) // 2)
-		bulk_targets = rest_targets[:half]
-		sequential_targets = rest_targets[half:]
-		bulk_error = None
-		sequential_error = None
+		def _del_one(rid: str) -> tuple[str, bool, str | None]:
+			try:
+				log_call(f"client.delete('{logical}', '{rid}')")
+				backoff_retry(lambda: client.delete(logical, rid))
+				return (rid, True, None)
+			except Exception as ex:
+				return (rid, False, str(ex))
 
-		# Fire-and-forget bulk delete for the first portion
-		try:
-			log_call(f"client.delete('{logical}', <{len(bulk_targets)} ids>, use_bulk_delete=True)")
-			bulk_job_id = client.delete(logical, bulk_targets)
-		except Exception as ex:
-			bulk_error = str(ex)
-
-		# Sequential deletes for the remainder
-		try:
-			log_call(f"client.delete('{logical}', <{len(sequential_targets)} ids>, use_bulk_delete=False)")
-			for rid in sequential_targets:
-				backoff_retry(lambda rid=rid: client.delete(logical, rid, use_bulk_delete=False))
-		except Exception as ex:
-			sequential_error = str(ex)
+		with ThreadPoolExecutor(max_workers=max_workers) as executor:
+			future_map = {executor.submit(_del_one, rid): rid for rid in record_ids}
+			for fut in as_completed(future_map):
+				rid, ok, err = fut.result()
+				if ok:
+					successes.append(rid)
+				else:
+					failures.append({"id": rid, "error": err})
 
 		print({
 			"entity": logical,
-			"delete_single": {
-				"id": single_target,
-				"error": single_error,
-			},
-			"delete_bulk": {
-				"count": len(bulk_targets),
-				"job_id": bulk_job_id,
-				"error": bulk_error,
-			},
-			"delete_sequential": {
-				"count": len(sequential_targets),
-				"error": sequential_error,
-			},
+			"delete_summary": {"requested": len(record_ids), "success": len(successes), "failures": len(failures)},
+			"failed": failures[:5],  # preview up to 5 failures
 		})
 	else:
 		raise RuntimeError("No record created; skipping delete.")
@@ -553,8 +543,8 @@ print("Column metadata helpers (create/delete column):")
 scratch_column = f"scratch_{int(time.time())}"
 column_payload = {scratch_column: "string"}
 try:
-	log_call(f"client.create_column('{entity_schema}', {repr(column_payload)})")
-	column_create = client.create_columns(entity_schema, column_payload)
+	log_call(f"client.create_column('{logical}', {repr(column_payload)})")
+	column_create = client.create_columns(logical, column_payload)
 	if not isinstance(column_create, list) or not column_create:
 		raise RuntimeError("create_column did not return schema list")
 	created_details = column_create
@@ -588,22 +578,8 @@ try:
 		if isinstance(raw_type, str):
 			attr_type_before = raw_type
 			lowered = raw_type.lower()
-	delete_target = attribute_schema or scratch_column
-	log_call(f"client.delete_column('{entity_schema}', '{delete_target}')")
-
-	def _delete_column():
-		return client.delete_columns(entity_schema, delete_target)
-
-	column_delete = backoff_retry(
-		_delete_column,
-		delays=(0, 1, 2, 4, 8),
-		retry_http_statuses=(),
-		retry_if=lambda exc: (
-			isinstance(exc, MetadataError)
-			or "not found" in str(exc).lower()
-			or "not yet available" in str(exc).lower()
-		),
-	)
+	log_call(f"client.delete_column('{logical}', '{scratch_column}')")
+	column_delete = client.delete_columns(logical, scratch_column)
 	if not isinstance(column_delete, list) or not column_delete:
 		raise RuntimeError("delete_column did not return schema list")
 	deleted_details = column_delete
@@ -645,11 +621,11 @@ pause("Next: Cleanup table")
 print("Cleanup (Metadata):")
 if delete_table_at_end:
 	try:
-		log_call("client.get_table_info('new_SampleItem')")
-		info = client.get_table_info("new_SampleItem")
+		log_call("client.get_table_info('new_sampleitem')")
+		info = client.get_table_info("new_sampleitem")
 		if info:
-			log_call("client.delete_table('new_SampleItem')")
-			client.delete_table("new_SampleItem")
+			log_call("client.delete_table('new_sampleitem')")
+			client.delete_table("new_sampleitem")
 			print({"table_deleted": True})
 		else:
 			print({"table_deleted": False, "reason": "not found"})
