@@ -698,7 +698,7 @@ class ODataClient(ODataFileUpload):
         display_name: str,
         attributes: List[Dict[str, Any]],
         solution_unique_name: Optional[str] = None,
-    ) -> str:
+    ) -> Dict[str, Any]:
         url = f"{self.api}/EntityDefinitions"
         payload = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
@@ -716,24 +716,18 @@ class ODataClient(ODataFileUpload):
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
         self._request("post", url, json=payload, params=params)
-        ent = self._wait_for_entity_ready(schema_name)
+        ent = self._get_entity_by_schema(
+            schema_name,
+            headers={"Consistency": "Strong"},
+        )
         if not ent or not ent.get("EntitySetName"):
             raise RuntimeError(
                 f"Failed to create or retrieve entity '{schema_name}' (EntitySetName not available)."
             )
-        return ent["MetadataId"]
-
-    def _wait_for_entity_ready(self, schema_name: str, delays: Optional[List[int]] = None) -> Optional[Dict[str, Any]]:
-        import time
-        delays = delays or [0, 2, 5, 10, 20, 30]
-        ent: Optional[Dict[str, Any]] = None
-        strong_consistency_headers = {"Consistency": "Strong"}
-        for idx, delay in enumerate(delays):
-            if idx > 0 and delay > 0:
-                time.sleep(delay)
-            ent = self._get_entity_by_schema(schema_name, headers=strong_consistency_headers)
-            if ent and ent.get("EntitySetName"):
-                return ent
+        if not ent.get("MetadataId"):
+            raise RuntimeError(
+                f"MetadataId missing after creating entity '{schema_name}'."
+            )
         return ent
 
     def _normalize_attribute_schema(self, entity_schema: str, column_name: str) -> str:
@@ -1191,20 +1185,18 @@ class ODataClient(ODataFileUpload):
             if not solution_unique_name:
                 raise ValueError("solution_unique_name cannot be empty")
 
-        metadata_id = self._create_entity(
+        metadata = self._create_entity(
             entity_schema,
             tablename,
             attributes,
             solution_unique_name,
         )
-        ent2: Dict[str, Any] = self._wait_for_entity_ready(entity_schema) or {}
-        logical_name = ent2.get("LogicalName")
 
         return {
             "entity_schema": entity_schema,
-            "entity_logical_name": logical_name,
-            "entity_set_name": ent2.get("EntitySetName") if ent2 else None,
-            "metadata_id": metadata_id,
+            "entity_logical_name": metadata.get("LogicalName"),
+            "entity_set_name": metadata.get("EntitySetName"),
+            "metadata_id": metadata.get("MetadataId"),
             "columns_created": created_cols,
         }
 
