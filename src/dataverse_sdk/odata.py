@@ -676,7 +676,11 @@ class ODataClient(ODataFileUpload):
             return tablename
         return f"new_{self._to_pascal(tablename)}"
 
-    def _get_entity_by_schema(self, schema_name: str) -> Optional[Dict[str, Any]]:
+    def _get_entity_by_schema(
+        self,
+        schema_name: str,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
         url = f"{self.api}/EntityDefinitions"
         # Escape single quotes in schema name
         schema_escaped = self._escape_odata_quotes(schema_name)
@@ -684,7 +688,7 @@ class ODataClient(ODataFileUpload):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
             "$filter": f"SchemaName eq '{schema_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r = self._request("get", url, params=params, headers=headers)
         items = r.json().get("value", [])
         return items[0] if items else None
 
@@ -723,10 +727,11 @@ class ODataClient(ODataFileUpload):
         import time
         delays = delays or [0, 2, 5, 10, 20, 30]
         ent: Optional[Dict[str, Any]] = None
+        strong_consistency_headers = {"Consistency": "Strong"}
         for idx, delay in enumerate(delays):
             if idx > 0 and delay > 0:
                 time.sleep(delay)
-            ent = self._get_entity_by_schema(schema_name)
+            ent = self._get_entity_by_schema(schema_name, headers=strong_consistency_headers)
             if ent and ent.get("EntitySetName"):
                 return ent
         return ent
