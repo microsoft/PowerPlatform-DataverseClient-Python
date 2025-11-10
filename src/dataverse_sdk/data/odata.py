@@ -719,10 +719,20 @@ class ODataClient(ODataFileUpload):
         # Normalize logical name first
         logical_name = self._normalize_logical_name(logical_name)
         
+        # Validate not empty after normalization
+        if not logical_name:
+            raise ValueError("logical_name cannot be empty or whitespace-only")
+        
         if "_" not in logical_name:
             # No prefix, just capitalize first letter
             return logical_name[:1].upper() + logical_name[1:]
+        
         prefix, rest = logical_name.split("_", 1)
+        
+        # Validate that rest is not empty (e.g., "new_" is invalid)
+        if not rest:
+            raise ValueError(f"logical_name '{logical_name}' has empty part after underscore (expected format: 'prefix_name')")
+        
         # Capitalize first letter of the part after prefix
         return f"{prefix}_{rest[:1].upper()}{rest[1:]}"
 

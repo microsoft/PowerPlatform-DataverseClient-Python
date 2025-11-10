@@ -645,5 +645,25 @@ def test_logical_to_schema_name_case_insensitive():
     assert c._logical_to_schema_name("Account") == "Account"
 
 
+def test_logical_to_schema_name_edge_cases():
+    """Test that _logical_to_schema_name handles edge cases correctly."""
+    c = TestableClient([])
+    
+    # Empty string should raise ValueError
+    with pytest.raises(ValueError, match="cannot be empty"):
+        c._logical_to_schema_name("")
+    
+    # Whitespace-only should raise ValueError
+    with pytest.raises(ValueError, match="cannot be empty"):
+        c._logical_to_schema_name("   ")
+    
+    # Trailing underscore with no suffix should raise ValueError
+    with pytest.raises(ValueError, match="empty part after underscore"):
+        c._logical_to_schema_name("new_")
+    
+    # Multiple underscores - only first split matters
+    assert c._logical_to_schema_name("new_sample_item") == "new_Sample_item"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
