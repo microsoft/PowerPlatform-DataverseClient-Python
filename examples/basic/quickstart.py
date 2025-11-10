@@ -10,7 +10,7 @@ from typing import Optional
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
 from dataverse_sdk import DataverseClient
-from dataverse_sdk.errors import MetadataError
+from dataverse_sdk.core.errors import MetadataError
 from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 import traceback

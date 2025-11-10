@@ -12,12 +12,15 @@ import json
 from datetime import datetime, timezone
 import importlib.resources as ir
 
-from .http import HttpClient
-from .odata_upload_files import ODataFileUpload
-from .errors import *
-from . import error_codes as ec
+from ..core.http import HttpClient
+from .upload import ODataFileUpload
+from ..core.errors import *
+from ..core import error_codes as ec
+
+from ..__version__ import __version__ as _SDK_VERSION
 
 
+_USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
@@ -40,7 +43,7 @@ class ODataClient(ODataFileUpload):
         if not self.base_url:
             raise ValueError("base_url is required.")
         self.api = f"{self.base_url}/api/data/v9.2"
-        self.config = config or __import__("dataverse_sdk.config", fromlist=["DataverseConfig"]).DataverseConfig.from_env()
+        self.config = config or __import__("dataverse_sdk.core.config", fromlist=["DataverseConfig"]).DataverseConfig.from_env()
         self._http = HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
@@ -60,14 +63,13 @@ class ODataClient(ODataFileUpload):
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
         token = self.auth.acquire_token(scope).access_token
-        # TODO: add version to User-Agent
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
-            "User-Agent": "DataversePythonSDK",
+            "User-Agent": _USER_AGENT,
         }
 
     def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -739,7 +741,11 @@ class ODataClient(ODataFileUpload):
             return tablename
         return f"new_{self._to_pascal(tablename)}"
 
-    def _get_entity_by_schema(self, schema_name: str) -> Optional[Dict[str, Any]]:
+    def _get_entity_by_schema(
+        self,
+        schema_name: str,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, Any]]:
         url = f"{self.api}/EntityDefinitions"
         # Escape single quotes in schema name
         schema_escaped = self._escape_odata_quotes(schema_name)
@@ -747,7 +753,7 @@ class ODataClient(ODataFileUpload):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
             "$filter": f"SchemaName eq '{schema_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r = self._request("get", url, params=params, headers=headers)
         items = r.json().get("value", [])
         return items[0] if items else None
 
@@ -757,7 +763,7 @@ class ODataClient(ODataFileUpload):
         display_name: str,
         attributes: List[Dict[str, Any]],
         solution_unique_name: Optional[str] = None,
-    ) -> str:
+    ) -> Dict[str, Any]:
         url = f"{self.api}/EntityDefinitions"
         payload = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
@@ -775,23 +781,18 @@ class ODataClient(ODataFileUpload):
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
         self._request("post", url, json=payload, params=params)
-        ent = self._wait_for_entity_ready(schema_name)
+        ent = self._get_entity_by_schema(
+            schema_name,
+            headers={"Consistency": "Strong"},
+        )
         if not ent or not ent.get("EntitySetName"):
             raise RuntimeError(
                 f"Failed to create or retrieve entity '{schema_name}' (EntitySetName not available)."
             )
-        return ent["MetadataId"]
-
-    def _wait_for_entity_ready(self, schema_name: str, delays: Optional[List[int]] = None) -> Optional[Dict[str, Any]]:
-        import time
-        delays = delays or [0, 2, 5, 10, 20, 30]
-        ent: Optional[Dict[str, Any]] = None
-        for idx, delay in enumerate(delays):
-            if idx > 0 and delay > 0:
-                time.sleep(delay)
-            ent = self._get_entity_by_schema(schema_name)
-            if ent and ent.get("EntitySetName"):
-                return ent
+        if not ent.get("MetadataId"):
+            raise RuntimeError(
+                f"MetadataId missing after creating entity '{schema_name}'."
+            )
         return ent
 
     def _normalize_attribute_schema(self, entity_schema: str, column_name: str) -> str:
@@ -1249,20 +1250,18 @@ class ODataClient(ODataFileUpload):
             if not solution_unique_name:
                 raise ValueError("solution_unique_name cannot be empty")
 
-        metadata_id = self._create_entity(
+        metadata = self._create_entity(
             entity_schema,
             tablename,
             attributes,
             solution_unique_name,
         )
-        ent2: Dict[str, Any] = self._wait_for_entity_ready(entity_schema) or {}
-        logical_name = ent2.get("LogicalName")
 
         return {
             "entity_schema": entity_schema,
-            "entity_logical_name": logical_name,
-            "entity_set_name": ent2.get("EntitySetName") if ent2 else None,
-            "metadata_id": metadata_id,
+            "entity_logical_name": metadata.get("LogicalName"),
+            "entity_set_name": metadata.get("EntitySetName"),
+            "metadata_id": metadata.get("MetadataId"),
             "columns_created": created_cols,
         }
 

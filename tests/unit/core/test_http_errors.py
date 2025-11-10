@@ -2,9 +2,9 @@
 # Licensed under the MIT license.
 
 import pytest
-from dataverse_sdk.errors import HttpError
-from dataverse_sdk import error_codes as ec
-from dataverse_sdk.odata import ODataClient
+from dataverse_sdk.core.errors import HttpError
+from dataverse_sdk.core import error_codes as ec
+from dataverse_sdk.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):

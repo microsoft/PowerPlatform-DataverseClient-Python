@@ -17,7 +17,7 @@ import json
 
 import pandas as pd
 
-from .odata import ODataClient
+from ..data.odata import ODataClient
 
 
 @dataclass

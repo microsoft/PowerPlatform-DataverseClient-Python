@@ -4,7 +4,7 @@
 import pytest
 from enum import Enum, IntEnum
 
-from dataverse_sdk.odata import ODataClient
+from dataverse_sdk.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):  # pragma: no cover - simple stub

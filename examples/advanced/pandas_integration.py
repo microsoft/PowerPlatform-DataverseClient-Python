@@ -9,7 +9,7 @@ import os
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
 from dataverse_sdk import DataverseClient
-from dataverse_sdk.odata_pandas_wrappers import PandasODataClient
+from dataverse_sdk.utils.pandas_adapter import PandasODataClient
 from azure.identity import InteractiveBrowserCredential
 import traceback
 import requests
