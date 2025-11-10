@@ -331,7 +331,6 @@ def test_get_entity_by_logical_normalization():
 
 def test_create_table_normalizes_logical_name():
     """Test that _create_table normalizes the logical name."""
-    guid = "11111111-2222-3333-4444-555555555555"
     responses = [
         (200, {}, {}),  # POST to create entity
         (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]}),  # GET entity by logical with Consistency: Strong
