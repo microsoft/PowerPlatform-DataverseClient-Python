@@ -517,7 +517,6 @@ def test_create_with_one_casing_crud_with_another():
     )
     
     # 3. GET entity set with different casings - first call populates cache
-    calls_before = len(c._http.calls)
     entity_set1 = c._entity_set_from_logical("New_Product")
     calls_after_first = len(c._http.calls)
     
