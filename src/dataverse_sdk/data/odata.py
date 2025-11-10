@@ -715,6 +715,9 @@ class ODataClient(ODataFileUpload):
         
         Use this ONLY when creating new entities where we control the SchemaName.
         For existing entities, use _get_entity_schema_name() to get the actual SchemaName from server.
+        
+        Note: All callers (_create_table, _create_columns) validate that logical_name contains
+        an underscore before calling this method, enforcing Dataverse's publisher prefix requirement.
         """
         # Normalize logical name first
         logical_name = self._normalize_logical_name(logical_name)
@@ -723,10 +726,7 @@ class ODataClient(ODataFileUpload):
         if not logical_name:
             raise ValueError("logical_name cannot be empty or whitespace-only")
         
-        if "_" not in logical_name:
-            # No prefix, just capitalize first letter
-            return logical_name[:1].upper() + logical_name[1:]
-        
+        # Split on first underscore to get prefix and name parts
         prefix, rest = logical_name.split("_", 1)
         
         # Validate that rest is not empty (e.g., "new_" is invalid)
@@ -764,7 +764,7 @@ class ODataClient(ODataFileUpload):
             return self._attribute_schema_cache[cache_key]
 
         # Get entity metadata ID first
-        ent = self._get_entity_by_logical(entity_logical)
+        ent = self._get_entity_by_logical_name(entity_logical)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Entity '{entity_logical}' not found.",
@@ -829,7 +829,7 @@ class ODataClient(ODataFileUpload):
         items = r.json().get("value", [])
         return items[0] if items else None
 
-    def _get_entity_by_logical(
+    def _get_entity_by_logical_name(
         self,
         logical_name: str,
         headers: Optional[Dict[str, str]] = None,
@@ -874,7 +874,7 @@ class ODataClient(ODataFileUpload):
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
         self._request("post", url, json=payload, params=params)
-        ent = self._get_entity_by_logical(
+        ent = self._get_entity_by_logical_name(
             logical_name,
             headers={"Consistency": "Strong"},
         )
@@ -1280,7 +1280,7 @@ class ODataClient(ODataFileUpload):
         # Normalize logical name for case-insensitive handling
         logical_name = self._normalize_logical_name(logical_name)
 
-        ent = self._get_entity_by_logical(logical_name)
+        ent = self._get_entity_by_logical_name(logical_name)
         if not ent:
             return None
         return {
@@ -1305,7 +1305,7 @@ class ODataClient(ODataFileUpload):
         logical_name = self._normalize_logical_name(logical_name)
 
         # Use strong consistency to ensure we get latest metadata after recent create
-        ent = self._get_entity_by_logical(logical_name, headers={"Consistency": "Strong"})
+        ent = self._get_entity_by_logical_name(logical_name, headers={"Consistency": "Strong"})
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{logical_name}' not found.",
@@ -1379,7 +1379,7 @@ class ODataClient(ODataFileUpload):
         # Normalize logical name for case-insensitive handling
         logical_name = self._normalize_logical_name(logical_name)
 
-        ent = self._get_entity_by_logical(logical_name)
+        ent = self._get_entity_by_logical_name(logical_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{logical_name}' not found.",
@@ -1393,6 +1393,11 @@ class ODataClient(ODataFileUpload):
         for column_name, column_type in columns.items():
             # Normalize column logical name for case-insensitive handling
             column_name_normalized = self._normalize_logical_name(column_name)
+            
+            # Validate that column name includes publisher prefix
+            if "_" not in column_name_normalized:
+                raise ValueError(f"Column logical name must include publisher prefix (e.g., 'new_columnname'), got: '{column_name}'")
+            
             # Convert column logical name to SchemaName
             col_schema = self._logical_to_schema_name(column_name_normalized)
             payload = self._attribute_payload(col_schema, column_type)
@@ -1428,7 +1433,7 @@ class ODataClient(ODataFileUpload):
         # Normalize logical name for case-insensitive handling
         logical_name = self._normalize_logical_name(logical_name)
 
-        ent = self._get_entity_by_logical(logical_name)
+        ent = self._get_entity_by_logical_name(logical_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{logical_name}' not found.",

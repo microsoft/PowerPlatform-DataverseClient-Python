@@ -76,13 +76,6 @@ def test_logical_to_schema_name_basic():
     assert c._logical_to_schema_name("abc_myentity") == "abc_Myentity"
 
 
-def test_logical_to_schema_name_no_underscore():
-    """Test SchemaName when no underscore (capitalize first letter)."""
-    c = TestableClient([])
-    assert c._logical_to_schema_name("account") == "Account"
-    assert c._logical_to_schema_name("contact") == "Contact"
-
-
 # ============================================================================
 # Tests for _get_entity_schema_name
 # ============================================================================
@@ -114,7 +107,7 @@ def test_get_entity_schema_name_not_found():
 def test_get_attribute_schema_name_lookup():
     """Test that _get_attribute_schema_name retrieves attribute SchemaName."""
     responses = [
-        (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]}),  # _get_entity_by_logical uses EntityDefinitions endpoint
+        (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]}),  # _get_entity_by_logical_name uses EntityDefinitions endpoint
         (200, {}, MD_ATTRIBUTE_TITLE)      # Attribute lookup
     ]
     c = TestableClient(responses)
@@ -306,14 +299,14 @@ def test_entity_set_from_logical_case_insensitive():
     assert len(c._http.calls) == 1
 
 
-def test_get_entity_by_logical_normalization():
-    """Test that _get_entity_by_logical normalizes input."""
+def test_get_entity_by_logical_name_normalization():
+    """Test that _get_entity_by_logical_name normalizes input."""
     responses = [
         (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]})
     ]
     c = TestableClient(responses)
     
-    entity = c._get_entity_by_logical("NEW_SAMPLEITEM")
+    entity = c._get_entity_by_logical_name("NEW_SAMPLEITEM")
     assert entity["LogicalName"] == "new_sampleitem"
     
     # Check that the query parameters used normalized name
@@ -638,11 +631,6 @@ def test_logical_to_schema_name_case_insensitive():
     assert c._logical_to_schema_name("NEW_SAMPLEITEM") == "new_Sampleitem"
     assert c._logical_to_schema_name("New_SampleItem") == "new_Sampleitem"
     assert c._logical_to_schema_name("  new_sampleitem  ") == "new_Sampleitem"
-    
-    # Test without prefix
-    assert c._logical_to_schema_name("account") == "Account"
-    assert c._logical_to_schema_name("ACCOUNT") == "Account"
-    assert c._logical_to_schema_name("Account") == "Account"
 
 
 def test_logical_to_schema_name_edge_cases():
@@ -661,8 +649,40 @@ def test_logical_to_schema_name_edge_cases():
     with pytest.raises(ValueError, match="empty part after underscore"):
         c._logical_to_schema_name("new_")
     
+    # Name without underscore should raise ValueError (since split will fail)
+    # This should never happen in practice because callers validate presence of underscore
+    with pytest.raises(ValueError):
+        c._logical_to_schema_name("account")
+    
     # Multiple underscores - only first split matters
     assert c._logical_to_schema_name("new_sample_item") == "new_Sample_item"
+
+
+def test_create_columns_requires_prefix():
+    """Test that _create_columns rejects column names without publisher prefix."""
+    responses = [
+        (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]}),  # Get entity by logical
+    ]
+    c = TestableClient(responses)
+    
+    # Column name without underscore should raise ValueError
+    with pytest.raises(ValueError, match="Column logical name must include publisher prefix"):
+        c._create_columns(
+            logical_name="new_sampleitem",
+            columns={"mycolumn": "string"}  # Missing prefix
+        )
+
+
+def test_create_table_requires_prefix():
+    """Test that _create_table rejects table names without publisher prefix."""
+    c = TestableClient([])
+    
+    # Table name without underscore should raise ValueError
+    with pytest.raises(ValueError, match="Table logical name must include publisher prefix"):
+        c._create_table(
+            logical_name="mytable",  # Missing prefix
+            schema={"new_field": "string"}
+        )
 
 
 if __name__ == "__main__":
