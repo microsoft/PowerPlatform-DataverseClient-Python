@@ -881,10 +881,23 @@ class ODataClient(ODataFileUpload):
     def _get_attribute_metadata(
         self,
         entity_metadata_id: str,
-        schema_name: str,
+        logical_name: str,
         extra_select: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        attr_escaped = self._escape_odata_quotes(schema_name)
+        """Get attribute metadata by logical name.
+        
+        Args:
+            entity_metadata_id: The MetadataId of the entity
+            logical_name: The logical name of the attribute (e.g., "new_category")
+            extra_select: Optional comma-separated list of additional fields to select
+            
+        Returns:
+            Dict with attribute metadata, or None if not found
+        """
+        # Normalize logical name for case-insensitive lookup
+        logical_name = self._normalize_logical_name(logical_name)
+        
+        attr_escaped = self._escape_odata_quotes(logical_name)
         url = f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes"
         select_fields = ["MetadataId", "LogicalName", "SchemaName"]
         if extra_select:
@@ -898,7 +911,7 @@ class ODataClient(ODataFileUpload):
                     select_fields.append(piece)
         params = {
             "$select": ",".join(select_fields),
-            "$filter": f"SchemaName eq '{attr_escaped}'",
+            "$filter": f"LogicalName eq '{attr_escaped}'",
         }
         r = self._request("get", url, params=params)
         try:
@@ -1419,9 +1432,8 @@ class ODataClient(ODataFileUpload):
         for column_name in names:
             # Normalize column name for case-insensitive handling  
             column_name_normalized = self._normalize_logical_name(column_name)
-            # Look up actual SchemaName from server for existing attribute
-            col_schema = self._get_attribute_schema_name(logical_name, column_name_normalized)
-            attr_meta = self._get_attribute_metadata(metadata_id, col_schema, extra_select="@odata.type,AttributeType")
+            # Get attribute metadata by logical name
+            attr_meta = self._get_attribute_metadata(metadata_id, column_name_normalized, extra_select="@odata.type,AttributeType")
             if not attr_meta:
                 raise MetadataError(
                     f"Column '{column_name}' not found on table '{logical_name}'.",

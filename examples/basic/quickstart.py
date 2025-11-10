@@ -561,17 +561,18 @@ try:
 	created_details = column_create
 	if not all(isinstance(item, str) for item in created_details):
 		raise RuntimeError("create_column entries were not schema strings")
-	attribute_schema = created_details[0]
+	# create_columns returns logical names
 	odata_client = client._get_odata()
+	column_logical = created_details[0]
 	exists_after_create = None
 	exists_after_delete = None
 	attr_type_before = None
-	if metadata_id and attribute_schema:
+	if metadata_id and column_logical:
 		_ready_message = "Column metadata not yet available"
 		def _metadata_after_create():
 			meta = odata_client._get_attribute_metadata(
 				metadata_id,
-				attribute_schema,
+				column_logical,
 				extra_select="@odata.type,AttributeType",
 			)
 			if not meta or not meta.get("MetadataId"):
@@ -589,7 +590,8 @@ try:
 		if isinstance(raw_type, str):
 			attr_type_before = raw_type
 			lowered = raw_type.lower()
-	delete_target = attribute_schema or scratch_column
+	# For delete, we pass the logical name
+	delete_target = column_logical
 	log_call(f"client.delete_column('{logical}', '{delete_target}')")
 
 	def _delete_column():
@@ -610,12 +612,14 @@ try:
 	deleted_details = column_delete
 	if not all(isinstance(item, str) for item in deleted_details):
 		raise RuntimeError("delete_column entries were not schema strings")
-	if attribute_schema not in deleted_details:
+	# deleted_details contains logical names (lowercase), so check for column_logical
+	if column_logical not in deleted_details:
 		raise RuntimeError("delete_column response missing expected schema name")
-	if metadata_id and attribute_schema:
+	if metadata_id and column_logical:
 		_delete_message = "Column metadata still present after delete"
 		def _ensure_removed():
-			meta = odata_client._get_attribute_metadata(metadata_id, attribute_schema)
+			# _get_attribute_metadata now accepts logical names
+			meta = odata_client._get_attribute_metadata(metadata_id, column_logical)
 			if meta:
 				raise RuntimeError(_delete_message)
 			return True
