@@ -42,11 +42,11 @@ Auth:
 | `delete` | `delete(logical_name, list[id], use_bulk_delete=True)` | `Optional[str]` | Delete many with async BulkDelete or sequential single-record delete. |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
 | `create_table` | `create_table(logical_name, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Requires logical name with publisher prefix (e.g. `new_sampleitem`) and column names with same prefix (e.g. `{"new_code": "string"}`). Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
-| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping with publisher prefix (e.g. `{"new_category": "string"}`). Returns schema names for the created columns. |
-| `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted. |
-| `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
-| `delete_table` | `delete_table(tablename)` | `None` | Drops custom table. Accepts friendly or schema name; friendly converted to `new_<PascalCase>`. |
-| `delete_column` | `delete_column(tablename, columns)` | `list[str]` | Deletes one or more columns; returns schema names (accepts string or list[str]). |
+| `create_columns` | `create_columns(logical_name, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping with publisher prefix (e.g. `{"new_category": "string"}`). Returns logical names for the created columns. |
+| `get_table_info` | `get_table_info(logical_name)` | `dict | None` | Basic table metadata by logical name (e.g. `new_sampleitem`). Lookup is case-insensitive. |
+| `list_tables` | `list_tables()` | `list[str]` | Lists custom table logical names. |
+| `delete_table` | `delete_table(logical_name)` | `None` | Drops custom table by logical name with publisher prefix (e.g. `new_sampleitem`). |
+| `delete_columns` | `delete_columns(logical_name, columns)` | `list[str]` | Deletes one or more columns; returns logical names (accepts string or list[str]). |
 | `PandasODataClient.create_df` | `create_df(logical_name, series)` | `str` | Create one record (returns GUID). |
 | `PandasODataClient.update` | `update(logical_name, id, series)` | `None` | Returns None; ignored if Series empty. |
 | `PandasODataClient.get_ids` | `get_ids(logical_name, ids, select=None)` | `DataFrame` | One row per ID (errors inline). |
@@ -301,21 +301,21 @@ class Status(IntEnum):
 
 # Create a simple custom table and a few columns
 info = client.create_table(
-	"SampleItem",  # friendly name; defaults to SchemaName new_SampleItem
+	"new_sampleitem",  # logical name with publisher prefix (e.g., "new_")
 	{
-		"code": "string",
-		"count": "int",
-		"amount": "decimal",
-		"when": "datetime",
-		"active": "bool",
-		"status": Status,
+		"new_code": "string",
+		"new_count": "int",
+		"new_amount": "decimal",
+		"new_when": "datetime",
+		"new_active": "bool",
+		"new_status": Status,
 	},
 	solution_unique_name="my_solution_unique_name",  # optional: associate table with this solution
 )
 
 # Create or delete columns
-client.create_column("SampleItem", {"category": "string"})  # returns ["new_Category"]
-client.delete_column("SampleItem", "category")  # returns ["new_Category"]
+client.create_columns("new_sampleitem", {"new_category": "string"})  # returns ["new_category"]
+client.delete_columns("new_sampleitem", "new_category")  # returns ["new_category"]
 
 logical = info["entity_logical_name"]  # e.g., "new_sampleitem"
 
