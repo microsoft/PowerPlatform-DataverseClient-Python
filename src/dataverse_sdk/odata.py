@@ -319,15 +319,13 @@ class ODataClient(ODataFileUpload):
         self,
         logical_name: str,
         ids: List[str],
-    ) -> Optional[str]:
+    ) -> str:
         """Delete many records by GUID list.
 
         Returns the asynchronous job identifier reported by the BulkDelete action.
         """
-        targets = [rid for rid in ids if rid]
-        if not targets:
-            return None
-        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in targets]
+        noop_job_id = "00000000-0000-0000-0000-000000000000"
+        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in ids]
 
         pk_attr = self._primary_id_attr(logical_name)
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -368,15 +366,16 @@ class ODataClient(ODataFileUpload):
         url = f"{self.api}/BulkDelete"
         response = self._request("post", url, json=payload, expected=(200, 202, 204))
 
-        job_id = None
         try:
             body = response.json() if response.text else {}
         except ValueError:
             body = {}
         if isinstance(body, dict):
             job_id = body.get("JobId")
+            if isinstance(job_id, str) and job_id.strip():
+                return job_id
 
-        return job_id
+        return noop_job_id
 
     def _format_key(self, key: str) -> str:
         k = key.strip()

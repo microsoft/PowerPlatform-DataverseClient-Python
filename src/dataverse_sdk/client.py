@@ -274,12 +274,13 @@ class DataverseClient:
         if isinstance(ids, str):
             return od._delete_async(logical_name, [ids])
         elif isinstance(ids, list):
-            if not ids:
-                noop_bulkdelete_job_id = "00000000-0000-0000-0000-000000000000"
-                return noop_bulkdelete_job_id
             if not all(isinstance(rid, str) for rid in ids):
                 raise TypeError("ids must contain string GUIDs")
-            return od._delete_async(logical_name, ids)
+            sanitized = [rid.strip() for rid in ids if isinstance(rid, str) and rid.strip()]
+            if not sanitized:
+                noop_bulkdelete_job_id = "00000000-0000-0000-0000-000000000000"
+                return noop_bulkdelete_job_id
+            return od._delete_async(logical_name, sanitized)
         else:
             raise TypeError("ids must be str or list[str]")
 
