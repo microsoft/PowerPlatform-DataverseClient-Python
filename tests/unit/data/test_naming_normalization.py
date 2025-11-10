@@ -13,8 +13,7 @@ from dataverse_sdk.core.errors import MetadataError
 from tests.unit.test_helpers import (
     TestableClient,
     MD_ACCOUNT,
-    MD_SAMPLE_ITEM,
-    make_entity_create_headers
+    MD_SAMPLE_ITEM
 )
 
 # ============================================================================
