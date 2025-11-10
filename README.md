@@ -6,7 +6,7 @@ A Python package allowing developers to connect to Dataverse environments for DD
 - OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters and `delete_async` for better multi-record delete performance.
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
 - Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
-- Bulk delete - Provide a list of IDs to `delete(...)` or `delete_async(...)`. `delete` internally uses `DeleteMultiple` for elastic tables, for standard tables it is a loop over single-record delete. `delete_async` interally uses async BulkDelete.
+- Bulk delete - Provide a list of IDs to `delete(...)` or `delete_async(...)`. `delete` internally uses `DeleteMultiple` for elastic tables, for standard tables it is a loop over single-record delete. `delete_async` internally uses async BulkDelete.
 - Retrieve multiple (paging) — Generator-based `get(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
 - Upload files — Call `upload_file(logical_name, ...)` and an upload method will be auto picked (you can override the mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
 - Metadata helpers — Create/inspect/delete tables and create/delete columns (EntityDefinitions + Attributes).
@@ -57,7 +57,7 @@ Auth:
 
 Guidelines:
 - `create` always returns a list of GUIDs (1 for single, N for bulk).
-- `update` and `delete` always returns `None`.
+- `update` and `delete` always return `None`.
 - Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
 - `delete_async` returns the BulkDelete async job ID and doesn't wait for completion.
 - It's recommended to use delete_async for multi-record delete for better performance. 
