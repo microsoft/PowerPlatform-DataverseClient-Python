@@ -5,22 +5,7 @@ import pytest
 from enum import Enum, IntEnum
 
 from dataverse_sdk.data.odata import ODataClient
-
-class DummyAuth:
-    def acquire_token(self, scope):  # pragma: no cover - simple stub
-        class T:
-            access_token = "token"
-        return T()
-
-class DummyConfig:
-    """Minimal config stub providing attributes ODataClient.__init__ expects."""
-
-    def __init__(self, language_code=1033):
-        self.language_code = language_code
-        # HTTP settings referenced during ODataClient construction
-        self.http_retries = 0
-        self.http_backoff = 0
-        self.http_timeout = 5
+from tests.unit.test_helpers import DummyAuth, DummyConfig
 
 def _make_client(lang=1033):
     return ODataClient(DummyAuth(), "https://org.example", DummyConfig(language_code=lang))

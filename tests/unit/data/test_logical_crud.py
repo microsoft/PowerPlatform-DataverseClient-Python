@@ -1,69 +1,17 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import types
 import pytest
-from dataverse_sdk.data.odata import ODataClient
 from dataverse_sdk.core.errors import MetadataError
+from tests.unit.test_helpers import (
+    TestableClient,
+    MD_ACCOUNT,
+    make_entity_create_headers,
+    make_entity_metadata
+)
 
-class DummyAuth:
-    def acquire_token(self, scope):
-        class T: access_token = "x"
-        return T()
-
-class DummyHTTPClient:
-    def __init__(self, responses):
-        self._responses = responses
-        self.calls = []
-    def request(self, method, url, **kwargs):
-        self.calls.append((method, url, kwargs))
-        if not self._responses:
-            raise AssertionError("No more dummy responses configured")
-        status, headers, body = self._responses.pop(0)
-        resp = types.SimpleNamespace()
-        resp.status_code = status
-        resp.headers = headers
-        resp.text = "" if body is None else ("{}" if isinstance(body, dict) else str(body))
-        def raise_for_status():
-            if status >= 400:
-                raise RuntimeError(f"HTTP {status}")
-            return None
-        def json_func():
-            return body if isinstance(body, dict) else {}
-        resp.raise_for_status = raise_for_status
-        resp.json = json_func
-        return resp
-
-class TestableClient(ODataClient):
-    def __init__(self, responses):
-        super().__init__(DummyAuth(), "https://org.example", None)
-        self._http = DummyHTTPClient(responses)
-    def _convert_labels_to_ints(self, logical_name, record):  # pragma: no cover - test shim
-        return record
-
-# Helper metadata response for logical name resolution
-MD_ACCOUNT = {
-    "value": [
-        {
-            "LogicalName": "account",
-            "EntitySetName": "accounts",
-            "PrimaryIdAttribute": "accountid"
-        }
-    ]
-}
-
-MD_SAMPLE = {
-    "value": [
-        {
-            "LogicalName": "new_sampleitem",
-            "EntitySetName": "new_sampleitems",
-            "PrimaryIdAttribute": "new_sampleitemid"
-        }
-    ]
-}
-
-def make_entity_create_headers(entity_set, guid):
-    return {"OData-EntityId": f"https://org.example/api/data/v9.2/{entity_set}({guid})"}
+# Additional metadata for this test file
+MD_SAMPLE = make_entity_metadata("new_sampleitem", "new_sampleitems", "new_Sampleitem", "new_sampleitemid")
 
 
 def test_single_create_update_delete_get():

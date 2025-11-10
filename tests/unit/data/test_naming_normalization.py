@@ -8,85 +8,18 @@ Tests the case-insensitive logical name handling, SchemaName lookup caching,
 and unified metadata cache introduced for explicit naming enforcement.
 """
 
-import types
 import pytest
-from dataverse_sdk.data.odata import ODataClient
 from dataverse_sdk.core.errors import MetadataError
-
-
-class DummyAuth:
-    """Mock authentication for testing."""
-    def acquire_token(self, scope):
-        class T:
-            access_token = "test_token"
-        return T()
-
-
-class DummyHTTPClient:
-    """Mock HTTP client that returns pre-configured responses."""
-    def __init__(self, responses):
-        self._responses = responses
-        self.calls = []
-    
-    def request(self, method, url, **kwargs):
-        self.calls.append((method, url, kwargs))
-        if not self._responses:
-            raise AssertionError("No more dummy responses configured")
-        status, headers, body = self._responses.pop(0)
-        resp = types.SimpleNamespace()
-        resp.status_code = status
-        resp.headers = headers
-        resp.text = "" if body is None else ("{}" if isinstance(body, dict) else str(body))
-        
-        def raise_for_status():
-            if status >= 400:
-                raise RuntimeError(f"HTTP {status}")
-            return None
-        
-        def json_func():
-            return body if isinstance(body, dict) else {}
-        
-        resp.raise_for_status = raise_for_status
-        resp.json = json_func
-        return resp
-
-
-class TestableClient(ODataClient):
-    """ODataClient with mocked HTTP for testing."""
-    def __init__(self, responses):
-        super().__init__(DummyAuth(), "https://org.example", None)
-        self._http = DummyHTTPClient(responses)
-    
-    def _convert_labels_to_ints(self, logical_name, record):
-        """Test shim - no-op conversion."""
-        return record
-
+from tests.unit.test_helpers import (
+    TestableClient,
+    MD_ACCOUNT,
+    MD_SAMPLE_ITEM,
+    make_entity_create_headers
+)
 
 # ============================================================================
-# Test Data - Metadata Responses
+# Test Data - Additional Metadata Responses for this test file
 # ============================================================================
-
-MD_SAMPLE_ITEM = {
-    "value": [
-        {
-            "LogicalName": "new_sampleitem",
-            "EntitySetName": "new_sampleitems",
-            "SchemaName": "new_Sampleitem",
-            "PrimaryIdAttribute": "new_sampleitemid"
-        }
-    ]
-}
-
-MD_ACCOUNT = {
-    "value": [
-        {
-            "LogicalName": "account",
-            "EntitySetName": "accounts",
-            "SchemaName": "Account",
-            "PrimaryIdAttribute": "accountid"
-        }
-    ]
-}
 
 MD_ENTITY_BY_LOGICAL = {
     "LogicalName": "new_sampleitem",

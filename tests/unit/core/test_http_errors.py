@@ -5,39 +5,13 @@ import pytest
 from dataverse_sdk.core.errors import HttpError
 from dataverse_sdk.core import error_codes as ec
 from dataverse_sdk.data.odata import ODataClient
-
-class DummyAuth:
-    def acquire_token(self, scope):
-        class T: access_token = "x"
-        return T()
-
-class DummyHTTP:
-    def __init__(self, responses):
-        self._responses = responses
-    def request(self, method, url, **kwargs):
-        if not self._responses:
-            raise AssertionError("No more responses")
-        status, headers, body = self._responses.pop(0)
-        class R:
-            pass
-        r = R()
-        r.status_code = status
-        r.headers = headers
-        if isinstance(body, dict):
-            import json
-            r.text = json.dumps(body)
-            def json_func(): return body
-            r.json = json_func
-        else:
-            r.text = body or ""
-            def json_fail(): raise ValueError("non-json")
-            r.json = json_fail
-        return r
+from tests.unit.test_helpers import DummyAuth, DummyHTTPClient
 
 class TestClient(ODataClient):
+    """Test client for HTTP error testing."""
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
-        self._http = DummyHTTP(responses)
+        self._http = DummyHTTPClient(responses)
 
 # --- Tests ---
 

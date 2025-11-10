@@ -387,7 +387,8 @@ class DataverseClient:
         Example:
             Retrieve table metadata::
 
-                info = client.get_table_info("new_sampleitem")                if info:
+                info = client.get_table_info("new_sampleitem")
+                if info:
                     print(f"Logical name: {info['entity_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
         """
@@ -406,6 +407,8 @@ class DataverseClient:
             Both table and column names must include the publisher prefix (default is ``"new_"``).
         :type logical_name: str
         :param schema: Dictionary mapping column logical names (with prefix) to their types.
+
+            Supported types:
 
             - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
             - Enum subclass (IntEnum preferred): Creates a local option set. Optional multilingual
