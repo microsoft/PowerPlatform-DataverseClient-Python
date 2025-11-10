@@ -711,7 +711,7 @@ class ODataClient(ODataFileUpload):
         return metadata
 
     def _logical_to_schema_name(self, logical_name: str) -> str:
-        """Convert logical name (new_sampleitem) to SchemaName (new_SampleItem) for CREATE operations.
+        """Convert logical name (new_sampleitem) to SchemaName (new_Sampleitem) for CREATE operations.
         
         Use this ONLY when creating new entities where we control the SchemaName.
         For existing entities, use _get_entity_schema_name() to get the actual SchemaName from server.

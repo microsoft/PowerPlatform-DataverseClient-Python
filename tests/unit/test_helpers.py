@@ -73,7 +73,7 @@ class TestableClient(ODataClient):
         super().__init__(DummyAuth(), org_url, config)
         self._http = DummyHTTPClient(responses)
     
-    def _convert_labels_to_ints(self, logical_name, record):
+    def _convert_labels_to_ints(self, logical_name, record):  # pragma: no cover - test shim
         """Test shim - no-op conversion for simplicity."""
         return record
 

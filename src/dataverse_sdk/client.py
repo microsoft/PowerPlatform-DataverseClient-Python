@@ -403,7 +403,7 @@ class DataverseClient:
         """
         Create a simple custom table with specified columns.
 
-        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_orders"``).
+        :param logical_name: Table logical name with publisher prefix (e.g. ``"new_sampleitem"``).
             Both table and column names must include the publisher prefix (default is ``"new_"``).
         :type logical_name: str
         :param schema: Dictionary mapping column logical names (with prefix) to their types.

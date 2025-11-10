@@ -13,8 +13,7 @@ from dataverse_sdk.core.errors import MetadataError
 from tests.unit.test_helpers import (
     TestableClient,
     MD_ACCOUNT,
-    MD_SAMPLE_ITEM,
-    make_entity_create_headers
+    MD_SAMPLE_ITEM
 )
 
 # ============================================================================
@@ -331,7 +330,6 @@ def test_get_entity_by_logical_normalization():
 
 def test_create_table_normalizes_logical_name():
     """Test that _create_table normalizes the logical name."""
-    guid = "11111111-2222-3333-4444-555555555555"
     responses = [
         (200, {}, {}),  # POST to create entity
         (200, {}, {"value": [MD_ENTITY_BY_LOGICAL]}),  # GET entity by logical with Consistency: Strong
@@ -339,7 +337,7 @@ def test_create_table_normalizes_logical_name():
     c = TestableClient(responses)
     
     # Create with mixed case - _create_table takes schema dict, not individual params
-    result = c._create_table(
+    c._create_table(
         logical_name="NEW_SAMPLEITEM",
         schema={"new_field1": "string"},  # Dict of column_name -> type
         solution_unique_name=None
@@ -518,7 +516,6 @@ def test_create_with_one_casing_crud_with_another():
     )
     
     # 3. GET entity set with different casings - first call populates cache
-    calls_before = len(c._http.calls)
     entity_set1 = c._entity_set_from_logical("New_Product")
     calls_after_first = len(c._http.calls)
     
