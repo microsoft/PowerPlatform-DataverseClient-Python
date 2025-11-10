@@ -338,7 +338,7 @@ def test_create_table_normalizes_logical_name():
     c = TestableClient(responses)
     
     # Create with mixed case - _create_table takes schema dict, not individual params
-    result = c._create_table(
+    c._create_table(
         logical_name="NEW_SAMPLEITEM",
         schema={"new_field1": "string"},  # Dict of column_name -> type
         solution_unique_name=None
