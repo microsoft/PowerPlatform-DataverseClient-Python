@@ -17,7 +17,7 @@ from .upload import ODataFileUpload
 from ..core.errors import *
 from ..core import error_codes as ec
 
-from .__version__ import __version__ as _SDK_VERSION
+from ..__version__ import __version__ as _SDK_VERSION
 
 
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
