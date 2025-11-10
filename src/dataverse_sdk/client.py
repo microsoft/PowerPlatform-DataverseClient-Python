@@ -7,9 +7,9 @@ from typing import Any, Dict, Optional, Union, List, Iterable
 
 from azure.core.credentials import TokenCredential
 
-from .auth import AuthManager
-from .config import DataverseConfig
-from .odata import ODataClient
+from .core.auth import AuthManager
+from .core.config import DataverseConfig
+from .data.odata import ODataClient
 
 
 class DataverseClient:
