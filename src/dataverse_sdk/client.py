@@ -11,7 +11,6 @@ from .auth import AuthManager
 from .config import DataverseConfig
 from .odata import ODataClient
 
-
 class DataverseClient:
     """
     High-level client for Microsoft Dataverse operations.
@@ -208,8 +207,7 @@ class DataverseClient:
         self,
         logical_name: str,
         ids: Union[str, List[str]],
-        use_bulk_delete: bool = True,
-    ) -> Optional[str]:
+    ) -> None:
         """
         Delete one or more records by GUID.
 
@@ -217,15 +215,12 @@ class DataverseClient:
         :type logical_name: str
         :param ids: Single GUID string or list of GUID strings to delete.
         :type ids: str or list[str]
-        :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
-            return its async job identifier. When ``False`` each record is deleted sequentially.
-        :type use_bulk_delete: bool
 
         :raises TypeError: If ``ids`` is not str or list[str].
         :raises HttpError: If the underlying Web API delete request fails.
-        
-        :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
-        :rtype: str or None
+
+        :return: ``None`` once the requested records have been deleted sequentially.
+        :rtype: None
 
         Example:
             Delete a single record::
@@ -234,7 +229,7 @@ class DataverseClient:
 
             Delete multiple records::
 
-                job_id = client.delete("account", [id1, id2, id3])
+                client.delete("account", [id1, id2, id3])
         """
         od = self._get_odata()
         if isinstance(ids, str):
@@ -246,11 +241,49 @@ class DataverseClient:
             return None
         if not all(isinstance(rid, str) for rid in ids):
             raise TypeError("ids must contain string GUIDs")
-        if use_bulk_delete:
-            return od._delete_multiple(logical_name, ids)
+        if od._is_elastic_table(logical_name):
+            od._delete_multiple(logical_name, ids)
+            return None
         for rid in ids:
             od._delete(logical_name, rid)
         return None
+
+    def delete_async(
+        self,
+        logical_name: str,
+        ids: Union[str, List[str]],
+    ) -> str:
+        """
+        Issue an asynchronous BulkDelete job for one or more records.
+
+        :param logical_name: Logical (singular) entity name, e.g. ``"account"``.
+        :type logical_name: str
+        :param ids: Single GUID string or list of GUID strings to delete.
+        :type ids: str or list[str]
+
+        :raises TypeError: If ``ids`` is not str or list[str].
+        :raises HttpError: If the BulkDelete request fails.
+
+        :return: BulkDelete job identifier, a dummy if ids is empty.
+        :rtype: str
+
+        Example:
+            Queue a bulk delete::
+
+                job_id = client.delete_async("account", [id1, id2, id3])
+        """
+        od = self._get_odata()
+        if isinstance(ids, str):
+            return od._delete_async(logical_name, [ids])
+        elif isinstance(ids, list):
+            if not ids:
+                noop_bulkdelete_job_id = "00000000-0000-0000-0000-000000000000"
+                return noop_bulkdelete_job_id
+            if not all(isinstance(rid, str) for rid in ids):
+                raise TypeError("ids must contain string GUIDs")
+            return od._delete_async(logical_name, ids)
+        else:
+            raise TypeError("ids must be str or list[str]")
 
     def get(
         self,

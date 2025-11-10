@@ -50,6 +50,8 @@ class ODataClient(ODataFileUpload):
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: logical name -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
+        # Cache: logical name -> whether the table is elastic
+        self._elastic_table_cache: dict[str, bool] = {}
         # Picklist label cache: (logical_name, attribute_logical) -> {'map': {...}, 'ts': epoch_seconds}
         self._picklist_label_cache = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
@@ -285,7 +287,22 @@ class ODataClient(ODataFileUpload):
         self._update_multiple(entity_set, logical_name, batch)
         return None
 
-    def _delete_multiple(
+    def _delete_multiple(self, logical_name: str, ids: List[str]) -> None:
+        """Delete many records synchronously via the DeleteMultiple collection action."""
+        entity_set = self._entity_set_from_logical(logical_name)
+        pk_attr = self._primary_id_attr(logical_name)
+        targets: List[Dict[str, Any]] = []
+        for rid in ids:
+            targets.append({
+                "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}",
+                pk_attr: rid,
+            })
+        payload = {"Targets": targets}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.DeleteMultiple"
+        self._request("post", url, json=payload)
+        return None
+
+    def _delete_async(
         self,
         logical_name: str,
         ids: List[str],
@@ -655,6 +672,37 @@ class ODataClient(ODataFileUpload):
         if isinstance(primary_id_attr, str) and primary_id_attr:
             self._logical_primaryid_cache[logical] = primary_id_attr
         return es
+
+    def _is_elastic_table(self, logical: str) -> bool:
+        """Return True when the target table is configured as an elastic table."""
+        if not logical:
+            raise ValueError("logical name required")
+        cached = self._elastic_table_cache.get(logical)
+        if cached is not None:
+            return cached
+        url = f"{self.api}/EntityDefinitions"
+        logical_escaped = self._escape_odata_quotes(logical)
+        params = {
+            "$select": "LogicalName,TableType",
+            "$filter": f"LogicalName eq '{logical_escaped}'",
+        }
+        r = self._request("get", url, params=params)
+        try:
+            body = r.json()
+            items = body.get("value", []) if isinstance(body, dict) else []
+        except ValueError:
+            items = []
+        is_elastic = False
+        if items:
+            md = items[0]
+            if isinstance(md, dict):
+                table_type = md.get("TableType")
+                if isinstance(table_type, str):
+                    is_elastic = table_type.strip().lower() == "elastic"
+                else:
+                    is_elastic = False
+        self._elastic_table_cache[logical] = is_elastic
+        return is_elastic
 
     # ---------------------- Table metadata helpers ----------------------
     def _label(self, text: str) -> Dict[str, Any]:

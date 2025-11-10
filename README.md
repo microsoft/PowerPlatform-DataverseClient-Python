@@ -3,7 +3,7 @@
 A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
 
 - Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
-- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters.
+- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters and `delete_async` for better multi-record delete performance.
 - Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
 - Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
 - Retrieve multiple (paging) — Generator-based `get(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
@@ -39,7 +39,9 @@ Auth:
 | `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
 | `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
 | `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
-| `delete` | `delete(logical_name, list[id], use_bulk_delete=True)` | `Optional[str]` | Delete many with async BulkDelete or sequential single-record delete. |
+| `delete` | `delete(logical_name, list[id])` | `None` | Sequential deletes (loops over single-record delete). |
+| `delete_async` | `delete_async(logical_name, id)` | `str` | Async single-record delete. |
+| `delete_async` | `delete_async(logical_name, list[id])` | `str` | Async multi-record delete. |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
 | `create_table` | `create_table(tablename, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
 | `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping (same shape as `create_table` schema). Returns schema names for the created columns. |
@@ -54,10 +56,10 @@ Auth:
 
 Guidelines:
 - `create` always returns a list of GUIDs (1 for single, N for bulk).
-- `update` always returns `None`.
+- `update` and `delete` always returns `None`.
 - Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
-- `delete` returns `None` for single-record delete and sequential multi-record delete, and the BulkDelete async job ID for multi-record BulkDelete.
-- BulkDelete doesn't wait for the delete job to complete. It returns once the async delete job is scheduled.
+- `delete_async` returns the BulkDelete async job ID and doesn't wait for completion.
+- It's recommended to use delete_async for multi-record delete for better performance. 
 - Paging and SQL operations never mutate inputs.
 - Metadata lookups for logical name stamping cached per entity set (in-memory).
 
@@ -143,8 +145,11 @@ print({"multi_update": "ok"})
 # Delete (single)
 client.delete("account", account_id)
 
-# Bulk delete (schedules BulkDelete and returns job id)
-job_id = client.delete("account", ids)
+# Delete multiple sequentially
+client.delete("account", ids)
+
+# Or queue a async bulk delete job
+job_id = client.delete_async("account", ids)
 
 # SQL (read-only) via Web API `?sql=`
 rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
@@ -334,8 +339,8 @@ client.delete_table("SampleItem")       # delete table (friendly name or explici
 
 Notes:
 - `create` always returns a list of GUIDs (length 1 for single input).
-- `update` returns `None`.
-- `delete` returns `None` for single-record delete/sequential multi-record delete, and the BulkDelete async job ID for BulkDelete.
+- `update` and `delete` returns `None`.
+- `delete_async` returns the BulkDelete async job ID.
 - Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
 - `get` supports single record retrieval with record id or paging through result sets (prefer `select` to limit columns).
 - For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
