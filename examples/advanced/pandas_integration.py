@@ -54,8 +54,8 @@ print("(Pandas) Ensure custom table exists (Metadata):")
 table_info = None
 created_this_run = False
 
-# First check for existing table
-existing = client.get_table_info("SampleItem")
+# First check for existing table (use logical name - lowercase with prefix)
+existing = client.get_table_info("new_sampleitem")
 if existing:
 	table_info = existing
 	created_this_run = False
@@ -68,16 +68,16 @@ if existing:
 	})
 
 else:
-	# Create it since it doesn't exist
+	# Create it since it doesn't exist (use logical name)
 	try:
 		table_info = client.create_table(
-			"SampleItem",
+			"new_sampleitem",
 			{
-				"code": "string",
-				"count": "int",
-				"amount": "decimal",
-				"when": "datetime",
-				"active": "bool",
+				"new_code": "string",
+				"new_count": "int",
+				"new_amount": "decimal",
+				"new_when": "datetime",
+				"new_active": "bool",
 			},
 		)
 		created_this_run = True if table_info and table_info.get("columns_created") else False
@@ -217,10 +217,10 @@ except Exception as e:
 # 6) Cleanup: delete the custom table if it exists
 print("Cleanup (Metadata):")
 try:
-	# Delete if present, regardless of whether it was created in this run
-	info = client.get_table_info("SampleItem")
+	# Delete if present, regardless of whether it was created in this run (use logical name)
+	info = client.get_table_info("new_sampleitem")
 	if info:
-		client.delete_table("SampleItem")
+		client.delete_table("new_sampleitem")
 		print({"table_deleted": True})
 	else:
 		print({"table_deleted": False, "reason": "not found"})

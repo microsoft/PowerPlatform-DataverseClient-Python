@@ -646,11 +646,11 @@ pause("Next: Cleanup table")
 print("Cleanup (Metadata):")
 if delete_table_at_end:
 	try:
-		log_call("client.get_table_info('new_SampleItem')")
-		info = client.get_table_info("new_SampleItem")
+		log_call("client.get_table_info('new_sampleitem')")
+		info = client.get_table_info("new_sampleitem")
 		if info:
-			log_call("client.delete_table('new_SampleItem')")
-			client.delete_table("new_SampleItem")
+			log_call("client.delete_table('new_sampleitem')")
+			client.delete_table("new_sampleitem")
 			print({"table_deleted": True})
 		else:
 			print({"table_deleted": False, "reason": "not found"})

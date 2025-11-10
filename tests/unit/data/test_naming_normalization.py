@@ -608,5 +608,45 @@ def test_attribute_cache_case_insensitive():
     assert ("NEW_SAMPLEITEM", "NEW_TITLE") not in c._attribute_schema_cache
 
 
+def test_primary_id_attr_case_insensitive():
+    """Test that _primary_id_attr normalizes logical names for cache lookup."""
+    responses = [
+        (200, {}, MD_SAMPLE_ITEM)  # Only ONE server call should be made
+    ]
+    c = TestableClient(responses)
+    
+    # Multiple lookups with different casings
+    pid1 = c._primary_id_attr("new_sampleitem")
+    pid2 = c._primary_id_attr("NEW_SAMPLEITEM")
+    pid3 = c._primary_id_attr("New_SampleItem")
+    pid4 = c._primary_id_attr("  new_sampleitem  ")  # With whitespace
+    
+    # All should return the same primary ID attribute
+    assert pid1 == pid2 == pid3 == pid4 == "new_sampleitemid"
+    
+    # Verify only 1 HTTP call was made (all others used cache)
+    assert len(c._http.calls) == 1
+    
+    # Verify the cache key is normalized (lowercase)
+    assert "new_sampleitem" in c._entity_metadata_cache
+    assert "NEW_SAMPLEITEM" not in c._entity_metadata_cache
+
+
+def test_logical_to_schema_name_case_insensitive():
+    """Test that _logical_to_schema_name normalizes input for consistent output."""
+    c = TestableClient([])
+    
+    # All variations should produce the same SchemaName
+    assert c._logical_to_schema_name("new_sampleitem") == "new_Sampleitem"
+    assert c._logical_to_schema_name("NEW_SAMPLEITEM") == "new_Sampleitem"
+    assert c._logical_to_schema_name("New_SampleItem") == "new_Sampleitem"
+    assert c._logical_to_schema_name("  new_sampleitem  ") == "new_Sampleitem"
+    
+    # Test without prefix
+    assert c._logical_to_schema_name("account") == "Account"
+    assert c._logical_to_schema_name("ACCOUNT") == "Account"
+    assert c._logical_to_schema_name("Account") == "Account"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -255,6 +255,9 @@ class ODataClient(ODataFileUpload):
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, logical_name: str) -> str:
         """Return primary key attribute using metadata; error if unavailable."""
+        # Normalize logical name for case-insensitive lookup
+        logical_name = self._normalize_logical_name(logical_name)
+        
         # Get from unified metadata cache
         if logical_name in self._entity_metadata_cache:
             pid = self._entity_metadata_cache[logical_name].get('primary_id_attribute')
@@ -713,6 +716,9 @@ class ODataClient(ODataFileUpload):
         Use this ONLY when creating new entities where we control the SchemaName.
         For existing entities, use _get_entity_schema_name() to get the actual SchemaName from server.
         """
+        # Normalize logical name first
+        logical_name = self._normalize_logical_name(logical_name)
+        
         if "_" not in logical_name:
             # No prefix, just capitalize first letter
             return logical_name[:1].upper() + logical_name[1:]

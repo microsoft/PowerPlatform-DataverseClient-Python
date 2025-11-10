@@ -152,18 +152,18 @@ def backoff(op, *, delays=(0,2,5,10), retry_status=(400,403,404,409,412,429,500,
         raise last
 
 # --------------------------- Table ensure ---------------------------
-TABLE_SCHEMA_NAME = "new_FileSample"
+TABLE_LOGICAL_NAME = "new_filesample"
 # If user wants new publisher prefix / naming, adjust above.
 
 def ensure_table():
-    # Check by schema
-    existing = client.get_table_info(TABLE_SCHEMA_NAME)
+    # Check by logical name
+    existing = client.get_table_info(TABLE_LOGICAL_NAME)
     if existing:
-        print({"table": TABLE_SCHEMA_NAME, "existed": True})
+        print({"table": TABLE_LOGICAL_NAME, "existed": True})
         return existing
-    log("client.create_table('new_filesample', schema={new_title})")
-    info = client.create_table(TABLE_SCHEMA_NAME, {"new_title": "string"})
-    print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get('metadata_id')})
+    log(f"client.create_table('{TABLE_LOGICAL_NAME}', schema={{'new_title': 'string'}})")
+    info = client.create_table(TABLE_LOGICAL_NAME, {"new_title": "string"})
+    print({"table": TABLE_LOGICAL_NAME, "existed": False, "metadata_id": info.get('metadata_id')})
     return info
 
 try:
@@ -388,8 +388,8 @@ if run_chunk:
 # --------------------------- Cleanup ---------------------------
 if cleanup_record and record_id:
     try:
-        log(f"client.delete('{entity_set}', '{record_id}')")
-        backoff(lambda: client.delete(entity_set, record_id))
+        log(f"client.delete('{logical}', '{record_id}')")
+        backoff(lambda: client.delete(logical, record_id))
         print({"record_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"record_deleted": False, "error": str(e)})
@@ -398,8 +398,8 @@ else:
 
 if cleanup_table:
     try:
-        log(f"client.delete_table('{TABLE_SCHEMA_NAME}')")
-        client.delete_table(TABLE_SCHEMA_NAME)
+        log(f"client.delete_table('{TABLE_LOGICAL_NAME}')")
+        client.delete_table(TABLE_LOGICAL_NAME)
         print({"table_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"table_deleted": False, "error": str(e)})
