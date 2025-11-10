@@ -95,9 +95,11 @@ created_this_run = False
 # Check for existing table using list_tables
 log_call("client.list_tables()")
 tables = client.list_tables()
-existing_table = next((t for t in tables if t.get("SchemaName") == "new_SampleItem"), None)
+
+# LogicalName should be lowercase, but let's be defensive with case-insensitive comparison
+existing_table = next((t for t in tables if t.get("LogicalName", "").lower() == "new_sampleitem"), None)
 if existing_table:
-	table_info = client.get_table_info("new_SampleItem")
+	table_info = client.get_table_info("new_sampleitem")
 	created_this_run = False
 	print({
 		"table": table_info.get("entity_schema"),
@@ -106,20 +108,19 @@ if existing_table:
 		"logical": table_info.get("entity_logical_name"),
 		"metadata_id": table_info.get("metadata_id"),
 	})
-
 else:
 	# Create it since it doesn't exist
 	try:
-		log_call("client.create_table('new_SampleItem', schema={code,count,amount,when,active,status<enum>})")
+		log_call("client.create_table('new_sampleitem', schema={new_code,new_count,new_amount,new_when,new_active,new_status<enum>})")
 		table_info = client.create_table(
-			"new_SampleItem",
+			"new_sampleitem",
 			{
-				"code": "string",
-				"count": "int",
-				"amount": "decimal",
-				"when": "datetime",
-				"active": "bool",
-				"status": Status,
+				"new_code": "string",
+				"new_count": "int",
+				"new_amount": "decimal",
+				"new_when": "datetime",
+				"new_active": "bool",
+				"new_status": Status,
 			},
 		)
 		created_this_run = True if table_info and table_info.get("columns_created") else False
@@ -146,11 +147,11 @@ else:
 				pass
 		# Fail fast: all operations must use the custom table
 		sys.exit(1)
-entity_schema = table_info.get("entity_schema") or "new_SampleItem"
-logical = table_info.get("entity_logical_name")
+entity_schema = table_info.get("entity_schema") or "new_Sampleitem"
+logical = table_info.get("entity_logical_name") or "new_sampleitem"
 metadata_id = table_info.get("metadata_id")
 if not metadata_id:
-	refreshed_info = client.get_table_info(entity_schema) or {}
+	refreshed_info = client.get_table_info(logical) or {}
 	metadata_id = refreshed_info.get("metadata_id")
 	if metadata_id:
 		table_info["metadata_id"] = metadata_id
@@ -553,8 +554,8 @@ print("Column metadata helpers (create/delete column):")
 scratch_column = f"scratch_{int(time.time())}"
 column_payload = {scratch_column: "string"}
 try:
-	log_call(f"client.create_column('{entity_schema}', {repr(column_payload)})")
-	column_create = client.create_columns(entity_schema, column_payload)
+	log_call(f"client.create_column('{logical}', {repr(column_payload)})")
+	column_create = client.create_columns(logical, column_payload)
 	if not isinstance(column_create, list) or not column_create:
 		raise RuntimeError("create_column did not return schema list")
 	created_details = column_create
@@ -589,10 +590,10 @@ try:
 			attr_type_before = raw_type
 			lowered = raw_type.lower()
 	delete_target = attribute_schema or scratch_column
-	log_call(f"client.delete_column('{entity_schema}', '{delete_target}')")
+	log_call(f"client.delete_column('{logical}', '{delete_target}')")
 
 	def _delete_column():
-		return client.delete_columns(entity_schema, delete_target)
+		return client.delete_columns(logical, delete_target)
 
 	column_delete = backoff_retry(
 		_delete_column,

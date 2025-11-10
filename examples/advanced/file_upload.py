@@ -161,8 +161,8 @@ def ensure_table():
     if existing:
         print({"table": TABLE_SCHEMA_NAME, "existed": True})
         return existing
-    log("client.create_table('new_FileSample', schema={title})")
-    info = client.create_table(TABLE_SCHEMA_NAME, {"title": "string"})
+    log("client.create_table('new_filesample', schema={new_title})")
+    info = client.create_table(TABLE_SCHEMA_NAME, {"new_title": "string"})
     print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get('metadata_id')})
     return info
 

@@ -41,8 +41,8 @@ Auth:
 | `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
 | `delete` | `delete(logical_name, list[id], use_bulk_delete=True)` | `Optional[str]` | Delete many with async BulkDelete or sequential single-record delete. |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
-| `create_table` | `create_table(tablename, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
-| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping (same shape as `create_table` schema). Returns schema names for the created columns. |
+| `create_table` | `create_table(logical_name, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Requires logical name with publisher prefix (e.g. `new_sampleitem`) and column names with same prefix (e.g. `{"new_code": "string"}`). Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
+| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping with publisher prefix (e.g. `{"new_category": "string"}`). Returns schema names for the created columns. |
 | `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted. |
 | `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
 | `delete_table` | `delete_table(tablename)` | `None` | Drops custom table. Accepts friendly or schema name; friendly converted to `new_<PascalCase>`. |
@@ -329,7 +329,7 @@ rec_id = client.create(logical, {name_attr: "Sample A"})[0]
 
 # Clean up
 client.delete(logical, rec_id)          # delete record
-client.delete_table("SampleItem")       # delete table (friendly name or explicit schema new_SampleItem)
+client.delete_table("new_sampleitem") # delete table by logical name
 ```
 
 Notes:
