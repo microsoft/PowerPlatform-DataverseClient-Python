@@ -57,7 +57,7 @@ Auth:
 
 Guidelines:
 - `create` always returns a list of GUIDs (1 for single, N for bulk).
-- `update` and `delete` always returns `None`.
+- `update` and `delete` always return `None`.
 - Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
 - `delete_async` returns the BulkDelete async job ID and doesn't wait for completion.
 - It's recommended to use delete_async for multi-record delete for better performance. 
