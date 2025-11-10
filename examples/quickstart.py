@@ -33,10 +33,6 @@ pause_between_steps = (str(pause_choice).lower() in ("y", "yes", "true", "1"))
 # Create a credential we can reuse (for DataverseClient)
 credential = InteractiveBrowserCredential()
 client = DataverseClient(base_url=base_url, credential=credential)
-elastic_table_schema = "new_ElasticDeleteDemo"
-elastic_table_created_this_run = False
-elastic_table_logical_name: Optional[str] = None
-elastic_table_metadata_id: Optional[str] = None
 
 # Small helpers: call logging and step pauses
 def log_call(call: str) -> None:
@@ -73,129 +69,6 @@ def backoff_retry(op, *, delays=(0, 2, 5, 10, 20), retry_http_statuses=(400, 403
 			break
 	if last_exc:
 		raise last_exc
-
-def run_elastic_delete_demo() -> None:
-	global elastic_table_created_this_run, elastic_table_logical_name, elastic_table_metadata_id
-	print("Elastic DeleteMultiple demo (elastic table setup):")
-	odata_client = client._get_odata()
-	schema_name = elastic_table_schema
-	publisher_prefix = schema_name.split("_", 1)[0] if "_" in schema_name else schema_name
-	primary_attr = f"{publisher_prefix}_Name"
-	count_attr = f"{publisher_prefix}_Count"
-	flag_attr = f"{publisher_prefix}_Flag"
-
-	def _fetch_metadata() -> Optional[dict]:
-		url = f"{odata_client.api}/EntityDefinitions"
-		params = {
-			"$select": "MetadataId,LogicalName,EntitySetName,SchemaName,TableType",
-			"$filter": f"SchemaName eq '{schema_name}'",
-		}
-		r = odata_client._request("get", url, params=params)
-		try:
-			body = r.json() if r.text else {}
-		except ValueError:
-			return None
-		items = body.get("value") if isinstance(body, dict) else None
-		if isinstance(items, list) and items:
-			md = items[0]
-			return md if isinstance(md, dict) else None
-		return None
-
-	try:
-		metadata = _fetch_metadata()
-		if metadata and str(metadata.get("TableType", "")).lower() != "elastic":
-			print({
-				"elastic_table": schema_name,
-				"skipped": True,
-				"reason": "Existing table is not elastic; DeleteMultiple demo not run",
-				"table_type": metadata.get("TableType"),
-			})
-			return
-		if not metadata:
-			log_call(f"POST EntityDefinitions (TableType=Elastic) for {schema_name}")
-			attributes = [
-				odata_client._attribute_payload(primary_attr, "string", is_primary_name=True),
-				odata_client._attribute_payload(count_attr, "int"),
-				odata_client._attribute_payload(flag_attr, "bool"),
-			]
-			attrs = [a for a in attributes if a]
-			payload = {
-				"@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
-				"SchemaName": schema_name,
-				"DisplayName": odata_client._label("Elastic Delete Demo"),
-				"DisplayCollectionName": odata_client._label("Elastic Delete Demos"),
-				"Description": odata_client._label("Elastic table for DeleteMultiple quickstart validation"),
-				"OwnershipType": "UserOwned",
-				"HasActivities": False,
-				"HasNotes": True,
-				"IsEnabledForCharts": False,
-				"IsVirtualEntityReportingEnabled": False,
-				"IsActivity": False,
-				"TableType": "Elastic",
-				"Attributes": attrs,
-			}
-			def _create_elastic():
-				odata_client._request("post", f"{odata_client.api}/EntityDefinitions", json=payload)
-				return True
-			try:
-				backoff_retry(_create_elastic)
-			except Exception as create_exc:
-				print({
-					"elastic_table": schema_name,
-					"skipped": True,
-					"reason": "Elastic table creation failed",
-					"error": str(create_exc),
-				})
-				return
-			ready = backoff_retry(lambda: odata_client._wait_for_entity_ready(schema_name), retry_http_statuses=())
-			if not ready or not ready.get("MetadataId"):
-				raise RuntimeError("Elastic demo table metadata not ready")
-			metadata = _fetch_metadata()
-			elastic_table_created_this_run = True
-		if not metadata:
-			print({"elastic_table": schema_name, "skipped": True, "reason": "Metadata unavailable"})
-			return
-		elastic_table_logical_name = metadata.get("LogicalName")
-		elastic_table_metadata_id = metadata.get("MetadataId")
-		odata_client._elastic_table_cache.pop(elastic_table_logical_name, None)
-		odata_client._logical_to_entityset_cache.pop(elastic_table_logical_name, None)
-		odata_client._logical_primaryid_cache.pop(elastic_table_logical_name, None)
-		is_elastic = odata_client._is_elastic_table(elastic_table_logical_name) if elastic_table_logical_name else False
-		print({
-			"elastic_table": schema_name,
-			"logical_name": elastic_table_logical_name,
-			"table_type_reported": metadata.get("TableType"),
-			"is_elastic": bool(is_elastic),
-		})
-		logical = elastic_table_logical_name
-		if not logical:
-			print({"elastic_table": schema_name, "skipped": True, "reason": "Logical name missing"})
-			return
-		prefix = logical.split("_", 1)[0] if "_" in logical else logical
-		name_key = f"{prefix}_name"
-		count_key = f"{prefix}_count"
-		flag_key = f"{prefix}_flag"
-		records = [
-			{name_key: "Elastic Demo A", count_key: 10, flag_key: True},
-			{name_key: "Elastic Demo B", count_key: 11, flag_key: False},
-			{name_key: "Elastic Demo C", count_key: 12, flag_key: True},
-		]
-		log_call(f"client.create('{logical}', <{len(records)} elastic records>)")
-		created_ids = backoff_retry(lambda: client.create(logical, records))
-		valid_ids = [rid for rid in created_ids if isinstance(rid, str)] if isinstance(created_ids, list) else []
-		if not valid_ids:
-			raise RuntimeError("Elastic demo record creation returned no GUIDs")
-		print({"elastic_create_ids": valid_ids})
-		log_call(f"client.delete('{logical}', <{len(valid_ids)} elastic ids>)")
-		backoff_retry(lambda: client.delete(logical, valid_ids))
-		print({
-			"elastic_delete_multiple": {
-				"requested": len(valid_ids),
-				"succeeded": True,
-			}
-		})
-	except Exception as exc:
-		print({"elastic_demo_error": str(exc)})
 	
 # Enum demonstrating local option set creation with multilingual labels (for French labels to work, enable French language in the environment first)
 class Status(IntEnum):
@@ -214,10 +87,6 @@ class Status(IntEnum):
 			"Archived": "Archivé",
 		}
 	}
-
-pause("Run elastic DeleteMultiple demo")
-run_elastic_delete_demo()
-sys.exit(0)
 
 print("Ensure custom table exists (Metadata):")
 table_info = None

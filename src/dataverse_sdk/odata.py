@@ -288,7 +288,20 @@ class ODataClient(ODataFileUpload):
         return None
 
     def _delete_multiple(self, logical_name: str, ids: List[str]) -> None:
-        """Delete many records synchronously via the DeleteMultiple collection action."""
+        """Delete records using the collection-bound DeleteMultiple action.
+
+        Parameters
+        ----------
+        logical_name : str
+            Singular logical entity name.
+        ids : list[str]
+            GUIDs for the records to remove.
+
+        Returns
+        -------
+        None
+            No representation is returned.
+        """
         entity_set = self._entity_set_from_logical(logical_name)
         pk_attr = self._primary_id_attr(logical_name)
         targets: List[Dict[str, Any]] = []

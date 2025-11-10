@@ -11,6 +11,7 @@ from .auth import AuthManager
 from .config import DataverseConfig
 from .odata import ODataClient
 
+
 class DataverseClient:
     """
     High-level client for Microsoft Dataverse operations.
@@ -218,9 +219,6 @@ class DataverseClient:
 
         :raises TypeError: If ``ids`` is not str or list[str].
         :raises HttpError: If the underlying Web API delete request fails.
-
-        :return: ``None`` once the requested records have been deleted sequentially.
-        :rtype: None
 
         Example:
             Delete a single record::
