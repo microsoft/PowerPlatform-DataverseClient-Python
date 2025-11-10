@@ -655,16 +655,5 @@ if delete_table_at_end:
 			print({"table_deleted": False, "reason": "not found"})
 	except Exception as e:
 		print(f"Delete table failed: {e}")
-	if elastic_table_created_this_run:
-		try:
-			log_call(f"client.delete_table('{elastic_table_schema}')")
-			client.delete_table(elastic_table_schema)
-			print({"elastic_table_deleted": True})
-		except Exception as e:
-			print({"elastic_table_delete_error": str(e)})
-	elif elastic_table_logical_name:
-		print({"elastic_table_deleted": False, "reason": "skipped (table existed before run)"})
 else:
 	print({"table_deleted": False, "reason": "user opted to keep table"})
-	if elastic_table_created_this_run:
-		print({"elastic_table_deleted": False, "reason": "user opted to keep table"})

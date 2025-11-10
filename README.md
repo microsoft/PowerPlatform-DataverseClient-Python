@@ -40,7 +40,7 @@ Auth:
 | `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
 | `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
 | `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
-| `delete` | `delete(logical_name, list[id])` | `None` | Sequential deletes (loops over single-record delete). |
+| `delete` | `delete(logical_name, list[id])` | `None` | DeleteMultiple for elastic tables or loops over single-record delete for standard tables. |
 | `delete_async` | `delete_async(logical_name, id)` | `str` | Async single-record delete. |
 | `delete_async` | `delete_async(logical_name, list[id])` | `str` | Async multi-record delete. |
 | `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
