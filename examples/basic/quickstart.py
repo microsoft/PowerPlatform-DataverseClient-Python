@@ -551,7 +551,7 @@ pause("Next: column metadata helpers")
 
 # 6) Column metadata helpers: column create/delete
 print("Column metadata helpers (create/delete column):")
-scratch_column = f"scratch_{int(time.time())}"
+scratch_column = f"new_scratch_{int(time.time())}"
 column_payload = {scratch_column: "string"}
 try:
 	log_call(f"client.create_column('{logical}', {repr(column_payload)})")
