@@ -96,8 +96,8 @@ created_this_run = False
 log_call("client.list_tables()")
 tables = client.list_tables()
 
-# LogicalName should be lowercase, but let's be defensive with case-insensitive comparison
-existing_table = next((t for t in tables if t.get("LogicalName", "").lower() == "new_sampleitem"), None)
+# LogicalName is always lowercase (SDK normalizes)
+existing_table = next((t for t in tables if t.get("LogicalName", "") == "new_sampleitem"), None)
 if existing_table:
 	table_info = client.get_table_info("new_sampleitem")
 	created_this_run = False
