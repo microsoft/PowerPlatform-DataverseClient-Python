@@ -17,7 +17,10 @@ from .upload import ODataFileUpload
 from ..core.errors import *
 from ..core import error_codes as ec
 
+from ..__version__ import __version__ as _SDK_VERSION
 
+
+_USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
@@ -58,14 +61,13 @@ class ODataClient(ODataFileUpload):
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
         token = self.auth.acquire_token(scope).access_token
-        # TODO: add version to User-Agent
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
-            "User-Agent": "DataversePythonSDK",
+            "User-Agent": _USER_AGENT,
         }
 
     def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
