@@ -37,7 +37,7 @@ import sys
 try:
     # Import the PowerPlatform Dataverse Client SDK
     from PowerPlatform.Dataverse import DataverseClient
-    from azure.identity import DefaultAzureCredential, InteractiveBrowserCredential
+    from azure.identity import DefaultAzureCredential
     
     print("✅ PowerPlatform-Dataverse-Client SDK imported successfully!")
     print(f"📦 You can install this SDK with: pip install PowerPlatform-Dataverse-Client")
