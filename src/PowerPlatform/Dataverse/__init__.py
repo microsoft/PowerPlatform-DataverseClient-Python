@@ -24,10 +24,10 @@ Key Features:
 Example:
     Basic client initialization and usage::
 
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import InteractiveBrowserCredential
         from PowerPlatform.Dataverse import DataverseClient
 
-        credential = DefaultAzureCredential()
+        credential = InteractiveBrowserCredential()
         client = DataverseClient(
             "https://org.crm.dynamics.com",
             credential

@@ -44,10 +44,10 @@ class DataverseClient:
     Example:
         Create a client and perform basic operations::
 
-            from azure.identity import DefaultAzureCredential
+            from azure.identity import InteractiveBrowserCredential
             from PowerPlatform.Dataverse import DataverseClient
 
-            credential = DefaultAzureCredential()
+            credential = InteractiveBrowserCredential()
             client = DataverseClient(
                 "https://org.crm.dynamics.com",
                 credential

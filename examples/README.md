@@ -90,9 +90,9 @@ python examples/advanced/complete_walkthrough.py
 ## 🔒 Authentication
 
 All examples use Azure Identity for authentication. Common patterns:
-- `DefaultAzureCredential` for development
-- `ClientSecretCredential` for production services
-- `InteractiveBrowserCredential` for interactive scenarios
+- `InteractiveBrowserCredential` for development and interactive scenarios
+- `DeviceCodeCredential` for development on headless systems
+- `ClientSecretCredential` for production services with service principals
 
 ## 📖 Documentation
 
