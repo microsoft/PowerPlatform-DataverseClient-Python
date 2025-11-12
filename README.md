@@ -63,8 +63,7 @@ pip install PowerPlatform-Dataverse-Client
 # Include Azure Identity for authentication
 pip install PowerPlatform-Dataverse-Client azure-identity
 
-# Install with optional pandas integration
-pip install PowerPlatform-Dataverse-Client[pandas]
+# (pandas is included by default)
 ```
 
 For development from source:
@@ -248,7 +247,7 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 | **[Dataverse Web API Reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/)** | Detailed Web API reference and examples |  
 | **[Azure Identity for Python](https://learn.microsoft.com/python/api/overview/azure/identity-readme)** | Authentication library documentation and credential types |
 | **[Power Platform Developer Center](https://learn.microsoft.com/power-platform/developer/)** | Broader Power Platform development resources |
-| **[Microsoft Graph PowerShell SDK](https://learn.microsoft.com/powershell/microsoftgraph/)** | Related SDK for Microsoft Graph operations |
+| **[Dataverse SDK for .NET](https://learn.microsoft.com/power-apps/developer/data-platform/dataverse-sdk-dotnet/)** | Official .NET SDK for Microsoft Dataverse |
 
 ## Troubleshooting
 
