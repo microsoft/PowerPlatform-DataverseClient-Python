@@ -1,0 +1,8 @@
+# CODEOWNERS for Dataverse Client Python SDK
+# This file defines who gets automatically requested for review when PRs are opened.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global ownership - fallback for any files not covered by more specific rules
+* @microsoft/powerplatform-dataverseclient-python-maintainers
+#   Team is found here:
+#   https://github.com/orgs/microsoft/teams/powerplatform-dataverseclient-python-maintainers

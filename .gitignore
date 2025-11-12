@@ -21,3 +21,4 @@ htmlcov/
 .idea/
 Thumbs.db
 .DS_Store
+*.tm7
