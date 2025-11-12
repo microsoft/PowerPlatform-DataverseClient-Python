@@ -27,7 +27,7 @@ class HttpClient:
     :param retries: Maximum number of retry attempts for transient errors. Default is 5.
     :type retries: int or None
     :param backoff: Base delay in seconds between retry attempts. Default is 0.5.
-    :type backoff: float or None  
+    :type backoff: float or None
     :param timeout: Default request timeout in seconds. If None, uses per-method defaults.
     :type timeout: float or None
     """
