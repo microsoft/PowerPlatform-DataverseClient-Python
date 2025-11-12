@@ -22,7 +22,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - [Examples](#examples)
   - [Quick start](#quick-start)
   - [Basic CRUD operations](#basic-crud-operations)
-  - [Batch operations](#batch-operations)
+  - [Bulk operations](#bulk-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
   - [File operations](#file-operations)
@@ -32,7 +32,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ## Key features
 
-- **🔄 CRUD Operations**: Create, read, update, and delete records with support for batch operations and automatic retry
+- **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
@@ -101,7 +101,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | **DataverseClient** | Main entry point for all operations with environment connection |
 | **Records** | Dataverse records represented as Python dictionaries with logical field names |
 | **Logical Names** | Use table logical names (`"account"`) and column logical names (`"name"`) |  
-| **Batch Operations** | Efficient batch processing for multiple records with automatic optimization |
+| **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
 | **Paging** | Automatic handling of large result sets with iterators |
 | **Structured Errors** | Detailed exception hierarchy with retry guidance and diagnostic information |
 
@@ -146,10 +146,10 @@ client.update("account", account_id, {"telephone1": "555-0199"})
 client.delete("account", account_id)
 ```
 
-### Batch operations
+### Bulk operations
 
 ```python
-# Batch create
+# Bulk create
 payloads = [
     {"name": "Company A"},
     {"name": "Company B"},
@@ -157,10 +157,10 @@ payloads = [
 ]
 ids = client.create("account", payloads)
 
-# Batch update (broadcast same change to all)
+# Bulk update (broadcast same change to all)
 client.update("account", ids, {"industry": "Technology"})
 
-# Batch delete
+# Bulk delete
 client.delete("account", ids, use_bulk_delete=True)
 ```
 
@@ -279,7 +279,7 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
-| **Batch Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
+| **Bulk Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
