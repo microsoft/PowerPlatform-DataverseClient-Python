@@ -44,13 +44,9 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ### Prerequisites
 
-- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)
-- **Azure Identity credentials** - Configure authentication using one of:
-  - Interactive browser authentication (development)
-  - Service principal with client secret (production) 
-  - Managed identity (Azure-hosted applications)
-  - Device code flow (headless development environments)
-- **Microsoft Dataverse environment** - Access to a Power Platform environment with appropriate permissions
+- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  
+- **Microsoft Dataverse environment** with appropriate permissions
+- **OAuth authentication configured** for your application
 
 ### Install the package
 
@@ -71,26 +67,29 @@ pip install -e .
 
 ### Authenticate the client
 
-The client requires Azure Identity credentials. You can use various credential types:
+The client requires any Azure Identity `TokenCredential` implementation for OAuth authentication with Dataverse:
 
 ```python
-from azure.identity import InteractiveBrowserCredential
+from azure.identity import (
+    InteractiveBrowserCredential, 
+    ClientSecretCredential,
+    ClientCertificateCredential,
+    AzureCliCredential
+)
 from PowerPlatform.Dataverse import DataverseClient
 
-# For development - interactive browser authentication
-credential = InteractiveBrowserCredential()
+# Development options
+credential = InteractiveBrowserCredential()  # Browser authentication
+# credential = AzureCliCredential()          # If logged in via 'az login'
 
-# For production - service principal authentication  
+# Production options  
 # credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+# credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
 
-# For headless environments
-# credential = DeviceCodeCredential()
-
-client = DataverseClient(
-    base_url="https://yourorg.crm.dynamics.com",
-    credential=credential
-)
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
+
+> **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
 
 ## Key concepts
 
@@ -242,7 +241,7 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 | **[Dataverse Web API Reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/)** | Detailed Web API reference and examples |  
 | **[Azure Identity for Python](https://learn.microsoft.com/python/api/overview/azure/identity-readme)** | Authentication library documentation and credential types |
 | **[Power Platform Developer Center](https://learn.microsoft.com/power-platform/developer/)** | Broader Power Platform development resources |
-| **[Dataverse SDK for .NET](https://learn.microsoft.com/power-apps/developer/data-platform/dataverse-sdk-dotnet/)** | Official .NET SDK for Microsoft Dataverse |
+| **[Dataverse SDK for .NET](https://learn.microsoft.com/power-apps/developer/data-platform/org-service/overview)** | Official .NET SDK for Microsoft Dataverse |
 
 ## Troubleshooting
 
@@ -268,9 +267,10 @@ except ValidationError as e:
 
 ### Authentication issues
 
-- Ensure your credential has proper permissions to access Dataverse
-- Verify the `base_url` format: `https://yourorg.crm.dynamics.com`
-- Check that required Azure Identity environment variables are set
+**Common fixes:** 
+- Verify environment URL format: `https://yourorg.crm.dynamics.com` (no trailing slash)
+- Ensure Azure Identity credentials have proper Dataverse permissions  
+- Check app registration permissions are granted and admin-consented
 
 ### Performance considerations
 
@@ -278,15 +278,18 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
-| **Bulk Operations** | Use bulk methods for multiple records instead of individual operations |
+| **Batch Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
+| **Production Credentials** | Use `ClientSecretCredential` or `ClientCertificateCredential` for unattended operations |
 | **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |
 
 ### Limitations
 
 - SQL queries are **read-only** and support a limited subset of SQL syntax
+- Create Table supports a limited number of column types.
+- Creating relationships between tables is not yet supported.
 - File uploads are limited by Dataverse file size restrictions (default 128MB per file)
 - Custom table creation requires appropriate security privileges in the target environment
 - Rate limits apply based on your Power Platform license and environment configuration
