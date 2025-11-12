@@ -33,6 +33,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 ## Key features
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for batch operations and automatic retry
+- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
