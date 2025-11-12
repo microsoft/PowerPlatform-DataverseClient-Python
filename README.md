@@ -59,12 +59,6 @@ Install the PowerPlatform Dataverse Client using [pip](https://pypi.org/project/
 ```bash
 # Install the latest stable release
 pip install PowerPlatform-Dataverse-Client
-
-# Include Azure Identity for authentication
-pip install PowerPlatform-Dataverse-Client azure-identity
-
-# Install with optional pandas integration
-pip install PowerPlatform-Dataverse-Client[pandas]
 ```
 
 For development from source:
