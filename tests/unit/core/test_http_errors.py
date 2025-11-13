@@ -8,8 +8,8 @@ from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: access_token = "x"
-        return T()
+        class MockToken: access_token = "x"
+        return MockToken()
 
 class DummyHTTP:
     def __init__(self, responses):
@@ -18,9 +18,9 @@ class DummyHTTP:
         if not self._responses:
             raise AssertionError("No more responses")
         status, headers, body = self._responses.pop(0)
-        class R:
+        class MockResponse:
             pass
-        r = R()
+        r = MockResponse()
         r.status_code = status
         r.headers = headers
         if isinstance(body, dict):

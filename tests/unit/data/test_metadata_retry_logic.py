@@ -10,9 +10,9 @@ from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: 
+        class MockToken: 
             access_token = "test_token"
-        return T()
+        return MockToken()
 
 
 class TestMetadataRetryLogic:

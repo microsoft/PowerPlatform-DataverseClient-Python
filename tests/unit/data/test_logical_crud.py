@@ -8,8 +8,8 @@ from PowerPlatform.Dataverse.core.errors import MetadataError
 
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: access_token = "x"
-        return T()
+        class MockToken: access_token = "x"
+        return MockToken()
 
 class DummyHTTPClient:
     def __init__(self, responses):

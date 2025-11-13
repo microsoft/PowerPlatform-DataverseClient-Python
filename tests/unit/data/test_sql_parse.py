@@ -6,8 +6,8 @@ from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: access_token = "x"  # no real token needed for parsing tests
-        return T()
+        class MockToken: access_token = "x"  # no real token needed for parsing tests
+        return MockToken()
 
 def _client():
     return ODataClient(DummyAuth(), "https://org.example", None)
