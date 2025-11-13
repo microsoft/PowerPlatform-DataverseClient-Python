@@ -47,7 +47,10 @@ class ODataClient(ODataFileUpload):
         self._http = HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
+            max_backoff=getattr(self.config, 'http_max_backoff', None),
             timeout=self.config.http_timeout,
+            jitter=getattr(self.config, 'http_jitter', True),
+            retry_transient_errors=getattr(self.config, 'http_retry_transient_errors', True),
         )
         # Cache: logical name -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -903,6 +906,35 @@ class ODataClient(ODataFileUpload):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
+    def _request_metadata_with_retry(self, method: str, url: str, **kwargs) -> Any:
+        """
+        Make HTTP request with metadata-specific retry logic.
+        
+        Retries 404 errors for metadata operations since attribute metadata
+        may not be immediately available after creation or schema changes.
+
+        :param method: HTTP method (e.g., 'get', 'post').
+        :type method: str
+        :param url: Target URL for the metadata request.
+        :type url: str
+        :param kwargs: Additional arguments passed to the underlying request method.
+        :return: HTTP response object.
+        :rtype: Any
+        :raises HttpError: If the request fails after all retry attempts.
+        """
+        last_error = None
+        for attempt in range(3):  # 3 attempts for metadata operations
+            try:
+                return self._request(method, url, **kwargs)
+            except HttpError as err:
+                last_error = err
+                if getattr(err, "status_code", None) == 404 and attempt < 2:
+                    # Exponential backoff: 0.4s, 0.8s for metadata propagation delays
+                    delay = 0.4 * (2 ** attempt)
+                    time.sleep(delay)
+                    continue
+                raise
+
     def _optionset_map(self, logical_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
 
@@ -930,23 +962,14 @@ class ODataClient(ODataFileUpload):
             f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
         )
         # Retry up to 3 times on 404 (new or not-yet-published attribute metadata). If still 404, raise.
-        r_type = None
-        for attempt in range(3):
-            try:
-                r_type = self._request("get", url_type)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < 2:
-                        # Exponential-ish backoff: 0.4s, 0.8s
-                        time.sleep(0.4 * (2 ** attempt))
-                        continue
-                    raise RuntimeError(
-                        f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_type is None:
-            raise RuntimeError("Failed to retrieve attribute metadata due to repeated request failures.")
+        try:
+            r_type = self._request_metadata_with_retry("get", url_type)
+        except HttpError as err:
+            if getattr(err, "status_code", None) == 404:
+                raise RuntimeError(
+                    f"Picklist attribute metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
+                ) from err
+            raise
         
         body_type = r_type.json()
         items = body_type.get("value", []) if isinstance(body_type, dict) else []
@@ -964,22 +987,14 @@ class ODataClient(ODataFileUpload):
             "Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)"
         )
         # Step 2 fetch with retries: expanded OptionSet (cast form first)
-        r_opts = None
-        for attempt in range(3):
-            try:
-                r_opts = self._request("get", cast_url)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < 2:
-                        time.sleep(0.4 * (2 ** attempt))  # 0.4s, 0.8s
-                        continue
-                    raise RuntimeError(
-                        f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_opts is None:
-            raise RuntimeError("Failed to retrieve picklist OptionSet metadata due to repeated request failures.")
+        try:
+            r_opts = self._request_metadata_with_retry("get", cast_url)
+        except HttpError as err:
+            if getattr(err, "status_code", None) == 404:
+                raise RuntimeError(
+                    f"Picklist OptionSet metadata not found after retries: entity='{logical_name}' attribute='{attr_logical}' (404)"
+                ) from err
+            raise
         
         attr_full = {}
         try:

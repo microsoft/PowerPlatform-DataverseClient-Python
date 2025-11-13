@@ -423,7 +423,6 @@ except Exception as e:
 # 4) Query records via SQL (?sql parameter))
 print("Query (SQL via ?sql query parameter):")
 try:
-	import time
 	pause("Execute SQL Query")
 
 	def _run_query():

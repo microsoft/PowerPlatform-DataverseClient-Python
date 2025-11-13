@@ -8,9 +8,9 @@ from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):  # pragma: no cover - simple stub
-        class T:
+        class MockToken:
             access_token = "token"
-        return T()
+        return MockToken()
 
 class DummyConfig:
     """Minimal config stub providing attributes ODataClient.__init__ expects."""

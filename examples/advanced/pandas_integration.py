@@ -201,8 +201,6 @@ except Exception as e:
 # 4) Query records via SQL (Web API ?sql=)
 print("(Pandas) Query (SQL via Web API ?sql=):")
 try:
-	import time
-
 	def _run_query():
 		id_key = f"{logical}id"
 		cols = f"{id_key}, {attr_prefix}_code, {attr_prefix}_amount, {attr_prefix}_when"

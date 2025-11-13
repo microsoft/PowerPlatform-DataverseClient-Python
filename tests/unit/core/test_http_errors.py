@@ -8,8 +8,8 @@ from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: access_token = "x"
-        return T()
+        class MockToken: access_token = "x"
+        return MockToken()
 
 class DummyHTTP:
     def __init__(self, responses):
@@ -18,9 +18,9 @@ class DummyHTTP:
         if not self._responses:
             raise AssertionError("No more responses")
         status, headers, body = self._responses.pop(0)
-        class R:
+        class MockResponse:
             pass
-        r = R()
+        r = MockResponse()
         r.status_code = status
         r.headers = headers
         if isinstance(body, dict):
@@ -34,7 +34,7 @@ class DummyHTTP:
             r.json = json_fail
         return r
 
-class TestClient(ODataClient):
+class MockHttpClient(ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTP(responses)
@@ -47,7 +47,7 @@ def test_http_404_subcode_and_service_code():
         {"x-ms-correlation-request-id": "cid1"},
         {"error": {"code": "0x800404", "message": "Not found"}},
     )]
-    c = TestClient(responses)
+    c = MockHttpClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts(abc)")
     err = ei.value.to_dict()
@@ -61,7 +61,7 @@ def test_http_429_transient_and_retry_after():
         {"Retry-After": "7"},
         {"error": {"message": "Throttle"}},
     )]
-    c = TestClient(responses)
+    c = MockHttpClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
@@ -76,7 +76,7 @@ def test_http_500_body_excerpt():
         {},
         "Internal failure XYZ stack truncated",
     )]
-    c = TestClient(responses)
+    c = MockHttpClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
@@ -90,7 +90,7 @@ def test_http_non_mapped_status_code_subcode_fallback():
         {},
         {"error": {"message": "Teapot"}},
     )]
-    c = TestClient(responses)
+    c = MockHttpClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
