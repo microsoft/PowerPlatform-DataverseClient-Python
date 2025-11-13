@@ -84,8 +84,9 @@ class PandasODataClient:
             raise TypeError("entity_data must be a pandas Series")
         payload = {k: v for k, v in entity_data.items()}
         if not payload:
-            return  # nothing to send
+            return None  # nothing to send
         self._c.update(logical_name, record_id, payload)
+        return None
 
     # ---------------------------- Delete ---------------------------------
     def delete_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index) -> pd.DataFrame:

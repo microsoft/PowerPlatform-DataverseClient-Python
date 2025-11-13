@@ -99,13 +99,72 @@ class HttpClient:
                     raise
                 delay = self._calculate_retry_delay(attempt)
                 time.sleep(delay)
-                continue
                 
         # This should never be reached due to the logic above
         raise RuntimeError("Unexpected end of retry loop")
     
     def _calculate_retry_delay(self, attempt: int, response: Optional[requests.Response] = None) -> float:
-        """Calculate retry delay with exponential backoff, optional jitter, and Retry-After header support."""
+        """
+        Calculate the delay before the next retry attempt using exponential backoff with jitter.
+
+        This method implements an intelligent retry delay strategy that prioritizes server-provided
+        guidance (Retry-After header) over client-calculated delays, uses exponential backoff to
+        reduce load on failing services, and applies jitter to prevent thundering herd problems
+        when multiple clients retry simultaneously.
+
+        The delay calculation follows this priority order:
+        1. **Retry-After header**: If present and valid, use the server-specified delay (capped at max_backoff)
+        2. **Exponential backoff**: Calculate base_delay * (2^attempt), capped at max_backoff  
+        3. **Jitter**: If enabled, add ±25% random variation to prevent synchronized retries
+
+        :param attempt: Zero-based retry attempt number (0 = first retry, 1 = second retry, etc.).
+        :type attempt: int
+        :param response: Optional HTTP response object containing headers. Used to extract Retry-After
+            header when available. If None, only exponential backoff calculation is performed.
+        :type response: requests.Response or None
+
+        :return: Delay in seconds before the next retry attempt. Always >= 0, capped at max_backoff.
+        :rtype: float
+
+        :raises: Does not raise exceptions. Invalid Retry-After values fall back to exponential backoff.
+
+        .. note::
+            **Retry-After Header Handling (RFC 7231):**
+            
+            - Supports integer seconds format: ``Retry-After: 120`` 
+            - Invalid formats (non-integer, HTTP-date) fall back to exponential backoff
+            - Server-provided delays are capped at ``max_backoff`` to prevent excessive waits
+
+        .. note::
+            **Exponential Backoff Formula:**
+            
+            - Base calculation: ``delay = base_delay * (2^attempt)``
+            - Example with ``base_delay=0.5``: 0.5s, 1.0s, 2.0s, 4.0s, 8.0s, 16.0s...
+            - Always capped at ``max_backoff`` (default 60s) to prevent unbounded delays
+
+        .. note::
+            **Jitter Application:**
+            
+            - When ``jitter=True``, adds random variation of ±25% of calculated delay
+            - Prevents thundering herd when multiple clients retry simultaneously  
+            - Example: 4.0s delay becomes random value between 3.0s and 5.0s
+            - Final result is always >= 0 even with negative jitter
+
+        Example:
+            Calculate delays for successive retry attempts::
+
+                client = HttpClient(base_delay=1.0, max_backoff=30.0, jitter=True)
+                
+                # Attempt 0: ~1.0s ± 25% jitter = 0.75s - 1.25s  
+                delay0 = client._calculate_retry_delay(0)
+                
+                # Attempt 2: ~4.0s ± 25% jitter = 3.0s - 5.0s
+                delay2 = client._calculate_retry_delay(2)
+                
+                # With Retry-After header (takes precedence)
+                response_with_retry_after = Mock(headers={"Retry-After": "15"})
+                delay = client._calculate_retry_delay(1, response_with_retry_after)  # Returns 15.0
+        """
         
         # Check for Retry-After header (RFC 7231)
         if response and "Retry-After" in response.headers:

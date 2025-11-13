@@ -49,8 +49,8 @@ class ODataClient(ODataFileUpload):
             backoff=self.config.http_backoff,
             max_backoff=getattr(self.config, 'http_max_backoff', None),
             timeout=self.config.http_timeout,
-            jitter=getattr(self.config, 'http_jitter', None) if getattr(self.config, 'http_jitter', None) is not None else True,
-            retry_transient_errors=getattr(self.config, 'http_retry_transient_errors', None) if getattr(self.config, 'http_retry_transient_errors', None) is not None else True,
+            jitter=getattr(self.config, 'http_jitter', True),
+            retry_transient_errors=getattr(self.config, 'http_retry_transient_errors', True),
         )
         # Cache: logical name -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -388,6 +388,7 @@ class ODataClient(ODataFileUpload):
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("patch", url, headers={"If-Match": "*"}, json=data)
+        return None
 
     def _update_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound UpdateMultiple action.
@@ -445,6 +446,7 @@ class ODataClient(ODataFileUpload):
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         self._request("delete", url, headers={"If-Match": "*"})
+        return None
 
     def _get(self, logical_name: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve a single record.
@@ -912,9 +914,16 @@ class ODataClient(ODataFileUpload):
         
         Retries 404 errors for metadata operations since attribute metadata
         may not be immediately available after creation or schema changes.
+
+        :param method: HTTP method (e.g., 'get', 'post').
+        :type method: str
+        :param url: Target URL for the metadata request.
+        :type url: str
+        :param kwargs: Additional arguments passed to the underlying request method.
+        :return: HTTP response object.
+        :rtype: Any
+        :raises HttpError: If the request fails after all retry attempts.
         """
-        import time
-        
         last_error = None
         for attempt in range(3):  # 3 attempts for metadata operations
             try:
@@ -927,10 +936,6 @@ class ODataClient(ODataFileUpload):
                     time.sleep(delay)
                     continue
                 raise
-        
-        # This should never be reached due to logic above, but just in case
-        if last_error:
-            raise last_error
 
     def _optionset_map(self, logical_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
@@ -1166,6 +1171,7 @@ class ODataClient(ODataFileUpload):
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
+        return None
 
     def _create_table(
         self,
