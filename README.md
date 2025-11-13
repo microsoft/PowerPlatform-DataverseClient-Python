@@ -158,7 +158,7 @@ payloads = [
 ids = client.create("account", payloads)
 
 # Bulk update (broadcast same change to all)
-client.update("account", ids, {"industry": "Technology"})
+client.update("account", ids, {"description": "New description"})
 
 # Bulk delete
 client.delete("account", ids, use_bulk_delete=True)
@@ -179,7 +179,8 @@ pages = client.get(
     "account",
     select=["accountid", "name"],
     filter="statecode eq 0",
-    top=100
+    top=10,
+    page_size=3
 )
 for page in pages:
     for record in page:
@@ -190,17 +191,17 @@ for page in pages:
 
 ```python
 # Create a custom table
-table_info = client.create_table("Product", {
-    "code": "string",
-    "price": "decimal", 
-    "active": "bool"
+table_info = client.create_table("new_Product", {
+    "new_code": "string",
+    "new_price": "decimal", 
+    "new_active": "bool"
 })
 
 # Add columns to existing table
-client.create_columns("Product", {"category": "string"})
+client.create_columns("new_Product", {"new_category": "string"})
 
 # Clean up
-client.delete_table("Product")
+client.delete_table("new_Product")
 ```
 
 ### File operations
