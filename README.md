@@ -197,8 +197,22 @@ table_info = client.create_table("new_Product", {
     "new_Active": "bool"
 })
 
+# Create with custom primary column name and solution assignment
+table_info = client.create_table(
+    tablename="new_Product",
+    schema={
+        "new_Code": "string",
+        "new_Price": "decimal"
+    },
+    solution_unique_name="MyPublisher",  # Optional: add to specific solution
+    primary_column_name="new_ProductName"  # Optional: custom primary column (default is "{prefix}_Name")
+)
+
 # Add columns to existing table (columns must include publisher prefix)
 client.create_columns("new_Product", {"new_Category": "string"})
+
+# Remove columns
+client.delete_columns("new_Product", ["new_Category"])
 
 # Clean up
 client.delete_table("new_Product")
