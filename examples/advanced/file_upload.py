@@ -166,7 +166,7 @@ def backoff(op, *, delays=(0,2,5,10), retry_status=(400,403,404,409,412,429,500,
 
 # --------------------------- Table ensure ---------------------------
 TABLE_SCHEMA_NAME = "new_FileSample"
-# If user wants new publisher prefix / naming, adjust above.
+# If user wants new customization prefix value / naming, adjust above.
 
 def ensure_table():
     # Check by schema

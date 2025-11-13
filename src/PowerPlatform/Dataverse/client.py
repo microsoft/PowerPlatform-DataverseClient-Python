@@ -101,12 +101,12 @@ class DataverseClient:
         return self._odata
 
     # ---------------- Unified CRUD: create/update/delete ----------------
-    def create(self, tablename: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
+    def create(self, table_schema_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
         """
         Create one or more records by table name.
 
-        :param tablename: Table name (e.g. ``"account"``, ``"contact"``, or ``"new_customtable"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"account"``, ``"contact"``, or ``"new_customtable"``).
+        :type table_schema_name: str
         :param records: A single record dictionary or a list of record dictionaries.
             Each dictionary should contain attribute logical names as keys.
         :type records: dict or list[dict]
@@ -134,21 +134,21 @@ class DataverseClient:
                 print(f"Created {len(ids)} accounts")
         """
         od = self._get_odata()
-        entity_set = od._entity_set_from_logical(tablename)
+        entity_set = od._entity_set_from_logical(table_schema_name)
         if isinstance(records, dict):
-            rid = od._create(entity_set, tablename, records)
+            rid = od._create(entity_set, table_schema_name, records)
             # _create returns str on single input
             if not isinstance(rid, str):
                 raise TypeError("_create (single) did not return GUID string")
             return [rid]
         if isinstance(records, list):
-            ids = od._create_multiple(entity_set, tablename, records)
+            ids = od._create_multiple(entity_set, table_schema_name, records)
             if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                 raise TypeError("_create (multi) did not return list[str]")
             return ids
         raise TypeError("records must be dict or list[dict]")
 
-    def update(self, tablename: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
+    def update(self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
         """
         Update one or more records.
 
@@ -158,8 +158,8 @@ class DataverseClient:
         2. Broadcast update: ``update("account", [id1, id2], {"status": 1})`` - applies same changes to all IDs
         3. Paired updates: ``update("account", [id1, id2], [changes1, changes2])`` - one-to-one mapping
 
-        :param tablename: Table name (e.g. ``"account"`` or ``"new_customtable"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"account"`` or ``"new_customtable"``).
+        :type table_schema_name: str
         :param ids: Single GUID string or list of GUID strings to update.
         :type ids: str or list[str]
         :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
@@ -197,24 +197,24 @@ class DataverseClient:
         if isinstance(ids, str):
             if not isinstance(changes, dict):
                 raise TypeError("For single id, changes must be a dict")
-            od._update(tablename, ids, changes)  # discard representation
+            od._update(table_schema_name, ids, changes)  # discard representation
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
-        od._update_by_ids(tablename, ids, changes)
+        od._update_by_ids(table_schema_name, ids, changes)
         return None
 
     def delete(
         self,
-        tablename: str,
+        table_schema_name: str,
         ids: Union[str, List[str]],
         use_bulk_delete: bool = True,
     ) -> Optional[str]:
         """
         Delete one or more records by GUID.
 
-        :param tablename: Table name (e.g. ``"account"`` or ``"new_customtable"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"account"`` or ``"new_customtable"``).
+        :type table_schema_name: str
         :param ids: Single GUID string or list of GUID strings to delete.
         :type ids: str or list[str]
         :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
@@ -238,7 +238,7 @@ class DataverseClient:
         """
         od = self._get_odata()
         if isinstance(ids, str):
-            od._delete(tablename, ids)
+            od._delete(table_schema_name, ids)
             return None
         if not isinstance(ids, list):
             raise TypeError("ids must be str or list[str]")
@@ -247,14 +247,14 @@ class DataverseClient:
         if not all(isinstance(rid, str) for rid in ids):
             raise TypeError("ids must contain string GUIDs")
         if use_bulk_delete:
-            return od._delete_multiple(tablename, ids)
+            return od._delete_multiple(table_schema_name, ids)
         for rid in ids:
-            od._delete(tablename, rid)
+            od._delete(table_schema_name, rid)
         return None
 
     def get(
         self,
-        tablename: str,
+        table_schema_name: str,
         record_id: Optional[str] = None,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
@@ -269,24 +269,27 @@ class DataverseClient:
         When ``record_id`` is provided, returns a single record dictionary.
         When ``record_id`` is None, returns a generator yielding batches of records.
 
-        :param tablename: Table name (e.g. ``"account"`` or ``"new_customtable"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"account"`` or ``"new_customtable"``).
+        :type table_schema_name: str
         :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
         :type record_id: str or None
         :param select: Optional list of attribute logical names to retrieve. Column names are
             case-insensitive and automatically lowercased (e.g. ``["new_Title", "new_Amount"]``
             becomes ``"new_title,new_amount"``).
         :type select: list[str] or None
-        :param filter: Optional OData filter string, e.g. ``"name eq 'Contoso'"`` or
-            ``"new_quantity gt 5"``. **Column names in filter expressions must use lowercase
-            logical names** (e.g. ``"new_quantity"`` not ``"new_Quantity"``).
+        :param filter: Optional OData $filter expression as a string, e.g. ``"name eq 'Contoso'"`` or
+            ``"new_quantity gt 5"``. **IMPORTANT: Column names in filter expressions must use exact
+            lowercase logical names** (e.g. ``"new_quantity"`` not ``"new_Quantity"``). The filter
+            string is passed directly to the Dataverse Web API without transformation.
         :type filter: str or None
         :param orderby: Optional list of attributes to sort by, e.g. ``["name asc", "createdon desc"]``.
             Column names are automatically lowercased.
         :type orderby: list[str] or None
         :param top: Optional maximum number of records to return.
         :type top: int or None
-        :param expand: Optional list of navigation properties to expand.
+        :param expand: Optional list of navigation property names to expand, e.g. ``["primarycontactid"]``.
+            **IMPORTANT: Navigation property names are case-sensitive and must match the server-defined names exactly.**.
+            These are NOT automatically transformed. Consult entity metadata for correct casing.
         :type expand: list[str] or None
         :param page_size: Optional number of records per page for pagination.
         :type page_size: int or None
@@ -303,11 +306,26 @@ class DataverseClient:
                 record = client.get("account", record_id=account_id, select=["name", "telephone1"])
                 print(record["name"])
 
-            Query multiple records with filtering::
+            Query multiple records with filtering (note: exact logical names in filter)::
 
-                for batch in client.get("account", filter="name eq 'Contoso'", select=["name"]):
+                for batch in client.get(
+                    "account", 
+                    filter="statecode eq 0 and name eq 'Contoso'",  # Must use exact logical names (lower-case)
+                    select=["name", "telephone1"]
+                ):
                     for account in batch:
                         print(account["name"])
+
+            Query with navigation property expansion (note: case-sensitive property name)::
+
+                for batch in client.get(
+                    "account",
+                    select=["name"],
+                    expand=["primarycontactid"],  # Case-sensitive! Check metadata for exact name
+                    filter="statecode eq 0"
+                ):
+                    for account in batch:
+                        print(f"{account['name']} - Contact: {account.get('primarycontactid', {}).get('fullname')}")
 
             Query with sorting and pagination::
 
@@ -324,12 +342,12 @@ class DataverseClient:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
             return od._get(
-                tablename,
+                table_schema_name,
                 record_id, 
                 select=select,
             )
         return od._get_multiple(
-            tablename,
+            table_schema_name,
             select=select,
             filter=filter,
             orderby=orderby,
@@ -377,12 +395,12 @@ class DataverseClient:
         return self._get_odata()._query_sql(sql)
 
     # Table metadata helpers
-    def get_table_info(self, tablename: str) -> Optional[Dict[str, Any]]:
+    def get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
         """
         Get basic metadata for a table if it exists.
 
-        :param tablename: Table name (e.g. ``"new_SampleItem"`` or ``"account"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"new_SampleItem"`` or ``"account"``).
+        :type table_schema_name: str
 
         :return: Dictionary containing table metadata with keys ``entity_schema``,
             ``entity_logical_name``, ``entity_set_name``, and ``metadata_id``.
@@ -397,22 +415,22 @@ class DataverseClient:
                     print(f"Logical name: {info['entity_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
         """
-        return self._get_odata()._get_table_info(tablename)
+        return self._get_odata()._get_table_info(table_schema_name)
 
     def create_table(
         self,
-        tablename: str,
+        table_schema_name: str,
         schema: Dict[str, Any],
         solution_unique_name: Optional[str] = None,
-        primary_column_name: Optional[str] = None,
+        primary_column_schema_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a simple custom table with specified columns.
 
-        :param tablename: Table name with publisher prefix (e.g. ``"new_SampleItem"``).
-        :type tablename: str
-        :param schema: Dictionary mapping column names (with publisher prefix) to their types.
-            **All custom column names must include the publisher prefix** (e.g. ``"new_Title"``).
+        :param table_schema_name: Table schema name with customization prefix value (e.g. ``"new_SampleItem"``).
+        :type table_schema_name: str
+        :param schema: Dictionary mapping column names (with customization prefix value) to their types.
+            **All custom column names must include the customization prefix value** (e.g. ``"new_Title"``).
             Supported types:
 
             - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
@@ -431,10 +449,10 @@ class DataverseClient:
         :param solution_unique_name: Optional solution unique name that should own the new table.
             When omitted the table is created in the default solution.
         :type solution_unique_name: str or None
-        :param primary_column_name: Optional primary name column schema name with publisher prefix
+        :param primary_column_schema_name: Optional primary name column schema name with customization prefix value
             (e.g. ``"new_ProductName"``). If not provided, defaults to ``"{prefix}_Name"`` derived
-            from the table's publisher prefix.
-        :type primary_column_name: str or None
+            from the table's customization prefix value.
+        :type primary_column_schema_name: str or None
 
         :return: Dictionary containing table metadata including ``entity_schema``,
             ``entity_set_name``, ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
@@ -452,7 +470,7 @@ class DataverseClient:
                     INACTIVE = 2
 
                 schema = {
-                    "new_Title": "string",      # Note: includes 'new_' prefix
+                    "new_Title": "string",      # Note: includes 'new_' customization prefix value
                     "new_Quantity": "int",
                     "new_Price": "decimal",
                     "new_Available": "bool",
@@ -468,22 +486,22 @@ class DataverseClient:
                 result = client.create_table(
                     "new_Product",
                     {"new_Price": "decimal"},
-                    primary_column_name="new_ProductName"
+                    primary_column_schema_name="new_ProductName"
                 )
         """
         return self._get_odata()._create_table(
-            tablename,
+            table_schema_name,
             schema,
             solution_unique_name,
-            primary_column_name,
+            primary_column_schema_name,
         )
 
-    def delete_table(self, tablename: str) -> None:
+    def delete_table(self, table_schema_name: str) -> None:
         """
         Delete a custom table by name.
 
-        :param tablename: Table name (e.g. ``"new_SampleItem"`` or ``"account"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"new_SampleItem"`` or ``"account"``).
+        :type table_schema_name: str
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If the table does not exist or deletion fails.
 
@@ -496,7 +514,7 @@ class DataverseClient:
 
                 client.delete_table("new_SampleItem")
         """
-        self._get_odata()._delete_table(tablename)
+        self._get_odata()._delete_table(table_schema_name)
 
     def list_tables(self) -> list[str]:
         """
@@ -516,16 +534,16 @@ class DataverseClient:
     
     def create_columns(
         self,
-        tablename: str,
+        table_schema_name: str,
         columns: Dict[str, Any],
     ) -> List[str]:
         """
         Create one or more columns on an existing table using a schema-style mapping.
 
-        :param tablename: Table name (e.g. ``"new_SampleItem"``).
-        :type tablename: str
-        :param columns: Mapping of column schema names (with publisher prefix) to supported types.
-            **All custom column names must include the publisher prefix** (e.g. ``"new_Notes"``).
+        :param table_schema_name: Table schema name (e.g. ``"new_SampleItem"``).
+        :type table_schema_name: str
+        :param columns: Mapping of column schema names (with customization prefix value) to supported types.
+            **All custom column names must include the customization prefix value** (e.g. ``"new_Notes"``).
             Primitive types include ``string``, ``int``, ``decimal``, ``float``, ``datetime``, and ``bool``.
             Enum subclasses (IntEnum preferred) generate a local option set and can specify localized
             labels via ``__labels__``.
@@ -546,22 +564,22 @@ class DataverseClient:
                 print(created)  # ['new_Scratch', 'new_Flags']
         """
         return self._get_odata()._create_columns(
-            tablename,
+            table_schema_name,
             columns,
         )
 
     def delete_columns(
         self,
-        tablename: str,
+        table_schema_name: str,
         columns: Union[str, List[str]],
     ) -> List[str]:
         """
         Delete one or more columns from a table.
 
-        :param tablename: Table name (e.g. ``"new_SampleItem"``).
-        :type tablename: str
+        :param table_schema_name: Table schema name (e.g. ``"new_SampleItem"``).
+        :type table_schema_name: str
         :param columns: Column name or list of column schema names to remove.
-            **Must include publisher prefix** (e.g. ``"new_Scratch"``). Case-insensitive.
+            **Must include customization prefix value** (e.g. ``"new_Scratch"``). Case-insensitive.
         :type columns: str | list[str]
         :returns: Schema names for the columns that were removed.
         :rtype: list[str]
@@ -576,14 +594,14 @@ class DataverseClient:
                 print(removed)  # ['new_Scratch', 'new_Flags']
         """
         return self._get_odata()._delete_columns(
-            tablename,
+            table_schema_name,
             columns,
         )
 
     # File upload
     def upload_file(
         self,
-        tablename: str,
+        table_schema_name: str,
         record_id: str,
         file_name_attribute: str,
         path: str,
@@ -594,8 +612,8 @@ class DataverseClient:
         """
         Upload a file to a Dataverse file column.
 
-        :param tablename: Table name, e.g. ``"account"`` or ``"new_customtable"``.
-        :type tablename: str
+        :param table_schema_name: Table schema name, e.g. ``"account"`` or ``"new_customtable"``.
+        :type table_schema_name: str
         :param record_id: GUID of the target record.
         :type record_id: str
         :param file_name_attribute: Logical name of the file column attribute.
@@ -626,7 +644,7 @@ class DataverseClient:
             Upload a PDF file::
 
                 client.upload_file(
-                    tablename="account",
+                    table_schema_name="account",
                     record_id=account_id,
                     file_name_attribute="new_contract",
                     path="/path/to/contract.pdf",
@@ -636,7 +654,7 @@ class DataverseClient:
             Upload with auto mode selection::
 
                 client.upload_file(
-                    tablename="email",
+                    table_schema_name="email",
                     record_id=email_id,
                     file_name_attribute="new_attachment",
                     path="/path/to/large_file.zip",
@@ -644,7 +662,7 @@ class DataverseClient:
                 )
         """
         od = self._get_odata()
-        entity_set = od._entity_set_from_logical(tablename)
+        entity_set = od._entity_set_from_logical(table_schema_name)
         od.upload_file(
             entity_set,
             record_id,

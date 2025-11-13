@@ -104,7 +104,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
 | **Paging** | Automatic handling of large result sets with iterators |
 | **Structured Errors** | Detailed exception hierarchy with retry guidance and diagnostic information |
-| **Publisher Prefixes** | Custom columns require publisher prefix (e.g., `"new_Title"` not `"Title"`) |
+| **Customization prefix values** | Custom tables and columns require a customization prefix values to be included for all operations (e.g., `"new_Title"`, not `"Title"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 
 ## Examples
 
@@ -176,21 +176,39 @@ for record in results:
     print(record["name"])
 
 # OData query with paging
+# Note: filter and expand parameters require exact casing
 pages = client.get(
     "account",
-    select=["accountid", "name"],
-    filter="statecode eq 0",
+    select=["accountid", "name"],  # select is case-insensitive (automatically lowercased)
+    filter="statecode eq 0",       # filter must use lowercase logical names (not transformed)
     top=100
 )
 for page in pages:
     for record in page:
         print(record["name"])
+
+# Query with navigation property expansion (case-sensitive!)
+pages = client.get(
+    "account",
+    select=["name"],
+    expand=["primarycontactid"],  # Navigation property names are case-sensitive
+    filter="statecode eq 0"       # Column names must be lowercase logical names
+)
+for page in pages:
+    for account in page:
+        contact = account.get("primarycontactid", {})
+        print(f"{account['name']} - Contact: {contact.get('fullname', 'N/A')}")
 ```
+
+> **Important**: When using `filter` and `expand` parameters:
+> - **`filter`**: Column names must use exact lowercase logical names (e.g., `"statecode eq 0"`, not `"StateCode eq 0"`)
+> - **`expand`**: Navigation property names are case-sensitive and must match the exact server names
+> - **`select`** and **`orderby`**: Case-insensitive; automatically converted to lowercase
 
 ### Table management
 
 ```python
-# Create a custom table with publisher-prefixed columns
+# Create a custom table, including the customization prefix value in the schema names for the table and columns.
 table_info = client.create_table("new_Product", {
     "new_Code": "string",
     "new_Price": "decimal", 
@@ -199,16 +217,16 @@ table_info = client.create_table("new_Product", {
 
 # Create with custom primary column name and solution assignment
 table_info = client.create_table(
-    tablename="new_Product",
+    table_schema_name="new_Product",
     schema={
         "new_Code": "string",
         "new_Price": "decimal"
     },
     solution_unique_name="MyPublisher",  # Optional: add to specific solution
-    primary_column_name="new_ProductName"  # Optional: custom primary column (default is "{prefix}_Name")
+    primary_column_schema_name="new_ProductName"  # Optional: custom primary column (default is "{customization prefix value}_Name")
 )
 
-# Add columns to existing table (columns must include publisher prefix)
+# Add columns to existing table (columns must include customization prefix value)
 client.create_columns("new_Product", {"new_Category": "string"})
 
 # Remove columns
@@ -218,7 +236,7 @@ client.delete_columns("new_Product", ["new_Category"])
 client.delete_table("new_Product")
 ```
 
-> **Important**: All custom column names must include the publisher prefix (e.g., `"new_"`). 
+> **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`). 
 > This ensures explicit, predictable naming and aligns with Dataverse metadata requirements.
 
 ### File operations
