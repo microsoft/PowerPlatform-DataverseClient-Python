@@ -75,8 +75,8 @@ def main():
     table_info = client.get_table_info(table_name)
     
     if table_info:
-        print(f"✓ Table already exists: {table_info.get('entity_schema')}")
-        print(f"  Logical Name: {table_info.get('entity_logical_name')}")
+        print(f"✓ Table already exists: {table_info.get('table_schema_name')}")
+        print(f"  Logical Name: {table_info.get('table_logical_name')}")
         print(f"  Entity Set: {table_info.get('entity_set_name')}")
     else:
         log_call(f"client.create_table('{table_name}', schema={{...}})")
@@ -88,7 +88,7 @@ def main():
             "new_Priority": Priority
         }
         table_info = client.create_table(table_name, schema)
-        print(f"✓ Created table: {table_info.get('entity_schema')}")
+        print(f"✓ Created table: {table_info.get('table_schema_name')}")
         print(f"  Columns created: {', '.join(table_info.get('columns_created', []))}")
 
     # ============================================================================

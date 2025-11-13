@@ -402,8 +402,8 @@ class DataverseClient:
         :param table_schema_name: Table schema name (e.g. ``"new_SampleItem"`` or ``"account"``).
         :type table_schema_name: str
 
-        :return: Dictionary containing table metadata with keys ``entity_schema``,
-            ``entity_logical_name``, ``entity_set_name``, and ``metadata_id``.
+        :return: Dictionary containing table metadata with keys ``table_schema_name``,
+            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
             Returns None if the table is not found.
         :rtype: dict or None
 
@@ -412,7 +412,7 @@ class DataverseClient:
 
                 info = client.get_table_info("new_SampleItem")
                 if info:
-                    print(f"Logical name: {info['entity_logical_name']}")
+                    print(f"Logical name: {info['table_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
         """
         return self._get_odata()._get_table_info(table_schema_name)
@@ -454,8 +454,8 @@ class DataverseClient:
             from the table's customization prefix value.
         :type primary_column_schema_name: str or None
 
-        :return: Dictionary containing table metadata including ``entity_schema``,
-            ``entity_set_name``, ``entity_logical_name``, ``metadata_id``, and ``columns_created``.
+        :return: Dictionary containing table metadata including ``table_schema_name``,
+            ``entity_set_name``, ``table_logical_name``, ``metadata_id``, and ``columns_created``.
         :rtype: dict
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table creation fails or the schema is invalid.
@@ -478,7 +478,7 @@ class DataverseClient:
                 }
 
                 result = client.create_table("new_SampleItem", schema)
-                print(f"Created table: {result['entity_logical_name']}")
+                print(f"Created table: {result['table_logical_name']}")
                 print(f"Columns: {result['columns_created']}")
 
             Create a table with a custom primary column name::

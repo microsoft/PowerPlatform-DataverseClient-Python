@@ -106,8 +106,8 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
             }
         )
         
-        print(f"✅ Created test table: {table_info.get('entity_schema')}")
-        print(f"   Logical name: {table_info.get('entity_logical_name')}")
+        print(f"✅ Created test table: {table_info.get('table_schema_name')}")
+        print(f"   Logical name: {table_info.get('table_logical_name')}")
         print(f"   Entity set: {table_info.get('entity_set_name')}")
         
         # Wait a moment for table to be ready
@@ -124,7 +124,7 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
     print("\n📝 Record Creation Test")
     print("=" * 50)
     
-    logical_name = table_info.get("entity_logical_name")
+    logical_name = table_info.get("table_logical_name")
     attr_prefix = logical_name.split("_", 1)[0] if "_" in logical_name else logical_name
     
     # Create test record data
@@ -163,7 +163,7 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
     print("\n📖 Record Reading Test")
     print("=" * 50)
     
-    logical_name = table_info.get("entity_logical_name")
+    logical_name = table_info.get("table_logical_name")
     attr_prefix = logical_name.split("_", 1)[0] if "_" in logical_name else logical_name
     
     try:
@@ -198,7 +198,7 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
     print("\n🔍 Record Query Test")
     print("=" * 50)
     
-    logical_name = table_info.get("entity_logical_name")
+    logical_name = table_info.get("table_logical_name")
     attr_prefix = logical_name.split("_", 1)[0] if "_" in logical_name else logical_name
     
     try:
@@ -234,7 +234,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     print("\n🧹 Cleanup")
     print("=" * 50)
     
-    logical_name = table_info.get("entity_logical_name")
+    logical_name = table_info.get("table_logical_name")
     
     # Ask user if they want to clean up
     cleanup_choice = input("Do you want to delete the test record? (y/N): ").strip().lower()
@@ -253,7 +253,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     
     if table_cleanup in ['y', 'yes']:
         try:
-            client.delete_table(table_info.get("entity_schema"))
+            client.delete_table(table_info.get("table_schema_name"))
             print("✅ Test table deleted successfully")
         except Exception as e:
             print(f"⚠️  Failed to delete test table: {e}")

@@ -571,7 +571,7 @@ class ODataClient(ODataFileUpload):
             params["$orderby"] = ",".join(self._lowercase_list(orderby))
         if expand:
             # Lowercase navigation property names for case-insensitive matching
-            params["$expand"] = ",".join(self._lowercase_list(expand))
+            params["$expand"] = ",".join(expand)
         if top is not None:
             params["$top"] = int(top)
 
@@ -1175,8 +1175,8 @@ class ODataClient(ODataFileUpload):
         if not ent:
             return None
         return {
-            "entity_schema": ent.get("SchemaName") or table_schema_name,
-            "entity_logical_name": ent.get("LogicalName"),
+            "table_schema_name": ent.get("SchemaName") or table_schema_name,
+            "table_logical_name": ent.get("LogicalName"),
             "entity_set_name": ent.get("EntitySetName"),
             "metadata_id": ent.get("MetadataId"),
             "columns_created": [],
@@ -1254,8 +1254,8 @@ class ODataClient(ODataFileUpload):
         )
 
         return {
-            "entity_schema": table_schema_name,
-            "entity_logical_name": metadata.get("LogicalName"),
+            "table_schema_name": table_schema_name,
+            "table_logical_name": metadata.get("LogicalName"),
             "entity_set_name": metadata.get("EntitySetName"),
             "metadata_id": metadata.get("MetadataId"),
             "columns_created": created_cols,
@@ -1277,8 +1277,6 @@ class ODataClient(ODataFileUpload):
                 subcode=ec.METADATA_TABLE_NOT_FOUND,
             )
 
-        # Use the actual SchemaName from the entity metadata
-        entity_schema = ent.get("SchemaName") or table_schema_name
         metadata_id = ent.get("MetadataId")
         created: List[str] = []
         needs_picklist_flush = False

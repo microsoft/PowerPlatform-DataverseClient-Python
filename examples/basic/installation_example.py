@@ -226,7 +226,7 @@ table_info = client.create_table("CustomEntity", {
 
 # Get table information
 info = client.get_table_info("CustomEntity")
-print(f"Table: {info['entity_schema']}")
+print(f"Table: {info['table_schema_name']}")
 
 # List all tables
 tables = client.list_tables()
