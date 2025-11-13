@@ -443,7 +443,7 @@ class ODataClient(ODataFileUpload):
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         self._request("delete", url, headers={"If-Match": "*"})
 
-    def _get(self, logical_name: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
+    def _get(self, logical_name: str, key: str, select: Optional[List[str]] = None) -> Dict[str, Any]:
         """Retrieve a single record.
 
         Parameters
@@ -452,12 +452,12 @@ class ODataClient(ODataFileUpload):
             Logical (singular) name.
         key : str
             Record GUID (with or without parentheses) or alternate key syntax.
-        select : str | None
-            Comma separated columns for $select.
+        select : list[str] | None
+            Columns to select; joined with commas into $select.
         """
         params = {}
         if select:
-            params["$select"] = select
+            params["$select"] = ",".join(select)
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("get", url, params=params)
