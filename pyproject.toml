@@ -11,12 +11,18 @@ authors = [{name = "Microsoft Corporation"}]
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
+keywords = ["dataverse", "powerapps", "powerplatform", "crm", "dynamics", "odata"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 dependencies = [
     "azure-identity>=1.17.0",
@@ -27,6 +33,19 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python"
+"Repository" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python.git"
+"Issues" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python/issues"
+"Documentation" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python#readme"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -36,3 +55,33 @@ zip-safe = false
 where = ["src"]
 include = ["PowerPlatform*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+# Microsoft Python Standards - Linting & Formatting
+[tool.black]
+line-length = 120
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "N",       # pep8-naming
+    "UP",      # pyupgrade
+    "B",       # flake8-bugbear
+]
