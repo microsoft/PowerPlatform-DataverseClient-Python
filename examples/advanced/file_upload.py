@@ -187,8 +187,8 @@ except Exception as e:  # noqa: BLE001
     sys.exit(1)
 
 entity_set = table_info.get("entity_set_name")
-logical = table_info.get("entity_logical_name") or entity_set.rstrip("s")
-attr_prefix = logical.split('_',1)[0] if '_' in logical else logical
+table_schema_name = table_info.get("entity_schema_name") or entity_set.rstrip("s")
+attr_prefix = table_schema_name.split('_',1)[0] if '_' in table_schema_name else table_schema_name
 name_attr = f"{attr_prefix}_name"
 small_file_attr_schema = f"{attr_prefix}_SmallDocument"  # second file attribute for small single-request demo
 small_file_attr_logical = f"{attr_prefix}_smalldocument"  # expected logical name (lowercase)
@@ -258,13 +258,13 @@ if run_chunk:
 record_id = None
 try:
     payload = {name_attr: "File Sample Record"}
-    log(f"client.create('{logical}', payload)")
-    created_ids = backoff(lambda: client.create(logical, payload))
+    log(f"client.create('{table_schema_name}', payload)")
+    created_ids = backoff(lambda: client.create(table_schema_name, payload))
     if isinstance(created_ids, list) and created_ids:
         record_id = created_ids[0]
     else:
         raise RuntimeError("Unexpected create return; expected list[str] with at least one GUID")
-    print({"record_created": True, "id": record_id, "logical": logical})
+    print({"record_created": True, "id": record_id, "logical": table_schema_name})
 except Exception as e:  # noqa: BLE001
     print({"record_created": False, "error": str(e)})
     sys.exit(1)
@@ -295,7 +295,7 @@ if run_small:
     try:
         DATASET_FILE, small_file_size, src_hash = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(lambda: client.upload_file(
-            logical,
+            table_schema_name,
             record_id,
             small_file_attr_logical,
             str(DATASET_FILE),
@@ -322,7 +322,7 @@ if run_small:
         print("Small single-request upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_small, replace_hash_small = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(lambda: client.upload_file(
-            logical,
+            table_schema_name,
             record_id,
             small_file_attr_logical,
             str(replacement_file),
@@ -350,7 +350,7 @@ if run_chunk:
     try:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(lambda: client.upload_file(
-            logical,
+            table_schema_name,
             record_id,
             chunk_file_attr_logical,
             str(DATASET_FILE),
@@ -376,7 +376,7 @@ if run_chunk:
         print("Streaming chunk upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_chunk, replace_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(lambda: client.upload_file(
-            logical,
+            table_schema_name,
             record_id,
             chunk_file_attr_logical,
             str(replacement_file),
@@ -401,8 +401,8 @@ if run_chunk:
 # --------------------------- Cleanup ---------------------------
 if cleanup_record and record_id:
     try:
-        log(f"client.delete('{logical}', '{record_id}')")
-        backoff(lambda: client.delete(logical, record_id))
+        log(f"client.delete('{table_schema_name}', '{record_id}')")
+        backoff(lambda: client.delete(table_schema_name, record_id))
         print({"record_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"record_deleted": False, "error": str(e)})
