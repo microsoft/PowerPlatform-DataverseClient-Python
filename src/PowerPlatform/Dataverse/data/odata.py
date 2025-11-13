@@ -388,7 +388,6 @@ class ODataClient(ODataFileUpload):
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("patch", url, headers={"If-Match": "*"}, json=data)
-        return None
 
     def _update_multiple(self, entity_set: str, logical_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound UpdateMultiple action.
@@ -446,7 +445,6 @@ class ODataClient(ODataFileUpload):
         entity_set = self._entity_set_from_logical(logical_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         self._request("delete", url, headers={"If-Match": "*"})
-        return None
 
     def _get(self, logical_name: str, key: str, select: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve a single record.
@@ -1171,7 +1169,6 @@ class ODataClient(ODataFileUpload):
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
-        return None
 
     def _create_table(
         self,

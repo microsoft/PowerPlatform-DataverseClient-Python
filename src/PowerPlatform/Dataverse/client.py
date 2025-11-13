@@ -481,7 +481,6 @@ class DataverseClient:
                 client.delete_table("SampleItem")
         """
         self._get_odata()._delete_table(tablename)
-        return None
 
     def list_tables(self) -> list[str]:
         """

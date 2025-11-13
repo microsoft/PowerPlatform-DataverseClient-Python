@@ -153,17 +153,20 @@ class HttpClient:
         Example:
             Calculate delays for successive retry attempts::
 
-                client = HttpClient(base_delay=1.0, max_backoff=30.0, jitter=True)
+                client = HttpClient(backoff=1.0, max_backoff=30.0, jitter=True)
                 
-                # Attempt 0: ~1.0s ± 25% jitter = 0.75s - 1.25s  
-                delay0 = client._calculate_retry_delay(0)
+                # Exponential backoff examples (without jitter for predictable values)
+                client_no_jitter = HttpClient(backoff=0.5, jitter=False)
                 
-                # Attempt 2: ~4.0s ± 25% jitter = 3.0s - 5.0s
-                delay2 = client._calculate_retry_delay(2)
+                # Attempt 0: 0.5s (0.5 * 2^0)
+                delay0 = client_no_jitter._calculate_retry_delay(0)
                 
-                # With Retry-After header (takes precedence)
-                response_with_retry_after = Mock(headers={"Retry-After": "15"})
-                delay = client._calculate_retry_delay(1, response_with_retry_after)  # Returns 15.0
+                # Attempt 2: 2.0s (0.5 * 2^2) 
+                delay2 = client_no_jitter._calculate_retry_delay(2)
+                
+                # With jitter enabled, delays vary randomly within ±25%
+                # Attempt 1 with jitter: ~1.0s ± 0.25s = 0.75s - 1.25s
+                delay_with_jitter = client._calculate_retry_delay(1)
         """
         
         # Check for Retry-After header (RFC 7231)

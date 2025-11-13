@@ -86,7 +86,6 @@ class PandasODataClient:
         if not payload:
             return None  # nothing to send
         self._c.update(logical_name, record_id, payload)
-        return None
 
     # ---------------------------- Delete ---------------------------------
     def delete_ids(self, logical_name: str, ids: Sequence[str] | pd.Series | pd.Index) -> pd.DataFrame:
