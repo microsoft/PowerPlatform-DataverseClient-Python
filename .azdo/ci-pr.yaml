@@ -23,8 +23,8 @@ extends:
     sdl:
       sourceAnalysisPool:
         name: Azure-Pipelines-1ESPT-ExDShared # Name of your hosted pool
-        image: ubuntu-latest
-        os: linux
+        image: windows-latest
+        os: windows
     stages:
     - stage: Build
       jobs:
