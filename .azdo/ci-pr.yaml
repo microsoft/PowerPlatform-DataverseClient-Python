@@ -18,7 +18,7 @@ extends:
     pool:
       name: Azure-Pipelines-1ESPT-ExDShared
       image: ubuntu-latest
-      # os: linux
+      os: linux
 
     stages:
     - stage: Build
