@@ -18,7 +18,7 @@ extends:
   parameters:
     pool:
       name: Azure-Pipelines-1ESPT-ExDShared
-      image: ubuntu-latest
+      # image: ubuntu-latest
       os: linux
 
     stages:
