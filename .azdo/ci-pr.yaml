@@ -21,9 +21,9 @@ extends:
       # os: linux
 
     stages:
-    - stage: stage
+    - stage: Build
       jobs:
-      - job: PythonBuild
+      - job: Python
 # Simplified to single Python version (per project requirements)
 # Can expand to matrix testing later if needed
         
