@@ -3,7 +3,7 @@
 
 import pytest
 from PowerPlatform.Dataverse.core.errors import HttpError
-from PowerPlatform.Dataverse.core import error_codes as ec
+from PowerPlatform.Dataverse.core.error_codes import HTTP_404, HTTP_429, HTTP_500
 from PowerPlatform.Dataverse.data.odata import ODataClient
 
 class DummyAuth:
@@ -34,7 +34,7 @@ class DummyHTTP:
             r.json = json_fail
         return r
 
-class TestClient(ODataClient):
+class MockClient(ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTP(responses)
@@ -47,11 +47,11 @@ def test_http_404_subcode_and_service_code():
         {"x-ms-correlation-request-id": "cid1"},
         {"error": {"code": "0x800404", "message": "Not found"}},
     )]
-    c = TestClient(responses)
+    c = MockClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts(abc)")
     err = ei.value.to_dict()
-    assert err["subcode"] == ec.HTTP_404
+    assert err["subcode"] == HTTP_404
     assert err["details"]["service_error_code"] == "0x800404"
 
 
@@ -61,12 +61,12 @@ def test_http_429_transient_and_retry_after():
         {"Retry-After": "7"},
         {"error": {"message": "Throttle"}},
     )]
-    c = TestClient(responses)
+    c = MockClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
     assert err["is_transient"] is True
-    assert err["subcode"] == ec.HTTP_429
+    assert err["subcode"] == HTTP_429
     assert err["details"]["retry_after"] == 7
 
 
@@ -76,11 +76,11 @@ def test_http_500_body_excerpt():
         {},
         "Internal failure XYZ stack truncated",
     )]
-    c = TestClient(responses)
+    c = MockClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
-    assert err["subcode"] == ec.HTTP_500
+    assert err["subcode"] == HTTP_500
     assert "XYZ stack" in err["details"]["body_excerpt"]
 
 
@@ -90,7 +90,7 @@ def test_http_non_mapped_status_code_subcode_fallback():
         {},
         {"error": {"message": "Teapot"}},
     )]
-    c = TestClient(responses)
+    c = MockClient(responses)
     with pytest.raises(HttpError) as ei:
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()

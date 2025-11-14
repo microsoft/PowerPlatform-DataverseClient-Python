@@ -7,6 +7,4 @@ Utilities and adapters for the Dataverse SDK.
 This module contains adapters (like Pandas integration).
 """
 
-from .pandas_adapter import PandasODataClient
-
-__all__ = ["PandasODataClient"]
+__all__ = []

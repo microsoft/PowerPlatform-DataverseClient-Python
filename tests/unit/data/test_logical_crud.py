@@ -34,7 +34,7 @@ class DummyHTTPClient:
         resp.json = json_func
         return resp
 
-class TestableClient(ODataClient):
+class MockableClient(ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTPClient(responses)
@@ -76,7 +76,7 @@ def test_single_create_update_delete_get():
         (204, {}, {}),  # update (no body)
         (204, {}, {}),  # delete
     ]
-    c = TestableClient(responses)
+    c = MockableClient(responses)
     entity_set = c._entity_set_from_logical("account")
     rid = c._create(entity_set, "account", {"name": "Acme"})
     assert rid == guid
@@ -96,7 +96,7 @@ def test_bulk_create_and_update():
         (204, {}, {}),  # UpdateMultiple broadcast
         (204, {}, {}),  # UpdateMultiple 1:1
     ]
-    c = TestableClient(responses)
+    c = MockableClient(responses)
     entity_set = c._entity_set_from_logical("account")
     ids = c._create_multiple(entity_set, "account", [{"name": "A"}, {"name": "B"}])
     assert ids == [g1, g2]
@@ -111,7 +111,7 @@ def test_get_multiple_paging():
         (200, {}, {"value": [{"accountid": "1"}], "@odata.nextLink": "https://org.example/api/data/v9.2/accounts?$skip=1"}),
         (200, {}, {"value": [{"accountid": "2"}]}),
     ]
-    c = TestableClient(responses)
+    c = MockableClient(responses)
     pages = list(c._get_multiple("account", select=["accountid"], page_size=1))
     assert pages == [[{"accountid": "1"}], [{"accountid": "2"}]]
 
@@ -120,6 +120,6 @@ def test_unknown_logical_name_raises():
     responses = [
         (200, {}, {"value": []}),  # metadata lookup returns empty
     ]
-    c = TestableClient(responses)
+    c = MockableClient(responses)
     with pytest.raises(MetadataError):
         c._entity_set_from_logical("nonexistent")

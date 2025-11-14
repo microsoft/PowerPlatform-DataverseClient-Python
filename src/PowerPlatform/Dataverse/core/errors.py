@@ -53,7 +53,7 @@ class DataverseError(Exception):
         self.details = details or {}
         self.source = source or "client"
         self.is_transient = is_transient
-        self.timestamp = _dt.datetime.utcnow().isoformat() + "Z"
+        self.timestamp = _dt.datetime.now(_dt.timezone.utc).isoformat().replace('+00:00', 'Z')
 
     def to_dict(self) -> Dict[str, Any]:
         """

@@ -2,20 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+## [0.1.0b1] - 2025-11-14
 
 ### Added
-- Initial SDK implementation with CRUD operations
-- Service principal authentication support
-- Interactive browser authentication support
-- SQL query execution via `query_sql()`
-- File upload capabilities
-- Pandas integration for query results
-- Structured error handling with specific exception types
-- GitHub Actions CI pipeline for automated testing
+**Initial beta release** of Microsoft Dataverse SDK for Python
+
+**Core Client & Authentication:**
+- Core `DataverseClient` with Azure Identity authentication support
+- Secure authentication using Azure Identity credentials (Service Principal, Managed Identity, Interactive Browser)
+- TLS 1.2+ encryption for all API communications
+- Proper credential handling without exposing secrets in logs
+
+**Data Operations:**
+- Complete CRUD operations (create, read, update, delete) for Dataverse records
+- Advanced OData query support with filtering, sorting, and expansion
+- SQL query execution via `query_sql()` method with result pagination
+- Support for batch operations and transaction handling
+- File upload capabilities for file and image columns
+
+**Table Management:**
+- Table metadata operations (create, inspect, delete custom tables)
+
+**Integration & Analysis:**
+- Pandas DataFrame integration for seamless data analysis workflows
+
+**Reliability & Error Handling:**
+- Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.)
+- HTTP retry logic with exponential backoff for resilient operations
+
+**Developer Experience:**
+- Example scripts demonstrating common integration patterns
+- Complete documentation with quickstart guides and API reference
+- Modern Python packaging using `pyproject.toml` configuration
+
+**Quality Assurance:**
+- Comprehensive test suite with unit and integration tests
+- GitHub Actions CI/CD pipeline for automated testing and validation
 - Azure DevOps PR validation pipeline
 
 ### Changed
@@ -32,42 +54,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - N/A
-
-## [0.1.0] - TBD
-
-### Added
-- First alpha release
-- Core Dataverse client with authentication
-- Basic CRUD operations (create, get, update, delete)
-- OData query support
-- SQL query support
-- Error handling framework
-- Example scripts for common scenarios
-
----
-
-## Release Notes Template
-
-When creating a new release, copy this template:
-
-```markdown
-## [X.Y.Z] - YYYY-MM-DD
-
-### Added
-- New features
-
-### Changed
-- Changes in existing functionality
-
-### Deprecated
-- Soon-to-be removed features
-
-### Removed
-- Removed features
-
-### Fixed
-- Bug fixes
-
-### Security
-- Security improvements or fixes
-```
