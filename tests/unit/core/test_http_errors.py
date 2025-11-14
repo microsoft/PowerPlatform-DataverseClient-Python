@@ -2,9 +2,9 @@
 # Licensed under the MIT license.
 
 import pytest
-from PowerPlatform.Dataverse.core.errors import HttpError
-from PowerPlatform.Dataverse.core.error_codes import HTTP_404, HTTP_429, HTTP_500
-from PowerPlatform.Dataverse.data.odata import ODataClient
+from PowerPlatform.Dataverse._core.errors import HttpError
+from PowerPlatform.Dataverse._core.error_codes import HTTP_404, HTTP_429, HTTP_500
+from PowerPlatform.Dataverse._data.odata import ODataClient
 
 class DummyAuth:
     def acquire_token(self, scope):

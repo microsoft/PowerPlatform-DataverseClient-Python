@@ -4,11 +4,11 @@
 """
 Structured Dataverse exception hierarchy.
 
-This module provides :class:`~PowerPlatform.Dataverse.core.errors.DataverseError` and
-specialized :class:`~PowerPlatform.Dataverse.core.errors.ValidationError`,
-:class:`~PowerPlatform.Dataverse.core.errors.MetadataError`,
-:class:`~PowerPlatform.Dataverse.core.errors.SQLParseError`, and
-:class:`~PowerPlatform.Dataverse.core.errors.HttpError` for validation, metadata,
+This module provides :class:`~PowerPlatform.Dataverse._core.errors.DataverseError` and
+specialized :class:`~PowerPlatform.Dataverse._core.errors.ValidationError`,
+:class:`~PowerPlatform.Dataverse._core.errors.MetadataError`,
+:class:`~PowerPlatform.Dataverse._core.errors.SQLParseError`, and
+:class:`~PowerPlatform.Dataverse._core.errors.HttpError` for validation, metadata,
 SQL parsing, and Web API HTTP failures.
 """
 

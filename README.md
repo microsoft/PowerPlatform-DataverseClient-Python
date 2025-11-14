@@ -288,7 +288,7 @@ The client raises structured exceptions for different error scenarios:
 
 ```python
 from PowerPlatform.Dataverse import DataverseClient
-from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+from PowerPlatform.Dataverse._core.errors import HttpError, ValidationError
 
 try:
     client.get("account", "invalid-id")

@@ -23,7 +23,7 @@ import os
 # sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
 
 from PowerPlatform.Dataverse import DataverseClient
-from PowerPlatform.Dataverse.utils.pandas_adapter import PandasODataClient
+from PowerPlatform.Dataverse._utils.pandas_adapter import PandasODataClient
 from azure.identity import InteractiveBrowserCredential
 import traceback
 import requests

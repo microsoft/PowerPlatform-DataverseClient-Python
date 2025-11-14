@@ -4,7 +4,7 @@
 """
 Pandas-friendly wrappers for Dataverse OData operations.
 
-This module provides :class:`PowerPlatform.Dataverse.utils.pandas_adapter.PandasODataClient`,
+This module provides :class:`PowerPlatform.Dataverse._utils.pandas_adapter.PandasODataClient`,
 a high-level wrapper that enables DataFrame-based CRUD and query operations.
 """
 
@@ -17,7 +17,7 @@ import json
 
 import pandas as pd
 
-from ..data.odata import ODataClient
+from .._data.odata import ODataClient
 
 
 @dataclass
@@ -39,7 +39,7 @@ class PandasODataClient:
     High-level pandas-friendly wrapper for Dataverse OData operations.
 
     :param odata_client: Initialized low-level OData client with authentication configured.
-    :type odata_client: ~PowerPlatform.Dataverse.data.odata.ODataClient
+    :type odata_client: ~PowerPlatform.Dataverse._data.odata.ODataClient
     """
 
     def __init__(self, odata_client: ODataClient) -> None:

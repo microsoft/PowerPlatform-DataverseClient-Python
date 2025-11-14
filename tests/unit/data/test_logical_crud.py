@@ -3,8 +3,8 @@
 
 import types
 import pytest
-from PowerPlatform.Dataverse.data.odata import ODataClient
-from PowerPlatform.Dataverse.core.errors import MetadataError
+from PowerPlatform.Dataverse._data.odata import ODataClient
+from PowerPlatform.Dataverse._core.errors import MetadataError
 
 class DummyAuth:
     def acquire_token(self, scope):

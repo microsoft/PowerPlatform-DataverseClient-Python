@@ -1,15 +1,15 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from __future__ import annotations
-
 """
 Authentication helpers for Dataverse.
 
-This module provides :class:`~PowerPlatform.Dataverse.core.auth.AuthManager`, a thin wrapper over any Azure Identity
-``TokenCredential`` for acquiring OAuth2 access tokens, and :class:`~PowerPlatform.Dataverse.core.auth.TokenPair` for
+This module provides :class:`~PowerPlatform.Dataverse._core.auth.AuthManager`, a thin wrapper over any Azure Identity
+``TokenCredential`` for acquiring OAuth2 access tokens, and :class:`~PowerPlatform.Dataverse._core.auth.TokenPair` for
 storing the acquired token alongside its scope.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -22,9 +22,9 @@ class TokenPair:
     Container for an OAuth2 access token and its associated resource scope.
 
     :param resource: The OAuth2 scope/resource for which the token was acquired.
-    :type resource: ``str``
+    :type resource: :class:`str`
     :param access_token: The access token string.
-    :type access_token: ``str``
+    :type access_token: :class:`str`
     """
     resource: str
     access_token: str
@@ -53,7 +53,7 @@ class AuthManager:
         :param scope: OAuth2 scope string, typically ``"https://<org>.crm.dynamics.com/.default"``.
         :type scope: ``str``
         :return: Token pair containing the scope and access token.
-        :rtype: ~PowerPlatform.Dataverse.core.auth.TokenPair
+        :rtype: ~PowerPlatform.Dataverse._core.auth.TokenPair
         :raises ~azure.core.exceptions.ClientAuthenticationError: If token acquisition fails.
         """
         token = self.credential.get_token(scope)

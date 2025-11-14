@@ -73,16 +73,16 @@ def validate_imports():
         print(f"  ✅ DataverseClient class: {DataverseClient}")
         
         # Test submodule imports
-        from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
+        from PowerPlatform.Dataverse._core.errors import HttpError, MetadataError
         print(f"  ✅ Core errors: HttpError, MetadataError")
         
-        from PowerPlatform.Dataverse.core.config import DataverseConfig
+        from PowerPlatform.Dataverse._core.config import DataverseConfig
         print(f"  ✅ Core config: DataverseConfig")
         
-        from PowerPlatform.Dataverse.utils.pandas_adapter import PandasODataClient
+        from PowerPlatform.Dataverse._utils.pandas_adapter import PandasODataClient
         print(f"  ✅ Utils: PandasODataClient")
         
-        from PowerPlatform.Dataverse.data.odata import ODataClient
+        from PowerPlatform.Dataverse._data.odata import ODataClient
         print(f"  ✅ Data layer: ODataClient")
         
         # Test Azure Identity import
