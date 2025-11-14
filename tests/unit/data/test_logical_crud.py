@@ -80,7 +80,7 @@ def test_single_create_update_delete_get():
     entity_set = c._entity_set_from_logical("account")
     rid = c._create(entity_set, "account", {"name": "Acme"})
     assert rid == guid
-    rec = c._get("account", rid, select="accountid,name")
+    rec = c._get("account", rid, select=["accountid", "name"])
     assert rec["accountid"] == guid and rec["name"] == "Acme"
     c._update("account", rid, {"telephone1": "555"})  # returns None
     c._delete("account", rid)  # returns None
