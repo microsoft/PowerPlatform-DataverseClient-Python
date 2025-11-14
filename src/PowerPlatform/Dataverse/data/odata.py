@@ -336,23 +336,19 @@ class ODataClient(ODataFileUpload):
         self._update_multiple(entity_set, table_schema_name, batch)
         return None
 
-    def _delete_multiple(self, logical_name: str, ids: List[str]) -> None:
-        """Delete records using the collection-bound DeleteMultiple action.
+    def _delete_multiple(self, table_schema_name: str, ids: List[str]) -> None:
+        """Delete records using the collection-bound ``DeleteMultiple`` action.
 
-        Parameters
-        ----------
-        logical_name : str
-            Singular logical entity name.
-        ids : list[str]
-            GUIDs for the records to remove.
-
-        Returns
-        -------
-        None
-            No representation is returned.
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param ids: GUIDs for the records to remove.
+        :type ids: ``list[str]``
+        :return: ``None``; the service does not return a representation.
+        :rtype: ``None``
         """
-        entity_set = self._entity_set_from_logical(logical_name)
-        pk_attr = self._primary_id_attr(logical_name)
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        pk_attr = self._primary_id_attr(table_schema_name)
+        logical_name = table_schema_name.lower()
         targets: List[Dict[str, Any]] = []
         for rid in ids:
             targets.append({
@@ -371,8 +367,8 @@ class ODataClient(ODataFileUpload):
     ) -> str:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
@@ -738,15 +734,17 @@ class ODataClient(ODataFileUpload):
             self._logical_primaryid_cache[cache_key] = primary_id_attr
         return es
 
-    def _is_elastic_table(self, logical: str) -> bool:
-        """Return True when the target table is configured as an elastic table."""
-        if not logical:
-            raise ValueError("logical name required")
-        cached = self._elastic_table_cache.get(logical)
+    def _is_elastic_table(self, table_schema_name: str) -> bool:
+        """Return ``True`` when the target table is elastic."""
+        if not table_schema_name:
+            raise ValueError("table schema name required")
+
+        logical_name = table_schema_name.lower()
+        cached = self._elastic_table_cache.get(logical_name)
         if cached is not None:
             return cached
         url = f"{self.api}/EntityDefinitions"
-        logical_escaped = self._escape_odata_quotes(logical)
+        logical_escaped = self._escape_odata_quotes(logical_name)
         params = {
             "$select": "LogicalName,TableType",
             "$filter": f"LogicalName eq '{logical_escaped}'",
@@ -766,7 +764,7 @@ class ODataClient(ODataFileUpload):
                     is_elastic = table_type.strip().lower() == "elastic"
                 else:
                     is_elastic = False
-        self._elastic_table_cache[logical] = is_elastic
+        self._elastic_table_cache[logical_name] = is_elastic
         return is_elastic
 
     # ---------------------- Table metadata helpers ----------------------

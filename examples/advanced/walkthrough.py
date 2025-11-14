@@ -281,11 +281,19 @@ def main():
     client.delete(table_name, id1)
     print(f"✓ Deleted single record: {id1}")
 
-    # Multiple delete (delete the paging demo records)
-    log_call(f"client.delete('{table_name}', [{len(paging_ids)} IDs])")
-    job_id = client.delete(table_name, paging_ids)
-    print(f"✓ Bulk delete job started: {job_id}")
-    print(f"  (Deleting {len(paging_ids)} paging demo records)")
+    # Multiple delete (demonstrate async bulk job and synchronous fallback)
+    midpoint = len(paging_ids) // 2
+    async_ids = paging_ids[:midpoint]
+    sync_ids = paging_ids[midpoint:]
+
+    log_call(f"client.delete_async('{table_name}', [{len(async_ids)} IDs])")
+    job_id = client.delete_async(table_name, async_ids)
+    print(f"✓ Bulk delete job queued: {job_id}")
+    print(f"  (Deleting {len(async_ids)} paging demo records asynchronously)")
+
+    log_call(f"client.delete('{table_name}', [{len(sync_ids)} IDs])")
+    client.delete(table_name, sync_ids)
+    print(f"✓ Synchronously deleted {len(sync_ids)} paging demo records")
 
     # ============================================================================
     # 11. CLEANUP
