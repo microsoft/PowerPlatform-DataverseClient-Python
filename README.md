@@ -1,372 +1,350 @@
-# Dataverse SDK for Python
+# PowerPlatform Dataverse Client for Python
 
-A Python package allowing developers to connect to Dataverse environments for DDL / DML operations.
+[![PyPI version](https://badge.fury.io/py/PowerPlatform-Dataverse-Client.svg)](https://badge.fury.io/py/PowerPlatform-Dataverse-Client)
+[![Python](https://img.shields.io/pypi/pyversions/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- Read (SQL) — Execute constrained read-only SQL via the Dataverse Web API `?sql=` parameter. Returns `list[dict]`.
-- OData CRUD — Unified methods `create(logical_name, record|records)`, `update(logical_name, id|ids, patch|patches)`, `delete(logical_name, id|ids)` plus `get` with record id or filters and `delete_async` for better multi-record delete performance.
-- Bulk create — Pass a list of records to `create(...)` to invoke the bound `CreateMultiple` action; returns `list[str]` of GUIDs. If any payload omits `@odata.type` the SDK resolves and stamps it (cached).
-- Bulk update — Provide a list of IDs with a single patch (broadcast) or a list of per‑record patches to `update(...)`; internally uses the bound `UpdateMultiple` action; returns nothing. Each record must include the primary key attribute when sent to UpdateMultiple.
-- Bulk delete - Provide a list of IDs to `delete(...)` or `delete_async(...)`. `delete` internally uses `DeleteMultiple` for elastic tables, for standard tables it is a loop over single-record delete. `delete_async` internally uses async BulkDelete.
-- Retrieve multiple (paging) — Generator-based `get(...)` that yields pages, supports `$top` and Prefer: `odata.maxpagesize` (`page_size`).
-- Upload files — Call `upload_file(logical_name, ...)` and an upload method will be auto picked (you can override the mode). See https://learn.microsoft.com/en-us/power-apps/developer/data-platform/file-column-data?tabs=sdk#upload-files
-- Metadata helpers — Create/inspect/delete tables and create/delete columns (EntityDefinitions + Attributes).
-- Pandas helpers — Convenience DataFrame oriented wrappers for quick prototyping/notebooks.
-- Auth — Azure Identity (`TokenCredential`) injection.
+A Python client library for Microsoft Dataverse that provides a unified interface for CRUD operations, SQL queries, table metadata management, and file uploads through the Dataverse Web API.
 
-## Features
+**[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference documentation](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/)** | **[Product documentation](https://learn.microsoft.com/en-us/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
-- Simple `DataverseClient` facade for CRUD, SQL (read-only), and table metadata.
-- SQL-over-API: Constrained SQL (single SELECT with limited WHERE/TOP/ORDER BY) via native Web API `?sql=` parameter.
-- Table metadata ops: create/delete simple custom tables (supports string/int/decimal/float/datetime/bool/optionset) and create/delete columns.
-- Bulk create via `CreateMultiple` (collection-bound) by passing `list[dict]` to `create(logical_name, payloads)`; returns list of created IDs.
-- Bulk update via `UpdateMultiple` (invoked internally) by calling unified `update(logical_name, ids, patch|patches)`; returns nothing.
-- Retrieve multiple with server-driven paging: `get(...)` yields lists (pages) following `@odata.nextLink`. Control total via `$top` and per-page via `page_size` (Prefer: `odata.maxpagesize`).
-- Upload files, using either a single request (supports file size up to 128 MB) or chunk upload under the hood
-- Optional pandas integration (`PandasODataClient`) for DataFrame based create / get / query.
+> [!IMPORTANT]
+> This library is currently in **preview**. Preview versions are provided for early access to new features and may contain breaking changes.
 
-Auth:
-- Accept only an `azure.core.credentials.TokenCredential` credential. See full supported list at https://learn.microsoft.com/en-us/dotnet/api/azure.core.tokencredential?view=azure-dotnet.
-- Token scope used by the SDK: `https://<yourorg>.crm.dynamics.com/.default` (derived from `base_url`).
+## Table of contents
 
-## API Reference (Summary)
+- [Key features](#key-features)
+- [Getting started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Install the package](#install-the-package)  
+  - [Authenticate the client](#authenticate-the-client)
+- [Key concepts](#key-concepts)
+- [Examples](#examples)
+  - [Quick start](#quick-start)
+  - [Basic CRUD operations](#basic-crud-operations)
+  - [Bulk operations](#bulk-operations)
+  - [Query data](#query-data)
+  - [Table management](#table-management)
+  - [File operations](#file-operations)
+- [Next steps](#next-steps)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
-| Method | Signature (simplified) | Returns | Notes |
-|--------|------------------------|---------|-------|
-| `create` | `create(logical_name, record_dict)` | `list[str]` (len 1) | Single create; GUID from `OData-EntityId`. |
-| `create` | `create(logical_name, list[record_dict])` | `list[str]` | Uses `CreateMultiple`; stamps `@odata.type` if missing. |
-| `get` | `get(logical_name, id)` | `dict` | One record; supply GUID (with/without parentheses). |
-| `get` | `get(logical_name, ..., page_size=None)` | `Iterable[list[dict]]` | Multiple records; Pages yielded (non-empty only). |
-| `update` | `update(logical_name, id, patch)` | `None` | Single update; no representation returned. |
-| `update` | `update(logical_name, list[id], patch)` | `None` | Broadcast; same patch applied to all IDs (UpdateMultiple). |
-| `update` | `update(logical_name, list[id], list[patch])` | `None` | 1:1 patches; lengths must match (UpdateMultiple). |
-| `delete` | `delete(logical_name, id)` | `None` | Delete one record. |
-| `delete` | `delete(logical_name, list[id])` | `None` | DeleteMultiple for elastic tables or loops over single-record delete for standard tables. |
-| `delete_async` | `delete_async(logical_name, id)` | `str` | Async single-record delete. |
-| `delete_async` | `delete_async(logical_name, list[id])` | `str` | Async multi-record delete. |
-| `query_sql` | `query_sql(sql)` | `list[dict]` | Constrained read-only SELECT via `?sql=`. |
-| `create_table` | `create_table(tablename, schema, solution_unique_name=None)` | `dict` | Creates custom table + columns. Friendly name (e.g. `SampleItem`) becomes schema `new_SampleItem`; explicit schema name (contains `_`) used as-is. Pass `solution_unique_name` to attach the table to a specific solution instead of the default solution. |
-| `create_column` | `create_column(tablename, columns)` | `list[str]` | Adds columns using a `{name: type}` mapping (same shape as `create_table` schema). Returns schema names for the created columns. |
-| `get_table_info` | `get_table_info(schema_name)` | `dict | None` | Basic table metadata by schema name (e.g. `new_SampleItem`). Friendly names not auto-converted. |
-| `list_tables` | `list_tables()` | `list[dict]` | Lists non-private tables. |
-| `delete_table` | `delete_table(tablename)` | `None` | Drops custom table. Accepts friendly or schema name; friendly converted to `new_<PascalCase>`. |
-| `delete_column` | `delete_column(tablename, columns)` | `list[str]` | Deletes one or more columns; returns schema names (accepts string or list[str]). |
-| `PandasODataClient.create_df` | `create_df(logical_name, series)` | `str` | Create one record (returns GUID). |
-| `PandasODataClient.update` | `update(logical_name, id, series)` | `None` | Returns None; ignored if Series empty. |
-| `PandasODataClient.get_ids` | `get_ids(logical_name, ids, select=None)` | `DataFrame` | One row per ID (errors inline). |
-| `PandasODataClient.query_sql_df` | `query_sql_df(sql)` | `DataFrame` | DataFrame for SQL results. |
+## Key features
 
-Guidelines:
-- `create` always returns a list of GUIDs (1 for single, N for bulk).
-- `update` and `delete` always return `None`.
-- Bulk update chooses broadcast vs per-record by the type of `changes` (dict vs list).
-- `delete_async` returns the BulkDelete async job ID and doesn't wait for completion.
-- It's recommended to use delete_async for multi-record delete for better performance. 
-- Paging and SQL operations never mutate inputs.
-- Metadata lookups for logical name stamping cached per entity set (in-memory).
+- **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
+- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
+- **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
+- **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
+- **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
+- **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
+- **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
+- **🐼 Pandas Integration**: Preliminary DataFrame-oriented operations for data analysis workflows
 
-## Install
+## Getting started
 
-Create and activate a Python 3.13+ environment, then install dependencies:
+### Prerequisites
 
-```powershell
-# from the repo root
-python -m pip install -r requirements.txt
+- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  
+- **Microsoft Dataverse environment** with appropriate permissions
+- **OAuth authentication configured** for your application
+
+### Install the package
+
+Install the PowerPlatform Dataverse Client using [pip](https://pypi.org/project/pip/):
+
+```bash
+# Install the latest stable release
+pip install PowerPlatform-Dataverse-Client
 ```
 
-Direct TDS via ODBC is not used; SQL reads are executed via the Web API using the `?sql=` query parameter.
+For development from source:
 
-## Configuration Notes
+```bash
+git clone https://github.com/microsoft/PowerPlatform-DataverseClient-Python.git
+cd PowerPlatform-DataverseClient-Python
+pip install -e .
+```
 
-- For Web API (OData), tokens target your Dataverse org URL scope: https://yourorg.crm.dynamics.com/.default. The SDK requests this scope from the provided TokenCredential.
+### Authenticate the client
 
-### Configuration
+The client requires any Azure Identity `TokenCredential` implementation for OAuth authentication with Dataverse:
 
 ```python
-from azure.identity import InteractiveBrowserCredential
-from dataverse_sdk import DataverseClient
+from azure.identity import (
+    InteractiveBrowserCredential, 
+    ClientSecretCredential,
+    ClientCertificateCredential,
+    AzureCliCredential
+)
+from PowerPlatform.Dataverse import DataverseClient
 
-base_url = "https://yourorg.crm.dynamics.com"
-credential = InteractiveBrowserCredential()  # or DeviceCodeCredential(), ClientSecretCredential(...), etc.
-client = DataverseClient(base_url=base_url, credential=credential)
+# Development options
+credential = InteractiveBrowserCredential()  # Browser authentication
+# credential = AzureCliCredential()          # If logged in via 'az login'
+
+# Production options  
+# credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+# credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
+
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
-## Quickstart
+> **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
 
-Edit `examples/quickstart.py` and run:
+## Key concepts
 
-```powershell
-python examples/quickstart.py
-```
+The SDK provides a simple, pythonic interface for Dataverse operations:
 
-The quickstart demonstrates:
-- Creating a simple custom table (metadata APIs)
-- Creating, reading, updating, and deleting records (OData)
-- Bulk create (CreateMultiple) to insert many records in one call
-- Bulk update via unified `update` (multi-ID broadcast & per‑record patches)
-- Retrieve multiple with paging (`$top` vs `page_size`)
-- Executing a read-only SQL query (Web API `?sql=`)
-
-For upload files functionalities, run quickstart_file_upload.py instead
+| Concept | Description |
+|---------|-------------|
+| **DataverseClient** | Main entry point for all operations with environment connection |
+| **Records** | Dataverse records represented as Python dictionaries with column schema names |
+| **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |  
+| **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
+| **Paging** | Automatic handling of large result sets with iterators |
+| **Structured Errors** | Detailed exception hierarchy with retry guidance and diagnostic information |
+| **Customization prefix values** | Custom tables and columns require a customization prefix value to be included for all operations (e.g., `"new_MyTestTable"`, not `"MyTestTable"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 
 ## Examples
 
-### DataverseClient (recommended)
+### Quick start
 
 ```python
 from azure.identity import InteractiveBrowserCredential
-from dataverse_sdk import DataverseClient
+from PowerPlatform.Dataverse import DataverseClient
 
-base_url = "https://yourorg.crm.dynamics.com"
-credential = InteractiveBrowserCredential()  # or DeviceCodeCredential(), ClientSecretCredential(...), etc.
-client = DataverseClient(base_url=base_url, credential=credential)
+# Connect to Dataverse
+credential = InteractiveBrowserCredential()
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
-# Create (returns list[str] of new GUIDs)
-account_id = client.create("account", {"name": "Acme, Inc.", "telephone1": "555-0100"})[0]
+# Create a contact
+contact_id = client.create("contact", {"firstname": "John", "lastname": "Doe"})[0]
 
-# Read
-account = client.get("account", account_id)
-
-# Update (returns None)
-client.update("account", account_id, {"telephone1": "555-0199"})
-
-# Bulk update (broadcast) – apply same patch to several IDs
-ids = client.create("account", [
-	{"name": "Contoso"},
-	{"name": "Fabrikam"},
-])
-client.update("account", ids, {"telephone1": "555-0200"})  # broadcast patch
-
-# Bulk update (1:1) – list of patches matches list of IDs
-client.update("account", ids, [
-	{"telephone1": "555-1200"},
-	{"telephone1": "555-1300"},
-])
-print({"multi_update": "ok"})
-
-# Delete (single)
-client.delete("account", account_id)
-
-# Delete (multiple)
-client.delete("account", ids)
-
-# Or queue a async bulk delete job
-job_id = client.delete_async("account", ids)
-
-# SQL (read-only) via Web API `?sql=`
-rows = client.query_sql("SELECT TOP 3 accountid, name FROM account ORDER BY createdon DESC")
-for r in rows:
-	print(r.get("accountid"), r.get("name"))
-
-## Bulk create (CreateMultiple)
-
-Pass a list of payloads to `create(logical_name, payloads)` to invoke the collection-bound `Microsoft.Dynamics.CRM.CreateMultiple` action. The method returns `list[str]` of created record IDs.
-
-```python
-# Bulk create accounts (returns list of GUIDs)
-payloads = [
-	{"name": "Contoso"},
-	{"name": "Fabrikam"},
-	{"name": "Northwind"},
-]
-ids = client.create("account", payloads)
-assert isinstance(ids, list) and all(isinstance(x, str) for x in ids)
-print({"created_ids": ids})
-```
-
-## Bulk update (UpdateMultiple under the hood)
-
-Use the unified `update` method for both single and bulk scenarios:
-
-```python
-# Broadcast
-client.update("account", ids, {"telephone1": "555-0200"})
-
-# 1:1 patches (length must match)
-client.update("account", ids, [
-	{"telephone1": "555-1200"},
-	{"telephone1": "555-1300"},
-])
-```
-
-Notes:
-- Returns `None` (same as single update) to keep semantics consistent.
-- Broadcast vs per-record determined by whether `changes` is a dict or list.
-- Primary key attribute is injected automatically when constructing UpdateMultiple targets.
-- If any payload omits `@odata.type`, it's stamped automatically (cached logical name lookup).
-
-Bulk create notes:
-- Response includes only IDs; the SDK returns those GUID strings.
-- Single-record `create` returns a one-element list of GUIDs.
-- Metadata lookup for `@odata.type` is performed once per entity set (cached in-memory).
-
-## File upload
-
-```python
-client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf')
-
-client.upload_file('account', record_id, 'sample_filecolumn', 'test.pdf', mode='chunk', if_none_match=True)
-
-```
-
-Notes:
-- upload_file picks one of the three methods to use based on file size: if file is less than 128 MB uses upload_file_small, otherwise uses upload_file_chunk
-- upload_file_small makes a single Web API call and only supports file size < 128 MB
-- upload_file_chunk uses PATCH with Content-Range to upload the file (more aligned with HTTP standard compared to Dataverse messages). It consists of 2 stages 1. PATCH request to get the headers used for actual upload. 2. Actual upload in chunks. It uses x-ms-chunk-size returned in the first stage to determine chunk size (normally 4 MB), and use Content-Range and Content-Length as metadata for the upload. Total number of Web API calls is number of chunks + 1
-
-## Retrieve multiple with paging
-
-Use `get(logical_name, ...)` to stream results page-by-page. You can cap total results with `$top` and hint the per-page size with `page_size` (sets Prefer: `odata.maxpagesize`).
-
-```python
-pages = client.get(
-	"account",
-	select=["accountid", "name", "createdon"],
-	orderby=["name asc"],
-	top=10,          # stop after 10 total rows (optional)
-	page_size=3,     # ask for ~3 per page (optional)
-)
-
-total = 0
-for page in pages:         # each page is a list[dict]
-	print({"page_size": len(page), "sample": page[:2]})
-	total += len(page)
-print({"total_rows": total})
-```
-
-Parameters (all optional except `logical_name`)
-- `logical_name`: str — Logical (singular) name, e.g., `"account"`.
-- `select`: list[str] | None — Columns -> `$select` (comma joined).
-- `filter`: str | None — OData `$filter` expression (e.g., `contains(name,'Acme') and statecode eq 0`).
-- `orderby`: list[str] | None — Sort expressions -> `$orderby` (comma joined).
-- `top`: int | None — Global cap via `$top` (applied on first request; service enforces across pages).
-- `expand`: list[str] | None — Navigation expansions -> `$expand`; pass raw clauses (e.g., `primarycontactid($select=fullname,emailaddress1)`).
-- `page_size`: int | None — Per-page hint using Prefer: `odata.maxpagesize=<N>` (not guaranteed; last page may be smaller).
-
-Return value & semantics
-- `$select`, `$filter`, `$orderby`, `$expand`, `$top` map directly to corresponding OData query options on the first request.
-- `$top` caps total rows; the service may partition those rows across multiple pages.
-- `page_size` (Prefer: `odata.maxpagesize`) is a hint; the server decides actual page boundaries.
-- Returns a generator yielding non-empty pages (`list[dict]`). Empty pages are skipped.
-- Each yielded list corresponds to a `value` page from the Web API.
-- Iteration stops when no `@odata.nextLink` remains (or when `$top` satisfied server-side).
-- The generator does not materialize all results; pages are fetched lazily.
-
-Example (all parameters + expected response)
-
-```python
-pages = client.get(
-		"account",
-		select=["accountid", "name", "createdon", "primarycontactid"],
-		filter="contains(name,'Acme') and statecode eq 0",
-		orderby=["name asc", "createdon desc"],
-		top=5,
-		expand=["primarycontactid($select=fullname,emailaddress1)"],
-		page_size=2,
-)
-
-for page in pages:  # page is list[dict]
-		# Expected page shape (illustrative):
-		# [
-		#   {
-		#     "accountid": "00000000-0000-0000-0000-000000000001",
-		#     "name": "Acme West",
-		#     "createdon": "2025-08-01T12:34:56Z",
-		#     "primarycontactid": {
-		#         "contactid": "00000000-0000-0000-0000-0000000000aa",
-		#         "fullname": "Jane Doe",
-		#         "emailaddress1": "jane@acme.com"
-		#     },
-		#     "@odata.etag": "W/\"123456\""
-		#   },
-		#   ...
-		# ]
-		print({"page_size": len(page)})
-```
-
-
-### Custom table (metadata) example
-
-```python
-# Support enums with labels in different languages
-class Status(IntEnum):
-	Active = 1
-	Inactive = 2
-	Archived = 5
-	__labels__ = {
-		1033: {
-			"Active": "Active",
-			"Inactive": "Inactive",
-			"Archived": "Archived",
-		},
-		1036: {
-			"Active": "Actif",
-			"Inactive": "Inactif",
-			"Archived": "Archivé",
-		}
-	}
-
-# Create a simple custom table and a few columns
-info = client.create_table(
-	"SampleItem",  # friendly name; defaults to SchemaName new_SampleItem
-	{
-		"code": "string",
-		"count": "int",
-		"amount": "decimal",
-		"when": "datetime",
-		"active": "bool",
-		"status": Status,
-	},
-	solution_unique_name="my_solution_unique_name",  # optional: associate table with this solution
-)
-
-# Create or delete columns
-client.create_column("SampleItem", {"category": "string"})  # returns ["new_Category"]
-client.delete_column("SampleItem", "category")  # returns ["new_Category"]
-
-logical = info["entity_logical_name"]  # e.g., "new_sampleitem"
-
-# Create a record in the new table
-# Set your publisher prefix (used when creating the table). If you used the default, it's "new".
-prefix = "new"
-name_attr = f"{prefix}_name"
-id_attr = f"{logical}id"
-
-rec_id = client.create(logical, {name_attr: "Sample A"})[0]
+# Read the contact back
+contact = client.get("contact", contact_id, select=["firstname", "lastname"])
+print(f"Created: {contact['firstname']} {contact['lastname']}")
 
 # Clean up
-client.delete(logical, rec_id)          # delete record
-client.delete_table("SampleItem")       # delete table (friendly name or explicit schema new_SampleItem)
+client.delete("contact", contact_id)
 ```
 
-Notes:
-- `create` always returns a list of GUIDs (length 1 for single input).
-- `update` and `delete` returns `None`.
-- `delete_async` returns the BulkDelete async job ID.
-- Passing a list of payloads to `create` triggers bulk create and returns `list[str]` of IDs.
-- `get` supports single record retrieval with record id or paging through result sets (prefer `select` to limit columns).
-- For CRUD methods that take a record id, pass the GUID string (36-char hyphenated). Parentheses around the GUID are accepted but not required.
-* SQL queries are executed directly against entity set endpoints using the `?sql=` parameter. Supported subset only (single SELECT, optional WHERE/TOP/ORDER BY, alias). Unsupported constructs will be rejected by the service.
+### Basic CRUD operations
 
-### Pandas helpers
+```python
+# Create a record
+account_ids = client.create("account", {"name": "Contoso Ltd"})
+account_id = account_ids[0]
 
-`PandasODataClient` is a thin wrapper around the low-level client. All methods accept logical (singular) names (e.g. `account`, `new_sampleitem`), not entity set (plural) names. See `examples/quickstart_pandas.py` for a DataFrame workflow.
+# Read a record
+account = client.get("account", account_id)
+print(account["name"])
 
-VS Code Tasks
-- Install deps: `Install deps (pip)`
-- Run example: `Run Quickstart (Dataverse SDK)`
+# Update a record
+client.update("account", account_id, {"telephone1": "555-0199"})
 
-## Limitations / Future Work
-- No general-purpose OData batching, upsert, or association operations yet.
-- Minimal retry policy in library (network-error only); examples include additional backoff for transient Dataverse consistency.
+# Delete a record
+client.delete("account", account_id)
+```
+
+### Bulk operations
+
+```python
+# Bulk create
+payloads = [
+    {"name": "Company A"},
+    {"name": "Company B"},
+    {"name": "Company C"}
+]
+ids = client.create("account", payloads)
+
+# Bulk update (broadcast same change to all)
+client.update("account", ids, {"industry": "Technology"})
+
+# Bulk delete
+client.delete("account", ids, use_bulk_delete=True)
+```
+
+### Query data
+
+```python
+# SQL query (read-only)
+results = client.query_sql(
+    "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
+)
+for record in results:
+    print(record["name"])
+
+# OData query with paging
+# Note: filter and expand parameters are case sensitive
+pages = client.get(
+    "account",
+    select=["accountid", "name"],  # select is case-insensitive (automatically lowercased)
+    filter="statecode eq 0",       # filter must use lowercase logical names (not transformed)
+    top=100
+)
+for page in pages:
+    for record in page:
+        print(record["name"])
+
+# Query with navigation property expansion (case-sensitive!)
+pages = client.get(
+    "account",
+    select=["name"],
+    expand=["primarycontactid"],  # Navigation property names are case-sensitive
+    filter="statecode eq 0"       # Column names must be lowercase logical names
+)
+for page in pages:
+    for account in page:
+        contact = account.get("primarycontactid", {})
+        print(f"{account['name']} - Contact: {contact.get('fullname', 'N/A')}")
+```
+
+> **Important**: When using `filter` and `expand` parameters:
+> - **`filter`**: Column names must use exact lowercase logical names (e.g., `"statecode eq 0"`, not `"StateCode eq 0"`)
+> - **`expand`**: Navigation property names are case-sensitive and must match the exact server names
+> - **`select`** and **`orderby`**: Case-insensitive; automatically converted to lowercase
+
+### Table management
+
+```python
+# Create a custom table, including the customization prefix value in the schema names for the table and columns.
+table_info = client.create_table("new_Product", {
+    "new_Code": "string",
+    "new_Price": "decimal", 
+    "new_Active": "bool"
+})
+
+# Create with custom primary column name and solution assignment
+table_info = client.create_table(
+    table_schema_name="new_Product",
+    columns={
+        "new_Code": "string",
+        "new_Price": "decimal"
+    },
+    solution_unique_name="MyPublisher",  # Optional: add to specific solution
+    primary_column_schema_name="new_ProductName"  # Optional: custom primary column (default is "{customization prefix value}_Name")
+)
+
+# Add columns to existing table (columns must include customization prefix value)
+client.create_columns("new_Product", {"new_Category": "string"})
+
+# Remove columns
+client.delete_columns("new_Product", ["new_Category"])
+
+# Clean up
+client.delete_table("new_Product")
+```
+
+> **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`). 
+> This ensures explicit, predictable naming and aligns with Dataverse metadata requirements.
+
+### File operations
+
+```python
+# Upload a file to a record
+client.upload_file(
+    table_schema_name="account",
+    record_id=account_id,
+    file_name_attribute="new_document",
+    path="/path/to/document.pdf"
+)
+```
+
+## Next steps
+
+### More sample code
+
+Explore our comprehensive examples in the [`examples/`](examples/) directory:
+
+**🌱 Getting Started:**
+- **[Installation & Setup](examples/basic/installation_example.py)** - Validate installation and basic usage patterns
+- **[Functional Testing](examples/basic/functional_testing.py)** - Test core functionality in your environment
+
+**🚀 Advanced Usage:**
+- **[Complete Walkthrough](examples/advanced/complete_walkthrough.py)** - Full feature demonstration with production patterns  
+- **[File Upload](examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
+- **[Pandas Integration](examples/advanced/pandas_integration.py)** - DataFrame-based operations for data analysis
+
+📖 See the [examples README](examples/README.md) for detailed guidance and learning progression.
+
+### Additional documentation
+
+For comprehensive information on Microsoft Dataverse and related technologies:
+
+| Resource | Description |
+|----------|-------------|
+| **[Dataverse Developer Guide](https://learn.microsoft.com/power-apps/developer/data-platform/)** | Complete developer documentation for Microsoft Dataverse |
+| **[Dataverse Web API Reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/)** | Detailed Web API reference and examples |  
+| **[Azure Identity for Python](https://learn.microsoft.com/python/api/overview/azure/identity-readme)** | Authentication library documentation and credential types |
+| **[Power Platform Developer Center](https://learn.microsoft.com/power-platform/developer/)** | Broader Power Platform development resources |
+| **[Dataverse SDK for .NET](https://learn.microsoft.com/power-apps/developer/data-platform/org-service/overview)** | Official .NET SDK for Microsoft Dataverse |
+
+## Troubleshooting
+
+### General
+
+The client raises structured exceptions for different error scenarios:
+
+```python
+from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+
+try:
+    client.get("account", "invalid-id")
+except HttpError as e:
+    print(f"HTTP {e.status_code}: {e.message}")
+    print(f"Error code: {e.code}")
+    print(f"Subcode: {e.subcode}")
+    if e.is_transient:
+        print("This error may be retryable")
+except ValidationError as e:
+    print(f"Validation error: {e.message}")
+```
+
+### Authentication issues
+
+**Common fixes:** 
+- Verify environment URL format: `https://yourorg.crm.dynamics.com` (no trailing slash)
+- Ensure Azure Identity credentials have proper Dataverse permissions  
+- Check app registration permissions are granted and admin-consented
+
+### Performance considerations
+
+For optimal performance in production environments:
+
+| Best Practice | Description |
+|---------------|-------------|
+| **Bulk Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
+| **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
+| **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
+| **Connection Reuse** | Reuse `DataverseClient` instances across operations |
+| **Production Credentials** | Use `ClientSecretCredential` or `ClientCertificateCredential` for unattended operations |
+| **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |
+
+### Limitations
+
+- SQL queries are **read-only** and support a limited subset of SQL syntax
+- Create Table supports a limited number of column types.
+- Creating relationships between tables is not yet supported.
+- File uploads are limited by Dataverse file size restrictions (default 128MB per file)
+- Custom table creation requires appropriate security privileges in the target environment
+- Rate limits apply based on your Power Platform license and environment configuration
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+This project welcomes contributions and suggestions.  Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general). Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party's policies.

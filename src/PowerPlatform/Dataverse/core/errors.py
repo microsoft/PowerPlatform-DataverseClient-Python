@@ -1,6 +1,17 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+"""
+Structured Dataverse exception hierarchy.
+
+This module provides :class:`~PowerPlatform.Dataverse.core.errors.DataverseError` and
+specialized :class:`~PowerPlatform.Dataverse.core.errors.ValidationError`,
+:class:`~PowerPlatform.Dataverse.core.errors.MetadataError`,
+:class:`~PowerPlatform.Dataverse.core.errors.SQLParseError`, and
+:class:`~PowerPlatform.Dataverse.core.errors.HttpError` for validation, metadata,
+SQL parsing, and Web API HTTP failures.
+"""
+
 from __future__ import annotations
 from typing import Any, Dict, Optional
 import datetime as _dt
@@ -10,24 +21,23 @@ class DataverseError(Exception):
     Base structured exception for the Dataverse SDK.
 
     :param message: Human-readable error message.
-    :type message: str
+    :type message: ``str``
     :param code: Error category code (e.g. ``"validation_error"``, ``"http_error"``).
-    :type code: str
+    :type code: ``str``
     :param subcode: Optional subcategory or specific error identifier.
-    :type subcode: str or None
+    :type subcode: ``str`` | ``None``
     :param status_code: Optional HTTP status code if the error originated from an HTTP response.
-    :type status_code: int or None
+    :type status_code: ``int`` | ``None``
     :param details: Optional dictionary containing additional diagnostic information.
-    :type details: dict or None
+    :type details: ``dict`` | ``None``
     :param source: Error source, either ``"client"`` or ``"server"``.
-    :type source: str
+    :type source: ``str``
     :param is_transient: Whether the error is potentially transient and may succeed on retry.
-    :type is_transient: bool
+    :type is_transient: ``bool``
     """
     def __init__(
         self,
         message: str,
-        *,
         code: str,
         subcode: Optional[str] = None,
         status_code: Optional[int] = None,
@@ -43,14 +53,14 @@ class DataverseError(Exception):
         self.details = details or {}
         self.source = source or "client"
         self.is_transient = is_transient
-        self.timestamp = _dt.datetime.utcnow().isoformat() + "Z"
+        self.timestamp = _dt.datetime.now(_dt.timezone.utc).isoformat().replace('+00:00', 'Z')
 
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert the error to a dictionary representation.
 
         :return: Dictionary containing all error properties.
-        :rtype: dict
+        :rtype: ``dict``
         """
         return {
             "message": self.message,
@@ -71,11 +81,11 @@ class ValidationError(DataverseError):
     Exception raised for client-side validation failures.
 
     :param message: Human-readable validation error message.
-    :type message: str
+    :type message: ``str``
     :param subcode: Optional specific validation error identifier.
-    :type subcode: str or None
+    :type subcode: ``str`` | ``None``
     :param details: Optional dictionary with additional validation context.
-    :type details: dict or None
+    :type details: ``dict`` | ``None``
     """
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="validation_error", subcode=subcode, details=details, source="client")
@@ -85,11 +95,11 @@ class MetadataError(DataverseError):
     Exception raised for metadata operation failures.
 
     :param message: Human-readable metadata error message.
-    :type message: str
+    :type message: ``str``
     :param subcode: Optional specific metadata error identifier.
-    :type subcode: str or None
+    :type subcode: ``str`` | ``None``
     :param details: Optional dictionary with additional metadata context.
-    :type details: dict or None
+    :type details: ``dict`` | ``None``
     """
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="metadata_error", subcode=subcode, details=details, source="client")
@@ -99,11 +109,11 @@ class SQLParseError(DataverseError):
     Exception raised for SQL query parsing failures.
 
     :param message: Human-readable SQL parsing error message.
-    :type message: str
+    :type message: ``str``
     :param subcode: Optional specific SQL parsing error identifier.
-    :type subcode: str or None
+    :type subcode: ``str`` | ``None``
     :param details: Optional dictionary with SQL query context and parse information.
-    :type details: dict or None
+    :type details: ``dict`` | ``None``
     """
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="sql_parse_error", subcode=subcode, details=details, source="client")
@@ -113,27 +123,27 @@ class HttpError(DataverseError):
     Exception raised for HTTP request failures from the Dataverse Web API.
 
     :param message: Human-readable HTTP error message, typically from the API error response.
-    :type message: str
+    :type message: ``str``
     :param status_code: HTTP status code (e.g. 400, 404, 500).
-    :type status_code: int
+    :type status_code: ``int``
     :param is_transient: Whether the error is transient (429, 503, 504) and may succeed on retry.
-    :type is_transient: bool
+    :type is_transient: ``bool``
     :param subcode: Optional HTTP status category (e.g. ``"4xx"``, ``"5xx"``).
-    :type subcode: str or None
+    :type subcode: ``str`` | ``None``
     :param service_error_code: Optional Dataverse-specific error code from the API response.
-    :type service_error_code: str or None
+    :type service_error_code: ``str`` | ``None``
     :param correlation_id: Optional correlation ID for tracking requests across services.
-    :type correlation_id: str or None
+    :type correlation_id: ``str`` | ``None``
     :param request_id: Optional request ID from the API response headers.
-    :type request_id: str or None
+    :type request_id: ``str`` | ``None``
     :param traceparent: Optional W3C trace context for distributed tracing.
-    :type traceparent: str or None
+    :type traceparent: ``str`` | ``None``
     :param body_excerpt: Optional excerpt of the response body for diagnostics.
-    :type body_excerpt: str or None
+    :type body_excerpt: ``str`` | ``None``
     :param retry_after: Optional number of seconds to wait before retrying (from Retry-After header).
-    :type retry_after: int or None
+    :type retry_after: ``int`` | ``None``
     :param details: Optional additional diagnostic details.
-    :type details: dict or None
+    :type details: ``dict`` | ``None``
     """
     def __init__(
         self,

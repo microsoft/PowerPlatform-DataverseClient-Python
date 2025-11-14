@@ -1,49 +1,98 @@
-# Dataverse SDK Examples
+# PowerPlatform Dataverse Client Examples
 
-This directory contains comprehensive examples demonstrating how to use the Microsoft Dataverse SDK for Python.
+This directory contains comprehensive examples demonstrating how to use the **PowerPlatform-Dataverse-Client** SDK for Python. The examples are organized in a progressive learning path: **Install → Learn → Test**.
+
+## 📦 Installation
+
+Install the PowerPlatform Dataverse Client SDK:
+
+```bash
+pip install PowerPlatform-Dataverse-Client
+```
 
 ## 📁 Directory Structure
 
 ### 🌱 Basic Examples (`basic/`)
-Get started quickly with fundamental Dataverse operations:
-- **`quickstart.py`** - Basic client setup, authentication, and simple CRUD operations
-- Authentication setup with Azure Identity
-- Creating, reading, updating, and deleting records
-- Basic error handling
+Start here for getting up and running with the SDK:
 
-### 🚀 Advanced Examples (`advanced/`)
-Explore powerful features for complex scenarios:
-- **`file_upload.py`** - File upload to Dataverse file columns with chunking
-- **`pandas_integration.py`** - DataFrame-based operations for data analysis
+- **`installation_example.py`** - **START HERE** 🎯
+  - Package installation validation and import verification
+  - Method availability checking and troubleshooting
+  - Basic usage examples and code patterns  
+  - Optional interactive testing with real environment
+  - Perfect for first-run validation after installation
+
+- **`functional_testing.py`** - **TEST BASIC FUNCTIONALITY** 🧪
+  - Simple functional testing in real Dataverse environments
+  - Basic CRUD operations validation with clean patterns
+  - Table creation and basic querying tests
+  - Interactive cleanup and straightforward validation
+  - Perfect for verifying SDK works in your environment
+
+### 🔬 Advanced Examples (`advanced/`)
+Deep-dive into production-ready patterns and specialized functionality:
+
+- **`complete_walkthrough.py`** - **COMPREHENSIVE DEMO** 🚀  
+  - Full SDK feature demonstration with production-ready patterns
+  - Table creation with custom schemas and enums
+  - Single and bulk CRUD operations with error handling
+  - Advanced querying (SQL and OData) with paging
+  - Column metadata management and multi-language support  
+  - Interactive cleanup and best practices
+
+- **`file_upload.py`** - **FILE OPERATIONS** 📎
+  - File upload to Dataverse file columns with chunking
+  - Advanced file handling patterns
+
+- **`pandas_integration.py`** - **DATA ANALYSIS** 📊  
+  - DataFrame-based operations for data analysis
+  - Pandas integration patterns
 
 ## 🚀 Getting Started
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Follow this recommended progression for the best learning experience:
 
-2. **Set Up Authentication**:
-   Configure Azure Identity credentials (see individual examples for details)
+### 📋 Step 1: Validate Installation
+```bash
+# Install the SDK and dependencies
+pip install PowerPlatform-Dataverse-Client azure-identity
 
-3. **Run Basic Example**:
-   ```bash
-   python examples/basic/quickstart.py
-   ```
+# Validate installation and imports
+python examples/basic/installation_example.py
+```
+
+### 🧪 Step 2: Test Basic Functionality (Optional)
+```bash
+# Basic functional testing in your environment
+python examples/basic/functional_testing.py
+```
+
+### 🚀 Step 3: Master Advanced Features
+```bash
+# Comprehensive walkthrough with production patterns
+python examples/advanced/complete_walkthrough.py
+```
+
+## 🎯 Quick Start Recommendations
+
+- **New to the SDK?** → Start with `examples/basic/installation_example.py`
+- **Need to test/validate?** → Use `examples/basic/functional_testing.py`  
+- **Want to see all features?** → Run `examples/advanced/complete_walkthrough.py`
+- **Building production apps?** → Study patterns in `examples/advanced/complete_walkthrough.py`
 
 ## 📋 Prerequisites
 
-- Python 3.8+
+- Python 3.10+
+- PowerPlatform-Dataverse-Client SDK installed (`pip install PowerPlatform-Dataverse-Client`)
 - Azure Identity credentials configured
 - Access to a Dataverse environment
-- Required packages installed from `requirements.txt`
 
 ## 🔒 Authentication
 
 All examples use Azure Identity for authentication. Common patterns:
-- `DefaultAzureCredential` for development
-- `ClientSecretCredential` for production services
-- `InteractiveBrowserCredential` for interactive scenarios
+- `InteractiveBrowserCredential` for development and interactive scenarios
+- `DeviceCodeCredential` for development on headless systems
+- `ClientSecretCredential` for production services with service principals
 
 ## 📖 Documentation
 

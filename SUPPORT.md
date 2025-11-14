@@ -1,25 +1,27 @@
-# TODO: The maintainer of this repo has not yet edited this file
-
-**REPO OWNER**: Do you want Customer Service & Support (CSS) support for this product/project?
-
-- **No CSS support:** Fill out this template with information about how to file issues and get help.
-- **Yes CSS support:** Fill out an intake form at [aka.ms/onboardsupport](https://aka.ms/onboardsupport). CSS will work with/help you to determine next steps.
-- **Not sure?** Fill out an intake as though the answer were "Yes". CSS will help you decide.
-
-*Then remove this first heading from this SUPPORT.MD file before publishing your repo.*
-
 # Support
 
-## How to file issues and get help  
+## How to file issues and get help
 
 This project uses GitHub Issues to track bugs and feature requests. Please search the existing 
-issues before filing new issues to avoid duplicates.  For new issues, file your bug or 
+issues before filing new issues to avoid duplicates. For new issues, file your bug or 
 feature request as a new Issue.
 
-For help and questions about using this project, please **REPO MAINTAINER: INSERT INSTRUCTIONS HERE 
-FOR HOW TO ENGAGE REPO OWNERS OR COMMUNITY FOR HELP. COULD BE A STACK OVERFLOW TAG OR OTHER
-CHANNEL. WHERE WILL YOU HELP PEOPLE?**.
+### Getting Help
 
-## Microsoft Support Policy  
+For help and questions about using the Microsoft Dataverse SDK for Python:
 
-Support for this **PROJECT or PRODUCT** is limited to the resources listed above.
+- **Documentation**: Check the [README](README.md) for quickstart guides and examples
+- **GitHub Issues**: [File an issue](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/issues) for bugs or feature requests
+
+### Reporting Security Issues
+
+Security issues should be reported privately via the [Microsoft Security Response Center (MSRC)](https://aka.ms/opensource/security/msrc) or by emailing [secure@microsoft.com](mailto:secure@microsoft.com). Please do not report security vulnerabilities through public GitHub issues.
+
+## Microsoft Support Policy
+
+This is a community-supported project. Support for the Microsoft Dataverse SDK for Python is provided on a best-effort basis through:
+
+- Community contributions via GitHub Issues and Pull Requests
+- Documentation and examples in this repository
+
+This project is not covered by Microsoft's standard product support services. For issues with Microsoft Dataverse itself (not this SDK), please use the official Microsoft support channels.

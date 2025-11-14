@@ -10,7 +10,7 @@ that can be used across all test modules.
 
 import pytest
 from unittest.mock import Mock
-from dataverse_sdk.core.config import DataverseConfig
+from PowerPlatform.Dataverse.core.config import DataverseConfig
 
 
 @pytest.fixture

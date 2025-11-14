@@ -1,11 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""File upload helpers separated from core OData client.
-
-Provide a mixin class `ODataFileUploadMixin` so these methods can be reused without
-duplicating logic inside the main `odata.py` file.
-"""
+"""File upload helpers."""
 
 from __future__ import annotations
 
@@ -13,14 +9,7 @@ from typing import Optional
 
 
 class ODataFileUpload:
-    """Mixin adding file upload capabilities (small + chunk) with auto selection.
-
-    Expects the host client to implement:
-        - self.api : str base url (e.g. https://org.crm.dynamics.com/api/data/v9.2)
-        - self._headers() -> dict[str,str]
-        - self._request(method, url, **kwargs)
-        - self._format_key(key: str) -> str
-    """
+    """File upload capabilities (small + chunk) with auto selection."""
 
     def upload_file(
         self,
@@ -36,19 +25,19 @@ class ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : str
+        entity_set : ``str``
             Target entity set (plural logical name), e.g. "accounts".
-        record_id : str
+        record_id : ``str``
             GUID of the target record.
-        file_name_attribute : str
+        file_name_attribute : ``str``
             Logical name of the file column attribute
-        path : str
+        path : ``str``
             Local filesystem path to the file.
-        mode : str | None
+        mode : ``str`` | ``None``
             Upload strategy: "auto" (default), "small", or "chunk".
-        mime_type : str | None
+        mime_type : ``str`` | ``None``
             Explicit MIME type. If omitted falls back to application/octet-stream.
-        if_none_match : bool
+        if_none_match : ``bool``
             When True (default) only succeeds if column empty. When False overwrites (If-Match: *).
         """
         import os
@@ -123,20 +112,20 @@ class ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : str
+        entity_set : ``str``
             Target entity set (plural logical name), e.g. "accounts".
-        record_id : str
+        record_id : ``str``
             GUID of the target record.
-        file_name_attribute : str
+        file_name_attribute : ``str``
             Logical name of the file column attribute.
-        path : str
+        path : ``str``
             Local filesystem path to the file.
-        if_none_match : bool
+        if_none_match : ``bool``
             When True sends ``If-None-Match: null`` to only succeed if the column is currently empty.
             Set False to always overwrite (uses ``If-Match: *``).
         Returns
         -------
-        None
+        ``None``
             Returns nothing on success. Any failure raises an exception.
         """
         import os, math

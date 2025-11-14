@@ -3,6 +3,14 @@
 
 from __future__ import annotations
 
+"""
+Dataverse client configuration.
+
+Provides :class:`~PowerPlatform.Dataverse.core.config.DataverseConfig`, a lightweight
+immutable container for locale and (reserved) HTTP tuning options plus the
+convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseConfig.from_env`.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -13,13 +21,13 @@ class DataverseConfig:
     Configuration settings for Dataverse client operations.
 
     :param language_code: LCID (Locale ID) for localized labels and messages. Default is 1033 (English - United States).
-    :type language_code: int
+    :type language_code: ``int``
     :param http_retries: Optional maximum number of retry attempts for transient HTTP errors. Reserved for future use.
-    :type http_retries: int or None
+    :type http_retries: ``int`` | ``None``
     :param http_backoff: Optional backoff multiplier (in seconds) between retry attempts. Reserved for future use.
-    :type http_backoff: float or None
+    :type http_backoff: ``float`` | ``None``
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
-    :type http_timeout: float or None
+    :type http_timeout: ``float`` | ``None``
     """
     language_code: int = 1033
 
@@ -34,7 +42,7 @@ class DataverseConfig:
         Create a configuration instance with default settings.
 
         :return: Configuration instance with default values.
-        :rtype: ~dataverse_sdk.config.DataverseConfig
+        :rtype: ~PowerPlatform.Dataverse.core.config.DataverseConfig
         """
         # Environment-free defaults
         return cls(
