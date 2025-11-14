@@ -79,9 +79,6 @@ def validate_imports():
         from PowerPlatform.Dataverse.core.config import DataverseConfig
         print(f"  ✅ Core config: DataverseConfig")
         
-        from PowerPlatform.Dataverse.utils.pandas_adapter import PandasODataClient
-        print(f"  ✅ Utils: PandasODataClient")
-        
         from PowerPlatform.Dataverse.data.odata import ODataClient
         print(f"  ✅ Data layer: ODataClient")
         

@@ -23,9 +23,6 @@ All notable changes to this project will be documented in this file.
 **Table Management:**
 - Table metadata operations (create, inspect, delete custom tables)
 
-**Integration & Analysis:**
-- Pandas DataFrame integration for seamless data analysis workflows
-
 **Reliability & Error Handling:**
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.)
 - HTTP retry logic with exponential backoff for resilient operations
