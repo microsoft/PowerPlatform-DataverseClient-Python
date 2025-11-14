@@ -39,7 +39,6 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
-- **🐼 Pandas Integration**: Preliminary DataFrame-oriented operations for data analysis workflows
 
 ## Getting started
 
@@ -264,7 +263,6 @@ Explore our comprehensive examples in the [`examples/`](examples/) directory:
 **🚀 Advanced Usage:**
 - **[Complete Walkthrough](examples/advanced/complete_walkthrough.py)** - Full feature demonstration with production patterns  
 - **[File Upload](examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
-- **[Pandas Integration](examples/advanced/pandas_integration.py)** - DataFrame-based operations for data analysis
 
 📖 See the [examples README](examples/README.md) for detailed guidance and learning progression.
 

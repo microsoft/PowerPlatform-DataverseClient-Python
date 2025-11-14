@@ -32,7 +32,7 @@ Start here for getting up and running with the SDK:
 ### 🔬 Advanced Examples (`advanced/`)
 Deep-dive into production-ready patterns and specialized functionality:
 
-- **`complete_walkthrough.py`** - **COMPREHENSIVE DEMO** 🚀  
+- **`walkthrough.py`** - **COMPREHENSIVE DEMO** 🚀
   - Full SDK feature demonstration with production-ready patterns
   - Table creation with custom schemas and enums
   - Single and bulk CRUD operations with error handling
@@ -44,9 +44,6 @@ Deep-dive into production-ready patterns and specialized functionality:
   - File upload to Dataverse file columns with chunking
   - Advanced file handling patterns
 
-- **`pandas_integration.py`** - **DATA ANALYSIS** 📊  
-  - DataFrame-based operations for data analysis
-  - Pandas integration patterns
 
 ## 🚀 Getting Started
 
