@@ -24,8 +24,8 @@ extends:
     - stage: Build
       jobs:
       - job: Python
-# Simplified to single Python version (per project requirements)
-# Can expand to matrix testing later if needed
+        # Simplified to single Python version (per project requirements)
+        # Can expand to matrix testing later if needed
         
         steps:
         - task: UsePythonVersion@0
