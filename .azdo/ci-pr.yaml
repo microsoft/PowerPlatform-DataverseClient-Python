@@ -22,7 +22,7 @@ steps:
 - script: |
     python -m pip install --upgrade pip
     python -m pip install flake8 black build
-    if [ -f dev_dependencies.txt ]; then pip install -r dev_dependencies.txt; fi
+    python -m pip install -e .[dev]
   displayName: 'Install dependencies'
 
 - script: |
