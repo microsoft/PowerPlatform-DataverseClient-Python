@@ -2,11 +2,11 @@
 # Licensed under the MIT license.
 
 import pytest
-from PowerPlatform.Dataverse._data.odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import ODataClient
 
 
 class DummyAuth:
-    def acquire_token(self, scope):
+    def _acquire_token(self, scope):
         class T:
             access_token = "x"  # no real token needed for parsing tests
 

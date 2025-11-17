@@ -4,9 +4,9 @@
 """
 Dataverse client configuration.
 
-Provides :class:`~PowerPlatform.Dataverse._core.config.DataverseConfig`, a lightweight
+Provides :class:`~PowerPlatform.Dataverse.core.config.DataverseConfig`, a lightweight
 immutable container for locale and (reserved) HTTP tuning options plus the
-convenience constructor :meth:`~PowerPlatform.Dataverse._core.config.DataverseConfig.from_env`.
+convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseConfig.from_env`.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class DataverseConfig:
         Create a configuration instance with default settings.
 
         :return: Configuration instance with default values.
-        :rtype: ~PowerPlatform.Dataverse._core.config.DataverseConfig
+        :rtype: ~PowerPlatform.Dataverse.core.config.DataverseConfig
         """
         # Environment-free defaults
         return cls(

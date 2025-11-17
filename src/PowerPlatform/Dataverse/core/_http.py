@@ -42,7 +42,7 @@ class HttpClient:
         self.base_delay = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
 
-    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """
         Execute an HTTP request with automatic retry logic and timeout management.
 

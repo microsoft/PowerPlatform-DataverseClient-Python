@@ -31,7 +31,7 @@ from datetime import datetime
 
 # Import SDK components (assumes installation is already validated)
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse._core.errors import HttpError, MetadataError
+from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 from azure.identity import InteractiveBrowserCredential
 
 

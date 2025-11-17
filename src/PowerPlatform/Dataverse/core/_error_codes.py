@@ -77,7 +77,7 @@ HTTP_STATUS_TO_SUBCODE: dict[int, str] = {
 TRANSIENT_STATUS = {429, 502, 503, 504}
 
 
-def http_subcode(status: int) -> str:
+def _http_subcode(status: int) -> str:
     """
     Convert HTTP status code to error subcode string.
 
@@ -89,7 +89,7 @@ def http_subcode(status: int) -> str:
     return HTTP_STATUS_TO_SUBCODE.get(status, f"http_{status}")
 
 
-def is_transient_status(status: int) -> bool:
+def _is_transient_status(status: int) -> bool:
     """
     Check if an HTTP status code indicates a transient error that may succeed on retry.
 

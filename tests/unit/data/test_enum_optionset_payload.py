@@ -4,11 +4,11 @@
 import pytest
 from enum import Enum, IntEnum
 
-from PowerPlatform.Dataverse._data.odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import ODataClient
 
 
 class DummyAuth:
-    def acquire_token(self, scope):  # pragma: no cover - simple stub
+    def _acquire_token(self, scope):  # pragma: no cover - simple stub
         class T:
             access_token = "token"
 

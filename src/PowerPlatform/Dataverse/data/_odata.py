@@ -14,12 +14,12 @@ import json
 from datetime import datetime, timezone
 import importlib.resources as ir
 
-from .._core.http import HttpClient
-from .upload import ODataFileUpload
-from .._core.errors import *
-from .._core.error_codes import (
-    http_subcode,
-    is_transient_status,
+from ..core._http import HttpClient
+from ._upload import ODataFileUpload
+from ..core.errors import *
+from ..core._error_codes import (
+    _http_subcode,
+    _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
     METADATA_ENTITYSET_NOT_FOUND,
@@ -81,12 +81,12 @@ class ODataClient(ODataFileUpload):
 
         Sets up authentication, base URL, configuration, and internal caches.
 
-        :param auth: Authentication manager providing ``acquire_token(scope)`` that returns an object with ``access_token``.
-        :type auth: ~PowerPlatform.Dataverse._core.auth.AuthManager
+        :param auth: Authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
+        :type auth: ~PowerPlatform.Dataverse.core._auth.AuthManager
         :param base_url: Organization base URL (e.g. ``"https://<org>.crm.dynamics.com"``).
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
-        :type config: ~PowerPlatform.Dataverse._core.config.DataverseConfig | ``None``
+        :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -97,7 +97,7 @@ class ODataClient(ODataFileUpload):
         self.config = (
             config
             or __import__(
-                "PowerPlatform.Dataverse._core.config", fromlist=["DataverseConfig"]
+                "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
             ).DataverseConfig.from_env()
         )
         self._http = HttpClient(
@@ -116,7 +116,7 @@ class ODataClient(ODataFileUpload):
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
-        token = self.auth.acquire_token(scope).access_token
+        token = self.auth._acquire_token(scope).access_token
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -135,7 +135,7 @@ class ODataClient(ODataFileUpload):
         return merged
 
     def _raw_request(self, method: str, url: str, **kwargs):
-        return self._http.request(method, url, **kwargs)
+        return self._http._request(method, url, **kwargs)
 
     def _request(self, method: str, url: str, *, expected: tuple[int, ...] = (200, 201, 202, 204), **kwargs):
         headers_in = kwargs.pop("headers", None)
@@ -163,7 +163,7 @@ class ODataClient(ODataFileUpload):
         except Exception:
             pass
         sc = r.status_code
-        subcode = http_subcode(sc)
+        subcode = _http_subcode(sc)
         correlation_id = headers.get("x-ms-correlation-request-id") or headers.get("x-ms-correlation-id")
         request_id = (
             headers.get("x-ms-client-request-id") or headers.get("request-id") or headers.get("x-ms-request-id")
@@ -176,7 +176,7 @@ class ODataClient(ODataFileUpload):
                 retry_after = int(ra)
             except Exception:
                 retry_after = None
-        is_transient = is_transient_status(sc)
+        is_transient = _is_transient_status(sc)
         raise HttpError(
             msg,
             status_code=sc,

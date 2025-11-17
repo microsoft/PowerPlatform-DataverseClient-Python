@@ -11,7 +11,7 @@ from typing import Optional
 class ODataFileUpload:
     """File upload capabilities (small + chunk) with auto selection."""
 
-    def upload_file(
+    def _upload_file(
         self,
         entity_set: str,
         record_id: str,
