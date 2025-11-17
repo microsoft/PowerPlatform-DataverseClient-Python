@@ -109,6 +109,8 @@ class ODataClient(ODataFileUpload):
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
+        # Cache: logical name -> whether the table is elastic
+        self._elastic_table_cache: dict[str, bool] = {}
         # Picklist label cache: (normalized_table_schema_name, normalized_attribute) -> {'map': {...}, 'ts': epoch_seconds}
         self._picklist_label_cache = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
@@ -343,25 +345,47 @@ class ODataClient(ODataFileUpload):
         self._update_multiple(entity_set, table_schema_name, batch)
         return None
 
-    def _delete_multiple(
+    def _delete_multiple(self, table_schema_name: str, ids: List[str]) -> None:
+        """Delete records using the collection-bound ``DeleteMultiple`` action.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param ids: GUIDs for the records to remove.
+        :type ids: ``list[str]``
+        :return: ``None``; the service does not return a representation.
+        :rtype: ``None``
+        """
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        pk_attr = self._primary_id_attr(table_schema_name)
+        logical_name = table_schema_name.lower()
+        targets: List[Dict[str, Any]] = []
+        for rid in ids:
+            targets.append({
+                "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}",
+                pk_attr: rid,
+            })
+        payload = {"Targets": targets}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.DeleteMultiple"
+        self._request("post", url, json=payload)
+        return None
+
+    def _delete_async(
         self,
         table_schema_name: str,
         ids: List[str],
-    ) -> Optional[str]:
+    ) -> str:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
         :return: BulkDelete asynchronous job identifier when executed in bulk; ``None`` if no IDs provided or single deletes performed.
         :rtype: ``str`` | ``None``
         """
-        targets = [rid for rid in ids if rid]
-        if not targets:
-            return None
-        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in targets]
+        noop_job_id = "00000000-0000-0000-0000-000000000000"
+        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in ids]
 
         pk_attr = self._primary_id_attr(table_schema_name)
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -405,15 +429,16 @@ class ODataClient(ODataFileUpload):
         url = f"{self.api}/BulkDelete"
         response = self._request("post", url, json=payload, expected=(200, 202, 204))
 
-        job_id = None
         try:
             body = response.json() if response.text else {}
         except ValueError:
             body = {}
         if isinstance(body, dict):
             job_id = body.get("JobId")
+            if isinstance(job_id, str) and job_id.strip():
+                return job_id
 
-        return job_id
+        return noop_job_id
 
     def _format_key(self, key: str) -> str:
         k = key.strip()
@@ -723,6 +748,39 @@ class ODataClient(ODataFileUpload):
         if isinstance(primary_id_attr, str) and primary_id_attr:
             self._logical_primaryid_cache[cache_key] = primary_id_attr
         return es
+
+    def _is_elastic_table(self, table_schema_name: str) -> bool:
+        """Return ``True`` when the target table is elastic."""
+        if not table_schema_name:
+            raise ValueError("table schema name required")
+
+        logical_name = table_schema_name.lower()
+        cached = self._elastic_table_cache.get(logical_name)
+        if cached is not None:
+            return cached
+        url = f"{self.api}/EntityDefinitions"
+        logical_escaped = self._escape_odata_quotes(logical_name)
+        params = {
+            "$select": "LogicalName,TableType",
+            "$filter": f"LogicalName eq '{logical_escaped}'",
+        }
+        r = self._request("get", url, params=params)
+        try:
+            body = r.json()
+            items = body.get("value", []) if isinstance(body, dict) else []
+        except ValueError:
+            items = []
+        is_elastic = False
+        if items:
+            md = items[0]
+            if isinstance(md, dict):
+                table_type = md.get("TableType")
+                if isinstance(table_type, str):
+                    is_elastic = table_type.strip().lower() == "elastic"
+                else:
+                    is_elastic = False
+        self._elastic_table_cache[logical_name] = is_elastic
+        return is_elastic
 
     # ---------------------- Table metadata helpers ----------------------
     def _label(self, text: str) -> Dict[str, Any]:

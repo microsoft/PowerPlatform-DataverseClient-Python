@@ -207,8 +207,7 @@ class DataverseClient:
         self,
         table_schema_name: str,
         ids: Union[str, List[str]],
-        use_bulk_delete: bool = True,
-    ) -> Optional[str]:
+    ) -> None:
         """
         Delete one or more records by GUID.
 
@@ -233,7 +232,7 @@ class DataverseClient:
 
             Delete multiple records::
 
-                job_id = client.delete("account", [id1, id2, id3])
+                client.delete("account", [id1, id2, id3])
         """
         od = self._get_odata()
         if isinstance(ids, str):
@@ -245,11 +244,50 @@ class DataverseClient:
             return None
         if not all(isinstance(rid, str) for rid in ids):
             raise TypeError("ids must contain string GUIDs")
-        if use_bulk_delete:
-            return od._delete_multiple(table_schema_name, ids)
+        if od._is_elastic_table(table_schema_name):
+            od._delete_multiple(table_schema_name, ids)
+            return None
         for rid in ids:
             od._delete(table_schema_name, rid)
         return None
+
+    def delete_async(
+        self,
+        table_schema_name: str,
+        ids: Union[str, List[str]],
+    ) -> str:
+        """
+        Issue an asynchronous BulkDelete job for one or more records.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table_schema_name: ``str``
+        :param ids: Single GUID string or list of GUID strings to delete.
+        :type ids: ``str`` or ``list[str]``
+
+        :raises TypeError: If ``ids`` is not str or list[str].
+        :raises HttpError: If the BulkDelete request fails.
+
+        :return: BulkDelete job identifier, a dummy if ids is empty.
+        :rtype: str
+
+        Example:
+            Queue a bulk delete::
+
+                job_id = client.delete_async("account", [id1, id2, id3])
+        """
+        od = self._get_odata()
+        if isinstance(ids, str):
+            return od._delete_async(table_schema_name, [ids])
+        elif isinstance(ids, list):
+            if not all(isinstance(rid, str) for rid in ids):
+                raise TypeError("ids must contain string GUIDs")
+            sanitized = [rid.strip() for rid in ids if isinstance(rid, str) and rid.strip()]
+            if not sanitized:
+                noop_bulkdelete_job_id = "00000000-0000-0000-0000-000000000000"
+                return noop_bulkdelete_job_id
+            return od._delete_async(table_schema_name, sanitized)
+        else:
+            raise TypeError("ids must be str or list[str]")
 
     def get(
         self,
