@@ -162,7 +162,7 @@ class DataverseClient:
         :param table_schema_name:  Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
             :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to update.
-            :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: :class:`str` or :class:`list` of :class:`str`
         :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
             for paired mode. When ``ids`` is a list and ``changes`` is a single dict,
             the same changes are broadcast to all records. When both are lists, they must
