@@ -4,7 +4,7 @@
 import pytest
 from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.core._error_codes import HTTP_404, HTTP_429, HTTP_500
-from PowerPlatform.Dataverse.data._odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
 class DummyAuth:
@@ -49,7 +49,7 @@ class DummyHTTP:
         return r
 
 
-class MockClient(ODataClient):
+class MockClient(_ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTP(responses)

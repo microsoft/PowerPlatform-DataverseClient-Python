@@ -3,7 +3,7 @@
 
 import types
 import pytest
-from PowerPlatform.Dataverse.data._odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import _ODataClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 
 
@@ -43,7 +43,7 @@ class DummyHTTPClient:
         return resp
 
 
-class MockableClient(ODataClient):
+class MockableClient(_ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTPClient(responses)

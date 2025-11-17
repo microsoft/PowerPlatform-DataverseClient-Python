@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 import pytest
-from PowerPlatform.Dataverse.data._odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
 class DummyAuth:
@@ -14,7 +14,7 @@ class DummyAuth:
 
 
 def _client():
-    return ODataClient(DummyAuth(), "https://org.example", None)
+    return _ODataClient(DummyAuth(), "https://org.example", None)
 
 
 def test_basic_from():

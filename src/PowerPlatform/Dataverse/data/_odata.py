@@ -14,8 +14,8 @@ import json
 from datetime import datetime, timezone
 import importlib.resources as ir
 
-from ..core._http import HttpClient
-from ._upload import ODataFileUpload
+from ..core._http import _HttpClient
+from ._upload import _ODataFileUpload
 from ..core.errors import *
 from ..core._error_codes import (
     _http_subcode,
@@ -37,7 +37,7 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
-class ODataClient(ODataFileUpload):
+class _ODataClient(_ODataFileUpload):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     @staticmethod
@@ -82,7 +82,7 @@ class ODataClient(ODataFileUpload):
         Sets up authentication, base URL, configuration, and internal caches.
 
         :param auth: Authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
-        :type auth: ~PowerPlatform.Dataverse.core._auth.AuthManager
+        :type auth: ~PowerPlatform.Dataverse.core._auth._AuthManager
         :param base_url: Organization base URL (e.g. ``"https://<org>.crm.dynamics.com"``).
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
@@ -100,7 +100,7 @@ class ODataClient(ODataFileUpload):
                 "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
             ).DataverseConfig.from_env()
         )
-        self._http = HttpClient(
+        self._http = _HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,

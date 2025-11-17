@@ -4,7 +4,7 @@
 """
 HTTP client with automatic retry logic and timeout handling.
 
-This module provides :class:`~PowerPlatform.Dataverse.core._http.HttpClient`, a wrapper
+This module provides :class:`~PowerPlatform.Dataverse.core._http._HttpClient`, a wrapper
 around the requests library that adds configurable retry behavior for transient
 network errors and intelligent timeout management based on HTTP method types.
 """
@@ -17,7 +17,7 @@ from typing import Any, Optional
 import requests
 
 
-class HttpClient:
+class _HttpClient:
     """
     HTTP client with configurable retry logic and timeout handling.
 

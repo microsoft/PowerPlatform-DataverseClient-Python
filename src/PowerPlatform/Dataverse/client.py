@@ -7,9 +7,9 @@ from typing import Any, Dict, Optional, Union, List, Iterable
 
 from azure.core.credentials import TokenCredential
 
-from .core._auth import AuthManager
+from .core._auth import _AuthManager
 from .core.config import DataverseConfig
-from .data._odata import ODataClient
+from .data._odata import _ODataClient
 
 
 class DataverseClient:
@@ -18,7 +18,7 @@ class DataverseClient:
 
     This client provides a simple, stable interface for interacting with Dataverse environments
     through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
-    to an internal :class:`~PowerPlatform.Dataverse.data._odata.ODataClient`.
+    to an internal :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`.
 
     Key capabilities:
         - OData CRUD operations: create, read, update, delete records
@@ -74,14 +74,14 @@ class DataverseClient:
         credential: TokenCredential,
         config: Optional[DataverseConfig] = None,
     ) -> None:
-        self.auth = AuthManager(credential)
+        self.auth = _AuthManager(credential)
         self._base_url = (base_url or "").rstrip("/")
         if not self._base_url:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
-        self._odata: Optional[ODataClient] = None
+        self._odata: Optional[_ODataClient] = None
 
-    def _get_odata(self) -> ODataClient:
+    def _get_odata(self) -> _ODataClient:
         """
         Get or create the internal OData client instance.
 
@@ -89,10 +89,10 @@ class DataverseClient:
         deferring construction until the first API call.
 
         :return: The lazily-initialized low-level client used to perform HTTP requests.
-        :rtype: ~PowerPlatform.Dataverse.data._odata.ODataClient
+        :rtype: ~PowerPlatform.Dataverse.data._odata._ODataClient
         """
         if self._odata is None:
-            self._odata = ODataClient(
+            self._odata = _ODataClient(
                 self.auth,
                 self._base_url,
                 self._config,

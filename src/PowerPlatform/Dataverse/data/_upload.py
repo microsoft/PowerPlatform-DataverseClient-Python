@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional
 
 
-class ODataFileUpload:
+class _ODataFileUpload:
     """File upload capabilities (small + chunk) with auto selection."""
 
     def _upload_file(

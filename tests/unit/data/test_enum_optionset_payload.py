@@ -4,7 +4,7 @@
 import pytest
 from enum import Enum, IntEnum
 
-from PowerPlatform.Dataverse.data._odata import ODataClient
+from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
 class DummyAuth:
@@ -16,18 +16,18 @@ class DummyAuth:
 
 
 class DummyConfig:
-    """Minimal config stub providing attributes ODataClient.__init__ expects."""
+    """Minimal config stub providing attributes _ODataClient.__init__ expects."""
 
     def __init__(self, language_code=1033):
         self.language_code = language_code
-        # HTTP settings referenced during ODataClient construction
+        # HTTP settings referenced during _ODataClient construction
         self.http_retries = 0
         self.http_backoff = 0
         self.http_timeout = 5
 
 
 def _make_client(lang=1033):
-    return ODataClient(DummyAuth(), "https://org.example", DummyConfig(language_code=lang))
+    return _ODataClient(DummyAuth(), "https://org.example", DummyConfig(language_code=lang))
 
 
 def _labels_for(option):

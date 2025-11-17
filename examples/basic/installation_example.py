@@ -84,9 +84,9 @@ def validate_imports():
 
         print(f"  ✅ Core config: DataverseConfig")
 
-        from PowerPlatform.Dataverse.data._odata import ODataClient
+        from PowerPlatform.Dataverse.data._odata import _ODataClient
 
-        print(f"  ✅ Data layer: ODataClient")
+        print(f"  ✅ Data layer: _ODataClient")
 
         # Test Azure Identity import
         from azure.identity import InteractiveBrowserCredential

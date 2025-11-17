@@ -4,8 +4,8 @@
 """
 Authentication helpers for Dataverse.
 
-This module provides :class:`~PowerPlatform.Dataverse.core._auth.AuthManager`, a thin wrapper over any Azure Identity
-``TokenCredential`` for acquiring OAuth2 access tokens, and :class:`~PowerPlatform.Dataverse.core._auth.TokenPair` for
+This module provides :class:`~PowerPlatform.Dataverse.core._auth._AuthManager`, a thin wrapper over any Azure Identity
+``TokenCredential`` for acquiring OAuth2 access tokens, and :class:`~PowerPlatform.Dataverse.core._auth._TokenPair` for
 storing the acquired token alongside its scope.
 """
 
@@ -17,7 +17,7 @@ from azure.core.credentials import TokenCredential
 
 
 @dataclass
-class TokenPair:
+class _TokenPair:
     """
     Container for an OAuth2 access token and its associated resource scope.
 
@@ -31,7 +31,7 @@ class TokenPair:
     access_token: str
 
 
-class AuthManager:
+class _AuthManager:
     """
     Azure Identity-based authentication manager for Dataverse.
 
@@ -45,15 +45,15 @@ class AuthManager:
             raise TypeError("credential must implement azure.core.credentials.TokenCredential.")
         self.credential: TokenCredential = credential
 
-    def _acquire_token(self, scope: str) -> TokenPair:
+    def _acquire_token(self, scope: str) -> _TokenPair:
         """
         Acquire an access token for the specified OAuth2 scope.
 
         :param scope: OAuth2 scope string, typically ``"https://<org>.crm.dynamics.com/.default"``.
         :type scope: :class:`str`
         :return: Token pair containing the scope and access token.
-        :rtype: ~PowerPlatform.Dataverse.core._auth.TokenPair
+        :rtype: ~PowerPlatform.Dataverse.core._auth._TokenPair
         :raises ~azure.core.exceptions.ClientAuthenticationError: If token acquisition fails.
         """
         token = self.credential.get_token(scope)
-        return TokenPair(resource=scope, access_token=token.token)
+        return _TokenPair(resource=scope, access_token=token.token)
