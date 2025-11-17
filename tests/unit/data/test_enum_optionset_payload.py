@@ -6,11 +6,14 @@ from enum import Enum, IntEnum
 
 from PowerPlatform.Dataverse.data.odata import ODataClient
 
+
 class DummyAuth:
     def acquire_token(self, scope):  # pragma: no cover - simple stub
         class T:
             access_token = "token"
+
         return T()
+
 
 class DummyConfig:
     """Minimal config stub providing attributes ODataClient.__init__ expects."""
@@ -22,13 +25,16 @@ class DummyConfig:
         self.http_backoff = 0
         self.http_timeout = 5
 
+
 def _make_client(lang=1033):
     return ODataClient(DummyAuth(), "https://org.example", DummyConfig(language_code=lang))
+
 
 def _labels_for(option):
     label = option.get("Label") or {}
     locs = label.get("LocalizedLabels") or []
     return {l.get("LanguageCode"): l.get("Label") for l in locs if isinstance(l, dict)}
+
 
 def test_enum_basic_no_labels_uses_member_names():
     class Basic(IntEnum):
@@ -45,6 +51,7 @@ def test_enum_basic_no_labels_uses_member_names():
         labels = _labels_for(o)
         assert 1033 in labels
         assert labels[1033] in ("One", "Two")
+
 
 def test_enum_with_multilanguage_labels_includes_all():
     class ML(IntEnum):
@@ -73,6 +80,7 @@ def test_enum_with_multilanguage_labels_includes_all():
         got_map = value_to_labels[val]
         assert got_map == exp_map, f"Labels mismatch for value {val}: expected {exp_map}, got {got_map}"
 
+
 def test_missing_translation_falls_back_to_member_name():
     class PartiallyTranslated(IntEnum):
         Alpha = 1
@@ -93,6 +101,7 @@ def test_missing_translation_falls_back_to_member_name():
     assert alpha_labels[1033] == "Alpha"
     assert beta_labels[1033] == "Beta"
 
+
 def test_labels_accept_member_objects_and_names():
     class Mixed(IntEnum):
         A = 1
@@ -108,32 +117,40 @@ def test_labels_accept_member_objects_and_names():
     assert labels_map[1][1033] == "LetterA"
     assert labels_map[2][1033] == "LetterB"
 
+
 def test_is_primary_name_flag_propagates():
     class PN(IntEnum):
         X = 1
+
     c = _make_client()
     payload = c._enum_optionset_payload("new_Status", PN, is_primary_name=True)
     assert payload["IsPrimaryName"] is True
+
 
 def test_duplicate_enum_values_raise():
     class Dup(IntEnum):
         A = 1
         B = 1
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_Status", Dup)
 
+
 def test_non_int_enum_values_raise():
     class Bad(Enum):
         A = "x"
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_Status", Bad)
+
 
 def test_enum_labels_not_dict_raises():
     class BadLabels(IntEnum):
         A = 1
         __labels__ = ["not", "a", "dict"]
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_BadLabels", BadLabels)
@@ -145,6 +162,7 @@ def test_enum_labels_language_code_not_int_raises():
         __labels__ = {
             "en": {"A": "Alpha"},
         }
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_BadLangKey", BadLangKey)
@@ -156,6 +174,7 @@ def test_enum_labels_mapping_not_dict_raises():
         __labels__ = {
             1033: ["A", "Alpha"],
         }
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_BadMapping", BadMapping)
@@ -167,6 +186,7 @@ def test_enum_labels_empty_label_value_raises():
         __labels__ = {
             1033: {"A": "  "},
         }
+
     c = _make_client()
     with pytest.raises(ValueError):
         c._enum_optionset_payload("new_EmptyLabel", EmptyLabel)

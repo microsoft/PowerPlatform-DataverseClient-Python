@@ -29,6 +29,7 @@ class DataverseConfig:
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
     :type http_timeout: ``float`` | ``None``
     """
+
     language_code: int = 1033
 
     # Optional HTTP tuning (not yet wired everywhere; reserved for future use)

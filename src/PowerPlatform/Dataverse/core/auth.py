@@ -26,6 +26,7 @@ class TokenPair:
     :param access_token: The access token string.
     :type access_token: ``str``
     """
+
     resource: str
     access_token: str
 
@@ -41,9 +42,7 @@ class AuthManager:
 
     def __init__(self, credential: TokenCredential) -> None:
         if not isinstance(credential, TokenCredential):
-            raise TypeError(
-                "credential must implement azure.core.credentials.TokenCredential."
-            )
+            raise TypeError("credential must implement azure.core.credentials.TokenCredential.")
         self.credential: TokenCredential = credential
 
     def acquire_token(self, scope: str) -> TokenPair:

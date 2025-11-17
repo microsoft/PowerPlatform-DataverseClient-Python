@@ -52,13 +52,11 @@ class ODataFileUpload:
 
         if mode == "small":
             return self._upload_file_small(
-                entity_set, record_id, file_name_attribute, path,
-                content_type=mime_type, if_none_match=if_none_match
+                entity_set, record_id, file_name_attribute, path, content_type=mime_type, if_none_match=if_none_match
             )
         if mode == "chunk":
             return self._upload_file_chunk(
-                entity_set, record_id, file_name_attribute, path,
-                if_none_match=if_none_match
+                entity_set, record_id, file_name_attribute, path, if_none_match=if_none_match
             )
         raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 
@@ -73,6 +71,7 @@ class ODataFileUpload:
     ) -> None:
         """Upload a file (<128MB) via single PATCH."""
         import os
+
         if not record_id:
             raise ValueError("record_id required")
         if not os.path.isfile(path):
@@ -130,6 +129,7 @@ class ODataFileUpload:
         """
         import os, math
         from urllib.parse import quote
+
         if not record_id:
             raise ValueError("record_id required")
         if not os.path.isfile(path):

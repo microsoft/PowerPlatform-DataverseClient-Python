@@ -6,15 +6,20 @@ import pytest
 from PowerPlatform.Dataverse.data.odata import ODataClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 
+
 class DummyAuth:
     def acquire_token(self, scope):
-        class T: access_token = "x"
+        class T:
+            access_token = "x"
+
         return T()
+
 
 class DummyHTTPClient:
     def __init__(self, responses):
         self._responses = responses
         self.calls = []
+
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
         if not self._responses:
@@ -24,43 +29,38 @@ class DummyHTTPClient:
         resp.status_code = status
         resp.headers = headers
         resp.text = "" if body is None else ("{}" if isinstance(body, dict) else str(body))
+
         def raise_for_status():
             if status >= 400:
                 raise RuntimeError(f"HTTP {status}")
             return None
+
         def json_func():
             return body if isinstance(body, dict) else {}
+
         resp.raise_for_status = raise_for_status
         resp.json = json_func
         return resp
+
 
 class MockableClient(ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTPClient(responses)
+
     def _convert_labels_to_ints(self, table_schema_name, record):  # pragma: no cover - test shim
         return record
 
+
 # Helper metadata response for logical name resolution
-MD_ACCOUNT = {
-    "value": [
-        {
-            "LogicalName": "account",
-            "EntitySetName": "accounts",
-            "PrimaryIdAttribute": "accountid"
-        }
-    ]
-}
+MD_ACCOUNT = {"value": [{"LogicalName": "account", "EntitySetName": "accounts", "PrimaryIdAttribute": "accountid"}]}
 
 MD_SAMPLE = {
     "value": [
-        {
-            "LogicalName": "new_sampleitem",
-            "EntitySetName": "new_sampleitems",
-            "PrimaryIdAttribute": "new_sampleitemid"
-        }
+        {"LogicalName": "new_sampleitem", "EntitySetName": "new_sampleitems", "PrimaryIdAttribute": "new_sampleitemid"}
     ]
 }
+
 
 def make_entity_create_headers(entity_set, guid):
     return {"OData-EntityId": f"https://org.example/api/data/v9.2/{entity_set}({guid})"}
@@ -108,7 +108,11 @@ def test_get_multiple_paging():
     # metadata, first page, second page
     responses = [
         (200, {}, MD_ACCOUNT),
-        (200, {}, {"value": [{"accountid": "1"}], "@odata.nextLink": "https://org.example/api/data/v9.2/accounts?$skip=1"}),
+        (
+            200,
+            {},
+            {"value": [{"accountid": "1"}], "@odata.nextLink": "https://org.example/api/data/v9.2/accounts?$skip=1"},
+        ),
         (200, {}, {"value": [{"accountid": "2"}]}),
     ]
     c = MockableClient(responses)
