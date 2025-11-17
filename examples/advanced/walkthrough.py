@@ -52,12 +52,12 @@ def main():
     if not base_url:
         print("No URL entered; exiting.")
         sys.exit(1)
-    
-    base_url = base_url.rstrip('/')
-    
+
+    base_url = base_url.rstrip("/")
+
     log_call("InteractiveBrowserCredential()")
     credential = InteractiveBrowserCredential()
-    
+
     log_call(f"DataverseClient(base_url='{base_url}', credential=...)")
     client = DataverseClient(base_url=base_url, credential=credential)
     print(f"✓ Connected to: {base_url}")
@@ -70,10 +70,10 @@ def main():
     print("=" * 80)
 
     table_name = "new_WalkthroughDemo"
-    
+
     log_call(f"client.get_table_info('{table_name}')")
     table_info = client.get_table_info(table_name)
-    
+
     if table_info:
         print(f"✓ Table already exists: {table_info.get('table_schema_name')}")
         print(f"  Logical Name: {table_info.get('table_logical_name')}")
@@ -85,7 +85,7 @@ def main():
             "new_Quantity": "int",
             "new_Amount": "decimal",
             "new_Completed": "bool",
-            "new_Priority": Priority
+            "new_Priority": Priority,
         }
         table_info = client.create_table(table_name, columns)
         print(f"✓ Created table: {table_info.get('table_schema_name')}")
@@ -105,7 +105,7 @@ def main():
         "new_Quantity": 5,
         "new_Amount": 1250.50,
         "new_Completed": False,
-        "new_Priority": Priority.MEDIUM
+        "new_Priority": Priority.MEDIUM,
     }
     id1 = client.create(table_name, single_record)[0]
     print(f"✓ Created single record: {id1}")
@@ -118,22 +118,22 @@ def main():
             "new_Quantity": 10,
             "new_Amount": 500.00,
             "new_Completed": True,
-            "new_Priority": Priority.HIGH
+            "new_Priority": Priority.HIGH,
         },
         {
             "new_Title": "Update test cases",
             "new_Quantity": 8,
             "new_Amount": 750.25,
             "new_Completed": False,
-            "new_Priority": Priority.LOW
+            "new_Priority": Priority.LOW,
         },
         {
             "new_Title": "Deploy to staging",
             "new_Quantity": 3,
             "new_Amount": 2000.00,
             "new_Completed": False,
-            "new_Priority": Priority.HIGH
-        }
+            "new_Priority": Priority.HIGH,
+        },
     ]
     ids = client.create(table_name, multiple_records)
     print(f"✓ Created {len(ids)} records: {ids}")
@@ -149,15 +149,20 @@ def main():
     log_call(f"client.get('{table_name}', '{id1}')")
     record = client.get(table_name, id1)
     print("✓ Retrieved single record:")
-    print(json.dumps({
-        "new_walkthroughdemoid": record.get("new_walkthroughdemoid"),
-        "new_title": record.get("new_title"),
-        "new_quantity": record.get("new_quantity"),
-        "new_amount": record.get("new_amount"),
-        "new_completed": record.get("new_completed"),
-        "new_priority": record.get("new_priority"),
-        "new_priority@FormattedValue": record.get("new_priority@OData.Community.Display.V1.FormattedValue")
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "new_walkthroughdemoid": record.get("new_walkthroughdemoid"),
+                "new_title": record.get("new_title"),
+                "new_quantity": record.get("new_quantity"),
+                "new_amount": record.get("new_amount"),
+                "new_completed": record.get("new_completed"),
+                "new_priority": record.get("new_priority"),
+                "new_priority@FormattedValue": record.get("new_priority@OData.Community.Display.V1.FormattedValue"),
+            },
+            indent=2,
+        )
+    )
 
     # Multiple read with filter
     log_call(f"client.get('{table_name}', filter='new_quantity gt 5')")
@@ -201,7 +206,7 @@ def main():
             "new_Quantity": i,
             "new_Amount": i * 10.0,
             "new_Completed": False,
-            "new_Priority": Priority.LOW
+            "new_Priority": Priority.LOW,
         }
         for i in range(1, 21)
     ]
@@ -212,7 +217,7 @@ def main():
     log_call(f"client.get('{table_name}', page_size=5)")
     print("Fetching records with page_size=5...")
     for page_num, page in enumerate(client.get(table_name, orderby=["new_Quantity"], page_size=5), start=1):
-        record_ids = [r.get('new_walkthroughdemoid')[:8] + "..." for r in page]
+        record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
     # ============================================================================
@@ -245,7 +250,7 @@ def main():
         "new_Quantity": 1,
         "new_Amount": 99.99,
         "new_Completed": False,
-        "new_Priority": "High"  # String label instead of int
+        "new_Priority": "High",  # String label instead of int
     }
     label_id = client.create(table_name, label_record)[0]
     retrieved = client.get(table_name, label_id)

@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 import datetime as _dt
 
+
 class DataverseError(Exception):
     """
     Base structured exception for the Dataverse SDK.
@@ -35,6 +36,7 @@ class DataverseError(Exception):
     :param is_transient: Whether the error is potentially transient and may succeed on retry.
     :type is_transient: ``bool``
     """
+
     def __init__(
         self,
         message: str,
@@ -53,7 +55,7 @@ class DataverseError(Exception):
         self.details = details or {}
         self.source = source or "client"
         self.is_transient = is_transient
-        self.timestamp = _dt.datetime.now(_dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+        self.timestamp = _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z")
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -76,6 +78,7 @@ class DataverseError(Exception):
     def __repr__(self) -> str:  # pragma: no cover
         return f"{self.__class__.__name__}(code={self.code!r}, subcode={self.subcode!r}, message={self.message!r})"
 
+
 class ValidationError(DataverseError):
     """
     Exception raised for client-side validation failures.
@@ -87,8 +90,10 @@ class ValidationError(DataverseError):
     :param details: Optional dictionary with additional validation context.
     :type details: ``dict`` | ``None``
     """
+
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="validation_error", subcode=subcode, details=details, source="client")
+
 
 class MetadataError(DataverseError):
     """
@@ -101,8 +106,10 @@ class MetadataError(DataverseError):
     :param details: Optional dictionary with additional metadata context.
     :type details: ``dict`` | ``None``
     """
+
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="metadata_error", subcode=subcode, details=details, source="client")
+
 
 class SQLParseError(DataverseError):
     """
@@ -115,8 +122,10 @@ class SQLParseError(DataverseError):
     :param details: Optional dictionary with SQL query context and parse information.
     :type details: ``dict`` | ``None``
     """
+
     def __init__(self, message: str, *, subcode: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, code="sql_parse_error", subcode=subcode, details=details, source="client")
+
 
 class HttpError(DataverseError):
     """
@@ -145,6 +154,7 @@ class HttpError(DataverseError):
     :param details: Optional additional diagnostic details.
     :type details: ``dict`` | ``None``
     """
+
     def __init__(
         self,
         message: str,
@@ -157,7 +167,7 @@ class HttpError(DataverseError):
         traceparent: Optional[str] = None,
         body_excerpt: Optional[str] = None,
         retry_after: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None
+        details: Optional[Dict[str, Any]] = None,
     ) -> None:
         d = details or {}
         if service_error_code is not None:
@@ -181,5 +191,6 @@ class HttpError(DataverseError):
             source="server",
             is_transient=is_transient,
         )
+
 
 __all__ = ["DataverseError", "HttpError", "ValidationError", "MetadataError", "SQLParseError"]

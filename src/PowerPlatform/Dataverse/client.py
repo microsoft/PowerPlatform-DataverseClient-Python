@@ -147,7 +147,9 @@ class DataverseClient:
             return ids
         raise TypeError("records must be dict or list[dict]")
 
-    def update(self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]) -> None:
+    def update(
+        self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
+    ) -> None:
         """
         Update one or more records.
 
@@ -220,7 +222,7 @@ class DataverseClient:
 
         :raises TypeError: If ``ids`` is not str or list[str].
         :raises HttpError: If the underlying Web API delete request fails.
-        
+
         :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
         :rtype: ``str`` or ``None``
 
@@ -298,7 +300,7 @@ class DataverseClient:
             Query multiple records with filtering (note: exact logical names in filter)::
 
                 for batch in client.get(
-                    "account", 
+                    "account",
                     filter="statecode eq 0 and name eq 'Contoso'",  # Must use exact logical names (lower-case)
                     select=["name", "telephone1"]
                 ):
@@ -332,7 +334,7 @@ class DataverseClient:
                 raise TypeError("record_id must be str")
             return od._get(
                 table_schema_name,
-                record_id, 
+                record_id,
                 select=select,
             )
         return od._get_multiple(
@@ -514,7 +516,7 @@ class DataverseClient:
                     print(table)
         """
         return self._get_odata()._list_tables()
-    
+
     def create_columns(
         self,
         table_schema_name: str,
@@ -675,5 +677,5 @@ class DataverseClient:
         """
         return self._get_odata()._flush_cache(kind)
 
-__all__ = ["DataverseClient"]
 
+__all__ = ["DataverseClient"]

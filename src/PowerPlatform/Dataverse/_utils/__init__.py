@@ -4,7 +4,7 @@
 """
 Utilities and adapters for the Dataverse SDK.
 
-This module contains adapters (like Pandas integration).
+Placeholder module for future utility adapters.
 """
 
 __all__ = []

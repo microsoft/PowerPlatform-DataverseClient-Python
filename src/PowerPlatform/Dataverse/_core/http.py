@@ -20,10 +20,10 @@ import requests
 class HttpClient:
     """
     HTTP client with configurable retry logic and timeout handling.
-    
+
     Provides automatic retry behavior for transient failures and default timeout
     management for different HTTP methods.
-    
+
     :param retries: Maximum number of retry attempts for transient errors. Default is 5.
     :type retries: ``int`` | ``None``
     :param backoff: Base delay in seconds between retry attempts. Default is 0.5.
@@ -31,7 +31,7 @@ class HttpClient:
     :param timeout: Default request timeout in seconds. If None, uses per-method defaults.
     :type timeout: ``float`` | ``None``
     """
-    
+
     def __init__(
         self,
         retries: Optional[int] = None,
@@ -45,10 +45,10 @@ class HttpClient:
     def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """
         Execute an HTTP request with automatic retry logic and timeout management.
-        
+
         Applies default timeouts based on HTTP method (120s for POST/DELETE, 10s for others)
         and retries on network errors with exponential backoff.
-        
+
         :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
         :type method: ``str``
         :param url: Target URL for the request.
@@ -74,6 +74,6 @@ class HttpClient:
             except requests.exceptions.RequestException:
                 if attempt == self.max_attempts - 1:
                     raise
-                delay = self.base_delay * (2 ** attempt)
+                delay = self.base_delay * (2**attempt)
                 time.sleep(delay)
                 continue

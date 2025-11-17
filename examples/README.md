@@ -32,7 +32,7 @@ Start here for getting up and running with the SDK:
 ### 🔬 Advanced Examples (`advanced/`)
 Deep-dive into production-ready patterns and specialized functionality:
 
-- **`complete_walkthrough.py`** - **COMPREHENSIVE DEMO** 🚀  
+- **`walkthrough.py`** - **COMPREHENSIVE DEMO** 🚀
   - Full SDK feature demonstration with production-ready patterns
   - Table creation with custom schemas and enums
   - Single and bulk CRUD operations with error handling
@@ -44,9 +44,6 @@ Deep-dive into production-ready patterns and specialized functionality:
   - File upload to Dataverse file columns with chunking
   - Advanced file handling patterns
 
-- **`pandas_integration.py`** - **DATA ANALYSIS** 📊  
-  - DataFrame-based operations for data analysis
-  - Pandas integration patterns
 
 ## 🚀 Getting Started
 
@@ -70,15 +67,15 @@ python examples/basic/functional_testing.py
 ### 🚀 Step 3: Master Advanced Features
 ```bash
 # Comprehensive walkthrough with production patterns
-python examples/advanced/complete_walkthrough.py
+python examples/advanced/walkthrough.py
 ```
 
 ## 🎯 Quick Start Recommendations
 
 - **New to the SDK?** → Start with `examples/basic/installation_example.py`
 - **Need to test/validate?** → Use `examples/basic/functional_testing.py`  
-- **Want to see all features?** → Run `examples/advanced/complete_walkthrough.py`
-- **Building production apps?** → Study patterns in `examples/advanced/complete_walkthrough.py`
+- **Want to see all features?** → Run `examples/advanced/walkthrough.py`
+- **Building production apps?** → Study patterns in `examples/advanced/walkthrough.py`
 
 ## 📋 Prerequisites
 
