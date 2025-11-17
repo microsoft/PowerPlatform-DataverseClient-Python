@@ -25,19 +25,19 @@ class ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : ``str``
+        entity_set : :class:`str`
             Target entity set (plural logical name), e.g. "accounts".
-        record_id : ``str``
+        record_id : :class:`str`
             GUID of the target record.
-        file_name_attribute : ``str``
+        file_name_attribute : :class:`str`
             Logical name of the file column attribute
-        path : ``str``
+        path : :class:`str`
             Local filesystem path to the file.
-        mode : ``str`` | ``None``
+        mode : :class:`str` | None
             Upload strategy: "auto" (default), "small", or "chunk".
-        mime_type : ``str`` | ``None``
+        mime_type : :class:`str` | None
             Explicit MIME type. If omitted falls back to application/octet-stream.
-        if_none_match : ``bool``
+        if_none_match : :class:`bool`
             When True (default) only succeeds if column empty. When False overwrites (If-Match: *).
         """
         import os
@@ -111,20 +111,20 @@ class ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : ``str``
+        entity_set : :class:`str`
             Target entity set (plural logical name), e.g. "accounts".
-        record_id : ``str``
+        record_id : :class:`str`
             GUID of the target record.
-        file_name_attribute : ``str``
+        file_name_attribute : :class:`str`
             Logical name of the file column attribute.
-        path : ``str``
+        path : :class:`str`
             Local filesystem path to the file.
-        if_none_match : ``bool``
+        if_none_match : :class:`bool`
             When True sends ``If-None-Match: null`` to only succeed if the column is currently empty.
             Set False to always overwrite (uses ``If-Match: *``).
         Returns
         -------
-        ``None``
+        None
             Returns nothing on success. Any failure raises an exception.
         """
         import os, math

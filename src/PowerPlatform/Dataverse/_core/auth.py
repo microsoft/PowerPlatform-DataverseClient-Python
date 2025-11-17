@@ -50,7 +50,7 @@ class AuthManager:
         Acquire an access token for the specified OAuth2 scope.
 
         :param scope: OAuth2 scope string, typically ``"https://<org>.crm.dynamics.com/.default"``.
-        :type scope: ``str``
+        :type scope: :class:`str`
         :return: Token pair containing the scope and access token.
         :rtype: ~PowerPlatform.Dataverse._core.auth.TokenPair
         :raises ~azure.core.exceptions.ClientAuthenticationError: If token acquisition fails.

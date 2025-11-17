@@ -30,7 +30,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 # Import SDK components (assumes installation is already validated)
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse._core.errors import HttpError, MetadataError
 from azure.identity import InteractiveBrowserCredential
 

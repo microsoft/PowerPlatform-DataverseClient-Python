@@ -67,12 +67,13 @@ def validate_imports():
     print("-" * 50)
 
     try:
-        # Test main namespace import
-        from PowerPlatform.Dataverse import DataverseClient, __version__
+        # Test main namespace and client import
+        from PowerPlatform.Dataverse import __version__
+        from PowerPlatform.Dataverse.client import DataverseClient
 
-        print(f"  ✅ Main namespace: PowerPlatform.Dataverse")
+        print(f"  ✅ Namespace: PowerPlatform.Dataverse")
         print(f"  ✅ Package version: {__version__}")
-        print(f"  ✅ DataverseClient class: {DataverseClient}")
+        print(f"  ✅ Client class: PowerPlatform.Dataverse.client.DataverseClient")
 
         # Test submodule imports
         from PowerPlatform.Dataverse._core.errors import HttpError, MetadataError
@@ -176,7 +177,7 @@ def show_usage_examples():
         """
 🔧 Basic Setup:
 ```python
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 from azure.identity import InteractiveBrowserCredential
 
 # Set up authentication
@@ -271,7 +272,7 @@ def interactive_test():
         return
 
     try:
-        from PowerPlatform.Dataverse import DataverseClient
+        from PowerPlatform.Dataverse.client import DataverseClient
         from azure.identity import InteractiveBrowserCredential
 
         print("  🔐 Setting up authentication...")

@@ -28,7 +28,7 @@ class DataverseClient:
 
     :param base_url: Your Dataverse environment URL, for example
         ``"https://org.crm.dynamics.com"``. Trailing slash is automatically removed.
-    :type base_url: ``str``
+    :type base_url: :class:`str`
     :param credential: Azure Identity credential for authentication.
     :type credential: ~azure.core.credentials.TokenCredential
     :param config: Optional configuration for language, timeouts, and retries.
@@ -44,7 +44,7 @@ class DataverseClient:
         Create a client and perform basic operations::
 
             from azure.identity import InteractiveBrowserCredential
-            from PowerPlatform.Dataverse import DataverseClient
+            from PowerPlatform.Dataverse.client import DataverseClient
 
             credential = InteractiveBrowserCredential()
             client = DataverseClient(
@@ -105,13 +105,13 @@ class DataverseClient:
         Create one or more records by table name.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"``, ``"contact"``, or ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param records: A single record dictionary or a list of record dictionaries.
             Each dictionary should contain column schema names as keys.
-        :type records: ``dict`` or ``list[dict]``
+        :type records: :class:`dict` or :class:`list` of :class:`dict`
 
         :return: List of created record GUIDs. Returns a single-element list for a single input.
-        :rtype: ``list[str]``
+        :rtype: :class:`list` of :class:`str`
 
         :raises TypeError: If ``records`` is not a dict or list[dict], or if the internal
             client returns an unexpected type.
@@ -160,14 +160,14 @@ class DataverseClient:
         3. Paired updates: ``update("account", [id1, id2], [changes1, changes2])`` - one-to-one mapping
 
         :param table_schema_name:  Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+            :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to update.
-        :type ids: ``str`` or ``list[str]``
+            :type ids: :class:`str` or :class:`list` of :class:`str`
         :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
             for paired mode. When ``ids`` is a list and ``changes`` is a single dict,
             the same changes are broadcast to all records. When both are lists, they must
             have equal length for one-to-one mapping.
-        :type changes: ``dict`` or ``list[dict]``
+            :type changes: :class:`dict` or :class:`list` of :class:`dict`
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
 
@@ -213,18 +213,18 @@ class DataverseClient:
         Delete one or more records by GUID.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to delete.
-        :type ids: ``str`` or ``list[str]``
+        :type ids: :class:`str` or :class:`list` of :class:`str`
         :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
             return its async job identifier. When ``False`` each record is deleted sequentially.
-        :type use_bulk_delete: ``bool``
+        :type use_bulk_delete: :class:`bool`
 
         :raises TypeError: If ``ids`` is not str or list[str].
         :raises HttpError: If the underlying Web API delete request fails.
 
         :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
-        :rtype: ``str`` or ``None``
+        :rtype: :class:`str` or None
 
         Example:
             Delete a single record::
@@ -269,25 +269,25 @@ class DataverseClient:
         When ``record_id`` is None, returns a generator yielding batches of records.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
-        :type record_id: ``str`` or ``None``
+        :type record_id: :class:`str` or None
         :param select: Optional list of attribute logical names to retrieve. Column names are case-insensitive and automatically lowercased (e.g. ``["new_Title", "new_Amount"]`` becomes ``"new_title,new_amount"``).
-        :type select: ``list[str]`` or ``None``
+        :type select: :class:`list` of :class:`str` or None
         :param filter: Optional OData filter string, e.g. ``"name eq 'Contoso'"`` or ``"new_quantity gt 5"``. Column names in filter expressions must use exact lowercase logical names (e.g. ``"new_quantity"``, not ``"new_Quantity"``). The filter string is passed directly to the Dataverse Web API without transformation.
-        :type filter: ``str`` or ``None``
+        :type filter: :class:`str` or None
         :param orderby: Optional list of attributes to sort by, e.g. ``["name asc", "createdon desc"]``. Column names are automatically lowercased.
-        :type orderby: ``list[str]`` or ``None``
+        :type orderby: :class:`list` of :class:`str` or None
         :param top: Optional maximum number of records to return.
-        :type top: ``int`` or ``None``
+        :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand, e.g. ``["primarycontactid"]``. Navigation property names are case-sensitive and must match the server-defined  names exactly. These are NOT automatically transformed. Consult entity metadata for correct casing.
-        :type expand: ``list[str]`` or ``None``
+        :type expand: :class:`list` of :class:`str` or None
         :param page_size: Optional number of records per page for pagination.
-        :type page_size: ``int`` or ``None``
+        :type page_size: :class:`int` or None
 
         :return: Single record dict if ``record_id`` is provided, otherwise a generator
             yielding lists of record dictionaries (one list per page).
-        :rtype: ``dict`` or ``Iterable[list[dict]]``
+        :rtype: :class:`dict` or :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
 
         :raises TypeError: If ``record_id`` is provided but not a string.
 
@@ -357,10 +357,10 @@ class DataverseClient:
         table alias after FROM.
 
         :param sql: Supported SQL SELECT statement.
-        :type sql: ``str``
+        :type sql: :class:`str`
 
         :return: List of result row dictionaries. Returns an empty list if no rows match.
-        :rtype: ``list[dict]``
+        :rtype: :class:`list` of :class:`dict`
 
         :raises ~PowerPlatform.Dataverse._core.errors.SQLParseError: If the SQL query uses unsupported syntax.
         :raises ~PowerPlatform.Dataverse._core.errors.HttpError: If the Web API returns an error.
@@ -389,12 +389,12 @@ class DataverseClient:
         Get basic metadata for a table if it exists.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
 
         :return: Dictionary containing table metadata with keys ``table_schema_name``,
             ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
             Returns None if the table is not found.
-        :rtype: ``dict`` or ``None``
+        :rtype: :class:`dict` or None
 
         Example:
             Retrieve table metadata::
@@ -417,7 +417,7 @@ class DataverseClient:
         Create a simple custom table with specified columns.
 
         :param table_schema_name: Schema name of the table with customization prefix value (e.g. ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param columns: Dictionary mapping column names (with customization prefix value) to their types. All custom column names must include the customization prefix value (e.g. ``"new_Title"``).
             Supported types:
 
@@ -433,15 +433,15 @@ class DataverseClient:
                           1036: {"Active": "Actif", "Inactive": "Inactif"}
                       }
 
-        :type columns: dict[str, Any]
+        :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
         :param solution_unique_name: Optional solution unique name that should own the new table. When omitted the table is created in the default solution.
-        :type solution_unique_name: ``str`` or ``None``
+        :type solution_unique_name: :class:`str` or None
         :param primary_column_schema_name: Optional primary name column schema name with customization prefix value (e.g. ``"new_MyTestTable"``). If not provided, defaults to ``"{customization prefix value}_Name"``.
-        :type primary_column_schema_name: ``str`` or ``None``
+        :type primary_column_schema_name: :class:`str` or None
 
         :return: Dictionary containing table metadata including ``table_schema_name``,
             ``entity_set_name``, ``table_logical_name``, ``metadata_id``, and ``columns_created``.
-        :rtype: ``dict``
+        :rtype: :class:`dict`
 
         :raises ~PowerPlatform.Dataverse._core.errors.MetadataError: If table creation fails or the schema is invalid.
 
@@ -486,7 +486,7 @@ class DataverseClient:
         Delete a custom table by name.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
 
         :raises ~PowerPlatform.Dataverse._core.errors.MetadataError: If the table does not exist or deletion fails.
 
@@ -506,7 +506,7 @@ class DataverseClient:
         List all custom tables in the Dataverse environment.
 
         :return: List of custom table names.
-        :rtype: ``list[str]``
+        :rtype: :class:`list` of :class:`str`
 
         Example:
             List all custom tables::
@@ -526,13 +526,13 @@ class DataverseClient:
         Create one or more columns on an existing table using a schema-style mapping.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param columns: Mapping of column schema names (with customization prefix value) to supported types. All custom column names must include the customization prefix value** (e.g. ``"new_Notes"``). Primitive types include
             ``string``, ``int``, ``decimal``, ``float``, ``datetime``, and ``bool``. Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
-        :type columns: ``Dict[str, Any]``
+        :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
         :returns: Schema names for the columns that were created.
-        :rtype: ``list[str]``
+        :rtype: :class:`list` of :class:`str`
         Example:
             Create two columns on the custom table::
 
@@ -559,11 +559,11 @@ class DataverseClient:
         Delete one or more columns from a table.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param columns: Column name or list of column names to remove. Must include customization prefix value (e.g. ``"new_TestColumn"``).
-        :type columns: ``str`` | ``list[str]``
+        :type columns: :class:`str` or :class:`list` of :class:`str`
         :returns: Schema names for the columns that were removed.
-        :rtype: ``list[str]``
+        :rtype: :class:`list` of :class:`str`
         Example:
             Remove two custom columns by schema name:
 
@@ -593,24 +593,24 @@ class DataverseClient:
         Upload a file to a Dataverse file column.
 
         :param table_schema_name: Schema name of the table, e.g. ``"account"`` or ``"new_MyTestTable"``.
-        :type table_schema_name: ``str``
+        :type table_schema_name: :class:`str`
         :param record_id: GUID of the target record.
-        :type record_id: ``str``
+        :type record_id: :class:`str`
         :param file_name_attribute: Logical name of the file column attribute.
-        :type file_name_attribute: ``str``
+        :type file_name_attribute: :class:`str`
         :param path: Local filesystem path to the file. The stored filename will be
             the basename of this path.
-        :type path: ``str``
+        :type path: :class:`str`
         :param mode: Upload strategy: ``"auto"`` (default), ``"small"``, or ``"chunk"``.
             Auto mode selects small or chunked upload based on file size.
-        :type mode: ``str`` or ``None``
+        :type mode: :class:`str` or None
         :param mime_type: Explicit MIME type to store with the file (e.g. ``"application/pdf"``).
             If not provided, the MIME type may be inferred from the file extension.
-        :type mime_type: ``str`` or ``None``
+        :type mime_type: :class:`str` or None
         :param if_none_match: When True (default), sends ``If-None-Match: null`` header to only
             succeed if the column is currently empty. Set False to always overwrite using
             ``If-Match: *``. Used for small and chunk modes only.
-        :type if_none_match: ``bool``
+        :type if_none_match: :class:`bool`
 
         :raises ~PowerPlatform.Dataverse._core.errors.HttpError: If the upload fails or the file column is not empty
             when ``if_none_match=True``.
@@ -664,10 +664,10 @@ class DataverseClient:
 
             Future kinds (e.g. ``"entityset"``, ``"primaryid"``) may be added without
             breaking this signature.
-        :type kind: ``str``
+        :type kind: :class:`str`
 
         :return: Number of cache entries removed.
-        :rtype: ``int``
+        :rtype: :class:`int`
 
         Example:
             Clear the picklist cache::

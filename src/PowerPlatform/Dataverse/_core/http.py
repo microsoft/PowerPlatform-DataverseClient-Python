@@ -25,11 +25,11 @@ class HttpClient:
     management for different HTTP methods.
 
     :param retries: Maximum number of retry attempts for transient errors. Default is 5.
-    :type retries: ``int`` | ``None``
+    :type retries: :class:`int` | None
     :param backoff: Base delay in seconds between retry attempts. Default is 0.5.
-    :type backoff: ``float`` | ``None``
+    :type backoff: :class:`float` | None
     :param timeout: Default request timeout in seconds. If None, uses per-method defaults.
-    :type timeout: ``float`` | ``None``
+    :type timeout: :class:`float` | None
     """
 
     def __init__(
@@ -50,12 +50,12 @@ class HttpClient:
         and retries on network errors with exponential backoff.
 
         :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
-        :type method: ``str``
+        :type method: :class:`str`
         :param url: Target URL for the request.
-        :type url: ``str``
+        :type url: :class:`str`
         :param kwargs: Additional arguments passed to ``requests.request()``, including headers, data, etc.
         :return: HTTP response object.
-        :rtype: ``requests.Response``
+        :rtype: :class:`requests.Response`
         :raises requests.exceptions.RequestException: If all retry attempts fail.
         """
         # If no timeout is provided, use the user-specified default timeout if set;

@@ -2,6 +2,5 @@
 # Licensed under the MIT license.
 
 from .__version__ import __version__
-from .client import DataverseClient
 
-__all__ = ["DataverseClient", "__version__"]
+__all__ = ["__version__"]

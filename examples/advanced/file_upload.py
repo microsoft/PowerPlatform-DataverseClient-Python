@@ -24,7 +24,7 @@ from typing import Optional
 # Uncomment for local development from source
 # sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
 
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 from azure.identity import InteractiveBrowserCredential  # type: ignore
 import requests
 

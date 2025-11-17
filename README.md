@@ -76,7 +76,7 @@ from azure.identity import (
     ClientCertificateCredential,
     AzureCliCredential
 )
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 
 # Development options
 credential = InteractiveBrowserCredential()  # Browser authentication
@@ -111,7 +111,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 ```python
 from azure.identity import InteractiveBrowserCredential
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 
 # Connect to Dataverse
 credential = InteractiveBrowserCredential()
@@ -285,7 +285,7 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 The client raises structured exceptions for different error scenarios:
 
 ```python
-from PowerPlatform.Dataverse import DataverseClient
+from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse._core.errors import HttpError, ValidationError
 
 try:

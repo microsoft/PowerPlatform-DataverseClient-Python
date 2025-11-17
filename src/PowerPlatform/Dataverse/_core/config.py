@@ -21,13 +21,13 @@ class DataverseConfig:
     Configuration settings for Dataverse client operations.
 
     :param language_code: LCID (Locale ID) for localized labels and messages. Default is 1033 (English - United States).
-    :type language_code: ``int``
+    :type language_code: :class:`int`
     :param http_retries: Optional maximum number of retry attempts for transient HTTP errors. Reserved for future use.
-    :type http_retries: ``int`` | ``None``
+    :type http_retries: :class:`int` or None
     :param http_backoff: Optional backoff multiplier (in seconds) between retry attempts. Reserved for future use.
-    :type http_backoff: ``float`` | ``None``
+    :type http_backoff: :class:`float` or None
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
-    :type http_timeout: ``float`` | ``None``
+    :type http_timeout: :class:`float` or None
     """
 
     language_code: int = 1033

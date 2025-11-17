@@ -82,9 +82,9 @@ def http_subcode(status: int) -> str:
     Convert HTTP status code to error subcode string.
 
     :param status: HTTP status code (e.g., 400, 404, 500).
-    :type status: ``int``
+    :type status: :class:`int`
     :return: Error subcode string (e.g., "http_400", "http_404").
-    :rtype: ``str``
+    :rtype: :class:`str`
     """
     return HTTP_STATUS_TO_SUBCODE.get(status, f"http_{status}")
 
@@ -97,8 +97,8 @@ def is_transient_status(status: int) -> bool:
     503 (Service Unavailable), and 504 (Gateway Timeout).
 
     :param status: HTTP status code to check.
-    :type status: ``int``
+    :type status: :class:`int`
     :return: True if the status code is considered transient.
-    :rtype: ``bool``
+    :rtype: :class:`bool`
     """
     return status in TRANSIENT_STATUS
