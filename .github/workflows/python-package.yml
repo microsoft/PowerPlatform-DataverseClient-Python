@@ -31,7 +31,6 @@ jobs:
         python -m pip install -e .[dev]
     
     - name: Check format with black
-      continue-on-error: true  # TODO: fix detected formatting errors and remove this line.
       run: |
         black src tests --check
     
