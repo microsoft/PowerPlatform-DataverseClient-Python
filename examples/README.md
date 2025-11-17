@@ -93,7 +93,7 @@ All examples use Azure Identity for authentication. Common patterns:
 
 ## 📖 Documentation
 
-For detailed API documentation, visit: [Dataverse SDK Documentation](link-to-docs)
+For detailed API documentation, visit: [Dataverse SDK Documentation](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)
 
 ## 🤝 Contributing
 
