@@ -323,7 +323,7 @@ For optimal performance in production environments:
 ### Limitations
 
 - SQL queries are **read-only** and support a limited subset of SQL syntax
-- Create Table supports a limited number of column types. Lookup column is not yet supported.
+- Create Table supports a limited number of column types. Lookup columns are not yet supported.
 - Creating relationships between tables is not yet supported.
 - File uploads are limited by Dataverse file size restrictions (default 128MB per file)
 
