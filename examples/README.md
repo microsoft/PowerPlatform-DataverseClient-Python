@@ -67,15 +67,15 @@ python examples/basic/functional_testing.py
 ### 🚀 Step 3: Master Advanced Features
 ```bash
 # Comprehensive walkthrough with production patterns
-python examples/advanced/complete_walkthrough.py
+python examples/advanced/walkthrough.py
 ```
 
 ## 🎯 Quick Start Recommendations
 
 - **New to the SDK?** → Start with `examples/basic/installation_example.py`
 - **Need to test/validate?** → Use `examples/basic/functional_testing.py`  
-- **Want to see all features?** → Run `examples/advanced/complete_walkthrough.py`
-- **Building production apps?** → Study patterns in `examples/advanced/complete_walkthrough.py`
+- **Want to see all features?** → Run `examples/advanced/walkthrough.py`
+- **Building production apps?** → Study patterns in `examples/advanced/walkthrough.py`
 
 ## 📋 Prerequisites
 

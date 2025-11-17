@@ -6,7 +6,7 @@
 
 A Python client library for Microsoft Dataverse that provides a unified interface for CRUD operations, SQL queries, table metadata management, and file uploads through the Dataverse Web API.
 
-**[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference documentation](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/)** | **[Product documentation](https://learn.microsoft.com/en-us/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
+**[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference documentation](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
 > [!IMPORTANT]
 > This library is currently in **preview**. Preview versions are provided for early access to new features and may contain breaking changes.
@@ -261,7 +261,7 @@ Explore our comprehensive examples in the [`examples/`](examples/) directory:
 - **[Functional Testing](examples/basic/functional_testing.py)** - Test core functionality in your environment
 
 **🚀 Advanced Usage:**
-- **[Complete Walkthrough](examples/advanced/complete_walkthrough.py)** - Full feature demonstration with production patterns  
+- **[Complete Walkthrough](examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns  
 - **[File Upload](examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
 
 📖 See the [examples README](examples/README.md) for detailed guidance and learning progression.
@@ -323,11 +323,9 @@ For optimal performance in production environments:
 ### Limitations
 
 - SQL queries are **read-only** and support a limited subset of SQL syntax
-- Create Table supports a limited number of column types.
+- Create Table supports a limited number of column types. Lookup column is not yet supported.
 - Creating relationships between tables is not yet supported.
 - File uploads are limited by Dataverse file size restrictions (default 128MB per file)
-- Custom table creation requires appropriate security privileges in the target environment
-- Rate limits apply based on your Power Platform license and environment configuration
 
 ## Contributing
 
