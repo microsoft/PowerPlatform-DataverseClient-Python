@@ -48,7 +48,6 @@ extends:
         - script: |
             black src tests --check
           displayName: 'Check format with black'
-          continueOnError: true  # TODO: fix detected formatting errors and remove this line
         
         - script: |
             # stop the build if there are Python syntax errors or undefined names
