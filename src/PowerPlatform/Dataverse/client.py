@@ -167,7 +167,7 @@ class DataverseClient:
             for paired mode. When ``ids`` is a list and ``changes`` is a single dict,
             the same changes are broadcast to all records. When both are lists, they must
             have equal length for one-to-one mapping.
-            :type changes: :class:`dict` or :class:`list` of :class:`dict`
+        :type changes: :class:`dict` or :class:`list` of :class:`dict`
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
 
