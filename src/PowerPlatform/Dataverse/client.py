@@ -160,7 +160,7 @@ class DataverseClient:
         3. Paired updates: ``update("account", [id1, id2], [changes1, changes2])`` - one-to-one mapping
 
         :param table_schema_name:  Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
-            :type table_schema_name: :class:`str`
+        :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to update.
         :type ids: :class:`str` or :class:`list` of :class:`str`
         :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
