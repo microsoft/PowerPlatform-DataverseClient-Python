@@ -254,17 +254,17 @@ client.upload_file(
 
 ### More sample code
 
-Explore our comprehensive examples in the [`examples/`](examples/) directory:
+Explore our comprehensive examples in the [`examples/`](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples) directory:
 
 **🌱 Getting Started:**
-- **[Installation & Setup](examples/basic/installation_example.py)** - Validate installation and basic usage patterns
-- **[Functional Testing](examples/basic/functional_testing.py)** - Test core functionality in your environment
+- **[Installation & Setup](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/basic/installation_example.py)** - Validate installation and basic usage patterns
+- **[Functional Testing](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/basic/functional_testing.py)** - Test core functionality in your environment
 
 **🚀 Advanced Usage:**
-- **[Complete Walkthrough](examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns  
-- **[File Upload](examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
+- **[Complete Walkthrough](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns  
+- **[File Upload](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
 
-📖 See the [examples README](examples/README.md) for detailed guidance and learning progression.
+📖 See the [examples README](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for detailed guidance and learning progression.
 
 ### Additional documentation
 

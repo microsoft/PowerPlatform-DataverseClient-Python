@@ -79,7 +79,7 @@ def main():
         print(f"  Logical Name: {table_info.get('table_logical_name')}")
         print(f"  Entity Set: {table_info.get('entity_set_name')}")
     else:
-        log_call(f"client.create_table('{table_name}', schema={{...}})")
+        log_call(f"client.create_table('{table_name}', columns={{...}})")
         columns = {
             "new_Title": "string",
             "new_Quantity": "int",
