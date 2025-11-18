@@ -1,6 +1,6 @@
 # PowerPlatform Dataverse Client for Python
 
-[![PyPI version](https://badge.fury.io/py/PowerPlatform-Dataverse-Client.svg)](https://badge.fury.io/py/PowerPlatform-Dataverse-Client)
+[![PyPI version](https://img.shields.io/pypi/v/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
 [![Python](https://img.shields.io/pypi/pyversions/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
