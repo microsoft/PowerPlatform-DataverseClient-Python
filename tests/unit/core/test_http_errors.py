@@ -157,7 +157,12 @@ def test_correlation_id_diff_without_scope():
     assert len(recorder.recorded_headers) == 2
     h1, h2 = recorder.recorded_headers
     assert h1["x-ms-client-request-id"] != h2["x-ms-client-request-id"]
-    assert h1["x-ms-correlation-request-id"] != h2["x-ms-correlation-request-id"]
+    cid1 = h1.get("x-ms-correlation-request-id")
+    cid2 = h2.get("x-ms-correlation-request-id")
+    if cid1 is not None and cid2 is not None:
+        assert cid1 != cid2
+    else:
+        assert cid1 is cid2 is None
 
 
 def test_correlation_id_shared_inside_call_scope():

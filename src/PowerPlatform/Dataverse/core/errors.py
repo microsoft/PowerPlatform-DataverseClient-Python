@@ -141,11 +141,11 @@ class HttpError(DataverseError):
     :type subcode: :class:`str` | None
     :param service_error_code: Optional Dataverse-specific error code from the API response.
     :type service_error_code: :class:`str` | None
-    :param correlation_id: Client-generated Correlation ID for tracking requests within a SDK call.
+    :param correlation_id: Optional client-generated correlation ID for tracking requests within an SDK call.
     :type correlation_id: :class:`str` | None
-    :param client_request_id: Client-generated request ID injected into outbound headers.
+    :param client_request_id: Optional client-generated request ID injected into outbound headers.
     :type client_request_id: :class:`str` | None
-    :param service_request_id: ``x-ms-service-request-id`` returned by Dataverse servers.
+    :param service_request_id: Optional ``x-ms-service-request-id`` value returned by Dataverse servers.
     :type service_request_id: :class:`str` | None
     :param traceparent: Optional W3C trace context for distributed tracing.
     :type traceparent: :class:`str` | None
@@ -161,12 +161,12 @@ class HttpError(DataverseError):
         self,
         message: str,
         status_code: int,
-        correlation_id: Optional[str],
-        client_request_id: Optional[str],
-        service_request_id: Optional[str],
         is_transient: bool = False,
         subcode: Optional[str] = None,
         service_error_code: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        client_request_id: Optional[str] = None,
+        service_request_id: Optional[str] = None,
         traceparent: Optional[str] = None,
         body_excerpt: Optional[str] = None,
         retry_after: Optional[int] = None,

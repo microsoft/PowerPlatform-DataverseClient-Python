@@ -205,11 +205,11 @@ class _ODataClient(_ODataFileUpload):
         raise HttpError(
             msg,
             status_code=sc,
+            subcode=subcode,
+            service_error_code=svc_code,
             correlation_id=merged_headers.get("x-ms-correlation-request-id"),
             client_request_id=merged_headers.get("x-ms-client-request-id"),
             service_request_id=request_id,
-            subcode=subcode,
-            service_error_code=svc_code,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
             retry_after=retry_after,
