@@ -164,15 +164,6 @@ class _ODataClient(_ODataFileUpload):
             id_headers.update(headers_in)
         merged_headers = self._merge_headers(id_headers)
         kwargs["headers"] = merged_headers
-        print(
-            "[DataverseSDK] request",
-            method.upper(),
-            url,
-            "corr:",
-            merged_headers.get("x-ms-correlation-request-id"),
-            "client:",
-            merged_headers.get("x-ms-client-request-id"),
-        )
         r = self._raw_request(method, url, **kwargs)
         if r.status_code in expected:
             return r
