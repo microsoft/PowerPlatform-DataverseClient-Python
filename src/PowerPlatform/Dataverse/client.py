@@ -697,6 +697,7 @@ class DataverseClient:
         """
         with self._scoped_odata() as od:
             return od._flush_cache(kind)
+
     # Other utilities
     @contextmanager
     def correlation_scope(self, correlation_id: str) -> Iterator["DataverseClient"]:
