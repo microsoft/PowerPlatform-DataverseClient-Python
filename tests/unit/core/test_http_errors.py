@@ -2,6 +2,9 @@
 # Licensed under the MIT license.
 
 import pytest
+from azure.core.credentials import TokenCredential
+from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.config import DataverseConfig
 from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.core._error_codes import HTTP_404, HTTP_429, HTTP_500
 from PowerPlatform.Dataverse.data._odata import _ODataClient
@@ -53,6 +56,25 @@ class MockClient(_ODataClient):
     def __init__(self, responses):
         super().__init__(DummyAuth(), "https://org.example", None)
         self._http = DummyHTTP(responses)
+
+
+class RecordingHTTP(DummyHTTP):
+    def __init__(self, responses):
+        super().__init__(responses)
+        self.recorded_headers = []
+
+    def _request(self, method, url, **kwargs):
+        headers = (kwargs.get("headers") or {}).copy()
+        self.recorded_headers.append(headers)
+        return super()._request(method, url, **kwargs)
+
+
+class DummyCredential(TokenCredential):
+    def get_token(self, *scopes, **kwargs):
+        class Tok:
+            token = "dummy-token"
+
+        return Tok()
 
 
 # --- Tests ---
@@ -120,3 +142,62 @@ def test_http_non_mapped_status_code_subcode_fallback():
         c._request("get", c.api + "/accounts")
     err = ei.value.to_dict()
     assert err["subcode"] == "http_418"
+
+
+def test_correlation_id_diff_without_scope():
+    responses = [
+        (200, {}, {"value": []}),
+        (200, {}, {"value": []}),
+    ]
+    c = MockClient([])
+    recorder = RecordingHTTP(responses)
+    c._http = recorder
+    c._request("get", c.api + "/accounts")
+    c._request("get", c.api + "/accounts")
+    assert len(recorder.recorded_headers) == 2
+    h1, h2 = recorder.recorded_headers
+    assert h1["x-ms-client-request-id"] != h2["x-ms-client-request-id"]
+    assert h1["x-ms-correlation-request-id"] != h2["x-ms-correlation-request-id"]
+
+
+def test_correlation_id_shared_inside_call_scope():
+    responses = [
+        (200, {}, {"value": []}),
+        (200, {}, {"value": []}),
+    ]
+    c = MockClient([])
+    recorder = RecordingHTTP(responses)
+    c._http = recorder
+    with c._call_scope():
+        c._request("get", c.api + "/accounts")
+        c._request("get", c.api + "/accounts")
+    assert len(recorder.recorded_headers) == 2
+    h1, h2 = recorder.recorded_headers
+    assert h1["x-ms-client-request-id"] != h2["x-ms-client-request-id"]
+    assert h1["x-ms-correlation-request-id"] == h2["x-ms-correlation-request-id"]
+
+
+def test_dataverse_client_correlation_scope_uses_user_id():
+    responses = [
+        (200, {}, {"value": []}),
+        (200, {}, {"value": []}),
+    ]
+    client = DataverseClient("https://org.example", DummyCredential(), DataverseConfig())
+    mock = MockClient([])
+    recorder = RecordingHTTP(responses)
+    mock._http = recorder
+    client._odata = mock
+    with client.correlation_scope("custom-correlation-id"):
+        mock._request("get", mock.api + "/accounts")
+        mock._request("get", mock.api + "/accounts")
+    assert len(recorder.recorded_headers) == 2
+    h1, h2 = recorder.recorded_headers
+    assert h1["x-ms-correlation-request-id"] == "custom-correlation-id"
+    assert h2["x-ms-correlation-request-id"] == "custom-correlation-id"
+
+
+def test_correlation_scope_rejects_blank_identifier():
+    client = DataverseClient("https://org.example", DummyCredential(), DataverseConfig())
+    with pytest.raises(ValueError):
+        with client.correlation_scope("   "):
+            pass

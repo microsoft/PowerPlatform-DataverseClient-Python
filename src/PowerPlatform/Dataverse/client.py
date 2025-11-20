@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union, List, Iterable
+from typing import Any, Dict, Optional, Union, List, Iterable, Iterator
+from contextlib import contextmanager
 
 from azure.core.credentials import TokenCredential
 
@@ -99,6 +100,13 @@ class DataverseClient:
             )
         return self._odata
 
+    @contextmanager
+    def _scoped_odata(self) -> Iterator[_ODataClient]:
+        """Yield the low-level client while ensuring a correlation scope is active."""
+        od = self._get_odata()
+        with od._call_scope():
+            yield od
+
     # ---------------- Unified CRUD: create/update/delete ----------------
     def create(self, table_schema_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
         """
@@ -132,19 +140,19 @@ class DataverseClient:
                 ids = client.create("account", records)
                 print(f"Created {len(ids)} accounts")
         """
-        od = self._get_odata()
-        entity_set = od._entity_set_from_schema_name(table_schema_name)
-        if isinstance(records, dict):
-            rid = od._create(entity_set, table_schema_name, records)
-            # _create returns str on single input
-            if not isinstance(rid, str):
-                raise TypeError("_create (single) did not return GUID string")
-            return [rid]
-        if isinstance(records, list):
-            ids = od._create_multiple(entity_set, table_schema_name, records)
-            if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
-                raise TypeError("_create (multi) did not return list[str]")
-            return ids
+        with self._scoped_odata() as od:
+            entity_set = od._entity_set_from_schema_name(table_schema_name)
+            if isinstance(records, dict):
+                rid = od._create(entity_set, table_schema_name, records)
+                # _create returns str on single input
+                if not isinstance(rid, str):
+                    raise TypeError("_create (single) did not return GUID string")
+                return [rid]
+            if isinstance(records, list):
+                ids = od._create_multiple(entity_set, table_schema_name, records)
+                if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+                    raise TypeError("_create (multi) did not return list[str]")
+                return ids
         raise TypeError("records must be dict or list[dict]")
 
     def update(
@@ -192,16 +200,16 @@ class DataverseClient:
                 ]
                 client.update("account", ids, changes)
         """
-        od = self._get_odata()
-        if isinstance(ids, str):
-            if not isinstance(changes, dict):
-                raise TypeError("For single id, changes must be a dict")
-            od._update(table_schema_name, ids, changes)  # discard representation
+        with self._scoped_odata() as od:
+            if isinstance(ids, str):
+                if not isinstance(changes, dict):
+                    raise TypeError("For single id, changes must be a dict")
+                od._update(table_schema_name, ids, changes)  # discard representation
+                return None
+            if not isinstance(ids, list):
+                raise TypeError("ids must be str or list[str]")
+            od._update_by_ids(table_schema_name, ids, changes)
             return None
-        if not isinstance(ids, list):
-            raise TypeError("ids must be str or list[str]")
-        od._update_by_ids(table_schema_name, ids, changes)
-        return None
 
     def delete(
         self,
@@ -235,21 +243,21 @@ class DataverseClient:
 
                 job_id = client.delete("account", [id1, id2, id3])
         """
-        od = self._get_odata()
-        if isinstance(ids, str):
-            od._delete(table_schema_name, ids)
+        with self._scoped_odata() as od:
+            if isinstance(ids, str):
+                od._delete(table_schema_name, ids)
+                return None
+            if not isinstance(ids, list):
+                raise TypeError("ids must be str or list[str]")
+            if not ids:
+                return None
+            if not all(isinstance(rid, str) for rid in ids):
+                raise TypeError("ids must contain string GUIDs")
+            if use_bulk_delete:
+                return od._delete_multiple(table_schema_name, ids)
+            for rid in ids:
+                od._delete(table_schema_name, rid)
             return None
-        if not isinstance(ids, list):
-            raise TypeError("ids must be str or list[str]")
-        if not ids:
-            return None
-        if not all(isinstance(rid, str) for rid in ids):
-            raise TypeError("ids must contain string GUIDs")
-        if use_bulk_delete:
-            return od._delete_multiple(table_schema_name, ids)
-        for rid in ids:
-            od._delete(table_schema_name, rid)
-        return None
 
     def get(
         self,
@@ -328,24 +336,29 @@ class DataverseClient:
                 ):
                     print(f"Batch size: {len(batch)}")
         """
-        od = self._get_odata()
         if record_id is not None:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
-            return od._get(
-                table_schema_name,
-                record_id,
-                select=select,
-            )
-        return od._get_multiple(
-            table_schema_name,
-            select=select,
-            filter=filter,
-            orderby=orderby,
-            top=top,
-            expand=expand,
-            page_size=page_size,
-        )
+            with self._scoped_odata() as od:
+                return od._get(
+                    table_schema_name,
+                    record_id,
+                    select=select,
+                )
+
+        def _paged() -> Iterable[List[Dict[str, Any]]]:
+            with self._scoped_odata() as od:
+                yield from od._get_multiple(
+                    table_schema_name,
+                    select=select,
+                    filter=filter,
+                    orderby=orderby,
+                    top=top,
+                    expand=expand,
+                    page_size=page_size,
+                )
+
+        return _paged()
 
     # SQL via Web API sql parameter
     def query_sql(self, sql: str):
@@ -381,7 +394,8 @@ class DataverseClient:
                 sql = "SELECT a.name, a.telephone1 FROM account AS a WHERE a.statecode = 0"
                 results = client.query_sql(sql)
         """
-        return self._get_odata()._query_sql(sql)
+        with self._scoped_odata() as od:
+            return od._query_sql(sql)
 
     # Table metadata helpers
     def get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
@@ -404,7 +418,8 @@ class DataverseClient:
                     print(f"Logical name: {info['table_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
         """
-        return self._get_odata()._get_table_info(table_schema_name)
+        with self._scoped_odata() as od:
+            return od._get_table_info(table_schema_name)
 
     def create_table(
         self,
@@ -474,12 +489,13 @@ class DataverseClient:
                     primary_column_schema_name="new_ProductName"
                 )
         """
-        return self._get_odata()._create_table(
-            table_schema_name,
-            columns,
-            solution_unique_name,
-            primary_column_schema_name,
-        )
+        with self._scoped_odata() as od:
+            return od._create_table(
+                table_schema_name,
+                columns,
+                solution_unique_name,
+                primary_column_schema_name,
+            )
 
     def delete_table(self, table_schema_name: str) -> None:
         """
@@ -499,7 +515,8 @@ class DataverseClient:
 
                 client.delete_table("new_MyTestTable")
         """
-        self._get_odata()._delete_table(table_schema_name)
+        with self._scoped_odata() as od:
+            od._delete_table(table_schema_name)
 
     def list_tables(self) -> list[str]:
         """
@@ -515,7 +532,8 @@ class DataverseClient:
                 for table in tables:
                     print(table)
         """
-        return self._get_odata()._list_tables()
+        with self._scoped_odata() as od:
+            return od._list_tables()
 
     def create_columns(
         self,
@@ -545,10 +563,11 @@ class DataverseClient:
                 )
                 print(created)  # ['new_Scratch', 'new_Flags']
         """
-        return self._get_odata()._create_columns(
-            table_schema_name,
-            columns,
-        )
+        with self._scoped_odata() as od:
+            return od._create_columns(
+                table_schema_name,
+                columns,
+            )
 
     def delete_columns(
         self,
@@ -573,10 +592,11 @@ class DataverseClient:
                 )
                 print(removed)  # ['new_Scratch', 'new_Flags']
         """
-        return self._get_odata()._delete_columns(
-            table_schema_name,
-            columns,
-        )
+        with self._scoped_odata() as od:
+            return od._delete_columns(
+                table_schema_name,
+                columns,
+            )
 
     # File upload
     def upload_file(
@@ -640,18 +660,18 @@ class DataverseClient:
                     mode="auto"
                 )
         """
-        od = self._get_odata()
-        entity_set = od._entity_set_from_schema_name(table_schema_name)
-        od._upload_file(
-            entity_set,
-            record_id,
-            file_name_attribute,
-            path,
-            mode=mode,
-            mime_type=mime_type,
-            if_none_match=if_none_match,
-        )
-        return None
+        with self._scoped_odata() as od:
+            entity_set = od._entity_set_from_schema_name(table_schema_name)
+            od._upload_file(
+                entity_set,
+                record_id,
+                file_name_attribute,
+                path,
+                mode=mode,
+                mime_type=mime_type,
+                if_none_match=if_none_match,
+            )
+            return None
 
     # Cache utilities
     def flush_cache(self, kind) -> int:
@@ -675,7 +695,40 @@ class DataverseClient:
                 removed = client.flush_cache("picklist")
                 print(f"Cleared {removed} cached picklist entries")
         """
-        return self._get_odata()._flush_cache(kind)
+        with self._scoped_odata() as od:
+            return od._flush_cache(kind)
+        
+    # Other utilities
+    @contextmanager
+    def correlation_scope(self, correlation_id: str) -> Iterator["DataverseClient"]:
+        """Share a caller-specified correlation id across nested SDK calls.
+
+        Use this context manager to stamp your own identifier on every Dataverse
+        request made within the ``with`` block. Nested SDK calls reuse the
+        existing correlation id, and concurrent scopes remain isolated.
+
+        :param correlation_id: Non-empty identifier to propagate to
+            ``x-ms-correlation-request-id``.
+        :type correlation_id: :class:`str`
+        :raises TypeError: If ``correlation_id`` is not a string.
+        :raises ValueError: If ``correlation_id`` is empty after trimming.
+
+        Example::
+
+            with client.correlation_scope("6f187988-5fb4-4bd2-9f25-4d7a1c9e24ce"):
+                client.create("account", {"name": "Scoped Run"})
+                for batch in client.get("account", filter="statecode eq 0"):
+                    ...
+        """
+
+        if not isinstance(correlation_id, str):
+            raise TypeError("correlation_id must be str")
+        trimmed = correlation_id.strip()
+        if not trimmed:
+            raise ValueError("correlation_id cannot be empty")
+        od = self._get_odata()
+        with od._call_scope(trimmed):
+            yield self
 
 
 __all__ = ["DataverseClient"]

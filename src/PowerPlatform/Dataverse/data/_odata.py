@@ -11,8 +11,11 @@ import unicodedata
 import time
 import re
 import json
+import uuid
 from datetime import datetime, timezone
 import importlib.resources as ir
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from ..core._http import _HttpClient
 from ._upload import _ODataFileUpload
@@ -35,6 +38,9 @@ from ..__version__ import __version__ as _SDK_VERSION
 
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar(
+    "_CALL_SCOPE_CORRELATION_ID", default=None
+)
 
 
 class _ODataClient(_ODataFileUpload):
@@ -113,6 +119,17 @@ class _ODataClient(_ODataFileUpload):
         self._picklist_label_cache = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
 
+    @contextmanager
+    def _call_scope(self, correlation_id: Optional[str] = None):
+        """Context manager to share a correlation id across nested SDK calls."""
+        existing = _CALL_SCOPE_CORRELATION_ID.get()
+        shared_id = correlation_id or existing or str(uuid.uuid4())
+        token = _CALL_SCOPE_CORRELATION_ID.set(shared_id)
+        try:
+            yield shared_id
+        finally:
+            _CALL_SCOPE_CORRELATION_ID.reset(token)
+
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
@@ -139,7 +156,23 @@ class _ODataClient(_ODataFileUpload):
 
     def _request(self, method: str, url: str, *, expected: tuple[int, ...] = (200, 201, 202, 204), **kwargs):
         headers_in = kwargs.pop("headers", None)
-        kwargs["headers"] = self._merge_headers(headers_in)
+        id_headers = {
+            "x-ms-client-request-id": str(uuid.uuid4()),
+            "x-ms-correlation-request-id": _CALL_SCOPE_CORRELATION_ID.get(),
+        }
+        if headers_in:
+            id_headers.update(headers_in)
+        merged_headers = self._merge_headers(id_headers)
+        kwargs["headers"] = merged_headers
+        print(
+            "[DataverseSDK] request",
+            method.upper(),
+            url,
+            "corr:",
+            merged_headers.get("x-ms-correlation-request-id"),
+            "client:",
+            merged_headers.get("x-ms-client-request-id"),
+        )
         r = self._raw_request(method, url, **kwargs)
         if r.status_code in expected:
             return r
@@ -164,9 +197,10 @@ class _ODataClient(_ODataFileUpload):
             pass
         sc = r.status_code
         subcode = _http_subcode(sc)
-        correlation_id = headers.get("x-ms-correlation-request-id") or headers.get("x-ms-correlation-id")
         request_id = (
-            headers.get("x-ms-client-request-id") or headers.get("request-id") or headers.get("x-ms-request-id")
+            headers.get("x-ms-service-request-id")
+            or headers.get("req_id")
+            or headers.get("x-ms-request-id")
         )
         traceparent = headers.get("traceparent")
         ra = headers.get("Retry-After")
@@ -180,10 +214,11 @@ class _ODataClient(_ODataFileUpload):
         raise HttpError(
             msg,
             status_code=sc,
+            correlation_id=merged_headers.get("x-ms-correlation-request-id"),
+            client_request_id=merged_headers.get("x-ms-client-request-id"),
+            service_request_id=request_id,
             subcode=subcode,
             service_error_code=svc_code,
-            correlation_id=correlation_id,
-            request_id=request_id,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
             retry_after=retry_after,
