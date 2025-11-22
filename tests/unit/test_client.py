@@ -36,9 +36,7 @@ class TestDataverseClient(unittest.TestCase):
 
         # Verify
         # Ensure _entity_set_from_schema_name was called and its result ("accounts") was passed to _create
-        self.client._odata._create.assert_called_once_with(
-            "accounts", "account", {"name": "Contoso Ltd"}
-        )
+        self.client._odata._create.assert_called_once_with("accounts", "account", {"name": "Contoso Ltd"})
 
     def test_create_multiple(self):
         """Test create method with multiple records."""
