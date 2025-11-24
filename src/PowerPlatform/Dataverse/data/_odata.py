@@ -993,17 +993,19 @@ class _ODataClient(_ODataFileUpload):
             f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes"
             f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
         )
-        # Retry up to 3 times on 404 (new or not-yet-published attribute metadata). If still 404, raise.
+        # Retry on 404 (metadata not yet published) before surfacing the error.
         r_type = None
-        for attempt in range(3):
+        max_attempts = 5
+        backoff_seconds = 0.4
+        for attempt in range(1, max_attempts + 1):
             try:
                 r_type = self._request("get", url_type)
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
-                    if attempt < 2:
-                        # Exponential-ish backoff: 0.4s, 0.8s
-                        time.sleep(0.4 * (2**attempt))
+                    if attempt < max_attempts:
+                        # Exponential backoff: 0.4s, 0.8s, 1.6s, ...
+                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
                     raise RuntimeError(
                         f"Picklist attribute metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
@@ -1029,14 +1031,14 @@ class _ODataClient(_ODataFileUpload):
         )
         # Step 2 fetch with retries: expanded OptionSet (cast form first)
         r_opts = None
-        for attempt in range(3):
+        for attempt in range(1, max_attempts + 1):
             try:
                 r_opts = self._request("get", cast_url)
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
-                    if attempt < 2:
-                        time.sleep(0.4 * (2**attempt))  # 0.4s, 0.8s
+                    if attempt < max_attempts:
+                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
                     raise RuntimeError(
                         f"Picklist OptionSet metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"

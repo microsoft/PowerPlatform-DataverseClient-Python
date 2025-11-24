@@ -66,7 +66,7 @@ def log(call: str):
 
 # Simple SHA-256 helper with caching to avoid re-reading large files multiple times.
 _FILE_HASH_CACHE = {}
-
+ATTRIBUTE_VISIBILITY_DELAYS = (0, 3, 10, 20, 35, 50, 70, 90, 120)
 
 def file_sha256(path: Path):  # returns (hex_digest, size_bytes)
     try:
@@ -178,12 +178,12 @@ TABLE_SCHEMA_NAME = "new_FileSample"
 
 def ensure_table():
     # Check by schema
-    existing = client.get_table_info(TABLE_SCHEMA_NAME)
+    existing = backoff(lambda: client.get_table_info(TABLE_SCHEMA_NAME))
     if existing:
         print({"table": TABLE_SCHEMA_NAME, "existed": True})
         return existing
     log("client.create_table('new_FileSample', schema={'new_Title': 'string'})")
-    info = client.create_table(TABLE_SCHEMA_NAME, {"new_Title": "string"})
+    info = backoff(lambda: client.create_table(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
     print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get("metadata_id")})
     return info
 
@@ -217,7 +217,7 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
             f"{odata.api}/EntityDefinitions({meta_id})/Attributes?$select=SchemaName&$filter="
             f"SchemaName eq '{schema_name}'"
         )
-        r = odata._request("get", url)
+        r = backoff(lambda: odata._request("get", url), delays=ATTRIBUTE_VISIBILITY_DELAYS)
         val = []
         try:
             val = r.json().get("value", [])
@@ -245,7 +245,7 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
     }
     try:
         url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
-        r = odata._request("post", url, json=payload)
+        r = backoff(lambda: odata._request("post", url, json=payload), delays=ATTRIBUTE_VISIBILITY_DELAYS)
         print({f"{key_prefix}_file_attribute_created": True})
         time.sleep(2)
         return True
@@ -263,11 +263,39 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
         return False
 
 
+def wait_for_attribute_visibility(logical_name: str, label: str):
+    if not logical_name or not entity_set:
+        return False
+    odata = client._get_odata()
+    probe_url = f"{odata.api}/{entity_set}?$top=1&$select={logical_name}"
+    waited = 0
+    last_error = None
+    for delay in ATTRIBUTE_VISIBILITY_DELAYS:
+        if delay:
+            time.sleep(delay)
+            waited += delay
+        try:
+            resp = odata._request("get", probe_url)
+            try:
+                resp.json()
+            except Exception:  # noqa: BLE001
+                pass
+            if waited:
+                print({f"{label}_attribute_visible_wait_seconds": waited})
+            return True
+        except Exception as ex:  # noqa: BLE001
+            last_error = ex
+            continue
+    raise RuntimeError(f"Timed out waiting for attribute '{logical_name}' to materialize") from last_error
+
+
 # Conditionally ensure each attribute only if its mode is selected
 if run_small:
     ensure_file_attribute_generic(small_file_attr_schema, "Small Document", "small")
+    wait_for_attribute_visibility(small_file_attr_logical, "small")
 if run_chunk:
     ensure_file_attribute_generic(chunk_file_attr_schema, "Chunk Document", "chunk")
+    wait_for_attribute_visibility(chunk_file_attr_logical, "chunk")
 
 # --------------------------- Record create ---------------------------
 record_id = None
@@ -325,7 +353,7 @@ if run_small:
         dl_url_single = (
             f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"  # raw entity_set URL OK
         )
-        resp_single = odata._request("get", dl_url_single)
+        resp_single = backoff(lambda: odata._request("get", dl_url_single))
         content_single = resp_single.content or b""
         import hashlib  # noqa: WPS433
 
@@ -355,7 +383,7 @@ if run_small:
             )
         )
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
-        resp_single_replace = odata._request("get", dl_url_single)
+        resp_single_replace = backoff(lambda: odata._request("get", dl_url_single))
         content_single_replace = resp_single_replace.content or b""
         downloaded_hash_replace = hashlib.sha256(content_single_replace).hexdigest() if content_single_replace else None
         hash_match_replace = (
@@ -397,7 +425,7 @@ if run_chunk:
         dl_url_chunk = (
             f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"  # raw entity_set for download
         )
-        resp_chunk = odata._request("get", dl_url_chunk)
+        resp_chunk = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk = resp_chunk.content or b""
         import hashlib  # noqa: WPS433
 
@@ -426,7 +454,7 @@ if run_chunk:
             )
         )
         print({"chunk_replace_upload_completed": True})
-        resp_chunk_replace = odata._request("get", dl_url_chunk)
+        resp_chunk_replace = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk_replace = resp_chunk_replace.content or b""
         dst_hash_chunk_replace = hashlib.sha256(content_chunk_replace).hexdigest() if content_chunk_replace else None
         hash_match_chunk_replace = (
@@ -459,7 +487,7 @@ else:
 if cleanup_table:
     try:
         log(f"client.delete_table('{TABLE_SCHEMA_NAME}')")
-        client.delete_table(TABLE_SCHEMA_NAME)
+        backoff(lambda: client.delete_table(TABLE_SCHEMA_NAME))
         print({"table_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"table_deleted": False, "error": str(e)})
