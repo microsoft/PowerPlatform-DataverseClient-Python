@@ -1004,7 +1004,7 @@ class _ODataClient(_ODataFileUpload):
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
                     if attempt < max_attempts:
-                        # Exponential backoff: 0.4s, 0.8s, 1.6s, ...
+                        # Exponential backoff: 0.4s, 0.8s, 1.6s, 3.2s
                         time.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
                     raise RuntimeError(

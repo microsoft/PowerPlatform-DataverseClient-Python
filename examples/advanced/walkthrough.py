@@ -38,19 +38,15 @@ class Priority(IntEnum):
     HIGH = 3
 
 
-def backoff(op, *, delays=(0, 2, 5, 10), retry_status=(400, 403, 404, 409, 412, 429, 500, 502, 503, 504)):
+def backoff(op, *, delays=(0, 2, 5, 10)):
     last = None
-    for delay in delays:
-        if delay:
-            time.sleep(delay)
+    for d in delays:
+        if d:
+            time.sleep(d)
         try:
             return op()
         except Exception as ex:  # noqa: BLE001
             last = ex
-            resp = getattr(ex, "response", None)
-            code = getattr(resp, "status_code", None)
-            if isinstance(ex, requests.exceptions.HTTPError) and code in retry_status:
-                continue
             continue
     if last:
         raise last

@@ -153,7 +153,7 @@ def generate_test_pdf(size_mb: int = 10) -> Path:
     return test_file
 
 
-def backoff(op, *, delays=(0, 2, 5, 10), retry_status=(400, 403, 404, 409, 412, 429, 500, 502, 503, 504)):
+def backoff(op, *, delays=(0, 2, 5, 10)):
     last = None
     for d in delays:
         if d:
@@ -162,11 +162,6 @@ def backoff(op, *, delays=(0, 2, 5, 10), retry_status=(400, 403, 404, 409, 412, 
             return op()
         except Exception as ex:  # noqa: BLE001
             last = ex
-            r = getattr(ex, "response", None)
-            code = getattr(r, "status_code", None)
-            if isinstance(ex, requests.exceptions.HTTPError) and code in retry_status:
-                continue
-            # For non-HTTP errors just retry the schedule
             continue
     if last:
         raise last
@@ -245,7 +240,7 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
     }
     try:
         url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
-        r = backoff(lambda: odata._request("post", url, json=payload), delays=ATTRIBUTE_VISIBILITY_DELAYS)
+        backoff(lambda: odata._request("post", url, json=payload), delays=ATTRIBUTE_VISIBILITY_DELAYS)
         print({f"{key_prefix}_file_attribute_created": True})
         time.sleep(2)
         return True
