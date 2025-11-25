@@ -23,6 +23,7 @@ import time
 from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.errors import MetadataError
 import requests
 
 
@@ -38,17 +39,32 @@ class Priority(IntEnum):
     HIGH = 3
 
 
-def backoff(op, *, delays=(0, 2, 5, 10)):
+def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     last = None
+    total_delay = 0
+    attempts = 0
     for d in delays:
         if d:
             time.sleep(d)
+            total_delay += d
+        attempts += 1
         try:
-            return op()
+            result = op()
+            if attempts > 1:
+                retry_count = attempts - 1
+                print(
+                    f"   ↺ Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                )
+            return result
         except Exception as ex:  # noqa: BLE001
             last = ex
             continue
     if last:
+        if attempts:
+            retry_count = max(attempts - 1, 0)
+            print(
+                f"   ⚠ Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
+            )
         raise last
 
 
@@ -183,7 +199,8 @@ def main():
     # Multiple read with filter
     log_call(f"client.get('{table_name}', filter='new_quantity gt 5')")
     all_records = []
-    for page in client.get(table_name, filter="new_quantity gt 5"):
+    records_iterator = backoff(lambda: client.get(table_name, filter="new_quantity gt 5"))
+    for page in records_iterator:
         all_records.extend(page)
     print(f"✓ Found {len(all_records)} records with new_quantity > 5")
     for rec in all_records:
@@ -232,7 +249,8 @@ def main():
     # Query with paging
     log_call(f"client.get('{table_name}', page_size=5)")
     print("Fetching records with page_size=5...")
-    for page_num, page in enumerate(client.get(table_name, orderby=["new_Quantity"], page_size=5), start=1):
+    paging_iterator = backoff(lambda: client.get(table_name, orderby=["new_Quantity"], page_size=5))
+    for page_num, page in enumerate(paging_iterator, start=1):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
@@ -321,7 +339,7 @@ def main():
         print(f"✓ Deleted table: {table_name}")
     except Exception as ex:  # noqa: BLE001
         code = getattr(getattr(ex, "response", None), "status_code", None)
-        if isinstance(ex, requests.exceptions.HTTPError) and code == 404:
+        if (isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404):
             print(f"✓ Table removed: {table_name}")
         else:
             raise
