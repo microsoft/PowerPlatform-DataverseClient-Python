@@ -19,9 +19,12 @@ Prerequisites:
 
 import sys
 import json
+import time
 from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.errors import MetadataError
+import requests
 
 
 # Simple logging helper
@@ -34,6 +37,35 @@ class Priority(IntEnum):
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
+
+def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
+    last = None
+    total_delay = 0
+    attempts = 0
+    for d in delays:
+        if d:
+            time.sleep(d)
+            total_delay += d
+        attempts += 1
+        try:
+            result = op()
+            if attempts > 1:
+                retry_count = attempts - 1
+                print(
+                    f"   ↺ Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                )
+            return result
+        except Exception as ex:  # noqa: BLE001
+            last = ex
+            continue
+    if last:
+        if attempts:
+            retry_count = max(attempts - 1, 0)
+            print(
+                f"   ⚠ Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
+            )
+        raise last
 
 
 def main():
@@ -72,7 +104,7 @@ def main():
     table_name = "new_WalkthroughDemo"
 
     log_call(f"client.get_table_info('{table_name}')")
-    table_info = client.get_table_info(table_name)
+    table_info = backoff(lambda: client.get_table_info(table_name))
 
     if table_info:
         print(f"✓ Table already exists: {table_info.get('table_schema_name')}")
@@ -87,7 +119,7 @@ def main():
             "new_Completed": "bool",
             "new_Priority": Priority,
         }
-        table_info = client.create_table(table_name, columns)
+        table_info = backoff(lambda: client.create_table(table_name, columns))
         print(f"✓ Created table: {table_info.get('table_schema_name')}")
         print(f"  Columns created: {', '.join(table_info.get('columns_created', []))}")
 
@@ -107,7 +139,7 @@ def main():
         "new_Completed": False,
         "new_Priority": Priority.MEDIUM,
     }
-    id1 = client.create(table_name, single_record)[0]
+    id1 = backoff(lambda: client.create(table_name, single_record))[0]
     print(f"✓ Created single record: {id1}")
 
     # Multiple create
@@ -135,7 +167,7 @@ def main():
             "new_Priority": Priority.HIGH,
         },
     ]
-    ids = client.create(table_name, multiple_records)
+    ids = backoff(lambda: client.create(table_name, multiple_records))
     print(f"✓ Created {len(ids)} records: {ids}")
 
     # ============================================================================
@@ -147,7 +179,7 @@ def main():
 
     # Single read by ID
     log_call(f"client.get('{table_name}', '{id1}')")
-    record = client.get(table_name, id1)
+    record = backoff(lambda: client.get(table_name, id1))
     print("✓ Retrieved single record:")
     print(
         json.dumps(
@@ -167,7 +199,8 @@ def main():
     # Multiple read with filter
     log_call(f"client.get('{table_name}', filter='new_quantity gt 5')")
     all_records = []
-    for page in client.get(table_name, filter="new_quantity gt 5"):
+    records_iterator = backoff(lambda: client.get(table_name, filter="new_quantity gt 5"))
+    for page in records_iterator:
         all_records.extend(page)
     print(f"✓ Found {len(all_records)} records with new_quantity > 5")
     for rec in all_records:
@@ -182,13 +215,13 @@ def main():
 
     # Single update
     log_call(f"client.update('{table_name}', '{id1}', {{...}})")
-    client.update(table_name, id1, {"new_Quantity": 100})
-    updated = client.get(table_name, id1)
+    backoff(lambda: client.update(table_name, id1, {"new_Quantity": 100}))
+    updated = backoff(lambda: client.get(table_name, id1))
     print(f"✓ Updated single record new_Quantity: {updated.get('new_quantity')}")
 
     # Multiple update (broadcast same change)
     log_call(f"client.update('{table_name}', [{len(ids)} IDs], {{...}})")
-    client.update(table_name, ids, {"new_Completed": True})
+    backoff(lambda: client.update(table_name, ids, {"new_Completed": True}))
     print(f"✓ Updated {len(ids)} records to new_Completed=True")
 
     # ============================================================================
@@ -210,13 +243,14 @@ def main():
         }
         for i in range(1, 21)
     ]
-    paging_ids = client.create(table_name, paging_records)
+    paging_ids = backoff(lambda: client.create(table_name, paging_records))
     print(f"✓ Created {len(paging_ids)} records for paging demo")
 
     # Query with paging
     log_call(f"client.get('{table_name}', page_size=5)")
     print("Fetching records with page_size=5...")
-    for page_num, page in enumerate(client.get(table_name, orderby=["new_Quantity"], page_size=5), start=1):
+    paging_iterator = backoff(lambda: client.get(table_name, orderby=["new_Quantity"], page_size=5))
+    for page_num, page in enumerate(paging_iterator, start=1):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
@@ -230,7 +264,7 @@ def main():
     log_call(f"client.query_sql('SELECT new_title, new_quantity FROM {table_name} WHERE new_completed = 1')")
     sql = f"SELECT new_title, new_quantity FROM new_walkthroughdemo WHERE new_completed = 1"
     try:
-        results = client.query_sql(sql)
+        results = backoff(lambda: client.query_sql(sql))
         print(f"✓ SQL query returned {len(results)} completed records:")
         for result in results[:5]:  # Show first 5
             print(f"  - new_Title='{result.get('new_title')}', new_Quantity={result.get('new_quantity')}")
@@ -252,8 +286,8 @@ def main():
         "new_Completed": False,
         "new_Priority": "High",  # String label instead of int
     }
-    label_id = client.create(table_name, label_record)[0]
-    retrieved = client.get(table_name, label_id)
+    label_id = backoff(lambda: client.create(table_name, label_record))[0]
+    retrieved = backoff(lambda: client.get(table_name, label_id))
     print(f"✓ Created record with string label 'High' for new_Priority")
     print(f"  new_Priority stored as integer: {retrieved.get('new_priority')}")
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
@@ -266,12 +300,12 @@ def main():
     print("=" * 80)
 
     log_call(f"client.create_columns('{table_name}', {{'new_Notes': 'string'}})")
-    created_cols = client.create_columns(table_name, {"new_Notes": "string"})
+    created_cols = backoff(lambda: client.create_columns(table_name, {"new_Notes": "string"}))
     print(f"✓ Added column: {created_cols[0]}")
 
     # Delete the column we just added
     log_call(f"client.delete_columns('{table_name}', ['new_Notes'])")
-    client.delete_columns(table_name, ["new_Notes"])
+    backoff(lambda: client.delete_columns(table_name, ["new_Notes"]))
     print(f"✓ Deleted column: new_Notes")
 
     # ============================================================================
@@ -283,12 +317,12 @@ def main():
 
     # Single delete
     log_call(f"client.delete('{table_name}', '{id1}')")
-    client.delete(table_name, id1)
+    backoff(lambda: client.delete(table_name, id1))
     print(f"✓ Deleted single record: {id1}")
 
     # Multiple delete (delete the paging demo records)
     log_call(f"client.delete('{table_name}', [{len(paging_ids)} IDs])")
-    job_id = client.delete(table_name, paging_ids)
+    job_id = backoff(lambda: client.delete(table_name, paging_ids))
     print(f"✓ Bulk delete job started: {job_id}")
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
@@ -300,8 +334,15 @@ def main():
     print("=" * 80)
 
     log_call(f"client.delete_table('{table_name}')")
-    client.delete_table(table_name)
-    print(f"✓ Deleted table: {table_name}")
+    try:
+        backoff(lambda: client.delete_table(table_name))
+        print(f"✓ Deleted table: {table_name}")
+    except Exception as ex:  # noqa: BLE001
+        code = getattr(getattr(ex, "response", None), "status_code", None)
+        if (isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404):
+            print(f"✓ Table removed: {table_name}")
+        else:
+            raise
 
     # ============================================================================
     # SUMMARY

@@ -26,7 +26,7 @@ Note: This is an advanced testing script. For basic installation validation,
 
 import sys
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 # Import SDK components (assumes installation is already validated)
@@ -73,6 +73,42 @@ def setup_authentication() -> DataverseClient:
         sys.exit(1)
 
 
+def wait_for_table_metadata(
+    client: DataverseClient,
+    table_schema_name: str,
+    retries: int = 10,
+    delay_seconds: int = 3,
+) -> Dict[str, Any]:
+    """Poll until table metadata is published and entity set becomes available."""
+
+    for attempt in range(1, retries + 1):
+        try:
+            info = client.get_table_info(table_schema_name)
+            if info and info.get("entity_set_name"):
+                # Check for PrimaryIdAttribute next, make sure it's available
+                # so subsequent CRUD calls do not hit a cached miss despite table_info succeeding.
+                odata = client._get_odata()
+                odata._entity_set_from_schema_name(table_schema_name)
+
+                if attempt > 1:
+                    print(
+                        f"   ✅ Table metadata available after {attempt} attempts."
+                    )
+                return info
+        except Exception:
+            pass
+
+        if attempt < retries:
+            print(
+                f"   ⏳ Waiting for table metadata to publish (attempt {attempt}/{retries})..."
+            )
+            time.sleep(delay_seconds)
+
+    raise RuntimeError(
+        "Table metadata did not become available in time. Please retry later."
+    )
+
+
 def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
     """Create or verify test table exists."""
     print("\n📋 Test Table Setup")
@@ -109,9 +145,7 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
         print(f"   Logical name: {table_info.get('table_logical_name')}")
         print(f"   Entity set: {table_info.get('entity_set_name')}")
 
-        # Wait a moment for table to be ready
-        time.sleep(2)
-        return table_info
+        return wait_for_table_metadata(client, table_schema_name)
 
     except MetadataError as e:
         print(f"❌ Failed to create table: {e}")
@@ -125,6 +159,8 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
 
     table_schema_name = table_info.get("table_schema_name")
     attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    retries = 5
+    delay_seconds = 3
 
     # Create test record data
     test_data = {
@@ -138,7 +174,21 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
 
     try:
         print("🚀 Creating test record...")
-        created_ids = client.create(table_schema_name, test_data)
+        created_ids: Optional[List[str]] = None
+        for attempt in range(1, retries + 1):
+            try:
+                created_ids = client.create(table_schema_name, test_data)
+                if attempt > 1:
+                    print(f"   ✅ Record creation succeeded after {attempt} attempts.")
+                break
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404 and attempt < retries:
+                    print(
+                        f"   ⏳ Table not ready for create (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
+                    )
+                    time.sleep(delay_seconds)
+                    continue
+                raise
 
         if isinstance(created_ids, list) and created_ids:
             record_id = created_ids[0]
@@ -165,9 +215,29 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
     table_schema_name = table_info.get("table_schema_name")
     attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
 
+    retries = 5
+    delay_seconds = 3
+
     try:
         print(f"🔍 Reading record: {record_id}")
-        record = client.get(table_schema_name, record_id)
+        record = None
+        for attempt in range(1, retries + 1):
+            try:
+                record = client.get(table_schema_name, record_id)
+                if attempt > 1:
+                    print(f"   ✅ Record read succeeded after {attempt} attempts.")
+                break
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404 and attempt < retries:
+                    print(
+                        f"   ⏳ Record not queryable yet (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
+                    )
+                    time.sleep(delay_seconds)
+                    continue
+                raise
+
+        if record is None:
+            raise RuntimeError("Record did not become available in time.")
 
         if record:
             print("✅ Record retrieved successfully!")
@@ -203,29 +273,40 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
 
     table_schema_name = table_info.get("table_schema_name")
     attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    retries = 5
+    delay_seconds = 3
 
     try:
         print("🔍 Querying records from test table...")
+        for attempt in range(1, retries + 1):
+            try:
+                records_iterator = client.get(
+                    table_schema_name,
+                    select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"],
+                    filter=f"{attr_prefix}_is_active eq true",
+                    top=5,
+                    orderby=[f"{attr_prefix}_name asc"],
+                )
 
-        # Query with filter and select
-        records_iterator = client.get(
-            table_schema_name,
-            select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"],
-            filter=f"{attr_prefix}_is_active eq true",
-            top=5,
-            orderby=[f"{attr_prefix}_name asc"],
-        )
+                record_count = 0
+                for batch in records_iterator:
+                    for record in batch:
+                        record_count += 1
+                        name = record.get(f"{attr_prefix}_name", "N/A")
+                        count = record.get(f"{attr_prefix}_count", "N/A")
+                        amount = record.get(f"{attr_prefix}_amount", "N/A")
+                        print(f"   Record {record_count}: {name} (Count: {count}, Amount: {amount})")
 
-        record_count = 0
-        for batch in records_iterator:
-            for record in batch:
-                record_count += 1
-                name = record.get(f"{attr_prefix}_name", "N/A")
-                count = record.get(f"{attr_prefix}_count", "N/A")
-                amount = record.get(f"{attr_prefix}_amount", "N/A")
-                print(f"   Record {record_count}: {name} (Count: {count}, Amount: {amount})")
-
-        print(f"✅ Query completed! Found {record_count} active records.")
+                print(f"✅ Query completed! Found {record_count} active records.")
+                break
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404 and attempt < retries:
+                    print(
+                        f"   ⏳ Query retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
+                    )
+                    time.sleep(delay_seconds)
+                    continue
+                raise
 
     except Exception as e:
         print(f"⚠️  Query test encountered an issue: {e}")
@@ -238,16 +319,33 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
+    retries = 5
+    delay_seconds = 3
 
     # Ask user if they want to clean up
     cleanup_choice = input("Do you want to delete the test record? (y/N): ").strip().lower()
 
     if cleanup_choice in ["y", "yes"]:
-        try:
-            client.delete(table_schema_name, record_id)
-            print("✅ Test record deleted successfully")
-        except Exception as e:
-            print(f"⚠️  Failed to delete test record: {e}")
+        for attempt in range(1, retries + 1):
+            try:
+                client.delete(table_schema_name, record_id)
+                print("✅ Test record deleted successfully")
+                break
+            except HttpError as err:
+                status = getattr(err, "status_code", None)
+                if status == 404:
+                    print("ℹ️  Record already deleted or not yet available; skipping.")
+                    break
+                if attempt < retries:
+                    print(
+                        f"   ⏳ Record delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
+                    )
+                    time.sleep(delay_seconds)
+                    continue
+                print(f"⚠️  Failed to delete test record: {err}")
+            except Exception as e:
+                print(f"⚠️  Failed to delete test record: {e}")
+                break
     else:
         print("ℹ️  Test record kept for inspection")
 
@@ -255,13 +353,51 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     table_cleanup = input("Do you want to delete the test table? (y/N): ").strip().lower()
 
     if table_cleanup in ["y", "yes"]:
-        try:
-            client.delete_table(table_info.get("table_schema_name"))
-            print("✅ Test table deleted successfully")
-        except Exception as e:
-            print(f"⚠️  Failed to delete test table: {e}")
+        for attempt in range(1, retries + 1):
+            try:
+                client.delete_table(table_info.get("table_schema_name"))
+                print("✅ Test table deleted successfully")
+                break
+            except HttpError as err:
+                status = getattr(err, "status_code", None)
+                if status == 404:
+                    if _table_still_exists(client, table_info.get("table_schema_name")):
+                        if attempt < retries:
+                            print(
+                                f"   ⏳ Table delete retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
+                            )
+                            time.sleep(delay_seconds)
+                            continue
+                        print(f"⚠️  Failed to delete test table due to metadata delay: {err}")
+                        break
+                    print("✅ Test table deleted successfully (404 reported).")
+                    break
+                if attempt < retries:
+                    print(
+                        f"   ⏳ Table delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
+                    )
+                    time.sleep(delay_seconds)
+                    continue
+                print(f"⚠️  Failed to delete test table: {err}")
+            except Exception as e:
+                print(f"⚠️  Failed to delete test table: {e}")
+                break
     else:
         print("ℹ️  Test table kept for future testing")
+
+
+def _table_still_exists(client: DataverseClient, table_schema_name: Optional[str]) -> bool:
+    if not table_schema_name:
+        return False
+    try:
+        info = client.get_table_info(table_schema_name)
+        return bool(info and info.get("entity_set_name"))
+    except HttpError as probe_err:
+        if getattr(probe_err, "status_code", None) == 404:
+            return False
+        return True
+    except Exception:
+        return True
 
 
 def main():
