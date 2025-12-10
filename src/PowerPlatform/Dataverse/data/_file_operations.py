@@ -200,6 +200,7 @@ class _ODataFileOperations:
         if file_name is None:
             raise ValueError("Response is missing the 'x-ms-file-name' header. The file column may be empty or the server did not return the expected header.")
         return file_name, response.content
+    
     def _delete_file(
         self,
         entity_set: str,
