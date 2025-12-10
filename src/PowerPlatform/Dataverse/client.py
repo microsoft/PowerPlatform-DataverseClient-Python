@@ -725,7 +725,6 @@ class DataverseClient:
             record_id,
             file_name_attribute,
         )
-        
     
     # Cache utilities
     def flush_cache(self, kind) -> int:
