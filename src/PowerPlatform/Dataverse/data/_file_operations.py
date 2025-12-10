@@ -217,6 +217,6 @@ class _ODataFileOperations:
 
         key = self._format_key(record_id)
         url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
-        self._request("delete", url) 
+        self._request("delete", url, expected=(204,)) 
 
         return None
