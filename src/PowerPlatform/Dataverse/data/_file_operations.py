@@ -195,7 +195,7 @@ class _ODataFileOperations:
 
         key = self._format_key(record_id)
         url = f"{self.api}/{entity_set}{key}/{file_name_attribute}/$value"
-        response = self._request("get", url) 
+        response = self._request("get", url, expected=(200,)) 
         file_name = response.headers.get('x-ms-file-name')
         if file_name is None:
             raise ValueError("Response is missing the 'x-ms-file-name' header. The file column may be empty or the server did not return the expected header.")
