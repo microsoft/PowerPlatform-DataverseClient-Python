@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import importlib.resources as ir
 
 from ..core._http import _HttpClient
-from ._upload import _ODataFileUpload
+from ._file_operations import _ODataFileOperations
 from ..core.errors import *
 from ..core._error_codes import (
     _http_subcode,
@@ -37,7 +37,7 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
-class _ODataClient(_ODataFileUpload):
+class _ODataClient(_ODataFileOperations):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     @staticmethod

@@ -1,15 +1,15 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""File upload helpers."""
+"""File operations helpers."""
 
 from __future__ import annotations
 
 from typing import Optional
 
 
-class _ODataFileUpload:
-    """File upload capabilities (small + chunk) with auto selection."""
+class _ODataFileOperations:
+    """Provides file management capabilities including upload, download, and delete operations."""
 
     def _upload_file(
         self,
@@ -127,7 +127,8 @@ class _ODataFileUpload:
         None
             Returns nothing on success. Any failure raises an exception.
         """
-        import os, math
+        import os
+        import math
         from urllib.parse import quote
 
         if not record_id:
@@ -175,4 +176,47 @@ class _ODataFileUpload:
                 # Each chunk returns 206 (partial) or 204 (final). Accept both.
                 self._request("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
+        return None
+
+    def _download_file(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+    ) -> tuple[str, bytes]:
+        """
+        Download a file from a Dataverse file column.
+        :param entity_set: Source entity set (plural logical name), e.g. "accounts".
+        :param record_id: GUID of the record
+        :param file_name_attribute: Logical name of the file column attribute.
+
+        :return: Tuple with file name and file content.
+        """
+
+        key = self._format_key(record_id)
+        url = f"{self.api}/{entity_set}{key}/{file_name_attribute}/$value"
+        response = self._request("get", url) 
+        file_name = response.headers.get('x-ms-file-name')
+        if file_name is None:
+            raise ValueError("Response is missing the 'x-ms-file-name' header. The file column may be empty or the server did not return the expected header.")
+        return file_name, response.content
+    def _delete_file(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+    ) -> None:
+        """
+        Delete a file from a Dataverse file column.
+        :param entity_set: Target entity set (plural logical name), e.g. "accounts".
+        :param record_id: GUID of the record
+        :param file_name_attribute: Logical name of the file column attribute.
+
+        :return: None
+        """
+
+        key = self._format_key(record_id)
+        url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
+        self._request("delete", url) 
+
         return None
