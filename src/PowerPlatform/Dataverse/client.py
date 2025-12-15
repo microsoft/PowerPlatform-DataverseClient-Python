@@ -706,7 +706,7 @@ class DataverseClient:
 
 
         :return: None
-        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the delete fails 
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the delete fails
 
         Example:
             Delete a file::
@@ -725,7 +725,7 @@ class DataverseClient:
             record_id,
             file_name_attribute,
         )
-    
+
     # Cache utilities
     def flush_cache(self, kind) -> int:
         """
