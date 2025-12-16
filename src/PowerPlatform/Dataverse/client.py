@@ -397,7 +397,7 @@ class DataverseClient:
         :rtype: :class:`dict` or None
 
         Example:
-            Retrieve table metadata::
+            Retrieve table metadata::--
 
                 info = client.get_table_info("new_MyTestTable")
                 if info:
