@@ -46,6 +46,11 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+service = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.25.0",
+    "pydantic>=2.7.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
