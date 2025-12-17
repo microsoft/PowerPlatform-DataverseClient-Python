@@ -14,7 +14,7 @@ from .data._odata import _ODataClient
 
 class DataverseClient:
     """
-    High-level client for Microsoft Dataverse operations.
+    High-level client for Microsoft Dataverse operations. test
 
     This client provides a simple, stable interface for interacting with Dataverse environments
     through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
