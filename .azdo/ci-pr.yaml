@@ -4,7 +4,8 @@
 pr:
 - main
 
-trigger: none  # Only run on PRs, not on direct pushes
+trigger:
+- main
 
 resources:
   repositories:
