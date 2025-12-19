@@ -698,4 +698,5 @@ class DataverseClient:
         with self._scoped_odata() as od:
             return od._flush_cache(kind)
 
+
 __all__ = ["DataverseClient"]
