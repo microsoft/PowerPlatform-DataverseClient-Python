@@ -199,7 +199,7 @@ class _ODataClient(_ODataFileUpload):
         r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
         if r.status_code in request_context.expected:
             return r
-        headers = getattr(r, "headers", {}) or {}
+        response_headers = getattr(r, "headers", {}) or {}
         body_excerpt = (getattr(r, "text", "") or "")[:200]
         svc_code = None
         msg = f"HTTP {r.status_code}"
@@ -220,9 +220,9 @@ class _ODataClient(_ODataFileUpload):
             pass
         sc = r.status_code
         subcode = _http_subcode(sc)
-        request_id = headers.get("x-ms-service-request-id") or headers.get("req_id") or headers.get("x-ms-request-id")
-        traceparent = headers.get("traceparent")
-        ra = headers.get("Retry-After")
+        request_id = response_headers.get("x-ms-service-request-id") or response_headers.get("req_id") or response_headers.get("x-ms-request-id")
+        traceparent = response_headers.get("traceparent")
+        ra = response_headers.get("Retry-After")
         retry_after = None
         if ra:
             try:
