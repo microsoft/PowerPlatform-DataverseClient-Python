@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List, Union, Iterable
+from typing import Any, Dict, Optional, List, Union, Iterable, Callable
 from enum import Enum
+from dataclasses import dataclass, field
 import unicodedata
 import time
 import re
@@ -39,7 +40,41 @@ from ..__version__ import __version__ as _SDK_VERSION
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
+_DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 
+
+@dataclass
+class _RequestContext:
+    """Structured request context used by ``_request`` to clarify payload and metadata."""
+
+    method: str
+    url: str
+    expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES
+    headers: Optional[Dict[str, str]] = None
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def build(
+        cls,
+        method: str,
+        url: str,
+        *,
+        expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES,
+        merge_headers: Optional[Callable[[Optional[Dict[str, str]]], Dict[str, str]]] = None,
+        **kwargs: Any,
+    ) -> "_RequestContext":
+        headers = kwargs.get("headers")
+        headers = merge_headers(headers) if merge_headers else (headers or {})
+        headers.setdefault("x-ms-client-request-id", str(uuid.uuid4()))
+        headers.setdefault("x-ms-correlation-id", _CALL_SCOPE_CORRELATION_ID.get())
+        kwargs["headers"] = headers
+        return cls(
+            method=method,
+            url=url,
+            expected=expected,
+            headers=headers,
+            kwargs=kwargs or {},
+        )
 
 class _ODataClient(_ODataFileUpload):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
@@ -152,18 +187,17 @@ class _ODataClient(_ODataFileUpload):
     def _raw_request(self, method: str, url: str, **kwargs):
         return self._http._request(method, url, **kwargs)
 
-    def _request(self, method: str, url: str, *, expected: tuple[int, ...] = (200, 201, 202, 204), **kwargs):
-        headers_in = kwargs.pop("headers", None)
-        id_headers = {
-            "x-ms-client-request-id": str(uuid.uuid4()),
-            "x-ms-correlation-request-id": _CALL_SCOPE_CORRELATION_ID.get(),
-        }
-        if headers_in:
-            id_headers.update(headers_in)
-        merged_headers = self._merge_headers(id_headers)
-        kwargs["headers"] = merged_headers
-        r = self._raw_request(method, url, **kwargs)
-        if r.status_code in expected:
+    def _request(self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs):
+        request_context = _RequestContext.build(
+            method,
+            url,
+            expected=expected,
+            merge_headers=self._merge_headers,
+            **kwargs,
+        )
+
+        r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
+        if r.status_code in request_context.expected:
             return r
         headers = getattr(r, "headers", {}) or {}
         body_excerpt = (getattr(r, "text", "") or "")[:200]
@@ -201,8 +235,8 @@ class _ODataClient(_ODataFileUpload):
             status_code=sc,
             subcode=subcode,
             service_error_code=svc_code,
-            correlation_id=merged_headers.get("x-ms-correlation-request-id"),
-            client_request_id=merged_headers.get("x-ms-client-request-id"),
+            correlation_id=request_context.headers.get("x-ms-correlation-id"), # this is a value set on client side, although it's logged on server side too
+            client_request_id=request_context.headers.get("x-ms-client-request-id"), # this is a value set on client side, although it's logged on server side too
             service_request_id=request_id,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
