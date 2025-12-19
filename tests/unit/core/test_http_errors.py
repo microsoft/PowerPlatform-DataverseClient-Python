@@ -180,5 +180,3 @@ def test_correlation_id_shared_inside_call_scope():
     h1, h2 = recorder.recorded_headers
     assert h1["x-ms-client-request-id"] != h2["x-ms-client-request-id"]
     assert h1["x-ms-correlation-id"] == h2["x-ms-correlation-id"]
-
-
