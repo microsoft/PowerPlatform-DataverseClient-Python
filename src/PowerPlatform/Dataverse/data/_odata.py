@@ -156,7 +156,14 @@ class _ODataClient(_ODataFileUpload):
     def _call_scope(self, correlation_id: Optional[str] = None):
         """Context manager to share a correlation id across nested SDK calls."""
         existing = _CALL_SCOPE_CORRELATION_ID.get()
-        shared_id = correlation_id or existing or str(uuid.uuid4())
+        if correlation_id is not None:
+            if not (_GUID_RE.fullmatch(correlation_id)):
+                raise ValueError("correlation_id provided must be a GUID string")
+            shared_id = correlation_id
+        elif existing is not None:
+            shared_id = existing
+        else:
+            shared_id = str(uuid.uuid4())
         token = _CALL_SCOPE_CORRELATION_ID.set(shared_id)
         try:
             yield shared_id
