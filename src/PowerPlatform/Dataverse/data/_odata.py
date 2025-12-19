@@ -76,6 +76,7 @@ class _RequestContext:
             kwargs=kwargs or {},
         )
 
+
 class _ODataClient(_ODataFileUpload):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
@@ -227,7 +228,11 @@ class _ODataClient(_ODataFileUpload):
             pass
         sc = r.status_code
         subcode = _http_subcode(sc)
-        request_id = response_headers.get("x-ms-service-request-id") or response_headers.get("req_id") or response_headers.get("x-ms-request-id")
+        request_id = (
+            response_headers.get("x-ms-service-request-id")
+            or response_headers.get("req_id")
+            or response_headers.get("x-ms-request-id")
+        )
         traceparent = response_headers.get("traceparent")
         ra = response_headers.get("Retry-After")
         retry_after = None
@@ -242,8 +247,12 @@ class _ODataClient(_ODataFileUpload):
             status_code=sc,
             subcode=subcode,
             service_error_code=svc_code,
-            correlation_id=request_context.headers.get("x-ms-correlation-id"), # this is a value set on client side, although it's logged on server side too
-            client_request_id=request_context.headers.get("x-ms-client-request-id"), # this is a value set on client side, although it's logged on server side too
+            correlation_id=request_context.headers.get(
+                "x-ms-correlation-id"
+            ),  # this is a value set on client side, although it's logged on server side too
+            client_request_id=request_context.headers.get(
+                "x-ms-client-request-id"
+            ),  # this is a value set on client side, although it's logged on server side too
             service_request_id=request_id,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
