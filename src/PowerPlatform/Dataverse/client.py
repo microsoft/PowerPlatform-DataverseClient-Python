@@ -698,37 +698,4 @@ class DataverseClient:
         with self._scoped_odata() as od:
             return od._flush_cache(kind)
 
-    # Other utilities
-    @contextmanager
-    def correlation_scope(self, correlation_id: str) -> Iterator["DataverseClient"]:
-        """Share a caller-specified correlation id across nested SDK calls.
-
-        Use this context manager to stamp your own identifier on every Dataverse
-        request made within the ``with`` block. Nested SDK calls reuse the
-        existing correlation id, and concurrent scopes remain isolated.
-
-        :param correlation_id: Non-empty identifier to propagate to
-            ``x-ms-correlation-request-id``.
-        :type correlation_id: :class:`str`
-        :raises TypeError: If ``correlation_id`` is not a string.
-        :raises ValueError: If ``correlation_id`` is empty after trimming.
-
-        Example::
-
-            with client.correlation_scope("6f187988-5fb4-4bd2-9f25-4d7a1c9e24ce"):
-                client.create("account", {"name": "Scoped Run"})
-                for batch in client.get("account", filter="statecode eq 0"):
-                    ...
-        """
-
-        if not isinstance(correlation_id, str):
-            raise TypeError("correlation_id must be str")
-        trimmed = correlation_id.strip()
-        if not trimmed:
-            raise ValueError("correlation_id cannot be empty")
-        od = self._get_odata()
-        with od._call_scope(trimmed):
-            yield self
-
-
 __all__ = ["DataverseClient"]

@@ -300,25 +300,6 @@ except ValidationError as e:
     print(f"Validation error: {e.message}")
 ```
 
-### Correlate multiple requests to debug
-
-Give your own identifier to every HTTP call by wrapping operations in
-`DataverseClient.correlation_scope()`:
-
-```python
-from uuid import uuid4
-
-with client.correlation_scope(str(uuid4())):
-    client.create("account", {"name": "Scoped Request"})
-    pages = client.get("account", filter="statecode eq 0")
-    for batch in pages:
-        ...
-```
-
-All nested SDK calls inside the block (including pagination and retries) reuse
-the provided value for the `x-ms-correlation-request-id` header, which makes it
-easy to align Dataverse traces. If you omit the context manager, the SDK automatically generates unique correlation IDs.
-
 ### Authentication issues
 
 **Common fixes:** 

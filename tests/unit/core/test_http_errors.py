@@ -182,35 +182,3 @@ def test_correlation_id_shared_inside_call_scope():
     assert h1["x-ms-correlation-id"] == h2["x-ms-correlation-id"]
 
 
-def test_dataverse_client_correlation_scope_accepts_guid_and_sets_header():
-    responses = [
-        (200, {}, {"value": []}),
-        (200, {}, {"value": []}),
-    ]
-    client = DataverseClient("https://org.example", DummyCredential(), DataverseConfig())
-    mock = MockClient([])
-    recorder = RecordingHTTP(responses)
-    mock._http = recorder
-    client._odata = mock
-    guid = "2f3cbe8f-2d3d-4f0a-9bb2-1c9a1f8f0b1b"
-    with client.correlation_scope(guid):
-        mock._request("get", mock.api + "/accounts")
-        mock._request("get", mock.api + "/accounts")
-    assert len(recorder.recorded_headers) == 2
-    h1, h2 = recorder.recorded_headers
-    assert h1["x-ms-correlation-id"] == guid
-    assert h2["x-ms-correlation-id"] == guid
-
-
-def test_correlation_scope_rejects_blank_identifier():
-    client = DataverseClient("https://org.example", DummyCredential(), DataverseConfig())
-    with pytest.raises(ValueError):
-        with client.correlation_scope("   "):
-            pass
-
-
-def test_correlation_scope_rejects_non_guid_identifier():
-    client = DataverseClient("https://org.example", DummyCredential(), DataverseConfig())
-    with pytest.raises(ValueError):
-        with client.correlation_scope("not-a-guid"):
-            pass
