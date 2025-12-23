@@ -673,6 +673,79 @@ class DataverseClient:
             )
             return None
 
+    # File download
+    def download_file(
+        self,
+        table_schema_name: str,
+        record_id: str,
+        file_name_attribute: str,
+    ) -> tuple[str, bytes]:
+        """
+        Download a file from a Dataverse file column.
+        :param table_schema_name: Schema name of the table, e.g. ``"account"`` or ``"new_MyTestTable"``.
+        :type table_schema_name: str
+        :param record_id: GUID of the record
+        :type record_id: str
+        :param file_name_attribute: Logical name of the file column attribute.
+        :type file_name_attribute: str
+
+        :return: Tuple with file name and file content.
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the download fails or the file column is empty
+
+        Example:
+            Download a PDF file::
+
+                client.download_file(
+                    table_schema_name="account",
+                    record_id=account_id,
+                    file_name_attribute="new_contract"
+                )
+
+        """
+        od = self._get_odata()
+        entity_set = od._entity_set_from_schema_name(table_schema_name)
+        return od._download_file(
+            entity_set,
+            record_id,
+            file_name_attribute,
+        )
+
+    # File delete
+    def delete_file(
+        self,
+        table_schema_name: str,
+        record_id: str,
+        file_name_attribute: str,
+    ) -> None:
+        """
+        Delete a file from a Dataverse file column.
+        :param table_schema_name: Schema name of the table, e.g. ``"account"`` or ``"new_MyTestTable"``.
+        :param record_id: GUID of the record
+        :param file_name_attribute: Logical name of the file column attribute.
+
+
+        :return: None
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the delete fails
+
+        Example:
+            Delete a file::
+
+                client.delete_file(
+                    table_schema_name="account",
+                    record_id=account_id,
+                    file_name_attribute="new_contract"
+                )
+
+        """
+        od = self._get_odata()
+        entity_set = od._entity_set_from_schema_name(table_schema_name)
+        od._delete_file(
+            entity_set,
+            record_id,
+            file_name_attribute,
+        )
+
     # Cache utilities
     def flush_cache(self, kind) -> int:
         """
