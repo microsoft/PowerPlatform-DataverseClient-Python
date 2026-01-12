@@ -2,8 +2,25 @@
 # Licensed under the MIT license.
 
 """
-Data models and type definitions for the Dataverse SDK. Currently a placeholder.
+Data models and type definitions for the Dataverse SDK.
 """
 
-# Will be populated with models as they are created
-__all__ = []
+from .metadata import (
+    LocalizedLabel,
+    Label,
+    CascadeConfiguration,
+    AssociatedMenuConfiguration,
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    ManyToManyRelationshipMetadata,
+)
+
+__all__ = [
+    "LocalizedLabel",
+    "Label",
+    "CascadeConfiguration",
+    "AssociatedMenuConfiguration",
+    "LookupAttributeMetadata",
+    "OneToManyRelationshipMetadata",
+    "ManyToManyRelationshipMetadata",
+]

@@ -2,8 +2,11 @@
 # Licensed under the MIT license.
 
 """
-Optional extensions for the Dataverse SDK. Currently a placeholder.
+Optional extensions for the Dataverse SDK.
+
+Extensions provide higher-level convenience functions built on top of the core SDK.
 """
 
-# Will be populated with extensions as they are created
-__all__ = []
+from .relationships import create_lookup_field
+
+__all__ = ["create_lookup_field"]
