@@ -25,17 +25,24 @@ class LocalizedLabel:
     :type label: str
     :param language_code: The language code (LCID), e.g., 1033 for English.
     :type language_code: int
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
     """
     label: str
     language_code: int
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
-        return {
+        result = {
             "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
             "Label": self.label,
             "LanguageCode": self.language_code,
         }
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
 
 
 @dataclass
@@ -47,9 +54,13 @@ class Label:
     :type localized_labels: List[LocalizedLabel]
     :param user_localized_label: Optional user-specific localized label.
     :type user_localized_label: Optional[LocalizedLabel]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
     """
     localized_labels: List[LocalizedLabel]
     user_localized_label: Optional[LocalizedLabel] = None
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
@@ -62,6 +73,8 @@ class Label:
             result["UserLocalizedLabel"] = self.user_localized_label.to_dict()
         elif self.localized_labels:
             result["UserLocalizedLabel"] = self.localized_labels[0].to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
         return result
 
 
@@ -82,6 +95,10 @@ class CascadeConfiguration:
     :type share: str
     :param unshare: Cascade behavior for unshare operations.
     :type unshare: str
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload (e.g., "Archive", "RollupView"). These are merged
+        last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
 
     Valid values for each parameter:
         - "Cascade": Perform the operation on all related records
@@ -95,10 +112,11 @@ class CascadeConfiguration:
     reparent: str = "NoCascade"
     share: str = "NoCascade"
     unshare: str = "NoCascade"
+    additional_properties: Optional[Dict[str, Any]] = None
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
-        return {
+        result = {
             "Assign": self.assign,
             "Delete": self.delete,
             "Merge": self.merge,
@@ -106,6 +124,9 @@ class CascadeConfiguration:
             "Share": self.share,
             "Unshare": self.unshare,
         }
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
 
 
 @dataclass
@@ -121,6 +142,10 @@ class AssociatedMenuConfiguration:
     :type label: Optional[Label]
     :param order: Display order within the group.
     :type order: int
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload (e.g., "Icon", "ViewId", "AvailableOffline").
+        These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
 
     Valid behavior values:
         - "UseCollectionName": Use the collection name
@@ -131,6 +156,7 @@ class AssociatedMenuConfiguration:
     group: str = "Details"
     label: Optional[Label] = None
     order: int = 10000
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
@@ -141,6 +167,8 @@ class AssociatedMenuConfiguration:
         }
         if self.label:
             result["Label"] = self.label.to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
         return result
 
 
@@ -157,6 +185,12 @@ class LookupAttributeMetadata:
     :type description: Optional[Label]
     :param required_level: Requirement level for the attribute.
     :type required_level: str
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting properties like "Targets" (to
+        specify which entity types the lookup can reference), "LogicalName",
+        "IsSecured", "IsValidForAdvancedFind", etc. These are merged last and
+        can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
 
     Valid required_level values:
         - "None": The attribute is optional
@@ -167,6 +201,7 @@ class LookupAttributeMetadata:
     display_name: Label
     description: Optional[Label] = None
     required_level: str = "None"
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
@@ -186,6 +221,8 @@ class LookupAttributeMetadata:
         }
         if self.description:
             result["Description"] = self.description.to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
         return result
 
 
@@ -208,6 +245,11 @@ class OneToManyRelationshipMetadata:
     :type associated_menu_configuration: Optional[AssociatedMenuConfiguration]
     :param referencing_attribute: Optional name for the referencing attribute (usually auto-generated).
     :type referencing_attribute: Optional[str]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting inherited properties like
+        "IsValidForAdvancedFind", "IsCustomizable", "SecurityTypes", etc.
+        These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
     """
     schema_name: str
     referenced_entity: str
@@ -216,6 +258,7 @@ class OneToManyRelationshipMetadata:
     cascade_configuration: CascadeConfiguration = field(default_factory=CascadeConfiguration)
     associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
     referencing_attribute: Optional[str] = None
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
@@ -231,6 +274,8 @@ class OneToManyRelationshipMetadata:
             result["AssociatedMenuConfiguration"] = self.associated_menu_configuration.to_dict()
         if self.referencing_attribute:
             result["ReferencingAttribute"] = self.referencing_attribute
+        if self.additional_properties:
+            result.update(self.additional_properties)
         return result
 
 
@@ -245,12 +290,18 @@ class ManyToManyRelationshipMetadata:
     :type entity1_logical_name: str
     :param entity2_logical_name: Logical name of the second entity.
     :type entity2_logical_name: str
-    :param intersect_entity_name: Name for the intersect table (auto-generated if not provided).
+    :param intersect_entity_name: Name for the intersect table (defaults to schema_name if not provided).
     :type intersect_entity_name: Optional[str]
     :param entity1_associated_menu_configuration: Menu configuration for entity1.
     :type entity1_associated_menu_configuration: Optional[AssociatedMenuConfiguration]
     :param entity2_associated_menu_configuration: Menu configuration for entity2.
     :type entity2_associated_menu_configuration: Optional[AssociatedMenuConfiguration]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting inherited properties like
+        "IsValidForAdvancedFind", "IsCustomizable", "SecurityTypes", or direct
+        properties like "Entity1NavigationPropertyName". These are merged last
+        and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
     """
     schema_name: str
     entity1_logical_name: str
@@ -258,6 +309,7 @@ class ManyToManyRelationshipMetadata:
     intersect_entity_name: Optional[str] = None
     entity1_associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
     entity2_associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
+    additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to Web API JSON format."""
@@ -274,6 +326,8 @@ class ManyToManyRelationshipMetadata:
             result["Entity1AssociatedMenuConfiguration"] = self.entity1_associated_menu_configuration.to_dict()
         if self.entity2_associated_menu_configuration:
             result["Entity2AssociatedMenuConfiguration"] = self.entity2_associated_menu_configuration.to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
         return result
 
 
