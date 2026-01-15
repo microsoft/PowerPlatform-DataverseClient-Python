@@ -219,17 +219,18 @@ def main():
     print("4. Create Lookup Field (Extension Helper)")
     print("=" * 80)
 
-    log_call("Creating lookup field on Employee referencing Account (using helper)")
+    log_call("Creating lookup field on Employee referencing Contact as Manager")
 
     # Use the convenience helper for simpler scenarios
+    # An Employee has a Manager (who is a Contact in the system)
     result2 = backoff(
         lambda: create_lookup_field(
             client,
             referencing_table=emp_table["table_logical_name"],
-            lookup_field_name="new_AccountId",
-            referenced_table="account",  # Standard Dataverse table
-            display_name="Company Account",
-            description="The account/company this employee works for",
+            lookup_field_name="new_ManagerId",
+            referenced_table="contact",
+            display_name="Manager",
+            description="The employee's direct manager",
             required=False,
             cascade_delete="RemoveLink",
         )
@@ -325,7 +326,7 @@ def main():
         try:
             if rel_id_2:
                 backoff(lambda: client.delete_relationship(rel_id_2))
-                print(f"  [OK] Deleted relationship: account->employee")
+                print(f"  [OK] Deleted relationship: contact->employee (Manager)")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 2: {e}")
 
@@ -348,7 +349,7 @@ def main():
         print("\n[OK] Cleanup complete")
     else:
         print("\nSkipping cleanup. Remember to manually delete:")
-        print("  - Relationships: new_Department_Employee, account->employee, new_employee_project")
+        print("  - Relationships: new_Department_Employee, contact->employee (Manager), new_employee_project")
         print("  - Tables: new_Employee, new_Department, new_Project")
 
     print("\n" + "=" * 80)
