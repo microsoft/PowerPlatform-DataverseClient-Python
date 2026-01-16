@@ -92,14 +92,25 @@ class _ODataClient(_ODataFileUpload):
 
     @staticmethod
     def _lowercase_keys(record: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert all dictionary keys to lowercase for case-insensitive column names.
+        """Normalize dictionary keys to lowercase for case-insensitive column names.
 
         Dataverse LogicalNames for attributes are stored lowercase, but users may
         provide PascalCase names (matching SchemaName). This normalizes the input.
+        This function lowercases all string keys except OData annotation keys,
+        which must remain case-sensitive.
         """
         if not isinstance(record, dict):
             return record
-        return {k.lower() if isinstance(k, str) else k: v for k, v in record.items()}
+        
+        new_record = {}
+
+        # Preserve OData annotation keys as they are case sensitive
+        for k, v in record.items():
+            if isinstance(k, str) and "@odata" in k:
+                new_record[k] = v
+            else:
+                new_record[k.lower() if isinstance(k, str) else k] = v
+        return new_record
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
@@ -269,7 +280,7 @@ class _ODataClient(_ODataFileUpload):
         .. note::
            Relies on ``OData-EntityId`` (canonical) or ``Location`` response header. No response body parsing is performed. Raises ``RuntimeError`` if neither header contains a GUID.
         """
-        # Lowercase all keys to match Dataverse LogicalName expectations
+        # Lowercase Dataverse attribute keys; keep OData annotation keys unchanged
         record = self._lowercase_keys(record)
         record = self._convert_labels_to_ints(table_schema_name, record)
         url = f"{self.api}/{entity_set}"
@@ -313,7 +324,7 @@ class _ODataClient(_ODataFileUpload):
         logical_name = table_schema_name.lower()
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            # Lowercase all keys to match Dataverse LogicalName expectations
+            # Lowercase Dataverse attribute keys; keep OData annotation keys unchanged
             r = self._lowercase_keys(r)
             r = self._convert_labels_to_ints(table_schema_name, r)
             if "@odata.type" in r or not need_logical:
@@ -506,7 +517,7 @@ class _ODataClient(_ODataFileUpload):
         :return: ``None``
         :rtype: ``None``
         """
-        # Lowercase all keys to match Dataverse LogicalName expectations
+        # Lowercase Dataverse attribute keys; keep OData annotation keys unchanged
         data = self._lowercase_keys(data)
         data = self._convert_labels_to_ints(table_schema_name, data)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
@@ -540,7 +551,7 @@ class _ODataClient(_ODataFileUpload):
         logical_name = table_schema_name.lower()
         enriched: List[Dict[str, Any]] = []
         for r in records:
-            # Lowercase all keys to match Dataverse LogicalName expectations
+            # Lowercase Dataverse attribute keys; keep OData annotation keys unchanged
             r = self._lowercase_keys(r)
             r = self._convert_labels_to_ints(table_schema_name, r)
             if "@odata.type" in r or not need_logical:
