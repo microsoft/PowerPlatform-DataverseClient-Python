@@ -106,7 +106,7 @@ class _ODataClient(_ODataFileUpload):
 
         # Preserve OData annotation keys as they are case sensitive
         for k, v in record.items():
-            if isinstance(k, str) and "@odata" in k:
+            if isinstance(k, str) and "@odata" in k.lower():
                 new_record[k] = v
             else:
                 new_record[k.lower() if isinstance(k, str) else k] = v
