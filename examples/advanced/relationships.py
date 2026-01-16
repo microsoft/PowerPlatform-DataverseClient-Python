@@ -200,7 +200,7 @@ def main():
 
     # Create the relationship
     result = backoff(
-        lambda: client.create_one_to_many_relationship(
+        lambda: client.metadata.create_one_to_many_relationship(
             lookup=lookup,
             relationship=relationship,
         )
@@ -276,7 +276,7 @@ def main():
     )
 
     result3 = backoff(
-        lambda: client.create_many_to_many_relationship(
+        lambda: client.metadata.create_many_to_many_relationship(
             relationship=m2m_relationship,
         )
     )
@@ -295,7 +295,7 @@ def main():
 
     log_call("Retrieving relationship by schema name")
 
-    rel_metadata = client.get_relationship("new_Department_Employee")
+    rel_metadata = client.metadata.get_relationship("new_Department_Employee")
     if rel_metadata:
         print(f"[OK] Found relationship: {rel_metadata.get('SchemaName')}")
         print(f"  Type: {rel_metadata.get('@odata.type')}")
@@ -318,21 +318,21 @@ def main():
         log_call("Deleting relationships")
         try:
             if rel_id_1:
-                backoff(lambda: client.delete_relationship(rel_id_1))
+                backoff(lambda: client.metadata.delete_relationship(rel_id_1))
                 print(f"  [OK] Deleted relationship: new_Department_Employee")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 1: {e}")
 
         try:
             if rel_id_2:
-                backoff(lambda: client.delete_relationship(rel_id_2))
+                backoff(lambda: client.metadata.delete_relationship(rel_id_2))
                 print(f"  [OK] Deleted relationship: contact->employee (Manager)")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 2: {e}")
 
         try:
             if rel_id_3:
-                backoff(lambda: client.delete_relationship(rel_id_3))
+                backoff(lambda: client.metadata.delete_relationship(rel_id_3))
                 print(f"  [OK] Deleted relationship: new_employee_project")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 3: {e}")
