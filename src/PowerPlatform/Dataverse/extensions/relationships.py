@@ -120,8 +120,8 @@ def create_lookup_field(
         cascade_configuration=CascadeConfiguration(delete=cascade_delete)
     )
 
-    # Delegate to metadata client
-    return client.metadata.create_one_to_many_relationship(
+    # Delegate to client
+    return client.create_one_to_many_relationship(
         lookup,
         relationship,
         solution_unique_name
