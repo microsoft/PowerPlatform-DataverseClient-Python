@@ -16,10 +16,11 @@ from typing import Optional
 # Ensure UTF-8 output for emoji support on Windows
 if sys.platform == "win32":
     import codecs
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    if sys.stderr.encoding != 'utf-8':
-        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
+    if sys.stdout.encoding != "utf-8":
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+    if sys.stderr.encoding != "utf-8":
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
 
 def get_skill_source_path() -> Path:
