@@ -11,7 +11,6 @@ for Claude Code
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Ensure UTF-8 output for emoji support on Windows
 if sys.platform == "win32":
