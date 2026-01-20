@@ -69,7 +69,7 @@ This installs a Claude Skill that enables Claude Code to:
 - Help with error handling and troubleshooting
 - Guide you through common patterns
 
-The skill works with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use it when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definition here .claude\skills\dataverse-sdk\SKILL.md.
+The skill works with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use it when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definition here .claude/skills/dataverse-sdk/SKILL.md.
 
 For development from source (Claude Skill auto loaded):
 
