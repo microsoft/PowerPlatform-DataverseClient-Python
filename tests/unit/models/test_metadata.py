@@ -57,9 +57,7 @@ class TestLabel:
 
     def test_to_dict_basic(self):
         """Test basic serialization with auto UserLocalizedLabel."""
-        label = Label(
-            localized_labels=[LocalizedLabel(label="Test", language_code=1033)]
-        )
+        label = Label(localized_labels=[LocalizedLabel(label="Test", language_code=1033)])
         result = label.to_dict()
 
         assert result["@odata.type"] == "Microsoft.Dynamics.CRM.Label"
@@ -149,9 +147,7 @@ class TestAssociatedMenuConfiguration:
     def test_to_dict_with_label(self):
         """Test with a label."""
         menu = AssociatedMenuConfiguration(
-            label=Label(
-                localized_labels=[LocalizedLabel(label="Related Items", language_code=1033)]
-            )
+            label=Label(localized_labels=[LocalizedLabel(label="Related Items", language_code=1033)])
         )
         result = menu.to_dict()
 
@@ -180,9 +176,7 @@ class TestLookupAttributeMetadata:
         """Test basic serialization."""
         lookup = LookupAttributeMetadata(
             schema_name="new_AccountId",
-            display_name=Label(
-                localized_labels=[LocalizedLabel(label="Account", language_code=1033)]
-            ),
+            display_name=Label(localized_labels=[LocalizedLabel(label="Account", language_code=1033)]),
         )
         result = lookup.to_dict()
 
@@ -196,9 +190,7 @@ class TestLookupAttributeMetadata:
         """Test required level."""
         lookup = LookupAttributeMetadata(
             schema_name="new_AccountId",
-            display_name=Label(
-                localized_labels=[LocalizedLabel(label="Account", language_code=1033)]
-            ),
+            display_name=Label(localized_labels=[LocalizedLabel(label="Account", language_code=1033)]),
             required_level="ApplicationRequired",
         )
         result = lookup.to_dict()
@@ -209,12 +201,8 @@ class TestLookupAttributeMetadata:
         """Test with description."""
         lookup = LookupAttributeMetadata(
             schema_name="new_AccountId",
-            display_name=Label(
-                localized_labels=[LocalizedLabel(label="Account", language_code=1033)]
-            ),
-            description=Label(
-                localized_labels=[LocalizedLabel(label="The related account", language_code=1033)]
-            ),
+            display_name=Label(localized_labels=[LocalizedLabel(label="Account", language_code=1033)]),
+            description=Label(localized_labels=[LocalizedLabel(label="The related account", language_code=1033)]),
         )
         result = lookup.to_dict()
 
@@ -225,9 +213,7 @@ class TestLookupAttributeMetadata:
         """Test additional properties like Targets and IsSecured."""
         lookup = LookupAttributeMetadata(
             schema_name="new_ParentId",
-            display_name=Label(
-                localized_labels=[LocalizedLabel(label="Parent", language_code=1033)]
-            ),
+            display_name=Label(localized_labels=[LocalizedLabel(label="Parent", language_code=1033)]),
             additional_properties={
                 "Targets": ["account", "contact"],
                 "IsSecured": True,
@@ -287,9 +273,7 @@ class TestOneToManyRelationshipMetadata:
             referenced_attribute="accountid",
             associated_menu_configuration=AssociatedMenuConfiguration(
                 behavior="UseLabel",
-                label=Label(
-                    localized_labels=[LocalizedLabel(label="Orders", language_code=1033)]
-                ),
+                label=Label(localized_labels=[LocalizedLabel(label="Orders", language_code=1033)]),
             ),
         )
         result = rel.to_dict()
@@ -368,14 +352,10 @@ class TestManyToManyRelationshipMetadata:
             entity1_logical_name="account",
             entity2_logical_name="contact",
             entity1_associated_menu_configuration=AssociatedMenuConfiguration(
-                label=Label(
-                    localized_labels=[LocalizedLabel(label="Contacts", language_code=1033)]
-                )
+                label=Label(localized_labels=[LocalizedLabel(label="Contacts", language_code=1033)])
             ),
             entity2_associated_menu_configuration=AssociatedMenuConfiguration(
-                label=Label(
-                    localized_labels=[LocalizedLabel(label="Accounts", language_code=1033)]
-                )
+                label=Label(localized_labels=[LocalizedLabel(label="Accounts", language_code=1033)])
             ),
         )
         result = rel.to_dict()

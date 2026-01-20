@@ -139,9 +139,7 @@ class _RelationshipOperationsMixin:
         :raises HttpError: If the Web API request fails.
         """
         url = f"{self.api}/RelationshipDefinitions"
-        params = {
-            "$filter": f"SchemaName eq '{schema_name}'"
-        }
+        params = {"$filter": f"SchemaName eq '{schema_name}'"}
         r = self._request("get", url, headers=self._headers(), params=params)
         data = r.json()
         results = data.get("value", [])
@@ -159,5 +157,5 @@ class _RelationshipOperationsMixin:
         """
         if not header_value:
             return None
-        match = re.search(r'\(([0-9a-fA-F-]+)\)', header_value)
+        match = re.search(r"\(([0-9a-fA-F-]+)\)", header_value)
         return match.group(1) if match else None

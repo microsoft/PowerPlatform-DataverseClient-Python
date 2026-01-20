@@ -87,26 +87,18 @@ def create_lookup_field(
             print(f"Created lookup: {result['lookup_schema_name']}")
     """
     # Build the label
-    localized_labels = [LocalizedLabel(
-        label=display_name or referenced_table,
-        language_code=language_code
-    )]
+    localized_labels = [LocalizedLabel(label=display_name or referenced_table, language_code=language_code)]
 
     # Build the lookup attribute
     lookup = LookupAttributeMetadata(
         schema_name=lookup_field_name,
         display_name=Label(localized_labels=localized_labels),
-        required_level="ApplicationRequired" if required else "None"
+        required_level="ApplicationRequired" if required else "None",
     )
 
     # Add description if provided
     if description:
-        lookup.description = Label(
-            localized_labels=[LocalizedLabel(
-                label=description,
-                language_code=language_code
-            )]
-        )
+        lookup.description = Label(localized_labels=[LocalizedLabel(label=description, language_code=language_code)])
 
     # Generate a relationship name if not provided
     relationship_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
@@ -117,15 +109,11 @@ def create_lookup_field(
         referenced_entity=referenced_table,
         referencing_entity=referencing_table,
         referenced_attribute=f"{referenced_table}id",
-        cascade_configuration=CascadeConfiguration(delete=cascade_delete)
+        cascade_configuration=CascadeConfiguration(delete=cascade_delete),
     )
 
     # Delegate to client
-    return client.create_one_to_many_relationship(
-        lookup,
-        relationship,
-        solution_unique_name
-    )
+    return client.create_one_to_many_relationship(lookup, relationship, solution_unique_name)
 
 
 __all__ = ["create_lookup_field"]

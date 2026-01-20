@@ -29,6 +29,7 @@ class LocalizedLabel:
         in the Web API payload. These are merged last and can override default values.
     :type additional_properties: Optional[Dict[str, Any]]
     """
+
     label: str
     language_code: int
     additional_properties: Optional[Dict[str, Any]] = None
@@ -58,6 +59,7 @@ class Label:
         in the Web API payload. These are merged last and can override default values.
     :type additional_properties: Optional[Dict[str, Any]]
     """
+
     localized_labels: List[LocalizedLabel]
     user_localized_label: Optional[LocalizedLabel] = None
     additional_properties: Optional[Dict[str, Any]] = None
@@ -106,6 +108,7 @@ class CascadeConfiguration:
         - "RemoveLink": Remove the relationship link but keep the records
         - "Restrict": Prevent the operation if related records exist
     """
+
     assign: str = "NoCascade"
     delete: str = "RemoveLink"
     merge: str = "NoCascade"
@@ -152,6 +155,7 @@ class AssociatedMenuConfiguration:
         - "UseLabel": Use the specified label
         - "DoNotDisplay": Do not display in the menu
     """
+
     behavior: str = "UseLabel"
     group: str = "Details"
     label: Optional[Label] = None
@@ -197,6 +201,7 @@ class LookupAttributeMetadata:
         - "Recommended": The attribute is recommended
         - "ApplicationRequired": The attribute is required
     """
+
     schema_name: str
     display_name: Label
     description: Optional[Label] = None
@@ -209,15 +214,13 @@ class LookupAttributeMetadata:
             "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
             "SchemaName": self.schema_name,
             "AttributeType": "Lookup",
-            "AttributeTypeName": {
-                "Value": "LookupType"
-            },
+            "AttributeTypeName": {"Value": "LookupType"},
             "DisplayName": self.display_name.to_dict(),
             "RequiredLevel": {
                 "Value": self.required_level,
                 "CanBeChanged": True,
-                "ManagedPropertyLogicalName": "canmodifyrequirementlevelsettings"
-            }
+                "ManagedPropertyLogicalName": "canmodifyrequirementlevelsettings",
+            },
         }
         if self.description:
             result["Description"] = self.description.to_dict()
@@ -251,6 +254,7 @@ class OneToManyRelationshipMetadata:
         These are merged last and can override default values.
     :type additional_properties: Optional[Dict[str, Any]]
     """
+
     schema_name: str
     referenced_entity: str
     referencing_entity: str
@@ -303,6 +307,7 @@ class ManyToManyRelationshipMetadata:
         and can override default values.
     :type additional_properties: Optional[Dict[str, Any]]
     """
+
     schema_name: str
     entity1_logical_name: str
     entity2_logical_name: str
