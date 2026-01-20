@@ -12,15 +12,6 @@ import shutil
 import sys
 from pathlib import Path
 
-# Ensure UTF-8 output for emoji support on Windows
-if sys.platform == "win32":
-    import codecs
-
-    if sys.stdout.encoding != "utf-8":
-        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
-    if sys.stderr.encoding != "utf-8":
-        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
-
 
 def get_skill_source_path() -> Path:
     """Get the path to the skill source directory in the package."""
@@ -68,24 +59,24 @@ def install_skill(force: bool = False) -> bool:
 
     # Validate source exists
     if not skill_source.exists():
-        print(f"❌ Error: Skill source not found at {skill_source}")
-        print("   This may indicate a packaging issue.")
+        print(f"[ERROR] Skill source not found at {skill_source}")
+        print("        This may indicate a packaging issue.")
         return False
 
     skill_md = skill_source / "SKILL.md"
     if not skill_md.exists():
-        print(f"❌ Error: SKILL.md not found at {skill_md}")
+        print(f"[ERROR] SKILL.md not found at {skill_md}")
         return False
 
     # Check if skill already exists
     if skill_dest.exists():
         if not force:
-            print(f"⚠️  Skill already exists at {skill_dest}")
-            response = input("   Overwrite existing skill? (y/n): ").strip().lower()
+            print(f"[WARN] Skill already exists at {skill_dest}")
+            response = input("          Overwrite existing skill? (y/n): ").strip().lower()
             if response not in ["y", "yes"]:
-                print("   Installation cancelled.")
+                print("          Installation cancelled.")
                 return False
-        print(f"   Updating existing skill...")
+        print(f"          Updating existing skill...")
 
     # Create destination directory
     skill_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -95,19 +86,19 @@ def install_skill(force: bool = False) -> bool:
         if skill_dest.exists():
             shutil.rmtree(skill_dest)
         shutil.copytree(skill_source, skill_dest)
-        print(f"✅ Dataverse SDK skill installed successfully!")
-        print(f"   Location: {skill_dest}")
+        print(f"[OK] Dataverse SDK skill installed successfully!")
+        print(f"          Location: {skill_dest}")
         print()
-        print("   Claude Code will now automatically use this skill when working")
-        print("   with the PowerPlatform Dataverse Client SDK.")
+        print("          Claude Code will now automatically use this skill when working")
+        print("          with the PowerPlatform Dataverse Client SDK.")
         print()
-        print("💡 Next steps:")
-        print("   • Start Claude Code in your project directory")
-        print("   • Ask Claude for help with Dataverse operations")
-        print("   • Claude will automatically apply SDK best practices")
+        print("[INFO] Next steps:")
+        print("       * Start Claude Code in your project directory")
+        print("       * Ask Claude for help with Dataverse operations")
+        print("       * Claude will automatically apply SDK best practices")
         return True
     except Exception as e:
-        print(f"❌ Error installing skill: {e}")
+        print(f"[ERROR] Error installing skill: {e}")
         return False
 
 
@@ -121,17 +112,17 @@ def uninstall_skill() -> bool:
     skill_dest = get_skill_destination_path()
 
     if not skill_dest.exists():
-        print(f"ℹ️  Skill not found at {skill_dest}")
-        print("   Nothing to uninstall.")
+        print(f"[INFO] Skill not found at {skill_dest}")
+        print("       Nothing to uninstall.")
         return True
 
     try:
         shutil.rmtree(skill_dest)
-        print(f"✅ Dataverse SDK skill uninstalled successfully!")
-        print(f"   Removed from: {skill_dest}")
+        print(f"[OK] Dataverse SDK skill uninstalled successfully!")
+        print(f"     Removed from: {skill_dest}")
         return True
     except Exception as e:
-        print(f"❌ Error uninstalling skill: {e}")
+        print(f"[ERROR] Error uninstalling skill: {e}")
         return False
 
 
@@ -139,27 +130,27 @@ def check_skill_status() -> None:
     """Check and display the current skill installation status."""
     skill_dest = get_skill_destination_path()
 
-    print("🔍 Dataverse SDK Skill Status")
+    print("[INFO] Dataverse SDK Skill Status")
     print("=" * 60)
 
     if skill_dest.exists():
         skill_md = skill_dest / "SKILL.md"
         if skill_md.exists():
-            print(f"✅ Status: Installed")
-            print(f"   Location: {skill_dest}")
-            print(f"   Skill file: {skill_md}")
+            print(f"[OK] Status: Installed")
+            print(f"     Location: {skill_dest}")
+            print(f"     Skill file: {skill_md}")
             print()
-            print("   The skill is ready to use with Claude Code.")
+            print("     The skill is ready to use with Claude Code.")
         else:
-            print(f"⚠️  Status: Partially installed (SKILL.md missing)")
-            print(f"   Location: {skill_dest}")
+            print(f"[WARN] Status: Partially installed (SKILL.md missing)")
+            print(f"       Location: {skill_dest}")
             print()
-            print("   Consider reinstalling: dataverse-install-claude-skill --force")
+            print("       Consider reinstalling: dataverse-install-claude-skill --force")
     else:
-        print(f"❌ Status: Not installed")
-        print(f"   Expected location: {skill_dest}")
+        print(f"[ERROR] Status: Not installed")
+        print(f"        Expected location: {skill_dest}")
         print()
-        print("   To install: dataverse-install-claude-skill")
+        print("        To install: dataverse-install-claude-skill")
 
 
 def main() -> None:
@@ -202,7 +193,7 @@ About:
     args = parser.parse_args()
 
     print()
-    print("🚀 PowerPlatform Dataverse SDK - Claude Code Skill Installer")
+    print("PowerPlatform Dataverse SDK - Claude Code Skill Installer")
     print("=" * 60)
     print()
 
