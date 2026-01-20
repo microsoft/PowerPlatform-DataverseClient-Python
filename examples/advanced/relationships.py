@@ -38,13 +38,47 @@ def log_call(description):
     print(f"\n-> {description}")
 
 
-def delete_table_if_exists(client, table_name):
-    """Delete a table only if it exists."""
-    if client.get_table_info(table_name):
-        client.delete_table(table_name)
-        print(f"   (Cleaned up existing table: {table_name})")
-        return True
+def delete_relationship_if_exists(client, schema_name):
+    """Delete a relationship by schema name if it exists."""
+    rel = client.get_relationship(schema_name)
+    if rel:
+        rel_id = rel.get("MetadataId")
+        if rel_id:
+            client.delete_relationship(rel_id)
+            print(f"   (Cleaned up existing relationship: {schema_name})")
+            return True
     return False
+
+
+def cleanup_previous_run(client):
+    """Clean up any resources from a previous run to make the example idempotent."""
+    print("\n-> Checking for resources from previous runs...")
+
+    # Known relationship names created by this example
+    relationships = [
+        "new_Department_Employee",
+        "contact_new_employee_new_ManagerId",
+        "new_employee_project",
+    ]
+
+    # Known table names created by this example
+    tables = ["new_Employee", "new_Department", "new_Project"]
+
+    # Delete relationships first (required before tables can be deleted)
+    for rel_name in relationships:
+        try:
+            delete_relationship_if_exists(client, rel_name)
+        except Exception as e:
+            print(f"   [WARN] Could not delete relationship {rel_name}: {e}")
+
+    # Delete tables
+    for table_name in tables:
+        try:
+            if client.get_table_info(table_name):
+                client.delete_table(table_name)
+                print(f"   (Cleaned up existing table: {table_name})")
+        except Exception as e:
+            print(f"   [WARN] Could not delete table {table_name}: {e}")
 
 
 def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
@@ -104,15 +138,23 @@ def main():
     print(f"[OK] Connected to: {base_url}")
 
     # ============================================================================
-    # 2. CREATE SAMPLE TABLES
+    # 2. CLEANUP PREVIOUS RUN (Idempotency)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("2. Create Sample Tables")
+    print("2. Cleanup Previous Run (Idempotency)")
+    print("=" * 80)
+
+    cleanup_previous_run(client)
+
+    # ============================================================================
+    # 3. CREATE SAMPLE TABLES
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("3. Create Sample Tables")
     print("=" * 80)
 
     # Create a parent table (Department)
     log_call("Creating 'new_Department' table")
-    delete_table_if_exists(client, "new_Department")
 
     dept_table = backoff(
         lambda: client.create_table(
@@ -127,7 +169,6 @@ def main():
 
     # Create a child table (Employee)
     log_call("Creating 'new_Employee' table")
-    delete_table_if_exists(client, "new_Employee")
 
     emp_table = backoff(
         lambda: client.create_table(
@@ -142,7 +183,6 @@ def main():
 
     # Create a project table for many-to-many example
     log_call("Creating 'new_Project' table")
-    delete_table_if_exists(client, "new_Project")
 
     proj_table = backoff(
         lambda: client.create_table(
@@ -156,10 +196,10 @@ def main():
     print(f"[OK] Created table: {proj_table['table_schema_name']}")
 
     # ============================================================================
-    # 3. CREATE ONE-TO-MANY RELATIONSHIP (Core SDK API)
+    # 4. CREATE ONE-TO-MANY RELATIONSHIP (Core SDK API)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("3. Create One-to-Many Relationship (Core API)")
+    print("4. Create One-to-Many Relationship (Core API)")
     print("=" * 80)
 
     log_call("Creating lookup field on Employee referencing Department")
@@ -213,10 +253,10 @@ def main():
     rel_id_1 = result['relationship_id']
 
     # ============================================================================
-    # 4. CREATE LOOKUP FIELD (Extension Helper)
+    # 5. CREATE LOOKUP FIELD (Extension Helper)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("4. Create Lookup Field (Extension Helper)")
+    print("5. Create Lookup Field (Extension Helper)")
     print("=" * 80)
 
     log_call("Creating lookup field on Employee referencing Contact as Manager")
@@ -242,10 +282,10 @@ def main():
     rel_id_2 = result2['relationship_id']
 
     # ============================================================================
-    # 5. CREATE MANY-TO-MANY RELATIONSHIP
+    # 6. CREATE MANY-TO-MANY RELATIONSHIP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("5. Create Many-to-Many Relationship")
+    print("6. Create Many-to-Many Relationship")
     print("=" * 80)
 
     log_call("Creating M:N relationship between Employee and Project")
@@ -287,10 +327,10 @@ def main():
     rel_id_3 = result3['relationship_id']
 
     # ============================================================================
-    # 6. QUERY RELATIONSHIP METADATA
+    # 7. QUERY RELATIONSHIP METADATA
     # ============================================================================
     print("\n" + "=" * 80)
-    print("6. Query Relationship Metadata")
+    print("7. Query Relationship Metadata")
     print("=" * 80)
 
     log_call("Retrieving relationship by schema name")
@@ -305,10 +345,10 @@ def main():
         print("  Relationship not found")
 
     # ============================================================================
-    # 7. CLEANUP
+    # 8. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("7. Cleanup")
+    print("8. Cleanup")
     print("=" * 80)
 
     cleanup = input("\nDelete created relationships and tables? (y/n): ").strip().lower()
