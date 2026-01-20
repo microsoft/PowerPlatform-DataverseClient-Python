@@ -436,7 +436,7 @@ class DataverseClient:
         :param columns: Dictionary mapping column names (with customization prefix value) to their types. All custom column names must include the customization prefix value (e.g. ``"new_Title"``).
             Supported types:
 
-            - Primitive types: ``"string"``, ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``
+            - Primitive types: ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), ``"bool"`` (alias: ``"boolean"``)
             - Enum subclass (IntEnum preferred): Creates a local option set. Optional multilingual
               labels can be provided via ``__labels__`` class attribute, defined inside the Enum subclass::
 
@@ -546,7 +546,7 @@ class DataverseClient:
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
         :param columns: Mapping of column schema names (with customization prefix value) to supported types. All custom column names must include the customization prefix value** (e.g. ``"new_Notes"``). Primitive types include
-            ``string``, ``int``, ``decimal``, ``float``, ``datetime``, and ``bool``. Enum subclasses (IntEnum preferred)
+            ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), and ``"bool"`` (alias: ``"boolean"``). Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
         :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
         :returns: Schema names for the columns that were created.

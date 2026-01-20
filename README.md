@@ -57,7 +57,21 @@ Install the PowerPlatform Dataverse Client using [pip](https://pypi.org/project/
 pip install PowerPlatform-Dataverse-Client
 ```
 
-For development from source:
+(Optional) Install Claude Skill globally with the Client:
+
+```bash
+pip install PowerPlatform-Dataverse-Client && dataverse-install-claude-skill
+```
+
+This installs a Claude Skill that enables Claude Code to:
+- Apply SDK best practices automatically
+- Provide context-aware code suggestions
+- Help with error handling and troubleshooting
+- Guide you through common patterns
+
+The skill works with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use it when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definition here .claude\skills\dataverse-sdk\SKILL.md.
+
+For development from source (Claude Skill auto loaded):
 
 ```bash
 git clone https://github.com/microsoft/PowerPlatform-DataverseClient-Python.git
@@ -225,6 +239,16 @@ table_info = client.create_table(
     primary_column_schema_name="new_ProductName"  # Optional: custom primary column (default is "{customization prefix value}_Name")
 )
 
+# Get table information
+info = client.get_table_info("new_Product")
+print(f"Logical name: {info['table_logical_name']}")
+print(f"Entity set: {info['entity_set_name']}")
+
+# List all tables
+tables = client.list_tables()
+for table in tables:
+    print(table)
+
 # Add columns to existing table (columns must include customization prefix value)
 client.create_columns("new_Product", {"new_Category": "string"})
 
@@ -302,9 +326,9 @@ except ValidationError as e:
 
 ### Authentication issues
 
-**Common fixes:** 
+**Common fixes:**
 - Verify environment URL format: `https://yourorg.crm.dynamics.com` (no trailing slash)
-- Ensure Azure Identity credentials have proper Dataverse permissions  
+- Ensure Azure Identity credentials have proper Dataverse permissions
 - Check app registration permissions are granted and admin-consented
 
 ### Performance considerations
@@ -313,7 +337,7 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
-| **Bulk Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
+| **Bulk Operations** | Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
