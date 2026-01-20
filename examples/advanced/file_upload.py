@@ -17,6 +17,7 @@ For local development, you can also run from source by uncommenting the sys.path
 import sys
 from pathlib import Path
 import os
+import time
 import traceback
 from typing import Optional
 
@@ -26,10 +27,6 @@ from typing import Optional
 from PowerPlatform.Dataverse.client import DataverseClient
 from azure.identity import InteractiveBrowserCredential  # type: ignore
 import requests
-
-# Import shared utilities
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import backoff
 
 entered = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
 if not entered:
@@ -154,6 +151,35 @@ def generate_test_pdf(size_mb: int = 10) -> Path:
 
     print({"test_pdf_generated": str(test_file), "size_mb": test_file.stat().st_size / (1024 * 1024)})
     return test_file
+
+
+def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
+    last = None
+    total_delay = 0
+    attempts = 0
+    for d in delays:
+        if d:
+            time.sleep(d)
+            total_delay += d
+        attempts += 1
+        try:
+            result = op()
+            if attempts > 1:
+                retry_count = attempts - 1
+                print(
+                    f"   ↺ Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                )
+            return result
+        except Exception as ex:  # noqa: BLE001
+            last = ex
+            continue
+    if last:
+        if attempts:
+            retry_count = max(attempts - 1, 0)
+            print(
+                f"   ⚠ Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
+            )
+        raise last
 
 
 # --------------------------- Table ensure ---------------------------

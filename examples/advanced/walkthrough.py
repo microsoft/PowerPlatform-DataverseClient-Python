@@ -19,16 +19,12 @@ Prerequisites:
 
 import sys
 import json
+import time
 from enum import IntEnum
-from pathlib import Path
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 import requests
-
-# Import shared utilities
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import backoff
 
 
 # Simple logging helper
@@ -41,6 +37,35 @@ class Priority(IntEnum):
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
+
+def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
+    last = None
+    total_delay = 0
+    attempts = 0
+    for d in delays:
+        if d:
+            time.sleep(d)
+            total_delay += d
+        attempts += 1
+        try:
+            result = op()
+            if attempts > 1:
+                retry_count = attempts - 1
+                print(
+                    f"   ↺ Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                )
+            return result
+        except Exception as ex:  # noqa: BLE001
+            last = ex
+            continue
+    if last:
+        if attempts:
+            retry_count = max(attempts - 1, 0)
+            print(
+                f"   ⚠ Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
+            )
+        raise last
 
 
 def main():
