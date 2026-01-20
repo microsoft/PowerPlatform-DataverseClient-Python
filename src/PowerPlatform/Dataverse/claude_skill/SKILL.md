@@ -259,7 +259,7 @@ except ValidationError as e:
 5. **Use production credentials** - ClientSecretCredential or ClientCertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
-8. **Use lowercase** - Generally using lower cased input won't go wrong, exception would be custom tables/columns naming
+8. **Use lowercase** - Generally using lowercase input won't go wrong, exception would be custom tables/columns naming
 9. **Test in non-production environments** first
 
 ## Additional Resources
