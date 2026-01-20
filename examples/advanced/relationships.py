@@ -17,7 +17,7 @@ Prerequisites:
 """
 
 import sys
-import time
+from pathlib import Path
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.models.metadata import (
@@ -32,6 +32,10 @@ from PowerPlatform.Dataverse.models.metadata import (
 from PowerPlatform.Dataverse.extensions.relationships import create_lookup_field
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 
+# Import shared utilities
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common import backoff
+
 
 # Simple logging helper
 def log_call(description):
@@ -45,36 +49,6 @@ def delete_table_if_exists(client, table_name):
         print(f"   (Cleaned up existing table: {table_name})")
         return True
     return False
-
-
-def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
-    """Retry helper with exponential backoff."""
-    last = None
-    total_delay = 0
-    attempts = 0
-    for d in delays:
-        if d:
-            time.sleep(d)
-            total_delay += d
-        attempts += 1
-        try:
-            result = op()
-            if attempts > 1:
-                retry_count = attempts - 1
-                print(
-                    f"   * Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
-            return result
-        except Exception as ex:  # noqa: BLE001
-            last = ex
-            continue
-    if last:
-        if attempts:
-            retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
-        raise last
 
 
 def main():
