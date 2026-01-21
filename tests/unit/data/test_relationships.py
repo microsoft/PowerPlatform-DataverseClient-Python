@@ -13,7 +13,6 @@ from PowerPlatform.Dataverse.models.metadata import (
     ManyToManyRelationshipMetadata,
     Label,
     LocalizedLabel,
-    CascadeConfiguration,
 )
 
 

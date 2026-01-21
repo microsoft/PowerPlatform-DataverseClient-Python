@@ -4,7 +4,7 @@
 """Tests for relationship extension helpers."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from PowerPlatform.Dataverse.extensions.relationships import create_lookup_field
 from PowerPlatform.Dataverse.models.metadata import (
@@ -29,7 +29,7 @@ class TestCreateLookupField(unittest.TestCase):
 
     def test_basic_lookup_field_creation(self):
         """Test basic lookup field creation with minimal parameters."""
-        result = create_lookup_field(
+        create_lookup_field(
             self.mock_client,
             referencing_table="new_order",
             lookup_field_name="new_AccountId",
