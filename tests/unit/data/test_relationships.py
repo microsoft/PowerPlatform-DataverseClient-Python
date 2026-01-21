@@ -94,7 +94,9 @@ class TestCreateOneToManyRelationship(unittest.TestCase):
     def test_create_relationship_url(self):
         """Test that correct URL is used."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"
+        }
         self.client._mock_request.return_value = mock_response
 
         self.client._create_one_to_many_relationship(self.lookup, self.relationship)
@@ -107,7 +109,9 @@ class TestCreateOneToManyRelationship(unittest.TestCase):
     def test_create_relationship_payload_includes_lookup(self):
         """Test that payload includes both relationship and lookup metadata."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"
+        }
         self.client._mock_request.return_value = mock_response
 
         self.client._create_one_to_many_relationship(self.lookup, self.relationship)
@@ -123,12 +127,12 @@ class TestCreateOneToManyRelationship(unittest.TestCase):
     def test_create_relationship_with_solution(self):
         """Test that solution header is added when specified."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"
+        }
         self.client._mock_request.return_value = mock_response
 
-        self.client._create_one_to_many_relationship(
-            self.lookup, self.relationship, solution_unique_name="MySolution"
-        )
+        self.client._create_one_to_many_relationship(self.lookup, self.relationship, solution_unique_name="MySolution")
 
         # Verify solution header
         call_args = self.client._mock_request.call_args
@@ -138,7 +142,9 @@ class TestCreateOneToManyRelationship(unittest.TestCase):
     def test_create_relationship_returns_result(self):
         """Test that result dictionary is correctly populated."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"
+        }
         self.client._mock_request.return_value = mock_response
 
         result = self.client._create_one_to_many_relationship(self.lookup, self.relationship)
@@ -166,7 +172,9 @@ class TestCreateManyToManyRelationship(unittest.TestCase):
     def test_create_m2m_relationship_url(self):
         """Test that correct URL is used."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(abcd1234-abcd-1234-abcd-1234abcd5678)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(abcd1234-abcd-1234-abcd-1234abcd5678)"
+        }
         self.client._mock_request.return_value = mock_response
 
         self.client._create_many_to_many_relationship(self.relationship)
@@ -178,7 +186,9 @@ class TestCreateManyToManyRelationship(unittest.TestCase):
     def test_create_m2m_relationship_returns_result(self):
         """Test that result dictionary is correctly populated."""
         mock_response = Mock()
-        mock_response.headers = {"OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(abcd1234-abcd-1234-abcd-1234abcd5678)"}
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(abcd1234-abcd-1234-abcd-1234abcd5678)"
+        }
         self.client._mock_request.return_value = mock_response
 
         result = self.client._create_many_to_many_relationship(self.relationship)
@@ -207,7 +217,7 @@ class TestDeleteRelationship(unittest.TestCase):
         self.assertEqual(call_args[0][0], "delete")
         self.assertEqual(
             call_args[0][1],
-            "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)"
+            "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(12345678-1234-1234-1234-123456789abc)",
         )
 
     def test_delete_relationship_has_if_match_header(self):
