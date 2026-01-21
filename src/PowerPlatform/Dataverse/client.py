@@ -11,6 +11,14 @@ from azure.core.credentials import TokenCredential
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
+from .models.metadata import (
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    ManyToManyRelationshipMetadata,
+    Label,
+    LocalizedLabel,
+    CascadeConfiguration,
+)
 
 
 class DataverseClient:
@@ -701,16 +709,15 @@ class DataverseClient:
     # Relationship operations
     def create_one_to_many_relationship(
         self,
-        lookup: Any,
-        relationship: Any,
+        lookup: LookupAttributeMetadata,
+        relationship: OneToManyRelationshipMetadata,
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a one-to-many relationship between tables.
 
         This operation creates both the relationship and the lookup attribute
-        on the referencing table. It mirrors the CreateOneToManyRequest from
-        the .NET SDK.
+        on the referencing table.
 
         :param lookup: Metadata defining the lookup attribute.
         :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
@@ -768,15 +775,14 @@ class DataverseClient:
 
     def create_many_to_many_relationship(
         self,
-        relationship: Any,
+        relationship: ManyToManyRelationshipMetadata,
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a many-to-many relationship between tables.
 
         This operation creates a many-to-many relationship and an intersect table
-        to manage the relationship. It mirrors the CreateManyToManyRequest from
-        the .NET SDK.
+        to manage the relationship.
 
         :param relationship: Metadata defining the many-to-many relationship.
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
@@ -853,6 +859,93 @@ class DataverseClient:
         """
         with self._scoped_odata() as od:
             return od._get_relationship(schema_name)
+
+    def create_lookup_field(
+        self,
+        referencing_table: str,
+        lookup_field_name: str,
+        referenced_table: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        required: bool = False,
+        cascade_delete: str = "RemoveLink",
+        solution_unique_name: Optional[str] = None,
+        language_code: int = 1033,
+    ) -> Dict[str, Any]:
+        """
+        Create a simple lookup field relationship.
+
+        This is a convenience method that wraps :meth:`create_one_to_many_relationship`
+        for the common case of adding a lookup field to an existing table.
+
+        :param referencing_table: Logical name of the table that will have the lookup field (child table).
+        :type referencing_table: :class:`str`
+        :param lookup_field_name: Schema name for the lookup field (e.g., ``"new_AccountId"``).
+        :type lookup_field_name: :class:`str`
+        :param referenced_table: Logical name of the table being referenced (parent table).
+        :type referenced_table: :class:`str`
+        :param display_name: Display name for the lookup field. Defaults to the referenced table name.
+        :type display_name: :class:`str` or None
+        :param description: Optional description for the lookup field.
+        :type description: :class:`str` or None
+        :param required: Whether the lookup is required. Defaults to ``False``.
+        :type required: :class:`bool`
+        :param cascade_delete: Delete behavior (``"RemoveLink"``, ``"Cascade"``, ``"Restrict"``).
+            Defaults to ``"RemoveLink"``.
+        :type cascade_delete: :class:`str`
+        :param solution_unique_name: Optional solution to add the relationship to.
+        :type solution_unique_name: :class:`str` or None
+        :param language_code: Language code for labels. Defaults to 1033 (English).
+        :type language_code: :class:`int`
+
+        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``, and related metadata.
+        :rtype: :class:`dict`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the Web API request fails.
+
+        Example:
+            Create a simple lookup field::
+
+                result = client.create_lookup_field(
+                    referencing_table="new_order",
+                    lookup_field_name="new_AccountId",
+                    referenced_table="account",
+                    display_name="Account",
+                    required=True,
+                    cascade_delete="RemoveLink"
+                )
+
+                print(f"Created lookup: {result['lookup_schema_name']}")
+        """
+        # Build the label
+        localized_labels = [LocalizedLabel(label=display_name or referenced_table, language_code=language_code)]
+
+        # Build the lookup attribute
+        lookup = LookupAttributeMetadata(
+            schema_name=lookup_field_name,
+            display_name=Label(localized_labels=localized_labels),
+            required_level="ApplicationRequired" if required else "None",
+        )
+
+        # Add description if provided
+        if description:
+            lookup.description = Label(
+                localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
+            )
+
+        # Generate a relationship name
+        relationship_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
+
+        # Build the relationship metadata
+        relationship = OneToManyRelationshipMetadata(
+            schema_name=relationship_name,
+            referenced_entity=referenced_table,
+            referencing_entity=referencing_table,
+            referenced_attribute=f"{referenced_table}id",
+            cascade_configuration=CascadeConfiguration(delete=cascade_delete),
+        )
+
+        return self.create_one_to_many_relationship(lookup, relationship, solution_unique_name)
 
 
 __all__ = ["DataverseClient"]

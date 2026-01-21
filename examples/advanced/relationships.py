@@ -6,7 +6,7 @@ Relationship Management Example for Dataverse SDK.
 
 This example demonstrates:
 - Creating one-to-many relationships using the core SDK API
-- Creating lookup fields using the convenience extension helper
+- Creating lookup fields using the convenience method
 - Creating many-to-many relationships
 - Querying and deleting relationships
 - Working with relationship metadata types
@@ -29,7 +29,6 @@ from PowerPlatform.Dataverse.models.metadata import (
     CascadeConfiguration,
     AssociatedMenuConfiguration,
 )
-from PowerPlatform.Dataverse.extensions.relationships import create_lookup_field
 
 
 # Simple logging helper
@@ -245,19 +244,18 @@ def main():
     rel_id_1 = result["relationship_id"]
 
     # ============================================================================
-    # 5. CREATE LOOKUP FIELD (Extension Helper)
+    # 5. CREATE LOOKUP FIELD (Convenience Method)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("5. Create Lookup Field (Extension Helper)")
+    print("5. Create Lookup Field (Convenience Method)")
     print("=" * 80)
 
     log_call("Creating lookup field on Employee referencing Contact as Manager")
 
-    # Use the convenience helper for simpler scenarios
+    # Use the convenience method for simpler scenarios
     # An Employee has a Manager (who is a Contact in the system)
     result2 = backoff(
-        lambda: create_lookup_field(
-            client,
+        lambda: client.create_lookup_field(
             referencing_table=emp_table["table_logical_name"],
             lookup_field_name="new_ManagerId",
             referenced_table="contact",
@@ -268,7 +266,7 @@ def main():
         )
     )
 
-    print(f"[OK] Created lookup using helper: {result2['lookup_schema_name']}")
+    print(f"[OK] Created lookup using convenience method: {result2['lookup_schema_name']}")
     print(f"  Relationship: {result2['relationship_schema_name']}")
 
     rel_id_2 = result2["relationship_id"]
@@ -317,7 +315,7 @@ def main():
     print("7. Query Relationship Metadata")
     print("=" * 80)
 
-    log_call("Retrieving relationship by schema name")
+    log_call("Retrieving 1:N relationship by schema name")
 
     rel_metadata = client.get_relationship("new_Department_Employee")
     if rel_metadata:
@@ -325,6 +323,17 @@ def main():
         print(f"  Type: {rel_metadata.get('@odata.type')}")
         print(f"  Referenced Entity: {rel_metadata.get('ReferencedEntity')}")
         print(f"  Referencing Entity: {rel_metadata.get('ReferencingEntity')}")
+    else:
+        print("  Relationship not found")
+
+    log_call("Retrieving M:N relationship by schema name")
+
+    m2m_metadata = client.get_relationship("new_employee_project")
+    if m2m_metadata:
+        print(f"[OK] Found relationship: {m2m_metadata.get('SchemaName')}")
+        print(f"  Type: {m2m_metadata.get('@odata.type')}")
+        print(f"  Entity 1: {m2m_metadata.get('Entity1LogicalName')}")
+        print(f"  Entity 2: {m2m_metadata.get('Entity2LogicalName')}")
     else:
         print("  Relationship not found")
 
