@@ -53,7 +53,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             if attempts > 1:
                 retry_count = attempts - 1
                 print(
-                    f"   * Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
                 )
             return result
         except Exception as ex:  # noqa: BLE001
