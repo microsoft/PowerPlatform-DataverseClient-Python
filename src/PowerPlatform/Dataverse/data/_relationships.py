@@ -4,8 +4,7 @@
 """
 Relationship metadata operations for Dataverse Web API.
 
-This module provides mixin functionality for relationship CRUD operations,
-extracted from _ODataClient to keep the main module focused on data operations.
+This module provides mixin functionality for relationship CRUD operations.
 """
 
 from __future__ import annotations
