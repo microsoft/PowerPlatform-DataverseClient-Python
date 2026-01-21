@@ -725,7 +725,7 @@ class DataverseClient:
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the Web API request fails.
 
         Example:
-            Create a one-to-many relationship with full control::
+            Create a one-to-many relationship: Department (1) -> Employee (N)::
 
                 from PowerPlatform.Dataverse.models.metadata import (
                     LookupAttributeMetadata,
@@ -735,7 +735,7 @@ class DataverseClient:
                     CascadeConfiguration,
                 )
 
-                # Define the lookup attribute
+                # Define the lookup attribute (added to Employee table)
                 lookup = LookupAttributeMetadata(
                     schema_name="new_DepartmentId",
                     display_name=Label(
@@ -743,21 +743,20 @@ class DataverseClient:
                             LocalizedLabel(label="Department", language_code=1033)
                         ]
                     ),
-                    required_level="None"
                 )
 
                 # Define the relationship
                 relationship = OneToManyRelationshipMetadata(
                     schema_name="new_Department_Employee",
-                    referenced_entity="new_department",
-                    referencing_entity="new_employee",
+                    referenced_entity="new_department",   # Parent table (the "one" side)
+                    referencing_entity="new_employee",    # Child table (the "many" side)
                     referenced_attribute="new_departmentid",
-                    cascade_configuration=CascadeConfiguration(delete="RemoveLink")
+                    cascade_configuration=CascadeConfiguration(
+                        delete="RemoveLink",  # When department deleted, unlink employees
+                    ),
                 )
 
-                # Create the relationship
                 result = client.create_one_to_many_relationship(lookup, relationship)
-                print(f"Created relationship: {result['relationship_schema_name']}")
                 print(f"Created lookup field: {result['lookup_schema_name']}")
         """
         with self._scoped_odata() as od:
@@ -790,12 +789,13 @@ class DataverseClient:
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the Web API request fails.
 
         Example:
-            Create a many-to-many relationship::
+            Create a many-to-many relationship: Employee (N) <-> Project (N)::
 
                 from PowerPlatform.Dataverse.models.metadata import (
                     ManyToManyRelationshipMetadata,
                 )
 
+                # Employees work on multiple projects; projects have multiple team members
                 relationship = ManyToManyRelationshipMetadata(
                     schema_name="new_employee_project",
                     entity1_logical_name="new_employee",

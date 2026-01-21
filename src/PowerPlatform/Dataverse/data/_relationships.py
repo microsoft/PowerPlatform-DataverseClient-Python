@@ -139,7 +139,7 @@ class _RelationshipOperationsMixin:
         :raises HttpError: If the Web API request fails.
         """
         url = f"{self.api}/RelationshipDefinitions"
-        params = {"$filter": f"SchemaName eq '{schema_name}'"}
+        params = {"$filter": f"SchemaName eq '{self._escape_odata_quotes(schema_name)}'"}
         r = self._request("get", url, headers=self._headers(), params=params)
         data = r.json()
         results = data.get("value", [])

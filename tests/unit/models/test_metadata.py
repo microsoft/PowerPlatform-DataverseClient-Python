@@ -3,7 +3,6 @@
 
 """Tests for metadata entity types."""
 
-import pytest
 from PowerPlatform.Dataverse.models.metadata import (
     LocalizedLabel,
     Label,

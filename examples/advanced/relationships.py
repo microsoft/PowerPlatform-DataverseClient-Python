@@ -30,7 +30,6 @@ from PowerPlatform.Dataverse.models.metadata import (
     AssociatedMenuConfiguration,
 )
 from PowerPlatform.Dataverse.extensions.relationships import create_lookup_field
-from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 
 
 # Simple logging helper
@@ -95,9 +94,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             result = op()
             if attempts > 1:
                 retry_count = attempts - 1
-                print(
-                    f"   * Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
+                print(f"   * Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total.")
             return result
         except Exception as ex:  # noqa: BLE001
             last = ex
@@ -105,13 +102,16 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
+            print(f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total.")
         raise last
 
 
 def main():
+    # Initialize relationship IDs to None for cleanup safety
+    rel_id_1 = None
+    rel_id_2 = None
+    rel_id_3 = None
+
     print("=" * 80)
     print("Dataverse SDK - Relationship Management Example")
     print("=" * 80)
@@ -207,11 +207,7 @@ def main():
     # Define the lookup attribute metadata
     lookup = LookupAttributeMetadata(
         schema_name="new_DepartmentId",
-        display_name=Label(
-            localized_labels=[
-                LocalizedLabel(label="Department", language_code=1033)
-            ]
-        ),
+        display_name=Label(localized_labels=[LocalizedLabel(label="Department", language_code=1033)]),
         required_level="None",
     )
 
@@ -229,11 +225,7 @@ def main():
         associated_menu_configuration=AssociatedMenuConfiguration(
             behavior="UseLabel",
             group="Details",
-            label=Label(
-                localized_labels=[
-                    LocalizedLabel(label="Employees", language_code=1033)
-                ]
-            ),
+            label=Label(localized_labels=[LocalizedLabel(label="Employees", language_code=1033)]),
             order=10000,
         ),
     )
@@ -250,7 +242,7 @@ def main():
     print(f"  Lookup field: {result['lookup_schema_name']}")
     print(f"  Relationship ID: {result['relationship_id']}")
 
-    rel_id_1 = result['relationship_id']
+    rel_id_1 = result["relationship_id"]
 
     # ============================================================================
     # 5. CREATE LOOKUP FIELD (Extension Helper)
@@ -279,7 +271,7 @@ def main():
     print(f"[OK] Created lookup using helper: {result2['lookup_schema_name']}")
     print(f"  Relationship: {result2['relationship_schema_name']}")
 
-    rel_id_2 = result2['relationship_id']
+    rel_id_2 = result2["relationship_id"]
 
     # ============================================================================
     # 6. CREATE MANY-TO-MANY RELATIONSHIP
@@ -298,20 +290,12 @@ def main():
         entity1_associated_menu_configuration=AssociatedMenuConfiguration(
             behavior="UseLabel",
             group="Details",
-            label=Label(
-                localized_labels=[
-                    LocalizedLabel(label="Projects", language_code=1033)
-                ]
-            ),
+            label=Label(localized_labels=[LocalizedLabel(label="Projects", language_code=1033)]),
         ),
         entity2_associated_menu_configuration=AssociatedMenuConfiguration(
             behavior="UseLabel",
             group="Details",
-            label=Label(
-                localized_labels=[
-                    LocalizedLabel(label="Team Members", language_code=1033)
-                ]
-            ),
+            label=Label(localized_labels=[LocalizedLabel(label="Team Members", language_code=1033)]),
         ),
     )
 
@@ -324,7 +308,7 @@ def main():
     print(f"[OK] Created M:N relationship: {result3['relationship_schema_name']}")
     print(f"  Relationship ID: {result3['relationship_id']}")
 
-    rel_id_3 = result3['relationship_id']
+    rel_id_3 = result3["relationship_id"]
 
     # ============================================================================
     # 7. QUERY RELATIONSHIP METADATA
@@ -381,7 +365,7 @@ def main():
         log_call("Deleting tables")
         for table_name in ["new_Employee", "new_Department", "new_Project"]:
             try:
-                backoff(lambda: client.delete_table(table_name))
+                backoff(lambda name=table_name: client.delete_table(name))
                 print(f"  [OK] Deleted table: {table_name}")
             except Exception as e:
                 print(f"  [WARN] Error deleting {table_name}: {e}")
@@ -406,5 +390,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\nError: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
