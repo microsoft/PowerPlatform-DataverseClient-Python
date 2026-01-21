@@ -290,14 +290,11 @@ if rel:
 client.delete_relationship(result['relationship_id'])
 ```
 
-For simpler scenarios, use the extension helper:
+For simpler scenarios, use the convenience method:
 
 ```python
-from PowerPlatform.Dataverse.extensions.relationships import create_lookup_field
-
 # Quick way to create a lookup field with sensible defaults
-result = create_lookup_field(
-    client,
+result = client.create_lookup_field(
     referencing_table="contact",       # Child table gets the lookup field
     lookup_field_name="new_AccountId",
     referenced_table="account",        # Parent table being referenced
