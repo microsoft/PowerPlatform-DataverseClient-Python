@@ -37,23 +37,23 @@ from azure.identity import InteractiveBrowserCredential
 
 def get_dataverse_org_url() -> str:
     """Get Dataverse org URL from user input."""
-    print("\n🌐 Dataverse Environment Setup")
+    print("\n-> Dataverse Environment Setup")
     print("=" * 50)
 
     if not sys.stdin.isatty():
-        print("❌ Interactive input required. Run this script in a terminal.")
+        print("[ERR] Interactive input required. Run this script in a terminal.")
         sys.exit(1)
 
     while True:
         org_url = input("Enter your Dataverse org URL (e.g., https://yourorg.crm.dynamics.com): ").strip()
         if org_url:
             return org_url.rstrip("/")
-        print("⚠️  Please enter a valid URL.")
+        print("[WARN] Please enter a valid URL.")
 
 
 def setup_authentication() -> DataverseClient:
     """Set up authentication and create Dataverse client."""
-    print("\n🔐 Authentication Setup")
+    print("\n-> Authentication Setup")
     print("=" * 50)
 
     org_url = get_dataverse_org_url()
@@ -62,14 +62,14 @@ def setup_authentication() -> DataverseClient:
         client = DataverseClient(org_url, credential)
 
         # Test the connection
-        print("🧪 Testing connection...")
+        print("Testing connection...")
         tables = client.list_tables()
-        print(f"✅ Connection successful! Found {len(tables)} tables.")
+        print(f"[OK] Connection successful! Found {len(tables)} tables.")
         return client
 
     except Exception as e:
-        print(f"❌ Authentication failed: {e}")
-        print("💡 Please check your credentials and permissions.")
+        print(f"[ERR] Authentication failed: {e}")
+        print("Please check your credentials and permissions.")
         sys.exit(1)
 
 
@@ -92,7 +92,7 @@ def wait_for_table_metadata(
 
                 if attempt > 1:
                     print(
-                        f"   ✅ Table metadata available after {attempt} attempts."
+                        f"   [OK] Table metadata available after {attempt} attempts."
                     )
                 return info
         except Exception:
@@ -100,7 +100,7 @@ def wait_for_table_metadata(
 
         if attempt < retries:
             print(
-                f"   ⏳ Waiting for table metadata to publish (attempt {attempt}/{retries})..."
+                f"   Waiting for table metadata to publish (attempt {attempt}/{retries})..."
             )
             time.sleep(delay_seconds)
 
@@ -111,7 +111,7 @@ def wait_for_table_metadata(
 
 def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
     """Create or verify test table exists."""
-    print("\n📋 Test Table Setup")
+    print("\n-> Test Table Setup")
     print("=" * 50)
 
     table_schema_name = "test_TestSDKFunctionality"
@@ -120,14 +120,14 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
         # Check if table already exists
         existing_table = client.get_table_info(table_schema_name)
         if existing_table:
-            print(f"✅ Test table '{table_schema_name}' already exists")
+            print(f"[OK] Test table '{table_schema_name}' already exists")
             return existing_table
 
     except Exception:
-        print(f"📝 Table '{table_schema_name}' not found, creating...")
+        print(f"Table '{table_schema_name}' not found, creating...")
 
     try:
-        print("🔨 Creating new test table...")
+        print("Creating new test table...")
         # Create the test table with various field types
         table_info = client.create_table(
             table_schema_name,
@@ -141,20 +141,20 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
             },
         )
 
-        print(f"✅ Created test table: {table_info.get('table_schema_name')}")
+        print(f"[OK] Created test table: {table_info.get('table_schema_name')}")
         print(f"   Logical name: {table_info.get('table_logical_name')}")
         print(f"   Entity set: {table_info.get('entity_set_name')}")
 
         return wait_for_table_metadata(client, table_schema_name)
 
     except MetadataError as e:
-        print(f"❌ Failed to create table: {e}")
+        print(f"[ERR] Failed to create table: {e}")
         sys.exit(1)
 
 
 def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> str:
     """Test record creation."""
-    print("\n📝 Record Creation Test")
+    print("\n-> Record Creation Test")
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
@@ -173,18 +173,18 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
     }
 
     try:
-        print("🚀 Creating test record...")
+        print("Creating test record...")
         created_ids: Optional[List[str]] = None
         for attempt in range(1, retries + 1):
             try:
                 created_ids = client.create(table_schema_name, test_data)
                 if attempt > 1:
-                    print(f"   ✅ Record creation succeeded after {attempt} attempts.")
+                    print(f"   [OK] Record creation succeeded after {attempt} attempts.")
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
                     print(
-                        f"   ⏳ Table not ready for create (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
+                        f"   Table not ready for create (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
                     )
                     time.sleep(delay_seconds)
                     continue
@@ -192,7 +192,7 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
 
         if isinstance(created_ids, list) and created_ids:
             record_id = created_ids[0]
-            print(f"✅ Record created successfully!")
+            print(f"[OK] Record created successfully!")
             print(f"   Record ID: {record_id}")
             print(f"   Name: {test_data[f'{attr_prefix}_name']}")
             return record_id
@@ -200,16 +200,16 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
             raise ValueError("Unexpected response from create operation")
 
     except HttpError as e:
-        print(f"❌ HTTP error during record creation: {e}")
+        print(f"[ERR] HTTP error during record creation: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Failed to create record: {e}")
+        print(f"[ERR] Failed to create record: {e}")
         sys.exit(1)
 
 
 def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record_id: str) -> Dict[str, Any]:
     """Test record reading."""
-    print("\n📖 Record Reading Test")
+    print("\n-> Record Reading Test")
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
@@ -219,18 +219,18 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
     delay_seconds = 3
 
     try:
-        print(f"🔍 Reading record: {record_id}")
+        print(f"Reading record: {record_id}")
         record = None
         for attempt in range(1, retries + 1):
             try:
                 record = client.get(table_schema_name, record_id)
                 if attempt > 1:
-                    print(f"   ✅ Record read succeeded after {attempt} attempts.")
+                    print(f"   [OK] Record read succeeded after {attempt} attempts.")
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
                     print(
-                        f"   ⏳ Record not queryable yet (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
+                        f"   Record not queryable yet (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
                     )
                     time.sleep(delay_seconds)
                     continue
@@ -240,7 +240,7 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
             raise RuntimeError("Record did not become available in time.")
 
         if record:
-            print("✅ Record retrieved successfully!")
+            print("[OK] Record retrieved successfully!")
             print("   Retrieved data:")
 
             # Display key fields
@@ -259,16 +259,16 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
             raise ValueError("Record not found")
 
     except HttpError as e:
-        print(f"❌ HTTP error during record reading: {e}")
+        print(f"[ERR] HTTP error during record reading: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Failed to read record: {e}")
+        print(f"[ERR] Failed to read record: {e}")
         sys.exit(1)
 
 
 def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> None:
     """Test querying multiple records."""
-    print("\n🔍 Record Query Test")
+    print("\n-> Record Query Test")
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
@@ -277,7 +277,7 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
     delay_seconds = 3
 
     try:
-        print("🔍 Querying records from test table...")
+        print("Querying records from test table...")
         for attempt in range(1, retries + 1):
             try:
                 records_iterator = client.get(
@@ -297,25 +297,25 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
                         amount = record.get(f"{attr_prefix}_amount", "N/A")
                         print(f"   Record {record_count}: {name} (Count: {count}, Amount: {amount})")
 
-                print(f"✅ Query completed! Found {record_count} active records.")
+                print(f"[OK] Query completed! Found {record_count} active records.")
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
                     print(
-                        f"   ⏳ Query retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
+                        f"   Query retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
                     )
                     time.sleep(delay_seconds)
                     continue
                 raise
 
     except Exception as e:
-        print(f"⚠️  Query test encountered an issue: {e}")
+        print(f"[WARN] Query test encountered an issue: {e}")
         print("   This might be expected if the table is very new.")
 
 
 def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], record_id: str) -> None:
     """Clean up test data."""
-    print("\n🧹 Cleanup")
+    print("\n-> Cleanup")
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
@@ -329,25 +329,25 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
         for attempt in range(1, retries + 1):
             try:
                 client.delete(table_schema_name, record_id)
-                print("✅ Test record deleted successfully")
+                print("[OK] Test record deleted successfully")
                 break
             except HttpError as err:
                 status = getattr(err, "status_code", None)
                 if status == 404:
-                    print("ℹ️  Record already deleted or not yet available; skipping.")
+                    print("Record already deleted or not yet available; skipping.")
                     break
                 if attempt < retries:
                     print(
-                        f"   ⏳ Record delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
+                        f"   Record delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
                     )
                     time.sleep(delay_seconds)
                     continue
-                print(f"⚠️  Failed to delete test record: {err}")
+                print(f"[WARN] Failed to delete test record: {err}")
             except Exception as e:
-                print(f"⚠️  Failed to delete test record: {e}")
+                print(f"[WARN] Failed to delete test record: {e}")
                 break
     else:
-        print("ℹ️  Test record kept for inspection")
+        print("Test record kept for inspection")
 
     # Ask about table cleanup
     table_cleanup = input("Do you want to delete the test table? (y/N): ").strip().lower()
@@ -356,7 +356,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
         for attempt in range(1, retries + 1):
             try:
                 client.delete_table(table_info.get("table_schema_name"))
-                print("✅ Test table deleted successfully")
+                print("[OK] Test table deleted successfully")
                 break
             except HttpError as err:
                 status = getattr(err, "status_code", None)
@@ -364,26 +364,26 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
                     if _table_still_exists(client, table_info.get("table_schema_name")):
                         if attempt < retries:
                             print(
-                                f"   ⏳ Table delete retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
+                                f"   Table delete retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
                             )
                             time.sleep(delay_seconds)
                             continue
-                        print(f"⚠️  Failed to delete test table due to metadata delay: {err}")
+                        print(f"[WARN] Failed to delete test table due to metadata delay: {err}")
                         break
-                    print("✅ Test table deleted successfully (404 reported).")
+                    print("[OK] Test table deleted successfully (404 reported).")
                     break
                 if attempt < retries:
                     print(
-                        f"   ⏳ Table delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
+                        f"   Table delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
                     )
                     time.sleep(delay_seconds)
                     continue
-                print(f"⚠️  Failed to delete test table: {err}")
+                print(f"[WARN] Failed to delete test table: {err}")
             except Exception as e:
-                print(f"⚠️  Failed to delete test table: {e}")
+                print(f"[WARN] Failed to delete test table: {e}")
                 break
     else:
-        print("ℹ️  Test table kept for future testing")
+        print("Test table kept for future testing")
 
 
 def _table_still_exists(client: DataverseClient, table_schema_name: Optional[str]) -> bool:
@@ -402,16 +402,16 @@ def _table_still_exists(client: DataverseClient, table_schema_name: Optional[str
 
 def main():
     """Main test function."""
-    print("🚀 PowerPlatform Dataverse Client SDK - Advanced Functional Testing")
+    print("PowerPlatform Dataverse Client SDK - Advanced Functional Testing")
     print("=" * 70)
     print("This script tests SDK functionality in a real Dataverse environment:")
-    print("  • Authentication & Connection")
-    print("  • Table Creation & Metadata Operations")
-    print("  • Record CRUD Operations")
-    print("  • Query Functionality")
-    print("  • Interactive Cleanup")
+    print("  - Authentication & Connection")
+    print("  - Table Creation & Metadata Operations")
+    print("  - Record CRUD Operations")
+    print("  - Query Functionality")
+    print("  - Interactive Cleanup")
     print("=" * 70)
-    print("💡 For installation validation, run examples/basic/installation_example.py first")
+    print("For installation validation, run examples/basic/installation_example.py first")
     print("=" * 70)
 
     try:
@@ -429,24 +429,24 @@ def main():
         test_query_records(client, table_info)
 
         # Success summary
-        print("\n🎉 Functional Test Summary")
+        print("\nFunctional Test Summary")
         print("=" * 50)
-        print("✅ Authentication: Success")
-        print("✅ Table Operations: Success")
-        print("✅ Record Creation: Success")
-        print("✅ Record Reading: Success")
-        print("✅ Record Querying: Success")
-        print("\n💡 Your PowerPlatform Dataverse Client SDK is fully functional!")
+        print("[OK] Authentication: Success")
+        print("[OK] Table Operations: Success")
+        print("[OK] Record Creation: Success")
+        print("[OK] Record Reading: Success")
+        print("[OK] Record Querying: Success")
+        print("\nYour PowerPlatform Dataverse Client SDK is fully functional!")
 
         # Cleanup
         cleanup_test_data(client, table_info, record_id)
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
+        print("\n\n[WARN] Test interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        print("💡 Please check your environment and try again")
+        print(f"\n[ERR] Unexpected error: {e}")
+        print("Please check your environment and try again")
         sys.exit(1)
 
 
