@@ -11,3 +11,58 @@ provided by the bot. You will only need to do this once across all repos using o
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
+## Development Guidelines
+
+### Versioning
+
+This project follows open-source industry standard [Semantic Versioning](https://semver.org/):
+
+**Version Format:** `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
+
+**When to bump:**
+- **MAJOR** (e.g., 1.0.0 → 2.0.0): Breaking changes that require users to update their code
+  - Removing public methods, classes, or modules
+  - Changing method signatures (parameters, return types)
+  - Changing default behavior that breaks existing code
+  - Dropping Python version support
+
+- **MINOR** (e.g., 1.0.0 → 1.1.0): New features that are backwards-compatible
+  - Adding new public methods or classes
+  - Adding optional parameters (with defaults)
+  - New features that don't break existing code
+  - Adding Python version support
+
+- **PATCH** (e.g., 1.0.0 → 1.0.1): Bug fixes that are backwards-compatible
+  - Fixing bugs without changing the API
+  - Documentation updates
+  - Security fixes (non-breaking)
+  - Internal refactoring
+
+### Changelog
+
+We maintain a [CHANGELOG.md](CHANGELOG.md) following the [Keep a Changelog](https://keepachangelog.com/) format.
+
+**For Contributors:** You don't need to update the changelog with your PRs. Maintainers will update it at release time.
+
+**For Maintainers (Release Process):**
+
+Before each release, review merged PRs and update the changelog with:
+
+**What to include:**
+- ✅ New features (→ **Added**)
+- ✅ Changes to existing functionality (→ **Changed**)
+- ✅ Soon-to-be removed features (→ **Deprecated**)
+- ✅ Removed features (→ **Removed**)
+- ✅ Bug fixes (→ **Fixed**)
+- ✅ Security fixes (→ **Security**)
+- ❌ Internal refactoring (unless it affects performance/behavior)
+- ❌ Test-only changes
+- ❌ CI/CD changes
+- ❌ Documentation-only updates
+
+**Process:**
+1. Review all PRs merged since last release
+2. Add user-facing changes to CHANGELOG.md under appropriate categories
+3. Include PR numbers for reference (e.g., `(#123)`)
+4. Focus on **why it matters to users**, not implementation details
