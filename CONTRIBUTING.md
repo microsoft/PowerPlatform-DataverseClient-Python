@@ -66,3 +66,48 @@ Before each release, review merged PRs and update the changelog with:
 2. Add user-facing changes to CHANGELOG.md under appropriate categories
 3. Include PR numbers for reference (e.g., `(#123)`)
 4. Focus on **why it matters to users**, not implementation details
+
+**Adding version links to CHANGELOG.md:**
+
+After creating tags, add version comparison links at the bottom of CHANGELOG.md:
+
+```markdown
+[0.1.0b4]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b3...v0.1.0b4
+[0.1.0b3]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b2...v0.1.0b3
+[0.1.0b2]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b1...v0.1.0b2
+[0.1.0b1]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/releases/tag/v0.1.0b1
+```
+
+### Git Tags and Releases
+
+We use git tags to mark release points and GitHub Releases for announcements.
+
+**Creating Git Tags:**
+
+Git tags should be created for every release published to PyPI:
+
+```bash
+# Create annotated tag for version X.Y.Z
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+
+# Push tag to remote
+git push origin --tags
+```
+
+**GitHub Releases:**
+
+After publishing to PyPI, create a GitHub Release based on CHANGELOG.md
+
+**Release notes format:**
+
+```markdown
+Brief summary of the release
+
+### Added
+- Feature 1 (#123)
+- Feature 2 (#124)
+
+### Fixed
+- Bug fix 1 (#125)
+- Bug fix 2 (#126)
+```
