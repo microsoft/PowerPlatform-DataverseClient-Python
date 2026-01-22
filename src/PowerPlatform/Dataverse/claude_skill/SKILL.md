@@ -31,7 +31,7 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 from azure.identity import (
     InteractiveBrowserCredential, 
     ClientSecretCredential,
-    ClientCertificateCredential,
+    CertificateCredential,
     AzureCliCredential
 )
 from PowerPlatform.Dataverse.client import DataverseClient
@@ -45,7 +45,7 @@ credential = AzureCliCredential()
 
 # Production options
 credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
+credential = CertificateCredential(tenant_id, client_id, cert_path)
 
 # Create client (no trailing slash on URL!)
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
@@ -256,7 +256,7 @@ except ValidationError as e:
 2. **Specify select fields** - Limit returned columns to reduce payload size
 3. **Control page size** - Use `top` and `page_size` parameters appropriately
 4. **Reuse client instances** - Don't create new clients for each operation
-5. **Use production credentials** - ClientSecretCredential or ClientCertificateCredential for unattended operations
+5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
 8. **Use lowercase** - Generally using lowercase input won't go wrong, except for custom table/column naming
