@@ -87,7 +87,7 @@ The client requires any Azure Identity `TokenCredential` implementation for OAut
 from azure.identity import (
     InteractiveBrowserCredential, 
     ClientSecretCredential,
-    ClientCertificateCredential,
+    CertificateCredential,
     AzureCliCredential
 )
 from PowerPlatform.Dataverse.client import DataverseClient
@@ -98,7 +98,7 @@ credential = InteractiveBrowserCredential()  # Browser authentication
 
 # Production options  
 # credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-# credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
+# credential = CertificateCredential(tenant_id, client_id, cert_path)
 
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
@@ -341,7 +341,7 @@ For optimal performance in production environments:
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
-| **Production Credentials** | Use `ClientSecretCredential` or `ClientCertificateCredential` for unattended operations |
+| **Production Credentials** | Use `ClientSecretCredential` or `CertificateCredential` for unattended operations |
 | **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |
 
 ### Limitations
