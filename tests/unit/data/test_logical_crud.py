@@ -78,12 +78,13 @@ def test_single_create_update_delete_get():
     ]
     c = MockableClient(responses)
     entity_set = c._entity_set_from_schema_name("account")
-    rid = c._create(entity_set, "account", {"name": "Acme"})
+    rid, metadata = c._create(entity_set, "account", {"name": "Acme"})
     assert rid == guid
-    rec = c._get("account", rid, select=["accountid", "name"])
+    assert metadata is not None  # metadata is captured
+    rec, _ = c._get("account", rid, select=["accountid", "name"])
     assert rec["accountid"] == guid and rec["name"] == "Acme"
-    c._update("account", rid, {"telephone1": "555"})  # returns None
-    c._delete("account", rid)  # returns None
+    c._update("account", rid, {"telephone1": "555"})  # returns (None, metadata)
+    c._delete("account", rid)  # returns (None, metadata)
 
 
 def test_bulk_create_and_update():
@@ -98,10 +99,11 @@ def test_bulk_create_and_update():
     ]
     c = MockableClient(responses)
     entity_set = c._entity_set_from_schema_name("account")
-    ids = c._create_multiple(entity_set, "account", [{"name": "A"}, {"name": "B"}])
+    ids, metadata = c._create_multiple(entity_set, "account", [{"name": "A"}, {"name": "B"}])
     assert ids == [g1, g2]
-    c._update_by_ids("account", ids, {"statecode": 1})  # broadcast
-    c._update_by_ids("account", ids, [{"name": "A1"}, {"name": "B1"}])  # per-record
+    assert metadata is not None  # metadata is captured
+    c._update_by_ids("account", ids, {"statecode": 1})  # broadcast - returns (None, metadata)
+    c._update_by_ids("account", ids, [{"name": "A1"}, {"name": "B1"}])  # per-record - returns (None, metadata)
 
 
 def test_get_multiple_paging():

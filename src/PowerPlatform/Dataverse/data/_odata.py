@@ -21,6 +21,7 @@ from contextvars import ContextVar
 from ..core._http import _HttpClient
 from ._upload import _ODataFileUpload
 from ..core.errors import *
+from ..core.results import RequestTelemetryData
 from ..core._error_codes import (
     _http_subcode,
     _is_transient_status,
@@ -40,6 +41,11 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+
+# Type alias for request results with metadata
+from typing import Tuple
+
+_ODataRequestResult = Tuple[Any, RequestTelemetryData]
 
 
 @dataclass
@@ -186,7 +192,18 @@ class _ODataClient(_ODataFileUpload):
     def _raw_request(self, method: str, url: str, **kwargs):
         return self._http._request(method, url, **kwargs)
 
-    def _request(self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs):
+    def _request(
+        self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs
+    ) -> _ODataRequestResult:
+        """Execute an HTTP request and return (response, RequestTelemetryData) tuple.
+
+        :param method: HTTP method (GET, POST, PATCH, DELETE).
+        :param url: Request URL.
+        :param expected: Tuple of expected HTTP status codes.
+        :param kwargs: Additional request arguments.
+        :return: Tuple of (response, RequestTelemetryData).
+        :raises HttpError: If the response status code is not in expected.
+        """
         request_context = _RequestContext.build(
             method,
             url,
@@ -196,9 +213,23 @@ class _ODataClient(_ODataFileUpload):
         )
 
         r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
-        if r.status_code in request_context.expected:
-            return r
+
+        # Extract metadata from response headers and request context
         response_headers = getattr(r, "headers", {}) or {}
+        service_request_id = (
+            response_headers.get("x-ms-service-request-id")
+            or response_headers.get("req_id")
+            or response_headers.get("x-ms-request-id")
+        )
+        metadata = RequestTelemetryData(
+            client_request_id=request_context.headers.get("x-ms-client-request-id"),
+            correlation_id=request_context.headers.get("x-ms-correlation-id"),
+            service_request_id=service_request_id,
+        )
+
+        if r.status_code in request_context.expected:
+            return (r, metadata)
+
         body_excerpt = (getattr(r, "text", "") or "")[:200]
         svc_code = None
         msg = f"HTTP {r.status_code}"
@@ -219,11 +250,6 @@ class _ODataClient(_ODataFileUpload):
             pass
         sc = r.status_code
         subcode = _http_subcode(sc)
-        request_id = (
-            response_headers.get("x-ms-service-request-id")
-            or response_headers.get("req_id")
-            or response_headers.get("x-ms-request-id")
-        )
         traceparent = response_headers.get("traceparent")
         ra = response_headers.get("Retry-After")
         retry_after = None
@@ -238,13 +264,9 @@ class _ODataClient(_ODataFileUpload):
             status_code=sc,
             subcode=subcode,
             service_error_code=svc_code,
-            correlation_id=request_context.headers.get(
-                "x-ms-correlation-id"
-            ),  # this is a value set on client side, although it's logged on server side too
-            client_request_id=request_context.headers.get(
-                "x-ms-client-request-id"
-            ),  # this is a value set on client side, although it's logged on server side too
-            service_request_id=request_id,
+            correlation_id=metadata.correlation_id,
+            client_request_id=metadata.client_request_id,
+            service_request_id=metadata.service_request_id,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
             retry_after=retry_after,
@@ -252,8 +274,8 @@ class _ODataClient(_ODataFileUpload):
         )
 
     # --- CRUD Internal functions ---
-    def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
-        """Create a single record and return its GUID.
+    def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> _ODataRequestResult:
+        """Create a single record and return (GUID, metadata) tuple.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -262,8 +284,8 @@ class _ODataClient(_ODataFileUpload):
         :param record: Attribute payload mapped by logical column names.
         :type record: ``dict[str, Any]``
 
-        :return: Created record GUID.
-        :rtype: ``str``
+        :return: Tuple of (created record GUID, request metadata).
+        :rtype: ``tuple[str, RequestTelemetryData]``
 
         .. note::
            Relies on ``OData-EntityId`` (canonical) or ``Location`` response header. No response body parsing is performed. Raises ``RuntimeError`` if neither header contains a GUID.
@@ -272,24 +294,26 @@ class _ODataClient(_ODataFileUpload):
         record = self._lowercase_keys(record)
         record = self._convert_labels_to_ints(table_schema_name, record)
         url = f"{self.api}/{entity_set}"
-        r = self._request("post", url, json=record)
+        r, metadata = self._request("post", url, json=record)
 
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
             m = _GUID_RE.search(ent_loc)
             if m:
-                return m.group(0)
+                return (m.group(0), metadata)
         loc = r.headers.get("Location")
         if loc:
             m = _GUID_RE.search(loc)
             if m:
-                return m.group(0)
+                return (m.group(0), metadata)
         header_keys = ", ".join(sorted(r.headers.keys()))
         raise RuntimeError(
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    def _create_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> List[str]:
+    def _create_multiple(
+        self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]
+    ) -> _ODataRequestResult:
         """Create multiple records using the collection-bound ``CreateMultiple`` action.
 
         :param entity_set: Resolved entity set (plural) name.
@@ -299,8 +323,8 @@ class _ODataClient(_ODataFileUpload):
         :param records: Payload dictionaries mapped by column schema names.
         :type records: ``list[dict[str, Any]]``
 
-        :return: List of created record GUIDs (may be empty if response lacks IDs).
-        :rtype: ``list[str]``
+        :return: Tuple of (list of created record GUIDs, request metadata). IDs may be empty if response lacks them.
+        :rtype: ``tuple[list[str], RequestTelemetryData]``
 
         .. note::
            Logical type stamping: if any payload omits ``@odata.type`` the client injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads already include ``@odata.type`` no modification occurs.
@@ -325,17 +349,17 @@ class _ODataClient(_ODataFileUpload):
         # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
         # The action currently returns only Ids; no need to request representation.
-        r = self._request("post", url, json=payload)
+        r, metadata = self._request("post", url, json=payload)
         try:
             body = r.json() if r.text else {}
         except ValueError:
             body = {}
         if not isinstance(body, dict):
-            return []
+            return ([], metadata)
         # Expected: { "Ids": [guid, ...] }
         ids = body.get("Ids")
         if isinstance(ids, list):
-            return [i for i in ids if isinstance(i, str)]
+            return ([i for i in ids if isinstance(i, str)], metadata)
 
         value = body.get("value")
         if isinstance(value, list):
@@ -348,8 +372,8 @@ class _ODataClient(_ODataFileUpload):
                         if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
                             out.append(v)
                             break
-            return out
-        return []
+            return (out, metadata)
+        return ([], metadata)
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -369,7 +393,7 @@ class _ODataClient(_ODataFileUpload):
 
     def _update_by_ids(
         self, table_schema_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
-    ) -> None:
+    ) -> _ODataRequestResult:
         """Update many records by GUID list using the collection-bound ``UpdateMultiple`` action.
 
         :param table_schema_name: Schema name of the table.
@@ -379,19 +403,19 @@ class _ODataClient(_ODataFileUpload):
         :param changes: Broadcast patch (``dict``) applied to all IDs, or list of per-record patches (1:1 with ``ids``).
         :type changes: ``dict`` | ``list[dict]``
 
-        :return: ``None``
-        :rtype: ``None``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
         """
         if not isinstance(ids, list):
             raise TypeError("ids must be list[str]")
         if not ids:
-            return None
+            return (None, RequestTelemetryData())
         pk_attr = self._primary_id_attr(table_schema_name)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         if isinstance(changes, dict):
             batch = [{pk_attr: rid, **changes} for rid in ids]
-            self._update_multiple(entity_set, table_schema_name, batch)
-            return None
+            _, metadata = self._update_multiple(entity_set, table_schema_name, batch)
+            return (None, metadata)
         if not isinstance(changes, list):
             raise TypeError("changes must be dict or list[dict]")
         if len(changes) != len(ids):
@@ -401,27 +425,27 @@ class _ODataClient(_ODataFileUpload):
             if not isinstance(patch, dict):
                 raise TypeError("Each patch must be a dict")
             batch.append({pk_attr: rid, **patch})
-        self._update_multiple(entity_set, table_schema_name, batch)
-        return None
+        _, metadata = self._update_multiple(entity_set, table_schema_name, batch)
+        return (None, metadata)
 
     def _delete_multiple(
         self,
         table_schema_name: str,
         ids: List[str],
-    ) -> Optional[str]:
+    ) -> _ODataRequestResult:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
-        :return: BulkDelete asynchronous job identifier when executed in bulk; ``None`` if no IDs provided or single deletes performed.
-        :rtype: ``str`` | ``None``
+        :return: Tuple of (BulkDelete job identifier or None, request metadata).
+        :rtype: ``tuple[str | None, RequestTelemetryData]``
         """
         targets = [rid for rid in ids if rid]
         if not targets:
-            return None
+            return (None, RequestTelemetryData())
         value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in targets]
 
         pk_attr = self._primary_id_attr(table_schema_name)
@@ -464,7 +488,7 @@ class _ODataClient(_ODataFileUpload):
         }
 
         url = f"{self.api}/BulkDelete"
-        response = self._request("post", url, json=payload, expected=(200, 202, 204))
+        response, metadata = self._request("post", url, json=payload, expected=(200, 202, 204))
 
         job_id = None
         try:
@@ -474,7 +498,7 @@ class _ODataClient(_ODataFileUpload):
         if isinstance(body, dict):
             job_id = body.get("JobId")
 
-        return job_id
+        return (job_id, metadata)
 
     def _format_key(self, key: str) -> str:
         k = key.strip()
@@ -493,7 +517,7 @@ class _ODataClient(_ODataFileUpload):
             return f"({k})"
         return f"({k})"
 
-    def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:
+    def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> _ODataRequestResult:
         """Update an existing record by GUID.
 
         :param table_schema_name: Schema name of the table.
@@ -502,17 +526,20 @@ class _ODataClient(_ODataFileUpload):
         :type key: ``str``
         :param data: Partial entity payload (attributes to patch).
         :type data: ``dict[str, Any]``
-        :return: ``None``
-        :rtype: ``None``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
         """
         # Lowercase all keys to match Dataverse LogicalName expectations
         data = self._lowercase_keys(data)
         data = self._convert_labels_to_ints(table_schema_name, data)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = self._request("patch", url, headers={"If-Match": "*"}, json=data)
+        _, metadata = self._request("patch", url, headers={"If-Match": "*"}, json=data)
+        return (None, metadata)
 
-    def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
+    def _update_multiple(
+        self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]
+    ) -> _ODataRequestResult:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
 
         :param entity_set: Resolved entity set (plural) name.
@@ -521,8 +548,8 @@ class _ODataClient(_ODataFileUpload):
         :type table_schema_name: ``str``
         :param records: List of patch dictionaries. Each must include the true primary key attribute (e.g. ``accountid``) and one or more fields to update.
         :type records: ``list[dict[str, Any]]``
-        :return: ``None``
-        :rtype: ``None``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
 
         .. note::
            - Endpoint: ``POST /{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple`` with body ``{"Targets": [...]}``.
@@ -551,11 +578,11 @@ class _ODataClient(_ODataFileUpload):
 
         payload = {"Targets": enriched}
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple"
-        r = self._request("post", url, json=payload)
+        _, metadata = self._request("post", url, json=payload)
         # Intentionally ignore response content: no stable contract for IDs across environments.
-        return None
+        return (None, metadata)
 
-    def _delete(self, table_schema_name: str, key: str) -> None:
+    def _delete(self, table_schema_name: str, key: str) -> _ODataRequestResult:
         """Delete a record by GUID.
 
         :param table_schema_name: Schema name of the table.
@@ -563,14 +590,15 @@ class _ODataClient(_ODataFileUpload):
         :param key: Record GUID (with or without parentheses)
         :type key: ``str``
 
-        :return: ``None``
-        :rtype: ``None``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
         """
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        self._request("delete", url, headers={"If-Match": "*"})
+        _, metadata = self._request("delete", url, headers={"If-Match": "*"})
+        return (None, metadata)
 
-    def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> Dict[str, Any]:
+    def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> _ODataRequestResult:
         """Retrieve a single record.
 
         :param table_schema_name: Schema name of the table.
@@ -580,8 +608,8 @@ class _ODataClient(_ODataFileUpload):
         :param select: Columns to select; joined with commas into $select.
         :type select: ``list[str]`` | ``None``
 
-        :return: Retrieved record dictionary (may be empty if no selected attributes).
-        :rtype: ``dict[str, Any]``
+        :return: Tuple of (retrieved record dictionary, request metadata).
+        :rtype: ``tuple[dict[str, Any], RequestTelemetryData]``
         """
         params = {}
         if select:
@@ -589,8 +617,8 @@ class _ODataClient(_ODataFileUpload):
             params["$select"] = ",".join(select)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = self._request("get", url, params=params)
-        return r.json()
+        r, metadata = self._request("get", url, params=params)
+        return (r.json(), metadata)
 
     def _get_multiple(
         self,
@@ -621,6 +649,10 @@ class _ODataClient(_ODataFileUpload):
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
+
+        .. note::
+           This method is a generator and does not return metadata directly.
+           For paginated queries, metadata is captured per-request but not surfaced.
         """
 
         extra_headers: Dict[str, str] = {}
@@ -631,7 +663,7 @@ class _ODataClient(_ODataFileUpload):
 
         def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             headers = extra_headers if extra_headers else None
-            r = self._request("get", url, headers=headers, params=params)
+            r, _ = self._request("get", url, headers=headers, params=params)
             try:
                 return r.json()
             except ValueError:
@@ -672,14 +704,14 @@ class _ODataClient(_ODataFileUpload):
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
     # --------------------------- SQL Custom API -------------------------
-    def _query_sql(self, sql: str) -> list[dict[str, Any]]:
+    def _query_sql(self, sql: str) -> _ODataRequestResult:
         """Execute a read-only SQL SELECT using the Dataverse Web API ``?sql=`` capability.
 
         :param sql: Single SELECT statement within the supported subset.
         :type sql: ``str``
 
-        :return: Result rows (empty list if none).
-        :rtype: ``list[dict[str, Any]]``
+        :return: Tuple of (result rows, telemetry metadata).
+        :rtype: ``tuple[list[dict[str, Any]], RequestTelemetryData]``
 
         :raises ValidationError: If ``sql`` is not a ``str`` or is empty.
         :raises MetadataError: If logical table name resolution fails.
@@ -700,20 +732,20 @@ class _ODataClient(_ODataFileUpload):
         # Issue GET /{entity_set}?sql=<query>
         url = f"{self.api}/{entity_set}"
         params = {"sql": sql}
-        r = self._request("get", url, params=params)
+        r, metadata = self._request("get", url, params=params)
         try:
             body = r.json()
         except ValueError:
-            return []
+            return [], metadata
         if isinstance(body, dict):
             value = body.get("value")
             if isinstance(value, list):
                 # Ensure dict rows only
-                return [row for row in value if isinstance(row, dict)]
+                return [row for row in value if isinstance(row, dict)], metadata
         # Fallbacks: if body itself is a list
         if isinstance(body, list):
-            return [row for row in body if isinstance(row, dict)]
-        return []
+            return [row for row in body if isinstance(row, dict)], metadata
+        return [], metadata
 
     @staticmethod
     def _extract_logical_table(sql: str) -> str:
@@ -756,7 +788,7 @@ class _ODataClient(_ODataFileUpload):
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r, _ = self._request("get", url, params=params)
         try:
             body = r.json()
             items = body.get("value", []) if isinstance(body, dict) else []
@@ -807,12 +839,15 @@ class _ODataClient(_ODataFileUpload):
         self,
         table_schema_name: str,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> _ODataRequestResult:
         """Get entity metadata by table schema name. Case-insensitive.
 
         Note: LogicalName is stored lowercase in Dataverse, so we lowercase the input
         for case-insensitive matching. The response includes SchemaName, LogicalName,
         EntitySetName, and MetadataId.
+
+        :return: Tuple of (entity metadata or None, telemetry metadata).
+        :rtype: ``tuple[dict[str, Any] | None, RequestTelemetryData]``
         """
         url = f"{self.api}/EntityDefinitions"
         # LogicalName is stored lowercase, so we lowercase the input for lookup
@@ -822,9 +857,9 @@ class _ODataClient(_ODataFileUpload):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = self._request("get", url, params=params, headers=headers)
+        r, metadata = self._request("get", url, params=params, headers=headers)
         items = r.json().get("value", [])
-        return items[0] if items else None
+        return (items[0] if items else None), metadata
 
     def _create_entity(
         self,
@@ -832,7 +867,7 @@ class _ODataClient(_ODataFileUpload):
         display_name: str,
         attributes: List[Dict[str, Any]],
         solution_unique_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> _ODataRequestResult:
         url = f"{self.api}/EntityDefinitions"
         payload = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
@@ -849,8 +884,8 @@ class _ODataClient(_ODataFileUpload):
         params = None
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
-        self._request("post", url, json=payload, params=params)
-        ent = self._get_entity_by_table_schema_name(
+        _, metadata = self._request("post", url, json=payload, params=params)
+        ent, _ = self._get_entity_by_table_schema_name(
             table_schema_name,
             headers={"Consistency": "Strong"},
         )
@@ -860,7 +895,7 @@ class _ODataClient(_ODataFileUpload):
             )
         if not ent.get("MetadataId"):
             raise RuntimeError(f"MetadataId missing after creating entity '{table_schema_name}'.")
-        return ent
+        return ent, metadata
 
     def _get_attribute_metadata(
         self,
@@ -884,7 +919,7 @@ class _ODataClient(_ODataFileUpload):
             "$select": ",".join(select_fields),
             "$filter": f"SchemaName eq '{attr_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r, _ = self._request("get", url, params=params)
         try:
             body = r.json() if r.text else {}
         except ValueError:
@@ -1060,7 +1095,7 @@ class _ODataClient(_ODataFileUpload):
         backoff_seconds = 0.4
         for attempt in range(1, max_attempts + 1):
             try:
-                r_type = self._request("get", url_type)
+                r_type, _ = self._request("get", url_type)
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
@@ -1094,7 +1129,7 @@ class _ODataClient(_ODataFileUpload):
         r_opts = None
         for attempt in range(1, max_attempts + 1):
             try:
-                r_opts = self._request("get", cast_url)
+                r_opts, _ = self._request("get", cast_url)
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
@@ -1241,52 +1276,52 @@ class _ODataClient(_ODataFileUpload):
             }
         return None
 
-    def _get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
+    def _get_table_info(self, table_schema_name: str) -> _ODataRequestResult:
         """Return basic metadata for a custom table if it exists.
 
         :param table_schema_name: Schema name of the table.
         :type table_schema_name: ``str``
 
-        :return: Metadata summary or ``None`` if not found.
-        :rtype: ``dict[str, Any]`` | ``None``
+        :return: Tuple of (metadata summary or None, telemetry metadata).
+        :rtype: ``tuple[dict[str, Any] | None, RequestTelemetryData]``
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent, metadata = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent:
-            return None
+            return None, metadata
         return {
             "table_schema_name": ent.get("SchemaName") or table_schema_name,
             "table_logical_name": ent.get("LogicalName"),
             "entity_set_name": ent.get("EntitySetName"),
             "metadata_id": ent.get("MetadataId"),
             "columns_created": [],
-        }
+        }, metadata
 
-    def _list_tables(self) -> List[Dict[str, Any]]:
+    def _list_tables(self) -> _ODataRequestResult:
         """List all non-private tables (``IsPrivate eq false``).
 
-        :return: Metadata entries for non-private tables (may be empty).
-        :rtype: ``list[dict[str, Any]]``
+        :return: Tuple of (metadata entries for non-private tables, telemetry metadata).
+        :rtype: ``tuple[list[dict[str, Any]], RequestTelemetryData]``
 
         :raises HttpError: If the metadata request fails.
         """
         url = f"{self.api}/EntityDefinitions"
         params = {"$filter": "IsPrivate eq false"}
-        r = self._request("get", url, params=params)
-        return r.json().get("value", [])
+        r, metadata = self._request("get", url, params=params)
+        return r.json().get("value", []), metadata
 
-    def _delete_table(self, table_schema_name: str) -> None:
+    def _delete_table(self, table_schema_name: str) -> _ODataRequestResult:
         """Delete a table by schema name.
 
         :param table_schema_name: Schema name of the table.
         :type table_schema_name: ``str``
 
-        :return: ``None``
-        :rtype: ``None``
+        :return: Tuple of (None, telemetry metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
 
         :raises MetadataError: If the table does not exist.
         :raises HttpError: If the delete request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1294,7 +1329,8 @@ class _ODataClient(_ODataFileUpload):
             )
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
-        r = self._request("delete", url)
+        _, metadata = self._request("delete", url)
+        return None, metadata
 
     def _create_table(
         self,
@@ -1302,7 +1338,7 @@ class _ODataClient(_ODataFileUpload):
         schema: Dict[str, Any],
         solution_unique_name: Optional[str] = None,
         primary_column_schema_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> _ODataRequestResult:
         """Create a custom table with specified columns.
 
         :param table_schema_name: Schema name of the table.
@@ -1314,8 +1350,8 @@ class _ODataClient(_ODataFileUpload):
         :param primary_column_schema_name: Optional primary column schema name.
         :type primary_column_schema_name: ``str`` | ``None``
 
-        :return: Metadata summary for the created table including created column schema names.
-        :rtype: ``dict[str, Any]``
+        :return: Tuple of (metadata summary, telemetry metadata).
+        :rtype: ``tuple[dict[str, Any], RequestTelemetryData]``
 
         :raises MetadataError: If the table already exists.
         :raises ValueError: If a column type is unsupported or ``solution_unique_name`` is empty.
@@ -1323,7 +1359,7 @@ class _ODataClient(_ODataFileUpload):
         :raises HttpError: If underlying HTTP requests fail.
         """
         # Check if table already exists (case-insensitive)
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
         if ent:
             raise MetadataError(
                 f"Table '{table_schema_name}' already exists.",
@@ -1356,7 +1392,7 @@ class _ODataClient(_ODataFileUpload):
             if not solution_unique_name:
                 raise ValueError("solution_unique_name cannot be empty")
 
-        metadata = self._create_entity(
+        entity_metadata, telemetry = self._create_entity(
             table_schema_name=table_schema_name,
             display_name=table_schema_name,
             attributes=attributes,
@@ -1365,17 +1401,17 @@ class _ODataClient(_ODataFileUpload):
 
         return {
             "table_schema_name": table_schema_name,
-            "table_logical_name": metadata.get("LogicalName"),
-            "entity_set_name": metadata.get("EntitySetName"),
-            "metadata_id": metadata.get("MetadataId"),
+            "table_logical_name": entity_metadata.get("LogicalName"),
+            "entity_set_name": entity_metadata.get("EntitySetName"),
+            "metadata_id": entity_metadata.get("MetadataId"),
             "columns_created": created_cols,
-        }
+        }, telemetry
 
     def _create_columns(
         self,
         table_schema_name: str,
         columns: Dict[str, Any],
-    ) -> List[str]:
+    ) -> _ODataRequestResult:
         """Create new columns on an existing table.
 
         :param table_schema_name: Schema name of the table.
@@ -1383,8 +1419,8 @@ class _ODataClient(_ODataFileUpload):
         :param columns: Mapping of column schema name -> type spec (``str`` or ``Enum`` subclass).
         :type columns: ``dict[str, Any]``
 
-        :return: List of created column schema names.
-        :rtype: ``list[str]``
+        :return: Tuple of (list of created column schema names, telemetry metadata).
+        :rtype: ``tuple[list[str], RequestTelemetryData]``
 
         :raises TypeError: If ``columns`` is not a non-empty dict.
         :raises MetadataError: If the target table does not exist.
@@ -1394,7 +1430,7 @@ class _ODataClient(_ODataFileUpload):
         if not isinstance(columns, dict) or not columns:
             raise TypeError("columns must be a non-empty dict[name -> type]")
 
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1404,6 +1440,7 @@ class _ODataClient(_ODataFileUpload):
         metadata_id = ent.get("MetadataId")
         created: List[str] = []
         needs_picklist_flush = False
+        last_metadata = RequestTelemetryData()
 
         for column_name, column_type in columns.items():
             payload = self._attribute_payload(column_name, column_type)
@@ -1411,7 +1448,7 @@ class _ODataClient(_ODataFileUpload):
                 raise ValueError(f"Unsupported column type '{column_type}' for '{column_name}'.")
 
             url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
-            self._request("post", url, json=payload)
+            _, last_metadata = self._request("post", url, json=payload)
 
             created.append(column_name)
 
@@ -1421,13 +1458,13 @@ class _ODataClient(_ODataFileUpload):
         if needs_picklist_flush:
             self._flush_cache("picklist")
 
-        return created
+        return created, last_metadata
 
     def _delete_columns(
         self,
         table_schema_name: str,
         columns: Union[str, List[str]],
-    ) -> List[str]:
+    ) -> _ODataRequestResult:
         """Delete one or more columns from a table.
 
         :param table_schema_name: Schema name of the table.
@@ -1435,8 +1472,8 @@ class _ODataClient(_ODataFileUpload):
         :param columns: Single column name or list of column names
         :type columns: ``str`` | ``list[str]``
 
-        :return: List of deleted column schema names (empty if none removed).
-        :rtype: ``list[str]``
+        :return: Tuple of (list of deleted column schema names, telemetry metadata).
+        :rtype: ``tuple[list[str], RequestTelemetryData]``
 
         :raises TypeError: If ``columns`` is neither a ``str`` nor ``list[str]``.
         :raises ValueError: If any provided column name is empty.
@@ -1455,7 +1492,7 @@ class _ODataClient(_ODataFileUpload):
             if not isinstance(name, str) or not name.strip():
                 raise ValueError("column names must be non-empty strings")
 
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1467,6 +1504,7 @@ class _ODataClient(_ODataFileUpload):
         metadata_id = ent.get("MetadataId")
         deleted: List[str] = []
         needs_picklist_flush = False
+        last_metadata = RequestTelemetryData()
 
         for column_name in names:
             attr_meta = self._get_attribute_metadata(metadata_id, column_name, extra_select="@odata.type,AttributeType")
@@ -1481,7 +1519,7 @@ class _ODataClient(_ODataFileUpload):
                 raise RuntimeError(f"Metadata incomplete for column '{column_name}' (missing MetadataId).")
 
             attr_url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes({attr_metadata_id})"
-            self._request("delete", attr_url, headers={"If-Match": "*"})
+            _, last_metadata = self._request("delete", attr_url, headers={"If-Match": "*"})
 
             attr_type = attr_meta.get("@odata.type") or attr_meta.get("AttributeType")
             if isinstance(attr_type, str):
@@ -1494,7 +1532,7 @@ class _ODataClient(_ODataFileUpload):
         if needs_picklist_flush:
             self._flush_cache("picklist")
 
-        return deleted
+        return deleted, last_metadata
 
     # ---------------------- Cache maintenance -------------------------
     def _flush_cache(

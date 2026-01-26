@@ -10,6 +10,7 @@ from azure.core.credentials import TokenCredential
 
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
+from .core.results import OperationResult, RequestTelemetryData
 from .data._odata import _ODataClient
 
 
@@ -108,7 +109,9 @@ class DataverseClient:
             yield od
 
     # ---------------- Unified CRUD: create/update/delete ----------------
-    def create(self, table_schema_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
+    def create(
+        self, table_schema_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]
+    ) -> OperationResult[List[str]]:
         """
         Create one or more records by table name.
 
@@ -118,8 +121,10 @@ class DataverseClient:
             Each dictionary should contain column schema names as keys.
         :type records: :class:`dict` or :class:`list` of :class:`dict`
 
-        :return: List of created record GUIDs. Returns a single-element list for a single input.
-        :rtype: :class:`list` of :class:`str`
+        :return: OperationResult containing the list of created record GUIDs. The result
+            can be used directly (supports iteration, indexing, length) or call
+            ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`list` of :class:`str`]
 
         :raises TypeError: If ``records`` is not a dict or list[dict], or if the internal
             client returns an unexpected type.
@@ -129,35 +134,37 @@ class DataverseClient:
 
                 client = DataverseClient(base_url, credential)
                 ids = client.create("account", {"name": "Contoso"})
-                print(f"Created: {ids[0]}")
+                print(f"Created: {ids[0]}")  # Works via __getitem__
 
-            Create multiple records::
+            Create multiple records and iterate::
 
-                records = [
-                    {"name": "Contoso"},
-                    {"name": "Fabrikam"}
-                ]
+                records = [{"name": "Contoso"}, {"name": "Fabrikam"}]
                 ids = client.create("account", records)
-                print(f"Created {len(ids)} accounts")
+                for id in ids:  # Works via __iter__
+                    print(id)
+
+            Access telemetry data::
+
+                response = client.create("account", {"name": "Test"}).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table_schema_name)
             if isinstance(records, dict):
-                rid = od._create(entity_set, table_schema_name, records)
-                # _create returns str on single input
+                rid, metadata = od._create(entity_set, table_schema_name, records)
                 if not isinstance(rid, str):
                     raise TypeError("_create (single) did not return GUID string")
-                return [rid]
+                return OperationResult([rid], metadata)
             if isinstance(records, list):
-                ids = od._create_multiple(entity_set, table_schema_name, records)
+                ids, metadata = od._create_multiple(entity_set, table_schema_name, records)
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                     raise TypeError("_create (multi) did not return list[str]")
-                return ids
+                return OperationResult(ids, metadata)
         raise TypeError("records must be dict or list[dict]")
 
     def update(
         self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
-    ) -> None:
+    ) -> OperationResult[None]:
         """
         Update one or more records.
 
@@ -177,6 +184,10 @@ class DataverseClient:
             have equal length for one-to-one mapping.
         :type changes: :class:`dict` or :class:`list` of :class:`dict`
 
+        :return: OperationResult containing None. Call ``.with_response_details()`` to access
+            telemetry data from the update request.
+        :rtype: :class:`OperationResult` [None]
+
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
 
         .. note::
@@ -191,32 +202,31 @@ class DataverseClient:
 
                 client.update("account", [id1, id2, id3], {"statecode": 1})
 
-            Update multiple records with different values::
+            Access telemetry data::
 
-                ids = [id1, id2]
-                changes = [
-                    {"name": "Updated Name 1"},
-                    {"name": "Updated Name 2"}
-                ]
-                client.update("account", ids, changes)
+                response = client.update("account", id, {"name": "New"}).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
+            # Unwrap OperationResult if passed directly from create()
+            if isinstance(ids, OperationResult):
+                ids = ids.value
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
                     raise TypeError("For single id, changes must be a dict")
-                od._update(table_schema_name, ids, changes)  # discard representation
-                return None
+                _, metadata = od._update(table_schema_name, ids, changes)
+                return OperationResult(None, metadata)
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
-            od._update_by_ids(table_schema_name, ids, changes)
-            return None
+            _, metadata = od._update_by_ids(table_schema_name, ids, changes)
+            return OperationResult(None, metadata)
 
     def delete(
         self,
         table_schema_name: str,
         ids: Union[str, List[str]],
         use_bulk_delete: bool = True,
-    ) -> Optional[str]:
+    ) -> OperationResult[Optional[str]]:
         """
         Delete one or more records by GUID.
 
@@ -231,33 +241,47 @@ class DataverseClient:
         :raises TypeError: If ``ids`` is not str or list[str].
         :raises HttpError: If the underlying Web API delete request fails.
 
-        :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
-        :rtype: :class:`str` or None
+        :return: OperationResult containing the BulkDelete job ID when deleting multiple
+            records via BulkDelete; otherwise contains ``None``. Call ``.with_response_details()``
+            to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`str` or None]
 
         Example:
             Delete a single record::
 
                 client.delete("account", account_id)
 
-            Delete multiple records::
+            Delete multiple records and get job ID::
 
-                job_id = client.delete("account", [id1, id2, id3])
+                result = client.delete("account", [id1, id2, id3])
+                job_id = result.value  # Access the job ID directly
+
+            Access telemetry data::
+
+                response = client.delete("account", id).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
+            # Unwrap OperationResult if passed directly from create()
+            if isinstance(ids, OperationResult):
+                ids = ids.value
             if isinstance(ids, str):
-                od._delete(table_schema_name, ids)
-                return None
+                _, metadata = od._delete(table_schema_name, ids)
+                return OperationResult(None, metadata)
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
             if not ids:
-                return None
+                return OperationResult(None, RequestTelemetryData())
             if not all(isinstance(rid, str) for rid in ids):
                 raise TypeError("ids must contain string GUIDs")
             if use_bulk_delete:
-                return od._delete_multiple(table_schema_name, ids)
+                job_id, metadata = od._delete_multiple(table_schema_name, ids)
+                return OperationResult(job_id, metadata)
+            # Sequential deletes - capture metadata from the last delete
+            metadata = RequestTelemetryData()
             for rid in ids:
-                od._delete(table_schema_name, rid)
-            return None
+                _, metadata = od._delete(table_schema_name, rid)
+            return OperationResult(None, metadata)
 
     def get(
         self,
@@ -269,11 +293,11 @@ class DataverseClient:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
+    ) -> Union[OperationResult[Dict[str, Any]], Iterable[List[Dict[str, Any]]]]:
         """
         Fetch a single record by ID or query multiple records.
 
-        When ``record_id`` is provided, returns a single record dictionary.
+        When ``record_id`` is provided, returns an OperationResult containing a single record dictionary.
         When ``record_id`` is None, returns a generator yielding batches of records.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
@@ -293,9 +317,12 @@ class DataverseClient:
         :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
 
-        :return: Single record dict if ``record_id`` is provided, otherwise a generator
-            yielding lists of record dictionaries (one list per page).
-        :rtype: :class:`dict` or :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
+        :return: When ``record_id`` is provided, returns an OperationResult containing the record dict.
+            The result supports dict-like access (e.g., ``result["name"]``) or call
+            ``.with_response_details()`` to access telemetry data.
+            When querying multiple records, returns a generator yielding lists of record
+            dictionaries (one list per page).
+        :rtype: :class:`OperationResult` [:class:`dict`] or :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
 
         :raises TypeError: If ``record_id`` is provided but not a string.
 
@@ -303,7 +330,13 @@ class DataverseClient:
             Fetch a single record::
 
                 record = client.get("account", record_id=account_id, select=["name", "telephone1"])
-                print(record["name"])
+                print(record["name"])  # Works via __getitem__
+
+            Fetch single record with telemetry::
+
+                response = client.get("account", record_id=account_id).with_response_details()
+                print(f"Record: {response.result['name']}")
+                print(f"Request ID: {response.telemetry['client_request_id']}")
 
             Query multiple records with filtering (note: exact logical names in filter)::
 
@@ -340,11 +373,12 @@ class DataverseClient:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
             with self._scoped_odata() as od:
-                return od._get(
+                record, metadata = od._get(
                     table_schema_name,
                     record_id,
                     select=select,
                 )
+                return OperationResult(record, metadata)
 
         def _paged() -> Iterable[List[Dict[str, Any]]]:
             with self._scoped_odata() as od:
@@ -361,7 +395,7 @@ class DataverseClient:
         return _paged()
 
     # SQL via Web API sql parameter
-    def query_sql(self, sql: str):
+    def query_sql(self, sql: str) -> OperationResult[List[Dict[str, Any]]]:
         """
         Execute a read-only SQL query using the Dataverse Web API ``?sql`` capability.
 
@@ -372,8 +406,9 @@ class DataverseClient:
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
 
-        :return: List of result row dictionaries. Returns an empty list if no rows match.
-        :rtype: :class:`list` of :class:`dict`
+        :return: OperationResult containing list of result row dictionaries. Returns an empty list if no rows match.
+            Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`list` of :class:`dict`]
 
         :raises ~PowerPlatform.Dataverse.core.errors.SQLParseError: If the SQL query uses unsupported syntax.
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the Web API returns an error.
@@ -393,22 +428,28 @@ class DataverseClient:
 
                 sql = "SELECT a.name, a.telephone1 FROM account AS a WHERE a.statecode = 0"
                 results = client.query_sql(sql)
+
+            Access telemetry data::
+
+                response = client.query_sql(sql).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._query_sql(sql)
+            result, metadata = od._query_sql(sql)
+            return OperationResult(result, metadata)
 
     # Table metadata helpers
-    def get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
+    def get_table_info(self, table_schema_name: str) -> OperationResult[Optional[Dict[str, Any]]]:
         """
         Get basic metadata for a table if it exists.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
         :type table_schema_name: :class:`str`
 
-        :return: Dictionary containing table metadata with keys ``table_schema_name``,
-            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
-            Returns None if the table is not found.
-        :rtype: :class:`dict` or None
+        :return: OperationResult containing dictionary with table metadata (keys: ``table_schema_name``,
+            ``table_logical_name``, ``entity_set_name``, ``metadata_id``) or None if not found.
+            Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`dict` or None]
 
         Example:
             Retrieve table metadata::
@@ -417,9 +458,15 @@ class DataverseClient:
                 if info:
                     print(f"Logical name: {info['table_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
+
+            Access telemetry data::
+
+                response = client.get_table_info("account").with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._get_table_info(table_schema_name)
+            result, metadata = od._get_table_info(table_schema_name)
+            return OperationResult(result, metadata)
 
     def create_table(
         self,
@@ -427,7 +474,7 @@ class DataverseClient:
         columns: Dict[str, Any],
         solution_unique_name: Optional[str] = None,
         primary_column_schema_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> OperationResult[Dict[str, Any]]:
         """
         Create a simple custom table with specified columns.
 
@@ -454,9 +501,10 @@ class DataverseClient:
         :param primary_column_schema_name: Optional primary name column schema name with customization prefix value (e.g. ``"new_MyTestTable"``). If not provided, defaults to ``"{customization prefix value}_Name"``.
         :type primary_column_schema_name: :class:`str` or None
 
-        :return: Dictionary containing table metadata including ``table_schema_name``,
-            ``entity_set_name``, ``table_logical_name``, ``metadata_id``, and ``columns_created``.
-        :rtype: :class:`dict`
+        :return: OperationResult containing dictionary with table metadata (keys: ``table_schema_name``,
+            ``entity_set_name``, ``table_logical_name``, ``metadata_id``, ``columns_created``).
+            Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`dict`]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table creation fails or the schema is invalid.
 
@@ -481,28 +529,29 @@ class DataverseClient:
                 print(f"Created table: {result['table_schema_name']}")
                 print(f"Columns: {result['columns_created']}")
 
-            Create a table with a custom primary column name::
+            Access telemetry data::
 
-                result = client.create_table(
-                    "new_Product",
-                    {"new_Price": "decimal"},
-                    primary_column_schema_name="new_ProductName"
-                )
+                response = client.create_table("new_Test", {"new_Col": "string"}).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._create_table(
+            result, metadata = od._create_table(
                 table_schema_name,
                 columns,
                 solution_unique_name,
                 primary_column_schema_name,
             )
+            return OperationResult(result, metadata)
 
-    def delete_table(self, table_schema_name: str) -> None:
+    def delete_table(self, table_schema_name: str) -> OperationResult[None]:
         """
         Delete a custom table by name.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
         :type table_schema_name: :class:`str`
+
+        :return: OperationResult containing None. Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [None]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If the table does not exist or deletion fails.
 
@@ -514,16 +563,23 @@ class DataverseClient:
             Delete a custom table::
 
                 client.delete_table("new_MyTestTable")
+
+            Access telemetry data::
+
+                response = client.delete_table("new_MyTestTable").with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            od._delete_table(table_schema_name)
+            _, metadata = od._delete_table(table_schema_name)
+            return OperationResult(None, metadata)
 
-    def list_tables(self) -> list[str]:
+    def list_tables(self) -> OperationResult[List[Dict[str, Any]]]:
         """
         List all custom tables in the Dataverse environment.
 
-        :return: List of custom table names.
-        :rtype: :class:`list` of :class:`str`
+        :return: OperationResult containing list of table metadata. Call ``.with_response_details()``
+            to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`list` of :class:`dict`]
 
         Example:
             List all custom tables::
@@ -531,15 +587,21 @@ class DataverseClient:
                 tables = client.list_tables()
                 for table in tables:
                     print(table)
+
+            Access telemetry data::
+
+                response = client.list_tables().with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._list_tables()
+            result, metadata = od._list_tables()
+            return OperationResult(result, metadata)
 
     def create_columns(
         self,
         table_schema_name: str,
         columns: Dict[str, Any],
-    ) -> List[str]:
+    ) -> OperationResult[List[str]]:
         """
         Create one or more columns on an existing table using a schema-style mapping.
 
@@ -549,8 +611,9 @@ class DataverseClient:
             ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), and ``"bool"`` (alias: ``"boolean"``). Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
         :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
-        :returns: Schema names for the columns that were created.
-        :rtype: :class:`list` of :class:`str`
+        :returns: OperationResult containing schema names for the columns that were created.
+            Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`list` of :class:`str`]
         Example:
             Create two columns on the custom table::
 
@@ -562,18 +625,24 @@ class DataverseClient:
                     },
                 )
                 print(created)  # ['new_Scratch', 'new_Flags']
+
+            Access telemetry data::
+
+                response = client.create_columns("new_Test", {"new_Col": "string"}).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._create_columns(
+            result, metadata = od._create_columns(
                 table_schema_name,
                 columns,
             )
+            return OperationResult(result, metadata)
 
     def delete_columns(
         self,
         table_schema_name: str,
         columns: Union[str, List[str]],
-    ) -> List[str]:
+    ) -> OperationResult[List[str]]:
         """
         Delete one or more columns from a table.
 
@@ -581,8 +650,9 @@ class DataverseClient:
         :type table_schema_name: :class:`str`
         :param columns: Column name or list of column names to remove. Must include customization prefix value (e.g. ``"new_TestColumn"``).
         :type columns: :class:`str` or :class:`list` of :class:`str`
-        :returns: Schema names for the columns that were removed.
-        :rtype: :class:`list` of :class:`str`
+        :returns: OperationResult containing schema names for the columns that were removed.
+            Call ``.with_response_details()`` to access telemetry data.
+        :rtype: :class:`OperationResult` [:class:`list` of :class:`str`]
         Example:
             Remove two custom columns by schema name:
 
@@ -591,12 +661,18 @@ class DataverseClient:
                     ["new_Scratch", "new_Flags"],
                 )
                 print(removed)  # ['new_Scratch', 'new_Flags']
+
+            Access telemetry data::
+
+                response = client.delete_columns("new_Test", ["new_Col"]).with_response_details()
+                print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._scoped_odata() as od:
-            return od._delete_columns(
+            result, metadata = od._delete_columns(
                 table_schema_name,
                 columns,
             )
+            return OperationResult(result, metadata)
 
     # File upload
     def upload_file(

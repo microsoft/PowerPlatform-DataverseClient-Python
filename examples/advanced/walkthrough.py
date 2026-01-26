@@ -32,6 +32,14 @@ def log_call(description):
     print(f"\n-> {description}")
 
 
+def print_telemetry(telemetry):
+    """Print telemetry IDs from a response."""
+    print(f"  Telemetry:")
+    print(f"    client_request_id: {telemetry.get('client_request_id')}")
+    print(f"    correlation_id: {telemetry.get('correlation_id')}")
+    print(f"    service_request_id: {telemetry.get('service_request_id')}")
+
+
 # Define enum for priority picklist
 class Priority(IntEnum):
     LOW = 1
@@ -52,9 +60,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             result = op()
             if attempts > 1:
                 retry_count = attempts - 1
-                print(
-                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
+                print(f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total.")
             return result
         except Exception as ex:  # noqa: BLE001
             last = ex
@@ -62,9 +68,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
+            print(f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total.")
         raise last
 
 
@@ -104,12 +108,13 @@ def main():
     table_name = "new_WalkthroughDemo"
 
     log_call(f"client.get_table_info('{table_name}')")
-    table_info = backoff(lambda: client.get_table_info(table_name))
+    table_info_result = backoff(lambda: client.get_table_info(table_name))
+    print_telemetry(table_info_result.with_response_details().telemetry)
 
-    if table_info:
-        print(f"[OK] Table already exists: {table_info.get('table_schema_name')}")
-        print(f"  Logical Name: {table_info.get('table_logical_name')}")
-        print(f"  Entity Set: {table_info.get('entity_set_name')}")
+    if table_info_result.value:
+        print(f"[OK] Table already exists: {table_info_result.get('table_schema_name')}")
+        print(f"  Logical Name: {table_info_result.get('table_logical_name')}")
+        print(f"  Entity Set: {table_info_result.get('entity_set_name')}")
     else:
         log_call(f"client.create_table('{table_name}', columns={{...}})")
         columns = {
@@ -119,9 +124,10 @@ def main():
             "new_Completed": "bool",
             "new_Priority": Priority,
         }
-        table_info = backoff(lambda: client.create_table(table_name, columns))
-        print(f"[OK] Created table: {table_info.get('table_schema_name')}")
-        print(f"  Columns created: {', '.join(table_info.get('columns_created', []))}")
+        table_info_result = backoff(lambda: client.create_table(table_name, columns))
+        print(f"[OK] Created table: {table_info_result.get('table_schema_name')}")
+        print(f"  Columns created: {', '.join(table_info_result.get('columns_created', []))}")
+        print_telemetry(table_info_result.with_response_details().telemetry)
 
     # ============================================================================
     # 3. CREATE OPERATIONS
@@ -139,8 +145,10 @@ def main():
         "new_Completed": False,
         "new_Priority": Priority.MEDIUM,
     }
-    id1 = backoff(lambda: client.create(table_name, single_record))[0]
+    create_result = backoff(lambda: client.create(table_name, single_record))
+    id1 = create_result[0]
     print(f"[OK] Created single record: {id1}")
+    print_telemetry(create_result.with_response_details().telemetry)
 
     # Multiple create
     log_call(f"client.create('{table_name}', [{{...}}, {{...}}, {{...}}])")
@@ -169,6 +177,7 @@ def main():
     ]
     ids = backoff(lambda: client.create(table_name, multiple_records))
     print(f"[OK] Created {len(ids)} records: {ids}")
+    print_telemetry(ids.with_response_details().telemetry)
 
     # ============================================================================
     # 4. READ OPERATIONS
@@ -195,6 +204,7 @@ def main():
             indent=2,
         )
     )
+    print_telemetry(record.with_response_details().telemetry)
 
     # Multiple read with filter
     log_call(f"client.get('{table_name}', filter='new_quantity gt 5')")
@@ -215,14 +225,16 @@ def main():
 
     # Single update
     log_call(f"client.update('{table_name}', '{id1}', {{...}})")
-    backoff(lambda: client.update(table_name, id1, {"new_Quantity": 100}))
+    update_result = backoff(lambda: client.update(table_name, id1, {"new_Quantity": 100}))
     updated = backoff(lambda: client.get(table_name, id1))
     print(f"[OK] Updated single record new_Quantity: {updated.get('new_quantity')}")
+    print_telemetry(update_result.with_response_details().telemetry)
 
     # Multiple update (broadcast same change)
     log_call(f"client.update('{table_name}', [{len(ids)} IDs], {{...}})")
-    backoff(lambda: client.update(table_name, ids, {"new_Completed": True}))
+    multi_update_result = backoff(lambda: client.update(table_name, ids, {"new_Completed": True}))
     print(f"[OK] Updated {len(ids)} records to new_Completed=True")
+    print_telemetry(multi_update_result.with_response_details().telemetry)
 
     # ============================================================================
     # 6. PAGING DEMO
@@ -245,6 +257,7 @@ def main():
     ]
     paging_ids = backoff(lambda: client.create(table_name, paging_records))
     print(f"[OK] Created {len(paging_ids)} records for paging demo")
+    print_telemetry(paging_ids.with_response_details().telemetry)
 
     # Query with paging
     log_call(f"client.get('{table_name}', page_size=5)")
@@ -264,10 +277,11 @@ def main():
     log_call(f"client.query_sql('SELECT new_title, new_quantity FROM {table_name} WHERE new_completed = 1')")
     sql = f"SELECT new_title, new_quantity FROM new_walkthroughdemo WHERE new_completed = 1"
     try:
-        results = backoff(lambda: client.query_sql(sql))
-        print(f"[OK] SQL query returned {len(results)} completed records:")
-        for result in results[:5]:  # Show first 5
+        sql_result = backoff(lambda: client.query_sql(sql))
+        print(f"[OK] SQL query returned {len(sql_result)} completed records:")
+        for result in sql_result[:5]:  # Show first 5
             print(f"  - new_Title='{result.get('new_title')}', new_Quantity={result.get('new_quantity')}")
+        print_telemetry(sql_result.with_response_details().telemetry)
     except Exception as e:
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
@@ -286,11 +300,13 @@ def main():
         "new_Completed": False,
         "new_Priority": "High",  # String label instead of int
     }
-    label_id = backoff(lambda: client.create(table_name, label_record))[0]
+    label_create_result = backoff(lambda: client.create(table_name, label_record))
+    label_id = label_create_result[0]
     retrieved = backoff(lambda: client.get(table_name, label_id))
     print(f"[OK] Created record with string label 'High' for new_Priority")
     print(f"  new_Priority stored as integer: {retrieved.get('new_priority')}")
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
+    print_telemetry(label_create_result.with_response_details().telemetry)
 
     # ============================================================================
     # 9. COLUMN MANAGEMENT
@@ -302,11 +318,13 @@ def main():
     log_call(f"client.create_columns('{table_name}', {{'new_Notes': 'string'}})")
     created_cols = backoff(lambda: client.create_columns(table_name, {"new_Notes": "string"}))
     print(f"[OK] Added column: {created_cols[0]}")
+    print_telemetry(created_cols.with_response_details().telemetry)
 
     # Delete the column we just added
     log_call(f"client.delete_columns('{table_name}', ['new_Notes'])")
-    backoff(lambda: client.delete_columns(table_name, ["new_Notes"]))
+    delete_cols_result = backoff(lambda: client.delete_columns(table_name, ["new_Notes"]))
     print(f"[OK] Deleted column: new_Notes")
+    print_telemetry(delete_cols_result.with_response_details().telemetry)
 
     # ============================================================================
     # 10. DELETE OPERATIONS
@@ -317,14 +335,16 @@ def main():
 
     # Single delete
     log_call(f"client.delete('{table_name}', '{id1}')")
-    backoff(lambda: client.delete(table_name, id1))
+    delete_result = backoff(lambda: client.delete(table_name, id1))
     print(f"[OK] Deleted single record: {id1}")
+    print_telemetry(delete_result.with_response_details().telemetry)
 
     # Multiple delete (delete the paging demo records)
     log_call(f"client.delete('{table_name}', [{len(paging_ids)} IDs])")
     job_id = backoff(lambda: client.delete(table_name, paging_ids))
     print(f"[OK] Bulk delete job started: {job_id}")
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
+    print_telemetry(job_id.with_response_details().telemetry)
 
     # ============================================================================
     # 11. CLEANUP
@@ -335,11 +355,12 @@ def main():
 
     log_call(f"client.delete_table('{table_name}')")
     try:
-        backoff(lambda: client.delete_table(table_name))
+        delete_table_result = backoff(lambda: client.delete_table(table_name))
         print(f"[OK] Deleted table: {table_name}")
+        print_telemetry(delete_table_result.with_response_details().telemetry)
     except Exception as ex:  # noqa: BLE001
         code = getattr(getattr(ex, "response", None), "status_code", None)
-        if (isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404):
+        if isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404:
             print(f"[OK] Table removed: {table_name}")
         else:
             raise
