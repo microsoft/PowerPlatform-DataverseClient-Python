@@ -12,9 +12,24 @@ network errors and intelligent timeout management based on HTTP method types.
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Optional, Tuple
 
 import requests
+
+
+@dataclass
+class _HttpTiming:
+    """Timing information for an HTTP request.
+
+    :param elapsed_ms: Total request duration in milliseconds.
+    :type elapsed_ms: :class:`float`
+    :param attempts: Number of attempts made (1 = no retries).
+    :type attempts: :class:`int`
+    """
+
+    elapsed_ms: float
+    attempts: int = 1
 
 
 class _HttpClient:
@@ -77,3 +92,50 @@ class _HttpClient:
                 delay = self.base_delay * (2**attempt)
                 time.sleep(delay)
                 continue
+
+    def _request_with_timing(
+        self, method: str, url: str, **kwargs: Any
+    ) -> Tuple[requests.Response, _HttpTiming]:
+        """
+        Execute an HTTP request and return response with timing information.
+
+        Same behavior as :meth:`_request` but additionally returns timing data
+        for telemetry purposes.
+
+        :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
+        :type method: :class:`str`
+        :param url: Target URL for the request.
+        :type url: :class:`str`
+        :param kwargs: Additional arguments passed to ``requests.request()``.
+        :return: Tuple of (HTTP response, timing information).
+        :rtype: :class:`tuple` of (:class:`requests.Response`, :class:`_HttpTiming`)
+        :raises requests.exceptions.RequestException: If all retry attempts fail.
+        """
+        # If no timeout is provided, use the user-specified default timeout if set;
+        # otherwise, apply per-method defaults (120s for POST/DELETE, 10s for others).
+        if "timeout" not in kwargs:
+            if self.default_timeout is not None:
+                kwargs["timeout"] = self.default_timeout
+            else:
+                m = (method or "").lower()
+                kwargs["timeout"] = 120 if m in ("post", "delete") else 10
+
+        start_time = time.time()
+        attempts = 0
+
+        # Small backoff retry on network errors only
+        for attempt in range(self.max_attempts):
+            attempts = attempt + 1
+            try:
+                response = requests.request(method, url, **kwargs)
+                elapsed_ms = (time.time() - start_time) * 1000
+                return response, _HttpTiming(elapsed_ms=elapsed_ms, attempts=attempts)
+            except requests.exceptions.RequestException:
+                if attempt == self.max_attempts - 1:
+                    raise
+                delay = self.base_delay * (2**attempt)
+                time.sleep(delay)
+                continue
+
+        # This should not be reached, but include for type safety
+        raise RuntimeError("Unexpected state in _request_with_timing")

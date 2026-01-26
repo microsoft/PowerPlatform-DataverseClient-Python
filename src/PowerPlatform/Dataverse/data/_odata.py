@@ -18,7 +18,7 @@ import importlib.resources as ir
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from ..core._http import _HttpClient
+from ..core._http import _HttpClient, _HttpTiming
 from ._upload import _ODataFileUpload
 from ..core.errors import *
 from ..core._error_codes import (
@@ -33,6 +33,7 @@ from ..core._error_codes import (
     METADATA_COLUMN_NOT_FOUND,
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
+from ..core.results import RequestMetadata
 
 from ..__version__ import __version__ as _SDK_VERSION
 
@@ -250,6 +251,279 @@ class _ODataClient(_ODataFileUpload):
             retry_after=retry_after,
             is_transient=is_transient,
         )
+
+    def _request_with_metadata(
+        self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs
+    ) -> tuple[Any, RequestMetadata]:
+        """Execute HTTP request and return response with RequestMetadata.
+
+        This method is used internally to capture telemetry for the fluent
+        ``.with_detail_response()`` API pattern.
+
+        :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
+        :type method: ``str``
+        :param url: Target URL for the request.
+        :type url: ``str``
+        :param expected: Tuple of acceptable HTTP status codes.
+        :type expected: ``tuple[int, ...]``
+        :param kwargs: Additional arguments passed to the underlying HTTP request.
+        :return: Tuple of (response, RequestMetadata).
+        :rtype: ``tuple[Any, RequestMetadata]``
+        :raises HttpError: If the response status is not in expected statuses.
+        """
+        request_context = _RequestContext.build(
+            method,
+            url,
+            expected=expected,
+            merge_headers=self._merge_headers,
+            **kwargs,
+        )
+
+        # Use timing-aware request
+        r, timing = self._http._request_with_timing(
+            request_context.method, request_context.url, **request_context.kwargs
+        )
+
+        # Extract service request ID from response headers
+        response_headers = getattr(r, "headers", {}) or {}
+        service_request_id = (
+            response_headers.get("x-ms-service-request-id")
+            or response_headers.get("req_id")
+            or response_headers.get("x-ms-request-id")
+        )
+
+        # Build metadata
+        metadata = RequestMetadata(
+            client_request_id=request_context.headers.get("x-ms-client-request-id"),
+            correlation_id=request_context.headers.get("x-ms-correlation-id"),
+            service_request_id=service_request_id,
+            http_status_code=r.status_code,
+            timing_ms=timing.elapsed_ms,
+        )
+
+        if r.status_code in request_context.expected:
+            return r, metadata
+
+        # Error handling - same logic as _request but we have metadata available
+        body_excerpt = (getattr(r, "text", "") or "")[:200]
+        svc_code = None
+        msg = f"HTTP {r.status_code}"
+        try:
+            data = r.json() if getattr(r, "text", None) else {}
+            if isinstance(data, dict):
+                inner = data.get("error")
+                if isinstance(inner, dict):
+                    svc_code = inner.get("code")
+                    imsg = inner.get("message")
+                    if isinstance(imsg, str) and imsg.strip():
+                        msg = imsg.strip()
+                else:
+                    imsg2 = data.get("message")
+                    if isinstance(imsg2, str) and imsg2.strip():
+                        msg = imsg2.strip()
+        except Exception:
+            pass
+        sc = r.status_code
+        subcode = _http_subcode(sc)
+        traceparent = response_headers.get("traceparent")
+        ra = response_headers.get("Retry-After")
+        retry_after = None
+        if ra:
+            try:
+                retry_after = int(ra)
+            except Exception:
+                retry_after = None
+        is_transient = _is_transient_status(sc)
+        raise HttpError(
+            msg,
+            status_code=sc,
+            subcode=subcode,
+            service_error_code=svc_code,
+            correlation_id=metadata.correlation_id,
+            client_request_id=metadata.client_request_id,
+            service_request_id=metadata.service_request_id,
+            traceparent=traceparent,
+            body_excerpt=body_excerpt,
+            retry_after=retry_after,
+            is_transient=is_transient,
+        )
+
+    # --- CRUD Internal functions with metadata ---
+    def _create_with_metadata(
+        self, entity_set: str, table_schema_name: str, record: Dict[str, Any]
+    ) -> tuple[str, RequestMetadata]:
+        """Create a single record and return its GUID with metadata.
+
+        Same as :meth:`_create` but returns a tuple of (record_id, RequestMetadata)
+        for the fluent API pattern.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param record: Attribute payload mapped by logical column names.
+        :type record: ``dict[str, Any]``
+        :return: Tuple of (created record GUID, request metadata).
+        :rtype: ``tuple[str, RequestMetadata]``
+        """
+        record = self._lowercase_keys(record)
+        record = self._convert_labels_to_ints(table_schema_name, record)
+        url = f"{self.api}/{entity_set}"
+        r, metadata = self._request_with_metadata("post", url, json=record)
+
+        ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
+        if ent_loc:
+            m = _GUID_RE.search(ent_loc)
+            if m:
+                return m.group(0), metadata
+        loc = r.headers.get("Location")
+        if loc:
+            m = _GUID_RE.search(loc)
+            if m:
+                return m.group(0), metadata
+        header_keys = ", ".join(sorted(r.headers.keys()))
+        raise RuntimeError(
+            f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
+        )
+
+    def _create_multiple_with_metadata(
+        self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]
+    ) -> tuple[List[str], RequestMetadata, Dict[str, Any]]:
+        """Create multiple records and return GUIDs with metadata.
+
+        Same as :meth:`_create_multiple` but returns a tuple of
+        (record_ids, RequestMetadata, batch_info) for the fluent API pattern.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param records: Payload dictionaries mapped by column schema names.
+        :type records: ``list[dict[str, Any]]``
+        :return: Tuple of (list of created GUIDs, request metadata, batch info).
+        :rtype: ``tuple[list[str], RequestMetadata, dict[str, Any]]``
+        """
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
+        need_logical = any("@odata.type" not in r for r in records)
+        logical_name = table_schema_name.lower()
+        enriched: List[Dict[str, Any]] = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = self._convert_labels_to_ints(table_schema_name, r)
+            if "@odata.type" in r or not need_logical:
+                enriched.append(r)
+            else:
+                nr = r.copy()
+                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+                enriched.append(nr)
+        payload = {"Targets": enriched}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
+        r, metadata = self._request_with_metadata("post", url, json=payload)
+
+        try:
+            body = r.json() if r.text else {}
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+
+        ids: List[str] = []
+        raw_ids = body.get("Ids")
+        if isinstance(raw_ids, list):
+            ids = [i for i in raw_ids if isinstance(i, str)]
+        else:
+            value = body.get("value")
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
+                                ids.append(v)
+                                break
+
+        batch_info = {
+            "total": len(records),
+            "success": len(ids),
+            "failures": len(records) - len(ids),
+        }
+        return ids, metadata, batch_info
+
+    def _update_with_metadata(
+        self, table_schema_name: str, key: str, data: Dict[str, Any]
+    ) -> tuple[None, RequestMetadata]:
+        """Update a single record and return metadata.
+
+        Same as :meth:`_update` but returns a tuple of (None, RequestMetadata)
+        for the fluent API pattern.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key: Record GUID.
+        :type key: ``str``
+        :param data: Attribute changes.
+        :type data: ``dict[str, Any]``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestMetadata]``
+        """
+        data = self._lowercase_keys(data)
+        data = self._convert_labels_to_ints(table_schema_name, data)
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        url = f"{self.api}/{entity_set}({self._format_key(key)})"
+        _, metadata = self._request_with_metadata("patch", url, json=data)
+        return None, metadata
+
+    def _delete_with_metadata(
+        self, table_schema_name: str, key: str
+    ) -> tuple[None, RequestMetadata]:
+        """Delete a single record and return metadata.
+
+        Same as :meth:`_delete` but returns a tuple of (None, RequestMetadata)
+        for the fluent API pattern.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key: Record GUID.
+        :type key: ``str``
+        :return: Tuple of (None, request metadata).
+        :rtype: ``tuple[None, RequestMetadata]``
+        """
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        url = f"{self.api}/{entity_set}({self._format_key(key)})"
+        _, metadata = self._request_with_metadata("delete", url)
+        return None, metadata
+
+    def _get_with_metadata(
+        self,
+        table_schema_name: str,
+        key: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> tuple[Dict[str, Any], RequestMetadata]:
+        """Get a single record by ID and return with metadata.
+
+        Same as :meth:`_get` but returns a tuple of (record, RequestMetadata)
+        for the fluent API pattern.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key: Record GUID.
+        :type key: ``str``
+        :param select: Optional list of columns to select.
+        :type select: ``list[str]`` | ``None``
+        :return: Tuple of (record dict, request metadata).
+        :rtype: ``tuple[dict[str, Any], RequestMetadata]``
+        """
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        url = f"{self.api}/{entity_set}({self._format_key(key)})"
+        if select:
+            select = self._lowercase_list(select)
+            url += "?$select=" + ",".join(select)
+        r, metadata = self._request_with_metadata("get", url)
+        try:
+            return r.json(), metadata
+        except ValueError:
+            return {}, metadata
 
     # --- CRUD Internal functions ---
     def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
