@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.results import RequestMetadata, FluentResult
 
 
 class TestDataverseClient(unittest.TestCase):
@@ -23,46 +24,91 @@ class TestDataverseClient(unittest.TestCase):
         # This ensures we verify logic without making actual HTTP calls
         self.client._odata = MagicMock()
 
+        # Create a sample metadata object for mocking
+        self.sample_metadata = RequestMetadata(
+            client_request_id="test-client-123",
+            correlation_id="test-corr-456",
+            http_status_code=200,
+            timing_ms=100.0
+        )
+
     def test_create_single(self):
         """Test create method with a single record."""
-        # Setup mock return values
-        # _create must return a GUID string
-        self.client._odata._create.return_value = "00000000-0000-0000-0000-000000000000"
-        # _entity_set_from_schema_name should return the plural entity set name
+        # Setup mock return values for _with_metadata variant
+        self.client._odata._create_with_metadata.return_value = (
+            "00000000-0000-0000-0000-000000000000",
+            self.sample_metadata
+        )
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
         # Execute test
-        self.client.create("account", {"name": "Contoso Ltd"})
+        result = self.client.create("account", {"name": "Contoso Ltd"})
 
-        # Verify
-        # Ensure _entity_set_from_schema_name was called and its result ("accounts") was passed to _create
-        self.client._odata._create.assert_called_once_with("accounts", "account", {"name": "Contoso Ltd"})
+        # Verify - now uses _create_with_metadata
+        self.client._odata._create_with_metadata.assert_called_once_with(
+            "accounts", "account", {"name": "Contoso Ltd"}
+        )
+        # Result should be a FluentResult that behaves like a list
+        self.assertIsInstance(result, FluentResult)
+        self.assertEqual(result[0], "00000000-0000-0000-0000-000000000000")
+        self.assertEqual(len(result), 1)
 
     def test_create_multiple(self):
         """Test create method with multiple records."""
         payloads = [{"name": "Company A"}, {"name": "Company B"}, {"name": "Company C"}]
 
-        # Setup mock return values
-        # _create_multiple must return a list of GUID strings
-        self.client._odata._create_multiple.return_value = [
-            "00000000-0000-0000-0000-000000000001",
-            "00000000-0000-0000-0000-000000000002",
-            "00000000-0000-0000-0000-000000000003",
-        ]
+        # Setup mock return values for _with_metadata variant
+        self.client._odata._create_multiple_with_metadata.return_value = (
+            [
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002",
+                "00000000-0000-0000-0000-000000000003",
+            ],
+            self.sample_metadata,
+            {"total": 3, "success": 3, "failures": 0}
+        )
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
         # Execute test
-        self.client.create("account", payloads)
+        result = self.client.create("account", payloads)
 
-        # Verify
-        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads)
+        # Verify - now uses _create_multiple_with_metadata
+        self.client._odata._create_multiple_with_metadata.assert_called_once_with(
+            "accounts", "account", payloads
+        )
+        # Result should be a FluentResult that behaves like a list
+        self.assertIsInstance(result, FluentResult)
+        self.assertEqual(len(result), 3)
+
+    def test_create_with_detail_response(self):
+        """Test that create() supports .with_detail_response() for telemetry."""
+        self.client._odata._create_with_metadata.return_value = (
+            "00000000-0000-0000-0000-000000000000",
+            self.sample_metadata
+        )
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+        result = self.client.create("account", {"name": "Test"})
+        response = result.with_detail_response()
+
+        # Verify telemetry is available
+        self.assertEqual(response.result, ["00000000-0000-0000-0000-000000000000"])
+        self.assertEqual(response.telemetry["client_request_id"], "test-client-123")
+        self.assertEqual(response.telemetry["timing_ms"], 100.0)
 
     def test_update_single(self):
         """Test update method with a single record."""
-        self.client.update("account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"})
-        self.client._odata._update.assert_called_once_with(
+        # Setup mock return value for _with_metadata variant
+        self.client._odata._update_with_metadata.return_value = (None, self.sample_metadata)
+
+        result = self.client.update("account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"})
+
+        self.client._odata._update_with_metadata.assert_called_once_with(
             "account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"}
         )
+        # Result should be a FluentResult wrapping None
+        self.assertIsInstance(result, FluentResult)
+        self.assertIsNone(result.value)
 
     def test_update_multiple(self):
         """Test update method with multiple records (broadcast)."""
@@ -72,13 +118,24 @@ class TestDataverseClient(unittest.TestCase):
         ]
         changes = {"statecode": 1}
 
-        self.client.update("account", ids, changes)
+        result = self.client.update("account", ids, changes)
+
+        # Bulk updates still use _update_by_ids (no _with_metadata variant yet)
         self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
+        self.assertIsInstance(result, FluentResult)
 
     def test_delete_single(self):
         """Test delete method with a single record."""
-        self.client.delete("account", "00000000-0000-0000-0000-000000000000")
-        self.client._odata._delete.assert_called_once_with("account", "00000000-0000-0000-0000-000000000000")
+        # Setup mock return value for _with_metadata variant
+        self.client._odata._delete_with_metadata.return_value = (None, self.sample_metadata)
+
+        result = self.client.delete("account", "00000000-0000-0000-0000-000000000000")
+
+        self.client._odata._delete_with_metadata.assert_called_once_with(
+            "account", "00000000-0000-0000-0000-000000000000"
+        )
+        # Result should be a FluentResult wrapping None
+        self.assertIsInstance(result, FluentResult)
 
     def test_delete_multiple(self):
         """Test delete method with multiple records."""
@@ -89,21 +146,39 @@ class TestDataverseClient(unittest.TestCase):
         # Mock return value for bulk delete job ID
         self.client._odata._delete_multiple.return_value = "job-guid-123"
 
-        job_id = self.client.delete("account", ids)
+        result = self.client.delete("account", ids)
 
         self.client._odata._delete_multiple.assert_called_once_with("account", ids)
-        self.assertEqual(job_id, "job-guid-123")
+        # Result should be a FluentResult wrapping the job ID
+        self.assertIsInstance(result, FluentResult)
+        self.assertEqual(result.value, "job-guid-123")
 
     def test_get_single(self):
         """Test get method with a single record ID."""
-        # Setup mock return value
+        # Setup mock return value for _with_metadata variant
         expected_record = {"accountid": "00000000-0000-0000-0000-000000000000", "name": "Contoso"}
-        self.client._odata._get.return_value = expected_record
+        self.client._odata._get_with_metadata.return_value = (expected_record, self.sample_metadata)
 
         result = self.client.get("account", "00000000-0000-0000-0000-000000000000")
 
-        self.client._odata._get.assert_called_once_with("account", "00000000-0000-0000-0000-000000000000", select=None)
-        self.assertEqual(result, expected_record)
+        self.client._odata._get_with_metadata.assert_called_once_with(
+            "account", "00000000-0000-0000-0000-000000000000", select=None
+        )
+        # Result should be a FluentResult that behaves like a dict
+        self.assertIsInstance(result, FluentResult)
+        self.assertEqual(result["name"], "Contoso")
+
+    def test_get_single_with_detail_response(self):
+        """Test that get() for single record supports .with_detail_response()."""
+        expected_record = {"accountid": "00000000-0000-0000-0000-000000000000", "name": "Contoso"}
+        self.client._odata._get_with_metadata.return_value = (expected_record, self.sample_metadata)
+
+        result = self.client.get("account", "00000000-0000-0000-0000-000000000000")
+        response = result.with_detail_response()
+
+        # Verify telemetry is available
+        self.assertEqual(response.result["name"], "Contoso")
+        self.assertEqual(response.telemetry["http_status_code"], 200)
 
     def test_get_multiple(self):
         """Test get method for querying multiple records."""
