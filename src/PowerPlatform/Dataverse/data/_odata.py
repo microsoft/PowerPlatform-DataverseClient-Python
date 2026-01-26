@@ -629,8 +629,8 @@ class _ODataClient(_ODataFileUpload):
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
-        """Iterate records from an entity set, yielding one page (list of dicts) at a time.
+    ) -> Iterable[_ODataRequestResult]:
+        """Iterate records from an entity set, yielding one page with telemetry at a time.
 
         :param table_schema_name: Schema name of the table.
         :type table_schema_name: ``str``
@@ -647,12 +647,8 @@ class _ODataClient(_ODataFileUpload):
         :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
         :type page_size: ``int`` | ``None``
 
-        :return: Iterator yielding pages (each page is a ``list`` of record dicts).
-        :rtype: ``Iterable[list[dict[str, Any]]]``
-
-        .. note::
-           This method is a generator and does not return metadata directly.
-           For paginated queries, metadata is captured per-request but not surfaced.
+        :return: Iterator yielding tuples of (page records, telemetry) for each page.
+        :rtype: ``Iterable[tuple[list[dict[str, Any]], RequestTelemetryData]]``
         """
 
         extra_headers: Dict[str, str] = {}
@@ -661,13 +657,13 @@ class _ODataClient(_ODataFileUpload):
             if ps > 0:
                 extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
 
-        def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], RequestTelemetryData]:
             headers = extra_headers if extra_headers else None
-            r, _ = self._request("get", url, headers=headers, params=params)
+            r, metadata = self._request("get", url, headers=headers, params=params)
             try:
-                return r.json()
+                return r.json(), metadata
             except ValueError:
-                return {}
+                return {}, metadata
 
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         base_url = f"{self.api}/{entity_set}"
@@ -687,20 +683,20 @@ class _ODataClient(_ODataFileUpload):
         if top is not None:
             params["$top"] = int(top)
 
-        data = _do_request(base_url, params=params)
+        data, metadata = _do_request(base_url, params=params)
         items = data.get("value") if isinstance(data, dict) else None
         if isinstance(items, list) and items:
-            yield [x for x in items if isinstance(x, dict)]
+            yield [x for x in items if isinstance(x, dict)], metadata
 
         next_link = None
         if isinstance(data, dict):
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
 
         while next_link:
-            data = _do_request(next_link)
+            data, metadata = _do_request(next_link)
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
-                yield [x for x in items if isinstance(x, dict)]
+                yield [x for x in items if isinstance(x, dict)], metadata
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
     # --------------------------- SQL Custom API -------------------------

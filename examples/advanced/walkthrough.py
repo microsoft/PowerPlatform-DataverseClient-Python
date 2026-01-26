@@ -212,6 +212,7 @@ def main():
     records_iterator = backoff(lambda: client.get(table_name, filter="new_quantity gt 5"))
     for page in records_iterator:
         all_records.extend(page)
+        print_telemetry(page.with_response_details().telemetry)
     print(f"[OK] Found {len(all_records)} records with new_quantity > 5")
     for rec in all_records:
         print(f"  - new_Title='{rec.get('new_title')}', new_Quantity={rec.get('new_quantity')}")
@@ -266,6 +267,7 @@ def main():
     for page_num, page in enumerate(paging_iterator, start=1):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
+        print_telemetry(page.with_response_details().telemetry)
 
     # ============================================================================
     # 7. SQL QUERY

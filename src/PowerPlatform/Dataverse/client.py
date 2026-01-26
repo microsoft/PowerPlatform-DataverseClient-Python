@@ -293,7 +293,7 @@ class DataverseClient:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Union[OperationResult[Dict[str, Any]], Iterable[List[Dict[str, Any]]]]:
+    ) -> Union[OperationResult[Dict[str, Any]], Iterable[OperationResult[List[Dict[str, Any]]]]]:
         """
         Fetch a single record by ID or query multiple records.
 
@@ -320,9 +320,11 @@ class DataverseClient:
         :return: When ``record_id`` is provided, returns an OperationResult containing the record dict.
             The result supports dict-like access (e.g., ``result["name"]``) or call
             ``.with_response_details()`` to access telemetry data.
-            When querying multiple records, returns a generator yielding lists of record
-            dictionaries (one list per page).
-        :rtype: :class:`OperationResult` [:class:`dict`] or :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
+            When querying multiple records, returns a generator yielding OperationResult objects,
+            each containing a list of record dictionaries (one list per page). Each batch supports
+            iteration and indexing directly, or call ``.with_response_details()`` to access
+            that page's telemetry data.
+        :rtype: :class:`OperationResult` [:class:`dict`] or :class:`collections.abc.Iterable` of :class:`OperationResult` [:class:`list` of :class:`dict`]
 
         :raises TypeError: If ``record_id`` is provided but not a string.
 
@@ -368,6 +370,14 @@ class DataverseClient:
                     page_size=50
                 ):
                     print(f"Batch size: {len(batch)}")
+
+            Query with per-page telemetry access::
+
+                for batch in client.get("account", filter="statecode eq 0"):
+                    response = batch.with_response_details()
+                    print(f"Page request ID: {response.telemetry['service_request_id']}")
+                    for account in response.result:
+                        print(account["name"])
         """
         if record_id is not None:
             if not isinstance(record_id, str):
@@ -380,9 +390,9 @@ class DataverseClient:
                 )
                 return OperationResult(record, metadata)
 
-        def _paged() -> Iterable[List[Dict[str, Any]]]:
+        def _paged() -> Iterable[OperationResult[List[Dict[str, Any]]]]:
             with self._scoped_odata() as od:
-                yield from od._get_multiple(
+                for batch, metadata in od._get_multiple(
                     table_schema_name,
                     select=select,
                     filter=filter,
@@ -390,7 +400,8 @@ class DataverseClient:
                     top=top,
                     expand=expand,
                     page_size=page_size,
-                )
+                ):
+                    yield OperationResult(batch, metadata)
 
         return _paged()
 

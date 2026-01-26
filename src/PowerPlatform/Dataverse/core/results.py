@@ -240,5 +240,29 @@ class OperationResult(Generic[T]):
         """
         return item in self._result  # type: ignore[operator]
 
+    def __add__(self, other: Any) -> Any:
+        """
+        Support concatenation with + operator.
+
+        When combining OperationResults (e.g., concatenating batches), returns
+        the raw combined result since there's no meaningful single telemetry
+        to preserve for the combined value.
+
+        :param other: Value to concatenate with.
+        :return: Combined result (raw value, not wrapped in OperationResult).
+        """
+        if isinstance(other, OperationResult):
+            return self._result + other._result  # type: ignore[operator]
+        return self._result + other  # type: ignore[operator]
+
+    def __radd__(self, other: Any) -> Any:
+        """
+        Support right-hand concatenation (e.g., [] + result).
+
+        :param other: Left-hand value to concatenate with.
+        :return: Combined result (raw value, not wrapped in OperationResult).
+        """
+        return other + self._result  # type: ignore[operator]
+
 
 __all__ = ["RequestTelemetryData", "DataverseResponse", "OperationResult"]

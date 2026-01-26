@@ -158,9 +158,10 @@ class TestDataverseClient(unittest.TestCase):
 
     def test_get_multiple(self):
         """Test get method for querying multiple records."""
-        # Setup mock return value (iterator)
+        # Setup mock return value (iterator of (batch, metadata) tuples)
         expected_batch = [{"accountid": "1", "name": "A"}, {"accountid": "2", "name": "B"}]
-        self.client._odata._get_multiple.return_value = iter([expected_batch])
+        mock_metadata = RequestTelemetryData(client_request_id="test-page-1")
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
 
         # Execute query
         result_iterator = self.client.get("account", filter="statecode eq 0", top=10)
@@ -177,4 +178,63 @@ class TestDataverseClient(unittest.TestCase):
             expand=None,
             page_size=None,
         )
-        self.assertEqual(results, [expected_batch])
+        # Each batch is now wrapped in OperationResult
+        self.assertEqual(len(results), 1)
+        # Can iterate/index the batch directly (OperationResult delegates)
+        self.assertEqual(results[0][0], {"accountid": "1", "name": "A"})
+        self.assertEqual(list(results[0]), expected_batch)
+        # Can access telemetry via with_response_details()
+        response = results[0].with_response_details()
+        self.assertEqual(response.telemetry["client_request_id"], "test-page-1")
+
+    def test_get_multiple_pagination_with_telemetry(self):
+        """Test get method returns per-page telemetry for paginated results."""
+        # Setup mock with multiple pages
+        batch1 = [{"accountid": "1"}, {"accountid": "2"}]
+        batch2 = [{"accountid": "3"}, {"accountid": "4"}]
+        metadata1 = RequestTelemetryData(client_request_id="page-1", service_request_id="svc-1")
+        metadata2 = RequestTelemetryData(client_request_id="page-2", service_request_id="svc-2")
+        self.client._odata._get_multiple.return_value = iter([
+            (batch1, metadata1),
+            (batch2, metadata2),
+        ])
+
+        # Execute query
+        results = list(self.client.get("account"))
+
+        # Verify we got two pages
+        self.assertEqual(len(results), 2)
+
+        # First page telemetry
+        response1 = results[0].with_response_details()
+        self.assertEqual(response1.result, batch1)
+        self.assertEqual(response1.telemetry["client_request_id"], "page-1")
+        self.assertEqual(response1.telemetry["service_request_id"], "svc-1")
+
+        # Second page telemetry
+        response2 = results[1].with_response_details()
+        self.assertEqual(response2.result, batch2)
+        self.assertEqual(response2.telemetry["client_request_id"], "page-2")
+        self.assertEqual(response2.telemetry["service_request_id"], "svc-2")
+
+    def test_get_multiple_batch_concatenation(self):
+        """Test that batches can be concatenated with + operator."""
+        # Setup mock with multiple pages
+        batch1 = [{"id": "1"}, {"id": "2"}]
+        batch2 = [{"id": "3"}, {"id": "4"}]
+        metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([
+            (batch1, metadata),
+            (batch2, metadata),
+        ])
+
+        # Execute query and concatenate batches
+        batches = list(self.client.get("account"))
+        all_records = batches[0] + batches[1]
+
+        # Verify concatenation works
+        self.assertEqual(len(all_records), 4)
+        self.assertEqual(all_records[0]["id"], "1")
+        self.assertEqual(all_records[3]["id"], "4")
+        # Result is raw list, not OperationResult
+        self.assertIsInstance(all_records, list)

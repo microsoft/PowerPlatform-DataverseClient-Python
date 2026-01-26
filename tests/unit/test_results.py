@@ -347,3 +347,81 @@ class TestOperationResultUsagePatterns:
         assert response.telemetry["client_request_id"] == "client-123"
         assert response.telemetry["correlation_id"] == "corr-456"
         assert response.telemetry["service_request_id"] == "svc-789"
+
+
+class TestOperationResultConcatenation:
+    """Tests for OperationResult concatenation with + operator."""
+
+    @pytest.fixture
+    def sample_telemetry_data(self):
+        return RequestTelemetryData(
+            client_request_id="client-123",
+            correlation_id="corr-456",
+            service_request_id="svc-789",
+        )
+
+    def test_add_two_operation_results(self, sample_telemetry_data):
+        """Adding two OperationResults should concatenate their results."""
+        result1 = OperationResult(result=["a", "b"], telemetry_data=sample_telemetry_data)
+        result2 = OperationResult(result=["c", "d"], telemetry_data=sample_telemetry_data)
+        combined = result1 + result2
+        assert combined == ["a", "b", "c", "d"]
+        # Result should be raw list, not OperationResult
+        assert isinstance(combined, list)
+
+    def test_add_operation_result_with_list(self, sample_telemetry_data):
+        """Adding OperationResult with a list should work."""
+        result = OperationResult(result=["a", "b"], telemetry_data=sample_telemetry_data)
+        combined = result + ["c", "d"]
+        assert combined == ["a", "b", "c", "d"]
+        assert isinstance(combined, list)
+
+    def test_radd_list_with_operation_result(self, sample_telemetry_data):
+        """Right-hand addition: list + OperationResult should work."""
+        result = OperationResult(result=["c", "d"], telemetry_data=sample_telemetry_data)
+        combined = ["a", "b"] + result
+        assert combined == ["a", "b", "c", "d"]
+        assert isinstance(combined, list)
+
+    def test_add_empty_lists(self, sample_telemetry_data):
+        """Adding empty OperationResults should return empty list."""
+        result1 = OperationResult(result=[], telemetry_data=sample_telemetry_data)
+        result2 = OperationResult(result=[], telemetry_data=sample_telemetry_data)
+        combined = result1 + result2
+        assert combined == []
+        assert isinstance(combined, list)
+
+    def test_add_with_empty_list(self, sample_telemetry_data):
+        """Adding OperationResult with empty list should work."""
+        result = OperationResult(result=["a", "b"], telemetry_data=sample_telemetry_data)
+        combined = result + []
+        assert combined == ["a", "b"]
+
+    def test_radd_empty_list(self, sample_telemetry_data):
+        """Right-hand addition with empty list should work."""
+        result = OperationResult(result=["a", "b"], telemetry_data=sample_telemetry_data)
+        combined = [] + result
+        assert combined == ["a", "b"]
+
+    def test_concatenate_multiple_batches(self, sample_telemetry_data):
+        """Simulate combining multiple page batches."""
+        batch1 = OperationResult(result=[{"id": "1"}, {"id": "2"}], telemetry_data=sample_telemetry_data)
+        batch2 = OperationResult(result=[{"id": "3"}, {"id": "4"}], telemetry_data=sample_telemetry_data)
+        batch3 = OperationResult(result=[{"id": "5"}], telemetry_data=sample_telemetry_data)
+
+        all_records = batch1 + batch2 + batch3
+        assert len(all_records) == 5
+        assert all_records[0]["id"] == "1"
+        assert all_records[4]["id"] == "5"
+
+    def test_string_concatenation(self, sample_telemetry_data):
+        """String concatenation should work."""
+        result = OperationResult(result="Hello ", telemetry_data=sample_telemetry_data)
+        combined = result + "World"
+        assert combined == "Hello World"
+
+    def test_radd_string_concatenation(self, sample_telemetry_data):
+        """Right-hand string concatenation should work."""
+        result = OperationResult(result="World", telemetry_data=sample_telemetry_data)
+        combined = "Hello " + result
+        assert combined == "Hello World"

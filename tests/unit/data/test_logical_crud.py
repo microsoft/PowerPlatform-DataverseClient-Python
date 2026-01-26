@@ -119,7 +119,13 @@ def test_get_multiple_paging():
     ]
     c = MockableClient(responses)
     pages = list(c._get_multiple("account", select=["accountid"], page_size=1))
-    assert pages == [[{"accountid": "1"}], [{"accountid": "2"}]]
+    # _get_multiple now returns (batch, metadata) tuples
+    assert len(pages) == 2
+    assert pages[0][0] == [{"accountid": "1"}]
+    assert pages[1][0] == [{"accountid": "2"}]
+    # Each page has telemetry metadata
+    assert pages[0][1].client_request_id is not None
+    assert pages[1][1].client_request_id is not None
 
 
 def test_unknown_table_schema_name_raises():
