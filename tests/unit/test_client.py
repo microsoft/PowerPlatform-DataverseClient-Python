@@ -194,10 +194,12 @@ class TestDataverseClient(unittest.TestCase):
         batch2 = [{"accountid": "3"}, {"accountid": "4"}]
         metadata1 = RequestTelemetryData(client_request_id="page-1", service_request_id="svc-1")
         metadata2 = RequestTelemetryData(client_request_id="page-2", service_request_id="svc-2")
-        self.client._odata._get_multiple.return_value = iter([
-            (batch1, metadata1),
-            (batch2, metadata2),
-        ])
+        self.client._odata._get_multiple.return_value = iter(
+            [
+                (batch1, metadata1),
+                (batch2, metadata2),
+            ]
+        )
 
         # Execute query
         results = list(self.client.get("account"))
@@ -223,10 +225,12 @@ class TestDataverseClient(unittest.TestCase):
         batch1 = [{"id": "1"}, {"id": "2"}]
         batch2 = [{"id": "3"}, {"id": "4"}]
         metadata = RequestTelemetryData()
-        self.client._odata._get_multiple.return_value = iter([
-            (batch1, metadata),
-            (batch2, metadata),
-        ])
+        self.client._odata._get_multiple.return_value = iter(
+            [
+                (batch1, metadata),
+                (batch2, metadata),
+            ]
+        )
 
         # Execute query and concatenate batches
         batches = list(self.client.get("account"))

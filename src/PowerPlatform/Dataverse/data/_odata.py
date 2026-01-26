@@ -657,7 +657,9 @@ class _ODataClient(_ODataFileUpload):
             if ps > 0:
                 extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
 
-        def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], RequestTelemetryData]:
+        def _do_request(
+            url: str, *, params: Optional[Dict[str, Any]] = None
+        ) -> Tuple[Dict[str, Any], RequestTelemetryData]:
             headers = extra_headers if extra_headers else None
             r, metadata = self._request("get", url, headers=headers, params=params)
             try:
