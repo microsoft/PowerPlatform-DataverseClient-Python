@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List, Union, Iterable, Callable
+from typing import Any, Dict, Optional, List, Union, Iterable, Callable, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
 import unicodedata
@@ -43,8 +43,6 @@ _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 
 # Type alias for request results with metadata
-from typing import Tuple
-
 _ODataRequestResult = Tuple[Any, RequestTelemetryData]
 
 

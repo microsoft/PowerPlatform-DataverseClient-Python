@@ -8,7 +8,7 @@ This module provides the foundational result types that enable the fluent
 `.with_response_details()` API pattern for accessing telemetry data.
 
 Classes:
-    RequestMetadata: Immutable HTTP request/response metadata for diagnostics.
+    RequestTelemetryData: Immutable HTTP request/response metadata for diagnostics.
     DataverseResponse: Standard response object with result and telemetry.
     OperationResult: Wrapper enabling fluent .with_response_details() pattern.
 """
