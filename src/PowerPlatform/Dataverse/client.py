@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Dict, Optional, Union, List, Iterable, Iterator
 from contextlib import contextmanager
 
@@ -12,6 +13,9 @@ from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .core.results import OperationResult, RequestTelemetryData
 from .data._odata import _ODataClient
+from .operations.records import RecordOperations
+from .operations.query import QueryOperations
+from .operations.tables import TableOperations
 
 
 class DataverseClient:
@@ -28,6 +32,20 @@ class DataverseClient:
         - Table metadata: create, inspect, and delete custom tables; create and delete columns
         - File uploads: upload files to file columns with chunking support
 
+    The client provides two API styles:
+
+    **Namespace API (Recommended)**:
+        Operations are organized under intuitive namespaces for better discoverability:
+
+        - ``client.records``: Record CRUD operations (create, update, delete, get)
+        - ``client.query``: Query operations (get multiple records, SQL queries)
+        - ``client.tables``: Table metadata operations (create, delete, info, list, columns)
+
+    **Legacy Flat API (Deprecated)**:
+        The original flat methods (``client.create()``, ``client.update()``, etc.) are
+        still available but deprecated. They emit ``DeprecationWarning`` and delegate
+        to the corresponding namespace methods.
+
     :param base_url: Your Dataverse environment URL, for example
         ``"https://org.crm.dynamics.com"``. Trailing slash is automatically removed.
     :type base_url: :class:`str`
@@ -43,7 +61,7 @@ class DataverseClient:
         The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
 
     Example:
-        Create a client and perform basic operations::
+        Using the namespace API (recommended)::
 
             from azure.identity import InteractiveBrowserCredential
             from PowerPlatform.Dataverse.client import DataverseClient
@@ -54,20 +72,24 @@ class DataverseClient:
                 credential
             )
 
-            # Create a record
-            record_ids = client.create("account", {"name": "Contoso Ltd"})
+            # Record operations via records namespace
+            record_ids = client.records.create("account", {"name": "Contoso Ltd"})
             print(f"Created account: {record_ids[0]}")
 
-            # Update a record
-            client.update("account", record_ids[0], {"telephone1": "555-0100"})
+            client.records.update("account", record_ids[0], {"telephone1": "555-0100"})
+            record = client.records.get("account", record_ids[0])
+            client.records.delete("account", record_ids[0])
 
-            # Query records
-            for batch in client.get("account", filter="name eq 'Contoso Ltd'"):
+            # Query operations via query namespace
+            for batch in client.query.get("account", filter="statecode eq 0"):
                 for account in batch:
                     print(account["name"])
 
-            # Delete a record
-            client.delete("account", record_ids[0])
+            results = client.query.sql("SELECT name FROM account")
+
+            # Table operations via tables namespace
+            info = client.tables.info("account")
+            tables = client.tables.list()
     """
 
     def __init__(
@@ -82,6 +104,11 @@ class DataverseClient:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
         self._odata: Optional[_ODataClient] = None
+
+        # Initialize operation namespaces
+        self.records = RecordOperations(self)
+        self.query = QueryOperations(self)
+        self.tables = TableOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """
@@ -114,6 +141,9 @@ class DataverseClient:
     ) -> OperationResult[List[str]]:
         """
         Create one or more records by table name.
+
+        .. deprecated::
+            Use ``client.records.create()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"``, ``"contact"``, or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -148,25 +178,21 @@ class DataverseClient:
                 response = client.create("account", {"name": "Test"}).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            entity_set = od._entity_set_from_schema_name(table_schema_name)
-            if isinstance(records, dict):
-                rid, metadata = od._create(entity_set, table_schema_name, records)
-                if not isinstance(rid, str):
-                    raise TypeError("_create (single) did not return GUID string")
-                return OperationResult([rid], metadata)
-            if isinstance(records, list):
-                ids, metadata = od._create_multiple(entity_set, table_schema_name, records)
-                if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
-                    raise TypeError("_create (multi) did not return list[str]")
-                return OperationResult(ids, metadata)
-        raise TypeError("records must be dict or list[dict]")
+        warnings.warn(
+            "DataverseClient.create() is deprecated. Use client.records.create() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.records.create(table_schema_name, records)
 
     def update(
         self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
     ) -> OperationResult[None]:
         """
         Update one or more records.
+
+        .. deprecated::
+            Use ``client.records.update()`` instead.
 
         This method supports three usage patterns:
 
@@ -207,19 +233,12 @@ class DataverseClient:
                 response = client.update("account", id, {"name": "New"}).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            # Unwrap OperationResult if passed directly from create()
-            if isinstance(ids, OperationResult):
-                ids = ids.value
-            if isinstance(ids, str):
-                if not isinstance(changes, dict):
-                    raise TypeError("For single id, changes must be a dict")
-                _, metadata = od._update(table_schema_name, ids, changes)
-                return OperationResult(None, metadata)
-            if not isinstance(ids, list):
-                raise TypeError("ids must be str or list[str]")
-            _, metadata = od._update_by_ids(table_schema_name, ids, changes)
-            return OperationResult(None, metadata)
+        warnings.warn(
+            "DataverseClient.update() is deprecated. Use client.records.update() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.records.update(table_schema_name, ids, changes)
 
     def delete(
         self,
@@ -229,6 +248,9 @@ class DataverseClient:
     ) -> OperationResult[Optional[str]]:
         """
         Delete one or more records by GUID.
+
+        .. deprecated::
+            Use ``client.records.delete()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -261,27 +283,12 @@ class DataverseClient:
                 response = client.delete("account", id).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            # Unwrap OperationResult if passed directly from create()
-            if isinstance(ids, OperationResult):
-                ids = ids.value
-            if isinstance(ids, str):
-                _, metadata = od._delete(table_schema_name, ids)
-                return OperationResult(None, metadata)
-            if not isinstance(ids, list):
-                raise TypeError("ids must be str or list[str]")
-            if not ids:
-                return OperationResult(None, RequestTelemetryData())
-            if not all(isinstance(rid, str) for rid in ids):
-                raise TypeError("ids must contain string GUIDs")
-            if use_bulk_delete:
-                job_id, metadata = od._delete_multiple(table_schema_name, ids)
-                return OperationResult(job_id, metadata)
-            # Sequential deletes - capture metadata from the last delete
-            metadata = RequestTelemetryData()
-            for rid in ids:
-                _, metadata = od._delete(table_schema_name, rid)
-            return OperationResult(None, metadata)
+        warnings.warn(
+            "DataverseClient.delete() is deprecated. Use client.records.delete() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.records.delete(table_schema_name, ids, use_bulk_delete)
 
     def get(
         self,
@@ -296,6 +303,10 @@ class DataverseClient:
     ) -> Union[OperationResult[Dict[str, Any]], Iterable[OperationResult[List[Dict[str, Any]]]]]:
         """
         Fetch a single record by ID or query multiple records.
+
+        .. deprecated::
+            Use ``client.records.get()`` for single record retrieval or
+            ``client.query.get()`` for querying multiple records.
 
         When ``record_id`` is provided, returns an OperationResult containing a single record dictionary.
         When ``record_id`` is None, returns a generator yielding batches of records.
@@ -380,35 +391,35 @@ class DataverseClient:
                         print(account["name"])
         """
         if record_id is not None:
-            if not isinstance(record_id, str):
-                raise TypeError("record_id must be str")
-            with self._scoped_odata() as od:
-                record, metadata = od._get(
-                    table_schema_name,
-                    record_id,
-                    select=select,
-                )
-                return OperationResult(record, metadata)
+            warnings.warn(
+                "DataverseClient.get() is deprecated. Use client.records.get() for single record retrieval.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return self.records.get(table_schema_name, record_id, select=select, expand=expand)
 
-        def _paged() -> Iterable[OperationResult[List[Dict[str, Any]]]]:
-            with self._scoped_odata() as od:
-                for batch, metadata in od._get_multiple(
-                    table_schema_name,
-                    select=select,
-                    filter=filter,
-                    orderby=orderby,
-                    top=top,
-                    expand=expand,
-                    page_size=page_size,
-                ):
-                    yield OperationResult(batch, metadata)
-
-        return _paged()
+        warnings.warn(
+            "DataverseClient.get() is deprecated. Use client.query.get() for querying multiple records.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.query.get(
+            table_schema_name,
+            select=select,
+            filter=filter,
+            orderby=orderby,
+            top=top,
+            expand=expand,
+            page_size=page_size,
+        )
 
     # SQL via Web API sql parameter
     def query_sql(self, sql: str) -> OperationResult[List[Dict[str, Any]]]:
         """
         Execute a read-only SQL query using the Dataverse Web API ``?sql`` capability.
+
+        .. deprecated::
+            Use ``client.query.sql()`` instead.
 
         The SQL query must follow the supported subset: a single SELECT statement with
         optional WHERE, TOP (integer literal), ORDER BY (column names only), and a simple
@@ -445,14 +456,20 @@ class DataverseClient:
                 response = client.query_sql(sql).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._query_sql(sql)
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.query_sql() is deprecated. Use client.query.sql() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.query.sql(sql)
 
     # Table metadata helpers
     def get_table_info(self, table_schema_name: str) -> OperationResult[Optional[Dict[str, Any]]]:
         """
         Get basic metadata for a table if it exists.
+
+        .. deprecated::
+            Use ``client.tables.info()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
         :type table_schema_name: :class:`str`
@@ -475,9 +492,12 @@ class DataverseClient:
                 response = client.get_table_info("account").with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._get_table_info(table_schema_name)
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.get_table_info() is deprecated. Use client.tables.info() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.info(table_schema_name)
 
     def create_table(
         self,
@@ -488,6 +508,9 @@ class DataverseClient:
     ) -> OperationResult[Dict[str, Any]]:
         """
         Create a simple custom table with specified columns.
+
+        .. deprecated::
+            Use ``client.tables.create()`` instead.
 
         :param table_schema_name: Schema name of the table with customization prefix value (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -545,18 +568,24 @@ class DataverseClient:
                 response = client.create_table("new_Test", {"new_Col": "string"}).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._create_table(
-                table_schema_name,
-                columns,
-                solution_unique_name,
-                primary_column_schema_name,
-            )
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.create_table() is deprecated. Use client.tables.create() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.create(
+            table_schema_name,
+            columns,
+            solution=solution_unique_name,
+            primary_column=primary_column_schema_name,
+        )
 
     def delete_table(self, table_schema_name: str) -> OperationResult[None]:
         """
         Delete a custom table by name.
+
+        .. deprecated::
+            Use ``client.tables.delete()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
         :type table_schema_name: :class:`str`
@@ -580,13 +609,19 @@ class DataverseClient:
                 response = client.delete_table("new_MyTestTable").with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            _, metadata = od._delete_table(table_schema_name)
-            return OperationResult(None, metadata)
+        warnings.warn(
+            "DataverseClient.delete_table() is deprecated. Use client.tables.delete() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.delete(table_schema_name)
 
     def list_tables(self) -> OperationResult[List[Dict[str, Any]]]:
         """
         List all custom tables in the Dataverse environment.
+
+        .. deprecated::
+            Use ``client.tables.list()`` instead.
 
         :return: OperationResult containing list of table metadata. Call ``.with_response_details()``
             to access telemetry data.
@@ -604,9 +639,12 @@ class DataverseClient:
                 response = client.list_tables().with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._list_tables()
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.list_tables() is deprecated. Use client.tables.list() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.list()
 
     def create_columns(
         self,
@@ -615,6 +653,9 @@ class DataverseClient:
     ) -> OperationResult[List[str]]:
         """
         Create one or more columns on an existing table using a schema-style mapping.
+
+        .. deprecated::
+            Use ``client.tables.add_columns()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -642,12 +683,12 @@ class DataverseClient:
                 response = client.create_columns("new_Test", {"new_Col": "string"}).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._create_columns(
-                table_schema_name,
-                columns,
-            )
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.create_columns() is deprecated. Use client.tables.add_columns() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.add_columns(table_schema_name, columns)
 
     def delete_columns(
         self,
@@ -656,6 +697,9 @@ class DataverseClient:
     ) -> OperationResult[List[str]]:
         """
         Delete one or more columns from a table.
+
+        .. deprecated::
+            Use ``client.tables.remove_columns()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -678,12 +722,12 @@ class DataverseClient:
                 response = client.delete_columns("new_Test", ["new_Col"]).with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
-        with self._scoped_odata() as od:
-            result, metadata = od._delete_columns(
-                table_schema_name,
-                columns,
-            )
-            return OperationResult(result, metadata)
+        warnings.warn(
+            "DataverseClient.delete_columns() is deprecated. Use client.tables.remove_columns() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.tables.remove_columns(table_schema_name, columns)
 
     # File upload
     def upload_file(
