@@ -35,6 +35,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter
+- **🔍 Fluent QueryBuilder**: Type-safe, discoverable query construction with method chaining for complex OData queries
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
@@ -189,6 +190,17 @@ client.delete("account", ids, use_bulk_delete=True)
 ### Query data
 
 ```python
+# Fluent QueryBuilder (recommended for complex queries)
+query = (client.query.builder("account")
+         .select("name", "revenue")
+         .filter_eq("statecode", 0)
+         .filter_gt("revenue", 1000000)
+         .order_by("revenue", descending=True)
+         .top(10))
+
+for account in client.query.iterate_query(query):
+    print(f"{account['name']}: ${account['revenue']}")
+
 # SQL query (read-only)
 results = client.query_sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
@@ -225,6 +237,29 @@ for page in pages:
 > - **`filter`**: Column names must use exact lowercase logical names (e.g., `"statecode eq 0"`, not `"StateCode eq 0"`)
 > - **`expand`**: Navigation property names are case-sensitive and must match the exact server names
 > - **`select`** and **`orderby`**: Case-insensitive; automatically converted to lowercase
+
+#### QueryBuilder methods
+
+The fluent QueryBuilder provides type-safe, discoverable query construction:
+
+| Method | Description | Example |
+|--------|-------------|---------|
+| `select(*columns)` | Select specific columns | `.select("name", "revenue")` |
+| `filter_eq(col, val)` | Equality filter | `.filter_eq("statecode", 0)` |
+| `filter_ne(col, val)` | Not-equal filter | `.filter_ne("statecode", 1)` |
+| `filter_gt(col, val)` | Greater-than filter | `.filter_gt("revenue", 1000000)` |
+| `filter_ge(col, val)` | Greater-than-or-equal | `.filter_ge("revenue", 1000000)` |
+| `filter_lt(col, val)` | Less-than filter | `.filter_lt("quantity", 10)` |
+| `filter_le(col, val)` | Less-than-or-equal | `.filter_le("quantity", 10)` |
+| `filter_contains(col, val)` | Contains substring | `.filter_contains("name", "Corp")` |
+| `filter_startswith(col, val)` | Starts with prefix | `.filter_startswith("name", "Con")` |
+| `filter_endswith(col, val)` | Ends with suffix | `.filter_endswith("name", "Ltd")` |
+| `filter_null(col)` | Is null | `.filter_null("telephone1")` |
+| `filter_not_null(col)` | Is not null | `.filter_not_null("email")` |
+| `filter_raw(expr)` | Raw OData filter | `.filter_raw("(a eq 1 or b eq 2)")` |
+| `order_by(col, desc)` | Sort results | `.order_by("name", descending=True)` |
+| `top(n)` | Limit results | `.top(100)` |
+| `expand(*rels)` | Expand navigation properties | `.expand("primarycontactid")` |
 
 ### Table management
 

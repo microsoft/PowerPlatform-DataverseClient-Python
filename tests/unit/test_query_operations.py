@@ -11,6 +11,7 @@ from azure.core.credentials import TokenCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
 from PowerPlatform.Dataverse.models.record import Record
+from PowerPlatform.Dataverse.models.query_builder import QueryBuilder
 
 
 class TestQueryOperations(unittest.TestCase):
@@ -223,6 +224,196 @@ class TestQueryOperations(unittest.TestCase):
 
         names = [row["name"] for row in result]
         self.assertEqual(names, ["A", "B", "C"])
+
+    # QueryBuilder integration tests
+
+    def test_query_builder_factory(self):
+        """Test that query.builder() returns a QueryBuilder instance."""
+        qb = self.client.query.builder("account")
+        self.assertIsInstance(qb, QueryBuilder)
+        self.assertEqual(qb.table, "account")
+
+    def test_query_execute_basic(self):
+        """Test query.execute() with a QueryBuilder."""
+        expected_batch = [{"accountid": "1", "name": "Test"}]
+        mock_metadata = RequestTelemetryData(client_request_id="test-exec")
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
+
+        query = QueryBuilder("account").filter_eq("statecode", 0).top(10)
+        result_iterator = self.client.query.execute(query)
+        results = list(result_iterator)
+
+        self.client._odata._get_multiple.assert_called_once_with(
+            "account",
+            select=None,
+            filter="statecode eq 0",
+            orderby=None,
+            top=10,
+            expand=None,
+            page_size=None,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0][0], Record)
+
+    def test_query_execute_full_query(self):
+        """Test query.execute() with all QueryBuilder options."""
+        expected_batch = [{"name": "Test"}]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
+
+        query = (
+            QueryBuilder("account")
+            .select("name", "revenue")
+            .filter_eq("statecode", 0)
+            .filter_gt("revenue", 1000000)
+            .order_by("revenue", descending=True)
+            .expand("primarycontactid")
+            .top(50)
+        )
+
+        list(self.client.query.execute(query, page_size=25))
+
+        self.client._odata._get_multiple.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0 and revenue gt 1000000",
+            orderby=["revenue desc"],
+            top=50,
+            expand=["primarycontactid"],
+            page_size=25,
+        )
+
+    def test_query_execute_with_telemetry(self):
+        """Test query.execute() with telemetry access."""
+        expected_batch = [{"accountid": "1", "name": "Test"}]
+        mock_metadata = RequestTelemetryData(
+            client_request_id="exec-123",
+            service_request_id="svc-456",
+        )
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
+
+        query = QueryBuilder("account").filter_eq("statecode", 0)
+        results = list(self.client.query.execute(query))
+
+        response = results[0].with_response_details()
+        self.assertEqual(response.telemetry["client_request_id"], "exec-123")
+        self.assertEqual(response.telemetry["service_request_id"], "svc-456")
+
+    def test_query_iterate_basic(self):
+        """Test query.iterate() yields individual records."""
+        batch1 = [{"accountid": "1"}, {"accountid": "2"}]
+        batch2 = [{"accountid": "3"}]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter(
+            [
+                (batch1, mock_metadata),
+                (batch2, mock_metadata),
+            ]
+        )
+
+        records = list(self.client.query.iterate("account", filter="statecode eq 0"))
+
+        self.assertEqual(len(records), 3)
+        self.assertIsInstance(records[0], Record)
+        self.assertEqual(records[0]["accountid"], "1")
+        self.assertEqual(records[1]["accountid"], "2")
+        self.assertEqual(records[2]["accountid"], "3")
+
+    def test_query_iterate_with_parameters(self):
+        """Test query.iterate() with all parameters."""
+        expected_batch = [{"name": "Test"}]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
+
+        records = list(
+            self.client.query.iterate(
+                "account",
+                select=["name", "revenue"],
+                filter="statecode eq 0",
+                orderby=["name asc"],
+                top=100,
+                expand=["primarycontactid"],
+                page_size=50,
+            )
+        )
+
+        self.client._odata._get_multiple.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0",
+            orderby=["name asc"],
+            top=100,
+            expand=["primarycontactid"],
+            page_size=50,
+        )
+        self.assertEqual(len(records), 1)
+
+    def test_query_iterate_query(self):
+        """Test query.iterate_query() with a QueryBuilder."""
+        batch = [{"accountid": "1"}, {"accountid": "2"}]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([(batch, mock_metadata)])
+
+        query = QueryBuilder("account").filter_eq("statecode", 0)
+        records = list(self.client.query.iterate_query(query))
+
+        self.assertEqual(len(records), 2)
+        self.assertIsInstance(records[0], Record)
+        self.assertEqual(records[0]["accountid"], "1")
+        self.assertEqual(records[1]["accountid"], "2")
+
+    def test_query_iterate_query_with_page_size(self):
+        """Test query.iterate_query() with page_size parameter."""
+        batch = [{"accountid": "1"}]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([(batch, mock_metadata)])
+
+        query = QueryBuilder("account").filter_eq("statecode", 0).top(10)
+        list(self.client.query.iterate_query(query, page_size=5))
+
+        self.client._odata._get_multiple.assert_called_once_with(
+            "account",
+            select=None,
+            filter="statecode eq 0",
+            orderby=None,
+            top=10,
+            expand=None,
+            page_size=5,
+        )
+
+    def test_query_iterate_empty_results(self):
+        """Test query.iterate() with empty results."""
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([([], mock_metadata)])
+
+        records = list(self.client.query.iterate("account"))
+
+        self.assertEqual(records, [])
+
+    def test_query_builder_fluent_workflow(self):
+        """Test complete fluent workflow from builder to execute."""
+        expected_batch = [
+            {"accountid": "1", "name": "Big Corp", "revenue": 5000000},
+            {"accountid": "2", "name": "Mega Inc", "revenue": 4000000},
+        ]
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_multiple.return_value = iter([(expected_batch, mock_metadata)])
+
+        # Fluent workflow
+        query = (
+            self.client.query.builder("account")
+            .select("name", "revenue")
+            .filter_eq("statecode", 0)
+            .filter_gt("revenue", 1000000)
+            .order_by("revenue", descending=True)
+            .top(10)
+        )
+
+        records = list(self.client.query.iterate_query(query))
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["name"], "Big Corp")
+        self.assertEqual(records[1]["name"], "Mega Inc")
 
 
 if __name__ == "__main__":

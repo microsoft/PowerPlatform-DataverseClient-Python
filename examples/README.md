@@ -36,8 +36,9 @@ Deep-dive into production-ready patterns and specialized functionality:
   - Full SDK feature demonstration with production-ready patterns
   - Table creation with custom schemas and enums
   - Single and bulk CRUD operations with error handling
-  - Advanced querying (SQL and OData) with paging
-  - Column metadata management and multi-language support  
+  - Advanced querying (SQL, OData, and fluent QueryBuilder) with paging
+  - Fluent QueryBuilder for type-safe, discoverable query construction
+  - Column metadata management and multi-language support
   - Interactive cleanup and best practices
 
 - **`file_upload.py`** - **FILE OPERATIONS** 📎
