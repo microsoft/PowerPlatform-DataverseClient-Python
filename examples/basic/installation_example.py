@@ -173,9 +173,8 @@ def show_usage_examples():
     print("\nUsage Examples")
     print("=" * 50)
 
-    print(
-        """
-Basic Setup:
+    print("""
+Basic Setup (Context Manager - Recommended):
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
 from azure.identity import InteractiveBrowserCredential
@@ -183,69 +182,81 @@ from azure.identity import InteractiveBrowserCredential
 # Set up authentication
 credential = InteractiveBrowserCredential()
 
-# Create client
-client = DataverseClient(
-    "https://yourorg.crm.dynamics.com",
-    credential
-)
+# Use context manager for automatic resource cleanup and connection pooling
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # All operations here share the same HTTP session
+    pass
+# Resources automatically cleaned up
+```
+
+Without Context Manager:
+```python
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
+try:
+    # Your operations here
+    pass
+finally:
+    client.close()  # Explicit cleanup
 ```
 
 CRUD Operations:
 ```python
-# Create a record
-account_data = {"name": "Contoso Ltd", "telephone1": "555-0100"}
-account_ids = client.create("account", account_data)
-print(f"Created account: {account_ids[0]}")
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Create a record
+    account_data = {"name": "Contoso Ltd", "telephone1": "555-0100"}
+    account_ids = client.records.create("account", account_data)
+    print(f"Created account: {account_ids[0]}")
 
-# Read a record
-account = client.get("account", account_ids[0])
-print(f"Account name: {account['name']}")
+    # Read a record
+    account = client.records.get("account", account_ids[0])
+    print(f"Account name: {account['name']}")
 
-# Update a record
-client.update("account", account_ids[0], {"telephone1": "555-0200"})
+    # Update a record
+    client.records.update("account", account_ids[0], {"telephone1": "555-0200"})
 
-# Delete a record
-client.delete("account", account_ids[0])
+    # Delete a record
+    client.records.delete("account", account_ids[0])
 ```
 
 Querying Data:
 ```python
-# Query with OData filter
-accounts = client.get("account", 
-                     filter="name eq 'Contoso Ltd'",
-                     select=["name", "telephone1"],
-                     top=10)
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Query with OData filter
+    accounts = client.query.get("account",
+                         filter="name eq 'Contoso Ltd'",
+                         select=["name", "telephone1"],
+                         top=10)
 
-for batch in accounts:
-    for account in batch:
-        print(f"Account: {account['name']}")
+    for batch in accounts:
+        for account in batch:
+            print(f"Account: {account['name']}")
 
-# SQL queries (if enabled)
-results = client.query_sql("SELECT TOP 5 name FROM account")
-for row in results:
-    print(row['name'])
+    # SQL queries (if enabled)
+    results = client.query.sql("SELECT TOP 5 name FROM account")
+    for row in results:
+        print(row['name'])
 ```
 
 Table Management:
 ```python
-# Create custom table
-table_info = client.create_table("CustomEntity", {
-    "name": "string",
-    "description": "string", 
-    "amount": "decimal",
-    "is_active": "bool"
-})
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Create custom table
+    table_info = client.tables.create("new_CustomEntity", {
+        "new_name": "string",
+        "new_description": "string",
+        "new_amount": "decimal",
+        "new_is_active": "bool"
+    })
 
-# Get table information
-info = client.get_table_info("CustomEntity")
-print(f"Table: {info['table_schema_name']}")
+    # Get table information
+    info = client.tables.info("new_CustomEntity")
+    print(f"Table: {info['table_schema_name']}")
 
-# List all tables
-tables = client.list_tables()
-print(f"Found {len(tables)} tables")
+    # List all tables
+    tables = client.tables.list()
+    print(f"Found {len(tables)} tables")
 ```
-"""
-    )
+""")
 
 
 def interactive_test():
@@ -278,16 +289,16 @@ def interactive_test():
         print("  Setting up authentication...")
         credential = InteractiveBrowserCredential()
 
-        print("  Creating client...")
-        client = DataverseClient(org_url.rstrip("/"), credential)
+        print("  Creating client with context manager...")
+        with DataverseClient(org_url.rstrip("/"), credential) as client:
+            print("  Testing connection...")
+            tables = client.tables.list()
 
-        print("  Testing connection...")
-        tables = client.list_tables()
+            print(f"  [OK] Connection successful!")
+            print(f"  Found {len(tables)} tables in environment")
+            print(f"  Connected to: {org_url}")
 
-        print(f"  [OK] Connection successful!")
-        print(f"  Found {len(tables)} tables in environment")
-        print(f"  Connected to: {org_url}")
-
+        print("  [OK] Context manager cleanup completed")
         print("\n  Your SDK is ready for use!")
         print("  Check the usage examples above for common patterns")
 

@@ -5,6 +5,7 @@
 Walkthrough demonstrating core Dataverse SDK operations.
 
 This example shows:
+- Context manager usage for automatic resource cleanup
 - Table creation with various column types including enums
 - Single and multiple record CRUD operations
 - Querying with filtering, paging, and SQL
@@ -94,9 +95,20 @@ def main():
     log_call("InteractiveBrowserCredential()")
     credential = InteractiveBrowserCredential()
 
-    log_call(f"DataverseClient(base_url='{base_url}', credential=...)")
-    client = DataverseClient(base_url=base_url, credential=credential)
-    print(f"[OK] Connected to: {base_url}")
+    log_call(f"DataverseClient(base_url='{base_url}', credential=...) as client:")
+    print("  Using context manager for automatic resource cleanup and connection pooling")
+
+    # Use context manager for automatic cleanup and connection pooling
+    with DataverseClient(base_url=base_url, credential=credential) as client:
+        print(f"[OK] Connected to: {base_url}")
+        _run_walkthrough(client)
+
+    print("\n[OK] Context manager cleanup completed - HTTP session closed")
+
+
+def _run_walkthrough(client):
+    """Run the main walkthrough operations."""
+    table_name = "new_WalkthroughDemo"
 
     # ============================================================================
     # 2. TABLE CREATION (METADATA)
@@ -104,8 +116,6 @@ def main():
     print("\n" + "=" * 80)
     print("2. Table Creation (Metadata)")
     print("=" * 80)
-
-    table_name = "new_WalkthroughDemo"
 
     log_call(f"client.get_table_info('{table_name}')")
     table_info_result = backoff(lambda: client.get_table_info(table_name))
@@ -374,6 +384,7 @@ def main():
     print("Walkthrough Complete!")
     print("=" * 80)
     print("\nDemonstrated operations:")
+    print("  [OK] Context manager for automatic resource cleanup")
     print("  [OK] Table creation with multiple column types")
     print("  [OK] Single and multiple record creation")
     print("  [OK] Reading records by ID and with filters")
