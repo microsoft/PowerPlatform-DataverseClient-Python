@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, List, Union, TYPE_CHECKING
 
 from ..core.results import OperationResult
+from ..models.table_info import TableInfo
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -61,7 +62,7 @@ class TableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
-    ) -> OperationResult[Dict[str, Any]]:
+    ) -> OperationResult[TableInfo]:
         """
         Create a custom table with columns.
 
@@ -75,8 +76,8 @@ class TableOperations:
         :type solution: str or None
         :param primary_column: Optional primary column schema name.
         :type primary_column: str or None
-        :return: OperationResult with table metadata.
-        :rtype: OperationResult[Dict[str, Any]]
+        :return: OperationResult with TableInfo object.
+        :rtype: OperationResult[TableInfo]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table creation fails
             or the schema is invalid.
@@ -98,7 +99,8 @@ class TableOperations:
                     },
                     solution="MySolution"
                 )
-                print(f"Created: {result['table_schema_name']}")
+                print(f"Created: {result['table_schema_name']}")  # Dict-like access
+                print(f"Schema: {result.schema_name}")            # Structured access
 
             Access telemetry data::
 
@@ -112,7 +114,8 @@ class TableOperations:
                 solution,
                 primary_column,
             )
-            return OperationResult(result, metadata)
+            table_info = TableInfo.from_dict(result)
+            return OperationResult(table_info, metadata)
 
     def delete(self, table: str) -> OperationResult[None]:
         """
@@ -143,22 +146,23 @@ class TableOperations:
             _, metadata = od._delete_table(table)
             return OperationResult(None, metadata)
 
-    def get(self, table: str) -> OperationResult[Optional[Dict[str, Any]]]:
+    def get(self, table: str) -> OperationResult[Optional[TableInfo]]:
         """
         Get table metadata.
 
         :param table: Table schema name.
         :type table: str
-        :return: OperationResult with metadata dict or None if not found.
-        :rtype: OperationResult[Optional[Dict[str, Any]]]
+        :return: OperationResult with TableInfo object or None if not found.
+        :rtype: OperationResult[Optional[TableInfo]]
 
         Example:
             Retrieve table metadata::
 
                 info = client.tables.get("account")
                 if info:
-                    print(f"Logical name: {info['table_logical_name']}")
+                    print(f"Logical name: {info['table_logical_name']}")  # Dict-like access
                     print(f"Entity set: {info['entity_set_name']}")
+                    print(f"Schema: {info.schema_name}")                  # Structured access
 
             Access telemetry data::
 
@@ -167,21 +171,25 @@ class TableOperations:
         """
         with self._client._scoped_odata() as od:
             result, metadata = od._get_table_info(table)
-            return OperationResult(result, metadata)
+            if result is None:
+                return OperationResult(None, metadata)
+            table_info = TableInfo.from_dict(result)
+            return OperationResult(table_info, metadata)
 
-    def list(self) -> OperationResult[List[Dict[str, Any]]]:
+    def list(self) -> OperationResult[List[TableInfo]]:
         """
         List all custom tables.
 
-        :return: OperationResult with list of table metadata dicts.
-        :rtype: OperationResult[List[Dict[str, Any]]]
+        :return: OperationResult with list of TableInfo objects.
+        :rtype: OperationResult[List[TableInfo]]
 
         Example:
             List all custom tables::
 
                 tables = client.tables.list()
                 for table in tables:
-                    print(table["table_schema_name"])
+                    print(table["table_schema_name"])  # Dict-like access
+                    print(table.schema_name)          # Structured access
 
             Access telemetry data::
 
@@ -190,7 +198,8 @@ class TableOperations:
         """
         with self._client._scoped_odata() as od:
             result, metadata = od._list_tables()
-            return OperationResult(result, metadata)
+            table_infos = [TableInfo.from_dict(table_dict) for table_dict in result]
+            return OperationResult(table_infos, metadata)
 
     def add_columns(
         self,

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Union, List, TYPE_CHECKING, overload
 
 from ..core.results import OperationResult, RequestTelemetryData
+from ..models.record import Record
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -257,7 +258,7 @@ class RecordOperations:
         *,
         select: Optional[List[str]] = None,
         expand: Optional[List[str]] = None,
-    ) -> OperationResult[Dict[str, Any]]:
+    ) -> OperationResult[Record]:
         """
         Get a single record by ID.
 
@@ -271,8 +272,8 @@ class RecordOperations:
         :type select: list[str] or None
         :param expand: Optional navigation properties to expand.
         :type expand: list[str] or None
-        :return: OperationResult containing the record dict.
-        :rtype: OperationResult[Dict[str, Any]]
+        :return: OperationResult containing the Record object.
+        :rtype: OperationResult[Record]
 
         :raises TypeError: If ``record_id`` is not a string.
 
@@ -280,22 +281,26 @@ class RecordOperations:
             Fetch a single record::
 
                 record = client.records.get("account", account_id, select=["name", "telephone1"])
-                print(record["name"])  # Works via __getitem__
+                print(record["name"])  # Dict-like access (backward compatible)
+                print(record.id)       # Structured access to record GUID
+                print(record.table)    # Table name
 
             Fetch single record with telemetry::
 
                 response = client.records.get("account", account_id).with_response_details()
                 print(f"Record: {response.result['name']}")
+                print(f"Record ID: {response.result.id}")
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         if not isinstance(record_id, str):
             raise TypeError("record_id must be str")
         with self._client._scoped_odata() as od:
-            record, metadata = od._get(
+            record_data, metadata = od._get(
                 table,
                 record_id,
                 select=select,
             )
+            record = Record.from_api_response(table, record_data)
             return OperationResult(record, metadata)
 
     def upsert(

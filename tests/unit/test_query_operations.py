@@ -10,6 +10,7 @@ from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
+from PowerPlatform.Dataverse.models.record import Record
 
 
 class TestQueryOperations(unittest.TestCase):
@@ -54,7 +55,10 @@ class TestQueryOperations(unittest.TestCase):
             page_size=None,
         )
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0][0], {"accountid": "1", "name": "A"})
+        # Results are now Record objects with dict-like access
+        self.assertIsInstance(results[0][0], Record)
+        self.assertEqual(results[0][0]["accountid"], "1")
+        self.assertEqual(results[0][0]["name"], "A")
 
     def test_query_get_with_all_parameters(self):
         """Test query.get() with all parameters."""
@@ -103,15 +107,18 @@ class TestQueryOperations(unittest.TestCase):
         # Verify we got two pages
         self.assertEqual(len(results), 2)
 
-        # First page telemetry
+        # First page telemetry - results are now Record objects
         response1 = results[0].with_response_details()
-        self.assertEqual(response1.result, batch1)
+        self.assertEqual(len(response1.result), 2)
+        self.assertIsInstance(response1.result[0], Record)
+        self.assertEqual(response1.result[0]["accountid"], "1")
         self.assertEqual(response1.telemetry["client_request_id"], "page-1")
         self.assertEqual(response1.telemetry["service_request_id"], "svc-1")
 
         # Second page telemetry
         response2 = results[1].with_response_details()
-        self.assertEqual(response2.result, batch2)
+        self.assertEqual(len(response2.result), 2)
+        self.assertEqual(response2.result[0]["accountid"], "3")
         self.assertEqual(response2.telemetry["client_request_id"], "page-2")
         self.assertEqual(response2.telemetry["service_request_id"], "svc-2")
 
@@ -123,9 +130,12 @@ class TestQueryOperations(unittest.TestCase):
 
         results = list(self.client.query.get("account"))
 
-        # The batch should support iteration
+        # The batch should support iteration - items are now Record objects
         batch_items = list(results[0])
-        self.assertEqual(batch_items, expected_batch)
+        self.assertEqual(len(batch_items), 2)
+        self.assertIsInstance(batch_items[0], Record)
+        self.assertEqual(batch_items[0]["id"], "1")
+        self.assertEqual(batch_items[1]["id"], "2")
 
     def test_query_get_batch_indexing(self):
         """Test that query.get() batches support indexing."""
@@ -135,9 +145,10 @@ class TestQueryOperations(unittest.TestCase):
 
         results = list(self.client.query.get("account"))
 
-        # The batch should support indexing
-        self.assertEqual(results[0][0], {"id": "1"})
-        self.assertEqual(results[0][1], {"id": "2"})
+        # The batch should support indexing - items are now Record objects
+        self.assertIsInstance(results[0][0], Record)
+        self.assertEqual(results[0][0]["id"], "1")
+        self.assertEqual(results[0][1]["id"], "2")
 
     def test_query_get_batch_concatenation(self):
         """Test that query.get() batches can be concatenated with + operator."""
@@ -155,6 +166,7 @@ class TestQueryOperations(unittest.TestCase):
         all_records = batches[0] + batches[1]
 
         self.assertEqual(len(all_records), 4)
+        # Records support dict-like access
         self.assertEqual(all_records[0]["id"], "1")
         self.assertEqual(all_records[3]["id"], "4")
 
@@ -168,7 +180,9 @@ class TestQueryOperations(unittest.TestCase):
         result = self.client.query.sql(sql)
 
         self.client._odata._query_sql.assert_called_once_with(sql)
-        self.assertEqual(result.value, expected_results)
+        # Results are now Record objects
+        self.assertEqual(len(result.value), 1)
+        self.assertIsInstance(result.value[0], Record)
         self.assertEqual(result[0]["name"], "Contoso")
 
     def test_query_sql_with_telemetry(self):
@@ -183,7 +197,9 @@ class TestQueryOperations(unittest.TestCase):
         result = self.client.query.sql("SELECT name FROM account")
 
         response = result.with_response_details()
-        self.assertEqual(response.result, expected_results)
+        # Results are now Record objects
+        self.assertEqual(len(response.result), 1)
+        self.assertEqual(response.result[0]["name"], "Test")
         self.assertEqual(response.telemetry["client_request_id"], "sql-123")
         self.assertEqual(response.telemetry["service_request_id"], "svc-456")
 

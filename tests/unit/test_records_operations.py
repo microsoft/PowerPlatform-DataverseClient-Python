@@ -10,6 +10,7 @@ from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
+from PowerPlatform.Dataverse.models.record import Record
 
 
 class TestRecordOperations(unittest.TestCase):
@@ -186,7 +187,30 @@ class TestRecordOperations(unittest.TestCase):
         result = self.client.records.get("account", "guid", select=["name", "telephone1"])
 
         self.client._odata._get.assert_called_once_with("account", "guid", select=["name", "telephone1"])
-        self.assertEqual(result.value, expected_record)
+        # result.value is now a Record object with dict-like access
+        self.assertIsInstance(result.value, Record)
+        self.assertEqual(result.value["accountid"], "guid")
+        self.assertEqual(result.value["name"], "Contoso")
+
+    def test_records_get_returns_record_with_metadata(self):
+        """Test records.get() returns Record with structured metadata access."""
+        expected_record = {
+            "accountid": "guid-123",
+            "name": "Test Account",
+            "@odata.etag": '"etag-value"',
+        }
+        mock_metadata = RequestTelemetryData(client_request_id="test-meta")
+        self.client._odata._get.return_value = (expected_record, mock_metadata)
+
+        result = self.client.records.get("account", "guid-123")
+
+        # Verify Record structured access
+        self.assertIsInstance(result.value, Record)
+        self.assertEqual(result.value.id, "guid-123")
+        self.assertEqual(result.value.table, "account")
+        self.assertEqual(result.value.etag, '"etag-value"')
+        # Dict-like access still works
+        self.assertEqual(result["name"], "Test Account")
 
     def test_records_get_invalid_record_id_type(self):
         """Test records.get() with invalid record_id type raises TypeError."""
