@@ -145,7 +145,7 @@ class _ODataFileUpload:
             headers["If-None-Match"] = "null"
         else:
             headers["If-Match"] = "*"
-        r_init = self._request("patch", init_url, headers=headers, data=b"")
+        r_init, _ = self._request("patch", init_url, headers=headers, data=b"")
         location = r_init.headers.get("Location") or r_init.headers.get("location")
         if not location:
             raise RuntimeError("Missing Location header with sessiontoken for chunked upload")

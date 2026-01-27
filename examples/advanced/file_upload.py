@@ -68,6 +68,7 @@ def log(call: str):
 _FILE_HASH_CACHE = {}
 ATTRIBUTE_VISIBILITY_DELAYS = (0, 3, 10, 20, 35, 50, 70, 90, 120)
 
+
 def file_sha256(path: Path):  # returns (hex_digest, size_bytes)
     try:
         m = _FILE_HASH_CACHE.get(path)
@@ -166,9 +167,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             result = op()
             if attempts > 1:
                 retry_count = attempts - 1
-                print(
-                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
+                print(f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total.")
             return result
         except Exception as ex:  # noqa: BLE001
             last = ex
@@ -176,9 +175,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
+            print(f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total.")
         raise last
 
 
@@ -227,7 +224,7 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
             f"{odata.api}/EntityDefinitions({meta_id})/Attributes?$select=SchemaName&$filter="
             f"SchemaName eq '{schema_name}'"
         )
-        r = backoff(lambda: odata._request("get", url), delays=ATTRIBUTE_VISIBILITY_DELAYS)
+        r, _ = backoff(lambda: odata._request("get", url), delays=ATTRIBUTE_VISIBILITY_DELAYS)
         val = []
         try:
             val = r.json().get("value", [])
@@ -255,7 +252,7 @@ def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str)
     }
     try:
         url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
-        backoff(lambda: odata._request("post", url, json=payload), delays=ATTRIBUTE_VISIBILITY_DELAYS)
+        backoff(lambda: odata._request("post", url, json=payload)[0], delays=ATTRIBUTE_VISIBILITY_DELAYS)
         print({f"{key_prefix}_file_attribute_created": True})
         time.sleep(2)
         return True
@@ -285,7 +282,7 @@ def wait_for_attribute_visibility(logical_name: str, label: str):
             time.sleep(delay)
             waited += delay
         try:
-            resp = odata._request("get", probe_url)
+            resp, _ = odata._request("get", probe_url)
             try:
                 resp.json()
             except Exception:  # noqa: BLE001
@@ -313,7 +310,7 @@ try:
     payload = {name_attr: "File Sample Record"}
     log(f"client.create('{table_schema_name}', payload)")
     created_ids = backoff(lambda: client.create(table_schema_name, payload))
-    if isinstance(created_ids, list) and created_ids:
+    if created_ids and len(created_ids) > 0:
         record_id = created_ids[0]
     else:
         raise RuntimeError("Unexpected create return; expected list[str] with at least one GUID")
@@ -363,7 +360,7 @@ if run_small:
         dl_url_single = (
             f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"  # raw entity_set URL OK
         )
-        resp_single = backoff(lambda: odata._request("get", dl_url_single))
+        resp_single, _ = backoff(lambda: odata._request("get", dl_url_single))
         content_single = resp_single.content or b""
         import hashlib  # noqa: WPS433
 
@@ -393,7 +390,7 @@ if run_small:
             )
         )
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
-        resp_single_replace = backoff(lambda: odata._request("get", dl_url_single))
+        resp_single_replace, _ = backoff(lambda: odata._request("get", dl_url_single))
         content_single_replace = resp_single_replace.content or b""
         downloaded_hash_replace = hashlib.sha256(content_single_replace).hexdigest() if content_single_replace else None
         hash_match_replace = (
@@ -435,7 +432,7 @@ if run_chunk:
         dl_url_chunk = (
             f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"  # raw entity_set for download
         )
-        resp_chunk = backoff(lambda: odata._request("get", dl_url_chunk))
+        resp_chunk, _ = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk = resp_chunk.content or b""
         import hashlib  # noqa: WPS433
 
@@ -464,7 +461,7 @@ if run_chunk:
             )
         )
         print({"chunk_replace_upload_completed": True})
-        resp_chunk_replace = backoff(lambda: odata._request("get", dl_url_chunk))
+        resp_chunk_replace, _ = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk_replace = resp_chunk_replace.content or b""
         dst_hash_chunk_replace = hashlib.sha256(content_chunk_replace).hexdigest() if content_chunk_replace else None
         hash_match_chunk_replace = (
