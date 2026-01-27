@@ -8,6 +8,7 @@ from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
+from PowerPlatform.Dataverse.models.record import Record
 
 
 class TestDataverseClient(unittest.TestCase):
@@ -150,8 +151,9 @@ class TestDataverseClient(unittest.TestCase):
         # Result is OperationResult that supports dict-like access
         self.assertEqual(result["accountid"], "00000000-0000-0000-0000-000000000000")
         self.assertEqual(result["name"], "Contoso")
-        # Can also access the full value
-        self.assertEqual(result.value, expected_record)
+        # Result.value is now a Record object with dict-like access
+        self.assertIsInstance(result.value, Record)
+        self.assertEqual(result.value["accountid"], "00000000-0000-0000-0000-000000000000")
         # Can access telemetry
         response = result.with_response_details()
         self.assertEqual(response.telemetry["client_request_id"], "test-get")
@@ -180,9 +182,13 @@ class TestDataverseClient(unittest.TestCase):
         )
         # Each batch is now wrapped in OperationResult
         self.assertEqual(len(results), 1)
-        # Can iterate/index the batch directly (OperationResult delegates)
-        self.assertEqual(results[0][0], {"accountid": "1", "name": "A"})
-        self.assertEqual(list(results[0]), expected_batch)
+        # Items are now Record objects with dict-like access
+        self.assertIsInstance(results[0][0], Record)
+        self.assertEqual(results[0][0]["accountid"], "1")
+        self.assertEqual(results[0][0]["name"], "A")
+        # Can iterate the batch
+        batch_items = list(results[0])
+        self.assertEqual(len(batch_items), 2)
         # Can access telemetry via with_response_details()
         response = results[0].with_response_details()
         self.assertEqual(response.telemetry["client_request_id"], "test-page-1")
@@ -207,15 +213,18 @@ class TestDataverseClient(unittest.TestCase):
         # Verify we got two pages
         self.assertEqual(len(results), 2)
 
-        # First page telemetry
+        # First page telemetry - results are now Record objects
         response1 = results[0].with_response_details()
-        self.assertEqual(response1.result, batch1)
+        self.assertEqual(len(response1.result), 2)
+        self.assertIsInstance(response1.result[0], Record)
+        self.assertEqual(response1.result[0]["accountid"], "1")
         self.assertEqual(response1.telemetry["client_request_id"], "page-1")
         self.assertEqual(response1.telemetry["service_request_id"], "svc-1")
 
         # Second page telemetry
         response2 = results[1].with_response_details()
-        self.assertEqual(response2.result, batch2)
+        self.assertEqual(len(response2.result), 2)
+        self.assertEqual(response2.result[0]["accountid"], "3")
         self.assertEqual(response2.telemetry["client_request_id"], "page-2")
         self.assertEqual(response2.telemetry["service_request_id"], "svc-2")
 

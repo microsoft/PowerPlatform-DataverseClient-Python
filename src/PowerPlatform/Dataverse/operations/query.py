@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, List, Iterable, TYPE_CHECKING
 
 from ..core.results import OperationResult
+from ..models.record import Record
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -58,12 +59,12 @@ class QueryOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Iterable[OperationResult[List[Dict[str, Any]]]]:
+    ) -> Iterable[OperationResult[List[Record]]]:
         """
         Query records with OData filtering and pagination.
 
         Returns a generator yielding batches of records. Each batch is an
-        OperationResult containing a list of record dicts.
+        OperationResult containing a list of Record objects.
 
         :param table: Table schema name.
         :type table: str
@@ -79,15 +80,16 @@ class QueryOperations:
         :type expand: list[str] or None
         :param page_size: Records per page.
         :type page_size: int or None
-        :return: Generator yielding OperationResult batches.
-        :rtype: Iterable[OperationResult[List[Dict[str, Any]]]]
+        :return: Generator yielding OperationResult batches of Record objects.
+        :rtype: Iterable[OperationResult[List[Record]]]
 
         Example:
             Basic query::
 
                 for batch in client.query.get("account", filter="statecode eq 0"):
                     for record in batch:
-                        print(record["name"])
+                        print(record["name"])  # Dict-like access (backward compatible)
+                        print(record.id)       # Structured access to record GUID
 
             With pagination control::
 
@@ -108,9 +110,10 @@ class QueryOperations:
                     print(f"Page request ID: {response.telemetry['service_request_id']}")
                     for account in response.result:
                         print(account["name"])
+                        print(account.id)  # Access record GUID
         """
 
-        def _paged() -> Iterable[OperationResult[List[Dict[str, Any]]]]:
+        def _paged() -> Iterable[OperationResult[List[Record]]]:
             with self._client._scoped_odata() as od:
                 for batch, metadata in od._get_multiple(
                     table,
@@ -121,18 +124,19 @@ class QueryOperations:
                     expand=expand,
                     page_size=page_size,
                 ):
-                    yield OperationResult(batch, metadata)
+                    records = [Record.from_api_response(table, record_data) for record_data in batch]
+                    yield OperationResult(records, metadata)
 
         return _paged()
 
-    def sql(self, sql: str) -> OperationResult[List[Dict[str, Any]]]:
+    def sql(self, sql: str) -> OperationResult[List[Record]]:
         """
         Execute a read-only SQL query.
 
         :param sql: SQL SELECT statement.
         :type sql: str
-        :return: OperationResult containing list of result rows.
-        :rtype: OperationResult[List[Dict[str, Any]]]
+        :return: OperationResult containing list of Record objects.
+        :rtype: OperationResult[List[Record]]
 
         :raises ~PowerPlatform.Dataverse.core.errors.SQLParseError: If the SQL query uses
             unsupported syntax.
@@ -145,7 +149,8 @@ class QueryOperations:
                     "SELECT TOP 10 name, revenue FROM account ORDER BY revenue DESC"
                 )
                 for row in results:
-                    print(f"{row['name']}: {row['revenue']}")
+                    print(f"{row['name']}: {row['revenue']}")  # Dict-like access
+                    print(f"Record ID: {row.id}")              # Structured access
 
             Access telemetry data::
 
@@ -154,7 +159,10 @@ class QueryOperations:
         """
         with self._client._scoped_odata() as od:
             result, metadata = od._query_sql(sql)
-            return OperationResult(result, metadata)
+            # SQL queries may not have a single table context, use empty string
+            # The Record.from_api_response will extract the table from the result if available
+            records = [Record.from_api_response("", record_data) for record_data in result]
+            return OperationResult(records, metadata)
 
     # Future: QueryBuilder support (Priority 4)
     # def builder(self, table: str) -> "QueryBuilder":
