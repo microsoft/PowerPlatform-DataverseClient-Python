@@ -34,11 +34,12 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
-- **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
+- **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
+- **🔗 Context Manager Support**: Automatic resource cleanup and HTTP connection pooling with the `with` statement
 
 ## Getting started
 
@@ -101,6 +102,11 @@ credential = InteractiveBrowserCredential()  # Browser authentication
 # credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
 
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
+
+# Recommended: Use context manager for automatic resource cleanup
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Your operations here
+    pass
 ```
 
 > **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
@@ -127,19 +133,21 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 
-# Connect to Dataverse
+# Connect to Dataverse using context manager (recommended)
 credential = InteractiveBrowserCredential()
-client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
-# Create a contact
-contact_id = client.create("contact", {"firstname": "John", "lastname": "Doe"})[0]
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Create a contact
+    contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})[0]
 
-# Read the contact back
-contact = client.get("contact", contact_id, select=["firstname", "lastname"])
-print(f"Created: {contact['firstname']} {contact['lastname']}")
+    # Read the contact back
+    contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
+    print(f"Created: {contact['firstname']} {contact['lastname']}")
 
-# Clean up
-client.delete("contact", contact_id)
+    # Clean up
+    client.records.delete("contact", contact_id)
+
+# Resources automatically cleaned up when exiting the context
 ```
 
 ### Basic CRUD operations
@@ -337,10 +345,11 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
+| **Context Manager** | Use `with DataverseClient(...) as client:` for automatic resource cleanup and HTTP connection pooling |
 | **Bulk Operations** | Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
-| **Connection Reuse** | Reuse `DataverseClient` instances across operations |
+| **Connection Reuse** | When not using context manager, reuse `DataverseClient` instances and call `close()` when done |
 | **Production Credentials** | Use `ClientSecretCredential` or `ClientCertificateCredential` for unattended operations |
 | **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |
 

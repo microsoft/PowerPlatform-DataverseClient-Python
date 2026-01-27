@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List, Union, Iterable, Callable, Tuple
+from typing import Any, Dict, Optional, List, Union, Iterable, Callable, Tuple, TYPE_CHECKING
 from enum import Enum
 from dataclasses import dataclass, field
 import unicodedata
@@ -17,6 +17,9 @@ from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
 from contextvars import ContextVar
+
+if TYPE_CHECKING:
+    import requests
 
 from ..core._http import _HttpClient
 from ._upload import _ODataFileUpload
@@ -119,6 +122,7 @@ class _ODataClient(_ODataFileUpload):
         auth,
         base_url: str,
         config=None,
+        session: Optional["requests.Session"] = None,
     ) -> None:
         """Initialize the OData client.
 
@@ -130,6 +134,9 @@ class _ODataClient(_ODataFileUpload):
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
+        :param session: Optional requests.Session for connection pooling. When provided,
+            the HTTP client uses this session for all requests.
+        :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -147,6 +154,7 @@ class _ODataClient(_ODataFileUpload):
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
+            session=session,
         )
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -165,6 +173,15 @@ class _ODataClient(_ODataFileUpload):
             yield shared_id
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+    def close(self) -> None:
+        """
+        Close the OData client and release resources.
+
+        Closes the underlying HTTP client. Safe to call multiple times.
+        """
+        if self._http is not None:
+            self._http.close()
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""

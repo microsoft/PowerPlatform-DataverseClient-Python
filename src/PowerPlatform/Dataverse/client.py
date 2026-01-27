@@ -7,6 +7,8 @@ import warnings
 from typing import Any, Dict, Optional, Union, List, Iterable, Iterator
 from contextlib import contextmanager
 
+import requests
+
 from azure.core.credentials import TokenCredential
 
 from .core._auth import _AuthManager
@@ -26,6 +28,25 @@ class DataverseClient:
     through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
     to an internal :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`.
 
+    **Context Manager Support (Recommended)**:
+        Using the client as a context manager ensures proper resource cleanup
+        and enables connection pooling for better performance::
+
+            with DataverseClient(base_url, credential) as client:
+                ids = client.records.create("account", {"name": "Contoso"})
+                # ... more operations
+            # Resources automatically cleaned up
+
+    **Without Context Manager**:
+        The client can also be used without a context manager. Resources are
+        created lazily on first use. Call ``close()`` when done to release resources::
+
+            client = DataverseClient(base_url, credential)
+            try:
+                ids = client.records.create("account", {"name": "Contoso"})
+            finally:
+                client.close()
+
     Key capabilities:
         - OData CRUD operations: create, read, update, delete records
         - SQL queries: execute read-only SQL via Web API ``?sql`` parameter
@@ -39,7 +60,7 @@ class DataverseClient:
 
         - ``client.records``: Record CRUD operations (create, update, delete, get)
         - ``client.query``: Query operations (get multiple records, SQL queries)
-        - ``client.tables``: Table metadata operations (create, delete, info, list, columns)
+        - ``client.tables``: Table metadata operations (create, delete, get, list, columns)
 
     **Legacy Flat API (Deprecated)**:
         The original flat methods (``client.create()``, ``client.update()``, etc.) are
@@ -58,38 +79,35 @@ class DataverseClient:
     :raises ValueError: If ``base_url`` is missing or empty after trimming.
 
     .. note::
-        The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
+        The client lazily initializes its internal OData client on first use,
+        allowing lightweight construction without immediate network calls.
 
     Example:
-        Using the namespace API (recommended)::
+        Using the context manager (recommended)::
 
             from azure.identity import InteractiveBrowserCredential
             from PowerPlatform.Dataverse.client import DataverseClient
 
             credential = InteractiveBrowserCredential()
-            client = DataverseClient(
-                "https://org.crm.dynamics.com",
-                credential
-            )
 
-            # Record operations via records namespace
-            record_ids = client.records.create("account", {"name": "Contoso Ltd"})
-            print(f"Created account: {record_ids[0]}")
+            with DataverseClient("https://org.crm.dynamics.com", credential) as client:
+                # Record operations via records namespace
+                record_ids = client.records.create("account", {"name": "Contoso Ltd"})
+                print(f"Created account: {record_ids[0]}")
 
-            client.records.update("account", record_ids[0], {"telephone1": "555-0100"})
-            record = client.records.get("account", record_ids[0])
-            client.records.delete("account", record_ids[0])
+                client.records.update("account", record_ids[0], {"telephone1": "555-0100"})
+                record = client.records.get("account", record_ids[0])
+                client.records.delete("account", record_ids[0])
 
-            # Query operations via query namespace
-            for batch in client.query.get("account", filter="statecode eq 0"):
-                for account in batch:
-                    print(account["name"])
+            # Resources automatically cleaned up
 
-            results = client.query.sql("SELECT name FROM account")
+        Without context manager::
 
-            # Table operations via tables namespace
-            info = client.tables.get("account")
-            tables = client.tables.list()
+            client = DataverseClient("https://org.crm.dynamics.com", credential)
+            try:
+                record_ids = client.records.create("account", {"name": "Contoso Ltd"})
+            finally:
+                client.close()
     """
 
     def __init__(
@@ -104,18 +122,82 @@ class DataverseClient:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
         self._odata: Optional[_ODataClient] = None
+        self._session: Optional[requests.Session] = None
+        self._owns_session: bool = False
 
         # Initialize operation namespaces
         self.records = RecordOperations(self)
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
 
+    def __enter__(self) -> "DataverseClient":
+        """
+        Enter the context manager.
+
+        Creates an HTTP session for connection pooling. All operations within
+        the context will reuse this session for better performance.
+
+        :return: The client instance.
+        :rtype: DataverseClient
+
+        Example::
+
+            with DataverseClient(base_url, credential) as client:
+                client.records.create("account", {"name": "Contoso"})
+        """
+        if self._session is None:
+            self._session = requests.Session()
+            self._owns_session = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+        Exit the context manager with cleanup.
+
+        Closes the HTTP session and releases any resources. Safe to call
+        even if an exception occurred within the context.
+
+        :param exc_type: Exception type (if any).
+        :param exc_val: Exception value (if any).
+        :param exc_tb: Exception traceback (if any).
+        :return: None (exceptions are not suppressed).
+        """
+        self.close()
+
+    def close(self) -> None:
+        """
+        Explicitly close the client and release resources.
+
+        Closes the HTTP session (if any) and the internal OData client.
+        Safe to call multiple times. After closing, the client should not
+        be used for further operations.
+
+        This method is called automatically when using the context manager.
+        Call it explicitly when not using the context manager.
+
+        Example::
+
+            client = DataverseClient(base_url, credential)
+            try:
+                client.records.create("account", {"name": "Contoso"})
+            finally:
+                client.close()
+        """
+        if self._odata is not None:
+            self._odata.close()
+            self._odata = None
+        if self._session is not None and self._owns_session:
+            self._session.close()
+            self._session = None
+            self._owns_session = False
+
     def _get_odata(self) -> _ODataClient:
         """
         Get or create the internal OData client instance.
 
         This method implements lazy initialization of the low-level OData client,
-        deferring construction until the first API call.
+        deferring construction until the first API call. When a session exists
+        (from context manager), it is passed to the OData client for connection pooling.
 
         :return: The lazily-initialized low-level client used to perform HTTP requests.
         :rtype: ~PowerPlatform.Dataverse.data._odata._ODataClient
@@ -125,6 +207,7 @@ class DataverseClient:
                 self.auth,
                 self._base_url,
                 self._config,
+                session=self._session,
             )
         return self._odata
 
