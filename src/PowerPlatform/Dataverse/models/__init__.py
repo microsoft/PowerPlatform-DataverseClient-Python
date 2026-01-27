@@ -9,6 +9,7 @@ This module provides strongly-typed dataclasses for Dataverse entities:
 - :class:`~PowerPlatform.Dataverse.models.record.Record`: Record representation with dict-like access.
 - :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`: Table metadata.
 - :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`: Column metadata.
+- :class:`~PowerPlatform.Dataverse.models.query_builder.QueryBuilder`: Fluent query builder.
 
 Type aliases:
 

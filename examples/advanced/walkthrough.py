@@ -9,6 +9,7 @@ This example shows:
 - Table creation with various column types including enums
 - Single and multiple record CRUD operations
 - Querying with filtering, paging, and SQL
+- Fluent QueryBuilder for type-safe query construction
 - Picklist label-to-value conversion
 - Column management
 - Cleanup
@@ -298,10 +299,56 @@ def _run_walkthrough(client):
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
     # ============================================================================
-    # 8. PICKLIST LABEL CONVERSION
+    # 8. FLUENT QUERYBUILDER
     # ============================================================================
     print("\n" + "=" * 80)
-    print("8. Picklist Label Conversion")
+    print("8. Fluent QueryBuilder")
+    print("=" * 80)
+
+    # Build a query with the fluent API
+    log_call("client.query.builder(...).select(...).filter_eq(...).filter_gt(...).order_by(...).top(...)")
+    query = (
+        client.query.builder(table_name)
+        .select("new_title", "new_quantity", "new_amount", "new_priority")
+        .filter_eq("new_completed", True)
+        .filter_gt("new_quantity", 5)
+        .order_by("new_quantity", descending=True)
+        .top(5)
+    )
+    print(f"[OK] Built query parameters: {query.build()}")
+
+    # Execute and iterate one record at a time
+    log_call("client.query.iterate_query(query)")
+    query_records = list(client.query.iterate_query(query))
+    print(f"[OK] QueryBuilder returned {len(query_records)} records:")
+    for rec in query_records[:3]:  # Show first 3
+        print(f"  - new_Title='{rec.get('new_title')}', new_Quantity={rec.get('new_quantity')}")
+
+    # QueryBuilder with string filters
+    log_call("client.query.builder(...).filter_contains('new_title', 'test')")
+    string_query = (
+        client.query.builder(table_name)
+        .select("new_title")
+        .filter_contains("new_title", "test")
+        .top(3)
+    )
+    string_results = list(client.query.iterate_query(string_query))
+    print(f"[OK] Contains filter returned {len(string_results)} records with 'test' in title")
+
+    # Execute with batch access for telemetry
+    log_call("client.query.execute(query) with per-batch telemetry")
+    exec_query = client.query.builder(table_name).filter_eq("new_completed", True).top(10)
+    for batch in client.query.execute(exec_query):
+        response = batch.with_response_details()
+        print(f"  Batch of {len(response.result)} records")
+        print_telemetry(response.telemetry)
+        break  # Just show first batch
+
+    # ============================================================================
+    # 9. PICKLIST LABEL CONVERSION
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("9. Picklist Label Conversion")
     print("=" * 80)
 
     log_call(f"client.create('{table_name}', {{'new_Priority': 'High'}})")
@@ -321,10 +368,10 @@ def _run_walkthrough(client):
     print_telemetry(label_create_result.with_response_details().telemetry)
 
     # ============================================================================
-    # 9. COLUMN MANAGEMENT
+    # 10. COLUMN MANAGEMENT
     # ============================================================================
     print("\n" + "=" * 80)
-    print("9. Column Management")
+    print("10. Column Management")
     print("=" * 80)
 
     log_call(f"client.create_columns('{table_name}', {{'new_Notes': 'string'}})")
@@ -339,10 +386,10 @@ def _run_walkthrough(client):
     print_telemetry(delete_cols_result.with_response_details().telemetry)
 
     # ============================================================================
-    # 10. DELETE OPERATIONS
+    # 11. DELETE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("10. Delete Operations")
+    print("11. Delete Operations")
     print("=" * 80)
 
     # Single delete
@@ -359,10 +406,10 @@ def _run_walkthrough(client):
     print_telemetry(job_id.with_response_details().telemetry)
 
     # ============================================================================
-    # 11. CLEANUP
+    # 12. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("11. Cleanup")
+    print("12. Cleanup")
     print("=" * 80)
 
     log_call(f"client.delete_table('{table_name}')")
@@ -391,6 +438,7 @@ def _run_walkthrough(client):
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
     print("  [OK] SQL queries")
+    print("  [OK] Fluent QueryBuilder for type-safe queries")
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
     print("  [OK] Single and bulk delete operations")

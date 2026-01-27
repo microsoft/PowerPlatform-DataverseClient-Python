@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Fluent QueryBuilder**: Type-safe, discoverable query construction via `client.query.builder(table)`:
+  - Selection: `select(*columns)` for specifying columns to retrieve
+  - Comparison filters: `filter_eq`, `filter_ne`, `filter_gt`, `filter_ge`, `filter_lt`, `filter_le`
+  - String filters: `filter_contains`, `filter_startswith`, `filter_endswith`
+  - Null filters: `filter_null`, `filter_not_null`
+  - Raw filter: `filter_raw(expression)` for complex OData expressions
+  - Sorting: `order_by(column, descending=False)` with multi-column support
+  - Limiting: `top(count)` for result limits
+  - Navigation: `expand(*relations)` for navigation property expansion
+- **QueryOperations methods**:
+  - `client.query.builder(table)` - Factory method for QueryBuilder
+  - `client.query.execute(query)` - Execute QueryBuilder, returns batches with telemetry
+  - `client.query.iterate(table, ...)` - Convenience method yielding individual records
+  - `client.query.iterate_query(query)` - Iterate records from QueryBuilder one at a time
+
 ## [0.1.0b1] - 2025-11-14
 
 ### Added
