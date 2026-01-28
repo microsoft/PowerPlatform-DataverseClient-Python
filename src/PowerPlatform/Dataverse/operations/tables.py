@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, List, Union, TYPE_CHECKING
 
 from ..core.results import OperationResult
 from ..models.table_info import TableInfo
+from ..models.alternate_key import AlternateKeyInfo
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -272,6 +273,157 @@ class TableOperations:
                 columns,
             )
             return OperationResult(result, metadata)
+
+    # ---------------------- Alternate Key Operations -------------------------
+
+    def create_key(
+        self,
+        table: str,
+        key_name: str,
+        columns: List[str],
+        *,
+        display_name: Optional[str] = None,
+    ) -> OperationResult[AlternateKeyInfo]:
+        """
+        Create an alternate key on a table.
+
+        Alternate keys allow records to be uniquely identified using business keys
+        instead of the primary GUID. They are required for upsert operations.
+
+        .. note::
+            Alternate key index creation runs asynchronously. The key may have
+            status "Pending" or "InProgress" immediately after creation.
+            Use ``get_key()`` to check when status becomes "Active".
+
+        :param table: Table schema name.
+        :type table: str
+        :param key_name: Schema name for the key (e.g., "AccountNumberKey").
+        :type key_name: str
+        :param columns: Column logical names that make up the key.
+        :type columns: list[str]
+        :param display_name: Optional display name for the key.
+        :type display_name: str or None
+        :return: OperationResult with AlternateKeyInfo object.
+        :rtype: OperationResult[AlternateKeyInfo]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table doesn't exist,
+            key already exists, columns are invalid, or max keys exceeded (10 per table).
+
+        Example:
+            Create a simple alternate key::
+
+                key = client.tables.create_key(
+                    "account",
+                    key_name="AccountNumberKey",
+                    columns=["accountnumber"]
+                )
+                print(f"Created key: {key.schema_name}")
+                print(f"Status: {key.status}")
+
+            Create a composite alternate key::
+
+                key = client.tables.create_key(
+                    "store",
+                    key_name="RegionStoreKey",
+                    columns=["my_region", "my_storeid"],
+                    display_name="Region and Store ID"
+                )
+        """
+        with self._client._scoped_odata() as od:
+            result, metadata = od._create_key(
+                table,
+                key_name,
+                columns,
+                display_name,
+            )
+            key_info = AlternateKeyInfo.from_api_response(result)
+            return OperationResult(key_info, metadata)
+
+    def list_keys(self, table: str) -> OperationResult[List[AlternateKeyInfo]]:
+        """
+        List all alternate keys for a table.
+
+        :param table: Table schema name.
+        :type table: str
+        :return: OperationResult with list of AlternateKeyInfo objects.
+        :rtype: OperationResult[List[AlternateKeyInfo]]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table doesn't exist.
+
+        Example:
+            List alternate keys::
+
+                keys = client.tables.list_keys("account")
+                for key in keys:
+                    print(f"Key: {key.schema_name}")
+                    print(f"  Columns: {key.columns}")
+                    print(f"  Status: {key.status}")
+        """
+        with self._client._scoped_odata() as od:
+            result, metadata = od._list_keys(table)
+            key_infos = [AlternateKeyInfo.from_api_response(key) for key in result]
+            return OperationResult(key_infos, metadata)
+
+    def get_key(
+        self,
+        table: str,
+        key_name: str,
+    ) -> OperationResult[Optional[AlternateKeyInfo]]:
+        """
+        Get a specific alternate key by name.
+
+        :param table: Table schema name.
+        :type table: str
+        :param key_name: Schema name of the key.
+        :type key_name: str
+        :return: OperationResult with AlternateKeyInfo or None if not found.
+        :rtype: OperationResult[Optional[AlternateKeyInfo]]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table doesn't exist.
+
+        Example:
+            Get a specific alternate key::
+
+                key = client.tables.get_key("account", "AccountNumberKey")
+                if key:
+                    print(f"Status: {key.status}")
+                    if key.status == "Active":
+                        print("Key is ready for use")
+                else:
+                    print("Key not found")
+        """
+        with self._client._scoped_odata() as od:
+            result, metadata = od._get_key(table, key_name)
+            if result is None:
+                return OperationResult(None, metadata)
+            key_info = AlternateKeyInfo.from_api_response(result)
+            return OperationResult(key_info, metadata)
+
+    def delete_key(
+        self,
+        table: str,
+        key_name: str,
+    ) -> OperationResult[None]:
+        """
+        Delete an alternate key from a table.
+
+        :param table: Table schema name.
+        :type table: str
+        :param key_name: Schema name of the key to delete.
+        :type key_name: str
+        :return: OperationResult containing None.
+        :rtype: OperationResult[None]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError: If table or key doesn't exist.
+
+        Example:
+            Delete an alternate key::
+
+                client.tables.delete_key("account", "AccountNumberKey")
+        """
+        with self._client._scoped_odata() as od:
+            _, metadata = od._delete_key(table, key_name)
+            return OperationResult(None, metadata)
 
 
 __all__ = ["TableOperations"]

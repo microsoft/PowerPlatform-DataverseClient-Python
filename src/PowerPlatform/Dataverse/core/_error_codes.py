@@ -57,6 +57,10 @@ METADATA_TABLE_ALREADY_EXISTS = "metadata_table_already_exists"
 METADATA_COLUMN_NOT_FOUND = "metadata_column_not_found"
 METADATA_ATTRIBUTE_RETRY_EXHAUSTED = "metadata_attribute_retry_exhausted"
 METADATA_PICKLIST_RETRY_EXHAUSTED = "metadata_picklist_retry_exhausted"
+METADATA_KEY_NOT_FOUND = "metadata_key_not_found"
+METADATA_KEY_ALREADY_EXISTS = "metadata_key_already_exists"
+METADATA_KEY_INVALID_COLUMNS = "metadata_key_invalid_columns"
+METADATA_KEY_MAX_EXCEEDED = "metadata_key_max_exceeded"
 
 # Mapping from status code -> subcode
 HTTP_STATUS_TO_SUBCODE: dict[int, str] = {

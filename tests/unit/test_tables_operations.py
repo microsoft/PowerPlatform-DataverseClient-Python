@@ -11,6 +11,7 @@ from azure.core.credentials import TokenCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
 from PowerPlatform.Dataverse.models.table_info import TableInfo
+from PowerPlatform.Dataverse.models.alternate_key import AlternateKeyInfo
 
 
 class TestTableOperations(unittest.TestCase):
@@ -303,6 +304,173 @@ class TestTableOperations(unittest.TestCase):
 
         response = result.with_response_details()
         self.assertEqual(response.telemetry["client_request_id"], "remove-cols-123")
+
+    # ---------------------- Alternate Key Operations Tests ----------------------
+
+    def test_tables_create_key_basic(self):
+        """Test tables.create_key() with basic parameters."""
+        expected_result = {
+            "SchemaName": "AccountNumberKey",
+            "LogicalName": "accountnumberkey",
+            "KeyAttributes": ["accountnumber"],
+            "MetadataId": "key-guid-123",
+            "EntityKeyIndexStatus": "Pending",
+        }
+        mock_metadata = RequestTelemetryData(client_request_id="test-create-key")
+        self.client._odata._create_key.return_value = (expected_result, mock_metadata)
+
+        result = self.client.tables.create_key(
+            "account",
+            key_name="AccountNumberKey",
+            columns=["accountnumber"],
+        )
+
+        self.client._odata._create_key.assert_called_once_with(
+            "account",
+            "AccountNumberKey",
+            ["accountnumber"],
+            None,  # display_name
+        )
+        self.assertIsInstance(result.value, AlternateKeyInfo)
+        self.assertEqual(result.value.schema_name, "AccountNumberKey")
+        self.assertEqual(result.value.columns, ["accountnumber"])
+        self.assertEqual(result.value.status, "Pending")
+
+    def test_tables_create_key_composite(self):
+        """Test tables.create_key() with composite (multi-column) key."""
+        expected_result = {
+            "SchemaName": "RegionStoreKey",
+            "LogicalName": "regionstorekey",
+            "KeyAttributes": ["my_region", "my_storeid"],
+            "MetadataId": "key-guid-456",
+            "EntityKeyIndexStatus": "Active",
+            "DisplayName": {
+                "UserLocalizedLabel": {"Label": "Region and Store ID"},
+            },
+        }
+        mock_metadata = RequestTelemetryData(client_request_id="test-composite-key")
+        self.client._odata._create_key.return_value = (expected_result, mock_metadata)
+
+        result = self.client.tables.create_key(
+            "store",
+            key_name="RegionStoreKey",
+            columns=["my_region", "my_storeid"],
+            display_name="Region and Store ID",
+        )
+
+        self.client._odata._create_key.assert_called_once_with(
+            "store",
+            "RegionStoreKey",
+            ["my_region", "my_storeid"],
+            "Region and Store ID",
+        )
+        self.assertIsInstance(result.value, AlternateKeyInfo)
+        self.assertEqual(result.value.columns, ["my_region", "my_storeid"])
+        self.assertEqual(result.value.display_name, "Region and Store ID")
+
+    def test_tables_create_key_with_telemetry(self):
+        """Test tables.create_key() with telemetry access."""
+        expected_result = {
+            "SchemaName": "TestKey",
+            "LogicalName": "testkey",
+            "KeyAttributes": ["testcol"],
+            "MetadataId": "key-guid",
+            "EntityKeyIndexStatus": "Pending",
+        }
+        mock_metadata = RequestTelemetryData(client_request_id="create-key-123", service_request_id="svc-789")
+        self.client._odata._create_key.return_value = (expected_result, mock_metadata)
+
+        result = self.client.tables.create_key("test_table", "TestKey", ["testcol"])
+
+        response = result.with_response_details()
+        self.assertEqual(response.telemetry["client_request_id"], "create-key-123")
+        self.assertEqual(response.telemetry["service_request_id"], "svc-789")
+
+    def test_tables_list_keys_basic(self):
+        """Test tables.list_keys() basic functionality."""
+        expected_result = [
+            {
+                "SchemaName": "Key1",
+                "LogicalName": "key1",
+                "KeyAttributes": ["col1"],
+                "MetadataId": "key-1",
+                "EntityKeyIndexStatus": "Active",
+            },
+            {
+                "SchemaName": "Key2",
+                "LogicalName": "key2",
+                "KeyAttributes": ["col2", "col3"],
+                "MetadataId": "key-2",
+                "EntityKeyIndexStatus": "Pending",
+            },
+        ]
+        mock_metadata = RequestTelemetryData(client_request_id="test-list-keys")
+        self.client._odata._list_keys.return_value = (expected_result, mock_metadata)
+
+        result = self.client.tables.list_keys("account")
+
+        self.client._odata._list_keys.assert_called_once_with("account")
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], AlternateKeyInfo)
+        self.assertEqual(result[0].schema_name, "Key1")
+        self.assertEqual(result[1].columns, ["col2", "col3"])
+
+    def test_tables_list_keys_empty(self):
+        """Test tables.list_keys() with no alternate keys."""
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._list_keys.return_value = ([], mock_metadata)
+
+        result = self.client.tables.list_keys("account")
+
+        self.assertEqual(len(result.value), 0)
+
+    def test_tables_get_key_found(self):
+        """Test tables.get_key() when key exists."""
+        expected_result = {
+            "SchemaName": "AccountNumberKey",
+            "LogicalName": "accountnumberkey",
+            "KeyAttributes": ["accountnumber"],
+            "MetadataId": "key-guid",
+            "EntityKeyIndexStatus": "Active",
+        }
+        mock_metadata = RequestTelemetryData(client_request_id="test-get-key")
+        self.client._odata._get_key.return_value = (expected_result, mock_metadata)
+
+        result = self.client.tables.get_key("account", "AccountNumberKey")
+
+        self.client._odata._get_key.assert_called_once_with("account", "AccountNumberKey")
+        self.assertIsInstance(result.value, AlternateKeyInfo)
+        self.assertEqual(result.value.schema_name, "AccountNumberKey")
+        self.assertEqual(result.value.status, "Active")
+
+    def test_tables_get_key_not_found(self):
+        """Test tables.get_key() when key doesn't exist."""
+        mock_metadata = RequestTelemetryData()
+        self.client._odata._get_key.return_value = (None, mock_metadata)
+
+        result = self.client.tables.get_key("account", "NonexistentKey")
+
+        self.assertIsNone(result.value)
+
+    def test_tables_delete_key_basic(self):
+        """Test tables.delete_key() basic functionality."""
+        mock_metadata = RequestTelemetryData(client_request_id="test-delete-key")
+        self.client._odata._delete_key.return_value = (None, mock_metadata)
+
+        result = self.client.tables.delete_key("account", "AccountNumberKey")
+
+        self.client._odata._delete_key.assert_called_once_with("account", "AccountNumberKey")
+        self.assertIsNone(result.value)
+
+    def test_tables_delete_key_with_telemetry(self):
+        """Test tables.delete_key() with telemetry access."""
+        mock_metadata = RequestTelemetryData(client_request_id="delete-key-123")
+        self.client._odata._delete_key.return_value = (None, mock_metadata)
+
+        result = self.client.tables.delete_key("account", "TestKey")
+
+        response = result.with_response_details()
+        self.assertEqual(response.telemetry["client_request_id"], "delete-key-123")
 
 
 if __name__ == "__main__":

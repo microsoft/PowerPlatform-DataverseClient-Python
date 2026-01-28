@@ -35,6 +35,10 @@ from ..core._error_codes import (
     METADATA_TABLE_NOT_FOUND,
     METADATA_TABLE_ALREADY_EXISTS,
     METADATA_COLUMN_NOT_FOUND,
+    METADATA_KEY_NOT_FOUND,
+    METADATA_KEY_ALREADY_EXISTS,
+    METADATA_KEY_INVALID_COLUMNS,
+    METADATA_KEY_MAX_EXCEEDED,
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
 
@@ -1570,3 +1574,205 @@ class _ODataClient(_ODataFileUpload):
         removed = len(self._picklist_label_cache)
         self._picklist_label_cache.clear()
         return removed
+
+    # ---------------------- Alternate Key Operations -------------------------
+    def _create_key(
+        self,
+        table_schema_name: str,
+        key_schema_name: str,
+        columns: List[str],
+        display_name: Optional[str] = None,
+    ) -> _ODataRequestResult:
+        """Create an alternate key on a table.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_schema_name: Schema name for the new key (e.g., "AccountNumberKey").
+        :type key_schema_name: ``str``
+        :param columns: List of column logical names that make up the key.
+        :type columns: ``list[str]``
+        :param display_name: Optional display name for the key.
+        :type display_name: ``str`` | ``None``
+
+        :return: Tuple of (key metadata dict, telemetry metadata).
+        :rtype: ``tuple[dict[str, Any], RequestTelemetryData]``
+
+        :raises MetadataError: If the table doesn't exist or key already exists.
+        :raises ValueError: If columns list is empty or contains invalid columns.
+        """
+        if not columns:
+            raise ValueError("At least one column is required for an alternate key.")
+
+        # Get entity metadata
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+
+        # Check if key already exists
+        existing_keys, _ = self._list_keys(table_schema_name)
+        for key in existing_keys:
+            if key.get("SchemaName", "").lower() == key_schema_name.lower():
+                raise MetadataError(
+                    f"Alternate key '{key_schema_name}' already exists on table '{table_schema_name}'.",
+                    subcode=METADATA_KEY_ALREADY_EXISTS,
+                )
+
+        # Lowercase column names for Dataverse API
+        key_attributes = [col.lower() for col in columns]
+
+        # Build the key metadata payload
+        payload = {
+            "@odata.type": "Microsoft.Dynamics.CRM.EntityKeyMetadata",
+            "SchemaName": key_schema_name,
+            "DisplayName": self._label(display_name or key_schema_name),
+            "KeyAttributes": key_attributes,
+        }
+
+        # POST to EntityDefinitions(LogicalName='...')/Keys
+        logical_escaped = self._escape_odata_quotes(logical_name)
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_escaped}')/Keys"
+
+        try:
+            _, metadata = self._request("post", url, json=payload)
+        except HttpError as err:
+            # Check for specific error conditions
+            if err.status_code == 400:
+                msg = str(err).lower()
+                if "already exists" in msg or "duplicate" in msg:
+                    raise MetadataError(
+                        f"Alternate key '{key_schema_name}' already exists on table '{table_schema_name}'.",
+                        subcode=METADATA_KEY_ALREADY_EXISTS,
+                    ) from err
+                if "invalid" in msg and "column" in msg:
+                    raise MetadataError(
+                        f"One or more columns in {columns} are invalid for alternate key.",
+                        subcode=METADATA_KEY_INVALID_COLUMNS,
+                    ) from err
+                if "maximum" in msg or "limit" in msg:
+                    raise MetadataError(
+                        f"Maximum number of alternate keys (10) exceeded for table '{table_schema_name}'.",
+                        subcode=METADATA_KEY_MAX_EXCEEDED,
+                    ) from err
+            raise
+
+        # Fetch the created key to return its metadata
+        key_info, _ = self._get_key(table_schema_name, key_schema_name)
+        if key_info:
+            return key_info, metadata
+
+        # Fallback if immediate fetch fails
+        return {
+            "SchemaName": key_schema_name,
+            "LogicalName": key_schema_name.lower(),
+            "KeyAttributes": key_attributes,
+            "MetadataId": "",
+            "EntityKeyIndexStatus": "Pending",
+        }, metadata
+
+    def _list_keys(self, table_schema_name: str) -> _ODataRequestResult:
+        """List all alternate keys for a table.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+
+        :return: Tuple of (list of key metadata dicts, telemetry metadata).
+        :rtype: ``tuple[list[dict[str, Any]], RequestTelemetryData]``
+
+        :raises MetadataError: If the table doesn't exist.
+        """
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("LogicalName"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName")
+        logical_escaped = self._escape_odata_quotes(logical_name)
+
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_escaped}')/Keys"
+        params = {
+            "$select": "MetadataId,SchemaName,LogicalName,KeyAttributes,EntityKeyIndexStatus,DisplayName",
+        }
+
+        r, metadata = self._request("get", url, params=params)
+        try:
+            body = r.json() if r.text else {}
+        except ValueError:
+            return [], metadata
+
+        keys = body.get("value", []) if isinstance(body, dict) else []
+        return keys, metadata
+
+    def _get_key(
+        self,
+        table_schema_name: str,
+        key_schema_name: str,
+    ) -> _ODataRequestResult:
+        """Get a specific alternate key by name.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_schema_name: Schema name of the key.
+        :type key_schema_name: ``str``
+
+        :return: Tuple of (key metadata dict or None, telemetry metadata).
+        :rtype: ``tuple[dict[str, Any] | None, RequestTelemetryData]``
+
+        :raises MetadataError: If the table doesn't exist.
+        """
+        keys, metadata = self._list_keys(table_schema_name)
+
+        for key in keys:
+            if key.get("SchemaName", "").lower() == key_schema_name.lower():
+                return key, metadata
+            if key.get("LogicalName", "").lower() == key_schema_name.lower():
+                return key, metadata
+
+        return None, metadata
+
+    def _delete_key(
+        self,
+        table_schema_name: str,
+        key_schema_name: str,
+    ) -> _ODataRequestResult:
+        """Delete an alternate key from a table.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_schema_name: Schema name of the key to delete.
+        :type key_schema_name: ``str``
+
+        :return: Tuple of (None, telemetry metadata).
+        :rtype: ``tuple[None, RequestTelemetryData]``
+
+        :raises MetadataError: If the table or key doesn't exist.
+        """
+        ent, _ = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("LogicalName"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        # Get the key metadata to find its MetadataId
+        key_info, _ = self._get_key(table_schema_name, key_schema_name)
+        if not key_info or not key_info.get("MetadataId"):
+            raise MetadataError(
+                f"Alternate key '{key_schema_name}' not found on table '{table_schema_name}'.",
+                subcode=METADATA_KEY_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName")
+        logical_escaped = self._escape_odata_quotes(logical_name)
+        key_metadata_id = key_info["MetadataId"]
+
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_escaped}')/Keys({key_metadata_id})"
+        _, metadata = self._request("delete", url)
+
+        return None, metadata
