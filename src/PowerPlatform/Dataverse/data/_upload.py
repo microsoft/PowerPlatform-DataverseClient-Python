@@ -55,11 +55,8 @@ class _ODataFileUpload:
                     # Attribute doesn't exist, create it
                     self._create_columns(table_schema_name, {file_name_attribute: "file"})
                     # Wait for the attribute to become visible in the data API
-                    if not self._wait_for_attribute_visibility(entity_set, file_name_attribute):
-                        raise RuntimeError(
-                            f"Attribute '{file_name_attribute}' was created but did not become visible "
-                            f"in the data API after 33 seconds (max retry timeout). The upload cannot proceed. Retry upload later might help."
-                        )
+                    # Raises RuntimeError with underlying exception if timeout occurs
+                    self._wait_for_attribute_visibility(entity_set, file_name_attribute)
 
         mode = (mode or "auto").lower()
 
