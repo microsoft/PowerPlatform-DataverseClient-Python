@@ -21,6 +21,10 @@ from ..common.constants import (
     ODATA_TYPE_LOOKUP_ATTRIBUTE,
     ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
     ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
+    CASCADE_BEHAVIOR_CASCADE,
+    CASCADE_BEHAVIOR_NO_CASCADE,
+    CASCADE_BEHAVIOR_REMOVE_LINK,
+    CASCADE_BEHAVIOR_RESTRICT,
 )
 
 
@@ -143,12 +147,12 @@ class CascadeConfiguration:
         - "Restrict": Prevent the operation if related records exist
     """
 
-    assign: str = "NoCascade"
-    delete: str = "RemoveLink"
-    merge: str = "NoCascade"
-    reparent: str = "NoCascade"
-    share: str = "NoCascade"
-    unshare: str = "NoCascade"
+    assign: str = CASCADE_BEHAVIOR_NO_CASCADE
+    delete: str = CASCADE_BEHAVIOR_REMOVE_LINK
+    merge: str = CASCADE_BEHAVIOR_NO_CASCADE
+    reparent: str = CASCADE_BEHAVIOR_NO_CASCADE
+    share: str = CASCADE_BEHAVIOR_NO_CASCADE
+    unshare: str = CASCADE_BEHAVIOR_NO_CASCADE
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
