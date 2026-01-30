@@ -26,7 +26,7 @@ class _ODataFileUpload:
         Parameters
         ----------
         table_schema_name : :class:`str`
-            Table schema name (singular logical name), e.g. "account".
+            Table schema name, e.g. "account" or "new_MyTestTable".
         record_id : :class:`str`
             GUID of the target record.
         file_name_attribute : :class:`str`
