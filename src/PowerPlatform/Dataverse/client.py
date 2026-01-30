@@ -436,7 +436,7 @@ class DataverseClient:
         :param columns: Dictionary mapping column names (with customization prefix value) to their types. All custom column names must include the customization prefix value (e.g. ``"new_Title"``).
             Supported types:
 
-            - Primitive types: ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), ``"bool"`` (alias: ``"boolean"``)
+            - Primitive types: ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), ``"bool"`` (alias: ``"boolean"``), and ``"file"``
             - Enum subclass (IntEnum preferred): Creates a local option set. Optional multilingual
               labels can be provided via ``__labels__`` class attribute, defined inside the Enum subclass::
 
@@ -546,22 +546,23 @@ class DataverseClient:
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
         :param columns: Mapping of column schema names (with customization prefix value) to supported types. All custom column names must include the customization prefix value** (e.g. ``"new_Notes"``). Primitive types include
-            ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), and ``"bool"`` (alias: ``"boolean"``). Enum subclasses (IntEnum preferred)
+            ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), ``"bool"`` (alias: ``"boolean"``), and ``"file"``. Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
         :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
         :returns: Schema names for the columns that were created.
         :rtype: :class:`list` of :class:`str`
         Example:
-            Create two columns on the custom table::
+            Create multiple columns on the custom table::
 
                 created = client.create_columns(
                     "new_MyTestTable",
                     {
                         "new_Scratch": "string",
                         "new_Flags": "bool",
+                        "new_Document": "file",
                     },
                 )
-                print(created)  # ['new_Scratch', 'new_Flags']
+                print(created)  # ['new_Scratch', 'new_Flags', 'new_Document']
         """
         with self._scoped_odata() as od:
             return od._create_columns(
@@ -616,7 +617,7 @@ class DataverseClient:
         :type table_schema_name: :class:`str`
         :param record_id: GUID of the target record.
         :type record_id: :class:`str`
-        :param file_name_attribute: Logical name of the file column attribute.
+        :param file_name_attribute: Schema name of the file column attribute (e.g., ``"new_Document"``). If the column doesn't exist, it will be created automatically.
         :type file_name_attribute: :class:`str`
         :param path: Local filesystem path to the file. The stored filename will be
             the basename of this path.
@@ -645,7 +646,7 @@ class DataverseClient:
                 client.upload_file(
                     table_schema_name="account",
                     record_id=account_id,
-                    file_name_attribute="new_contract",
+                    file_name_attribute="new_Contract",
                     path="/path/to/contract.pdf",
                     mime_type="application/pdf"
                 )
@@ -655,15 +656,14 @@ class DataverseClient:
                 client.upload_file(
                     table_schema_name="email",
                     record_id=email_id,
-                    file_name_attribute="new_attachment",
+                    file_name_attribute="new_Attachment",
                     path="/path/to/large_file.zip",
                     mode="auto"
                 )
         """
         with self._scoped_odata() as od:
-            entity_set = od._entity_set_from_schema_name(table_schema_name)
             od._upload_file(
-                entity_set,
+                table_schema_name,
                 record_id,
                 file_name_attribute,
                 path,

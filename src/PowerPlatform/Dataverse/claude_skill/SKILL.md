@@ -159,6 +159,7 @@ Types on the same line map to the same exact format under the hood
 - `"float"` or `"double"` - Floating point number
 - `"bool"` or `"boolean"` - Yes/No
 - `"datetime"` or `"date"` - Date
+- `"file"` - File column
 - Enum subclass - Local option set (picklist)
 
 #### Manage Columns
@@ -199,7 +200,7 @@ client.delete_table("new_Product")
 client.upload_file(
     table_schema_name="account",
     record_id=account_id,
-    file_name_attribute="new_document",
+    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
     path="/path/to/document.pdf"
 )
 ```
