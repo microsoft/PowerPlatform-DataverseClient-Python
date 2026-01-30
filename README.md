@@ -191,15 +191,16 @@ client.delete("account", ids, use_bulk_delete=True)
 
 ```python
 # Fluent QueryBuilder (recommended for complex queries)
-query = (client.query.builder("account")
-         .select("name", "revenue")
-         .filter_eq("statecode", 0)
-         .filter_gt("revenue", 1000000)
-         .order_by("revenue", descending=True)
-         .top(10))
-
-for account in client.query.iterate_query(query):
-    print(f"{account['name']}: ${account['revenue']}")
+for page in (client.query.builder("account")
+             .select("name", "revenue")
+             .filter_eq("statecode", 0)
+             .filter_gt("revenue", 1000000)
+             .order_by("revenue", descending=True)
+             .top(100)
+             .page_size(50)
+             .execute()):
+    for account in page:
+        print(f"{account['name']}: ${account['revenue']}")
 
 # SQL query (read-only)
 results = client.query_sql(
@@ -258,8 +259,10 @@ The fluent QueryBuilder provides type-safe, discoverable query construction:
 | `filter_not_null(col)` | Is not null | `.filter_not_null("email")` |
 | `filter_raw(expr)` | Raw OData filter | `.filter_raw("(a eq 1 or b eq 2)")` |
 | `order_by(col, desc)` | Sort results | `.order_by("name", descending=True)` |
-| `top(n)` | Limit results | `.top(100)` |
+| `top(n)` | Limit total results | `.top(100)` |
+| `page_size(n)` | Set records per page | `.page_size(50)` |
 | `expand(*rels)` | Expand navigation properties | `.expand("primarycontactid")` |
+| `execute()` | Execute query and return pages | `.execute()` |
 
 ### Table management
 

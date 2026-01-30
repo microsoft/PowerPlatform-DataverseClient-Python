@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, List, Iterable, TYPE_CHECKING
 
+import warnings
+
 from ..core.results import OperationResult
 from ..models.record import Record
-from ..models.query_builder import QueryBuilder
+from ..models.query_builder import QueryBuilder, BoundQueryBuilder
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -25,20 +27,21 @@ class QueryOperations:
     Example:
         Fluent query builder (recommended)::
 
-            query = (client.query.builder("account")
-                     .select("name", "revenue")
-                     .filter_eq("statecode", 0)
-                     .filter_gt("revenue", 1000000)
-                     .order_by("revenue", descending=True)
-                     .top(10))
-
-            for record in client.query.iterate_query(query):
-                print(f"{record['name']}: ${record['revenue']}")
+            for page in (client.query.builder("account")
+                         .select("name", "revenue")
+                         .filter_eq("statecode", 0)
+                         .filter_gt("revenue", 1000000)
+                         .order_by("revenue", descending=True)
+                         .top(100)
+                         .page_size(50)
+                         .execute()):
+                for record in page:
+                    print(f"{record['name']}: ${record['revenue']}")
 
         OData query with string filter::
 
-            for batch in client.query.get("account", filter="statecode eq 0"):
-                for record in batch:
+            for page in client.query.get("account", filter="statecode eq 0"):
+                for record in page:
                     print(record["name"])
 
         SQL query::
@@ -76,7 +79,7 @@ class QueryOperations:
         """
         Query records with OData filtering and pagination.
 
-        Returns a generator yielding batches of records. Each batch is an
+        Returns a generator yielding pages of records. Each page is an
         OperationResult containing a list of Record objects.
 
         :param table: Table schema name.
@@ -93,20 +96,20 @@ class QueryOperations:
         :type expand: list[str] or None
         :param page_size: Records per page.
         :type page_size: int or None
-        :return: Generator yielding OperationResult batches of Record objects.
+        :return: Generator yielding OperationResult pages of Record objects.
         :rtype: Iterable[OperationResult[List[Record]]]
 
         Example:
             Basic query::
 
-                for batch in client.query.get("account", filter="statecode eq 0"):
-                    for record in batch:
+                for page in client.query.get("account", filter="statecode eq 0"):
+                    for record in page:
                         print(record["name"])  # Dict-like access (backward compatible)
                         print(record.id)       # Structured access to record GUID
 
             With pagination control::
 
-                for batch in client.query.get(
+                for page in client.query.get(
                     "contact",
                     select=["fullname", "emailaddress1"],
                     filter="statecode eq 0",
@@ -114,12 +117,12 @@ class QueryOperations:
                     top=100,
                     page_size=50
                 ):
-                    print(f"Batch of {len(batch)} records")
+                    print(f"Page of {len(page)} records")
 
             With per-page telemetry access::
 
-                for batch in client.query.get("account", filter="statecode eq 0"):
-                    response = batch.with_response_details()
+                for page in client.query.get("account", filter="statecode eq 0"):
+                    response = page.with_response_details()
                     print(f"Page request ID: {response.telemetry['service_request_id']}")
                     for account in response.result:
                         print(account["name"])
@@ -177,29 +180,33 @@ class QueryOperations:
             records = [Record.from_api_response("", record_data) for record_data in result]
             return OperationResult(records, metadata)
 
-    def builder(self, table: str) -> QueryBuilder:
+    def builder(self, table: str) -> BoundQueryBuilder:
         """
         Create a fluent query builder for the specified table.
 
+        Returns a BoundQueryBuilder that can be chained with filter methods
+        and executed directly via ``.execute()``.
+
         :param table: Table schema name.
         :type table: str
-        :return: QueryBuilder instance for fluent query construction.
-        :rtype: QueryBuilder
+        :return: BoundQueryBuilder instance for fluent query construction and execution.
+        :rtype: BoundQueryBuilder
 
         Example:
-            Build and execute a query::
+            Build and execute a query fluently::
 
-                query = (client.query.builder("account")
-                         .select("name", "revenue")
-                         .filter_eq("statecode", 0)
-                         .filter_gt("revenue", 1000000)
-                         .order_by("revenue", descending=True)
-                         .top(10))
-
-                for record in client.query.iterate_query(query):
-                    print(record["name"])
+                for page in (client.query.builder("account")
+                             .select("name", "revenue")
+                             .filter_eq("statecode", 0)
+                             .filter_gt("revenue", 1000000)
+                             .order_by("revenue", descending=True)
+                             .top(100)
+                             .page_size(50)
+                             .execute()):
+                    for record in page:
+                        print(record["name"])
         """
-        return QueryBuilder(table)
+        return BoundQueryBuilder(table, self)
 
     def execute(
         self,
@@ -208,40 +215,42 @@ class QueryOperations:
         page_size: Optional[int] = None,
     ) -> Iterable[OperationResult[List[Record]]]:
         """
-        Execute a QueryBuilder query and return iterator of record batches.
+        Execute a QueryBuilder query and return iterator of record pages.
 
-        Returns a generator yielding batches of records. Each batch is an
+        .. deprecated::
+            Use ``client.query.builder(table)...execute()`` instead for a
+            more fluent API. This method will be removed in a future version.
+
+        Returns a generator yielding pages of records. Each page is an
         OperationResult containing a list of Record objects.
 
         :param query: QueryBuilder instance with query configuration.
         :type query: QueryBuilder
-        :param page_size: Records per page (uses default from config if not specified).
+        :param page_size: Records per page (overrides query.page_size() if set).
         :type page_size: int or None
-        :return: Generator yielding OperationResult batches of Record objects.
+        :return: Generator yielding OperationResult pages of Record objects.
         :rtype: Iterable[OperationResult[List[Record]]]
 
         Example:
-            Execute a fluent query::
+            Preferred fluent style::
 
-                query = (client.query.builder("account")
-                         .select("name", "revenue")
-                         .filter_gt("revenue", 500000)
-                         .order_by("revenue", descending=True)
-                         .top(100))
-
-                for batch in client.query.execute(query):
-                    for record in batch:
-                        print(f"{record['name']}: ${record['revenue']}")
-
-            With per-page telemetry::
-
-                for batch in client.query.execute(query, page_size=50):
-                    response = batch.with_response_details()
-                    print(f"Page request: {response.telemetry['service_request_id']}")
-                    for record in response.result:
+                for page in (client.query.builder("account")
+                             .select("name")
+                             .filter_eq("statecode", 0)
+                             .page_size(50)
+                             .execute()):
+                    for record in page:
                         print(record["name"])
         """
+        warnings.warn(
+            "client.query.execute(query) is deprecated. "
+            "Use client.query.builder(table)...execute() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         params = query.build()
+        # Use page_size from params if not explicitly provided
+        effective_page_size = page_size if page_size is not None else params.get("page_size")
         return self.get(
             params["table"],
             select=params.get("select"),
@@ -249,102 +258,9 @@ class QueryOperations:
             orderby=params.get("orderby"),
             top=params.get("top"),
             expand=params.get("expand"),
-            page_size=page_size,
+            page_size=effective_page_size,
         )
 
-    def iterate(
-        self,
-        table: str,
-        *,
-        select: Optional[List[str]] = None,
-        filter: Optional[str] = None,
-        orderby: Optional[List[str]] = None,
-        top: Optional[int] = None,
-        expand: Optional[List[str]] = None,
-        page_size: Optional[int] = None,
-    ) -> Iterable[Record]:
-        """
-        Iterate records one at a time with automatic pagination.
-
-        This is a convenience wrapper over get() that yields individual
-        Record objects instead of batches.
-
-        :param table: Table schema name.
-        :type table: str
-        :param select: Columns to retrieve (auto-lowercased).
-        :type select: list[str] or None
-        :param filter: OData filter string (column names must be lowercase).
-        :type filter: str or None
-        :param orderby: Sort order (e.g., ["name asc", "createdon desc"]).
-        :type orderby: list[str] or None
-        :param top: Maximum records to return.
-        :type top: int or None
-        :param expand: Navigation properties to expand.
-        :type expand: list[str] or None
-        :param page_size: Records per page.
-        :type page_size: int or None
-        :return: Generator yielding individual Record objects.
-        :rtype: Iterable[Record]
-
-        Example:
-            Simple iteration::
-
-                for account in client.query.iterate(
-                    "account",
-                    filter="statecode eq 0",
-                    select=["name", "revenue"]
-                ):
-                    print(f"{account['name']}: ${account['revenue']}")
-
-            With QueryBuilder (use iterate_query instead)::
-
-                query = client.query.builder("account").filter_eq("statecode", 0).top(100)
-                for record in client.query.iterate_query(query):
-                    print(record["name"])
-        """
-        for batch in self.get(
-            table,
-            select=select,
-            filter=filter,
-            orderby=orderby,
-            top=top,
-            expand=expand,
-            page_size=page_size,
-        ):
-            for record in batch:
-                yield record
-
-    def iterate_query(
-        self,
-        query: QueryBuilder,
-        *,
-        page_size: Optional[int] = None,
-    ) -> Iterable[Record]:
-        """
-        Iterate records from a QueryBuilder one at a time.
-
-        This is a convenience wrapper over execute() that yields individual
-        Record objects instead of batches.
-
-        :param query: QueryBuilder instance with query configuration.
-        :type query: QueryBuilder
-        :param page_size: Records per page.
-        :type page_size: int or None
-        :return: Generator yielding individual Record objects.
-        :rtype: Iterable[Record]
-
-        Example::
-
-            query = (client.query.builder("account")
-                     .filter_gt("revenue", 1000000)
-                     .order_by("revenue", descending=True))
-
-            for account in client.query.iterate_query(query):
-                print(f"{account['name']}: ${account['revenue']}")
-        """
-        for batch in self.execute(query, page_size=page_size):
-            for record in batch:
-                yield record
 
 
 __all__ = ["QueryOperations"]

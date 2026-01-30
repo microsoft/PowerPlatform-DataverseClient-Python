@@ -26,17 +26,26 @@ class QueryBuilder:
     :type table: str
 
     Example:
-        Build a query with filters::
+        Build and execute a query (via client)::
+
+            for page in (client.query.builder("account")
+                         .select("name", "revenue")
+                         .filter_eq("statecode", 0)
+                         .filter_gt("revenue", 1000000)
+                         .order_by("revenue", descending=True)
+                         .top(100)
+                         .page_size(50)
+                         .execute()):
+                for record in page:
+                    print(record["name"])
+
+        Build a standalone query::
 
             query = (QueryBuilder("account")
-                     .select("name", "revenue")
+                     .select("name")
                      .filter_eq("statecode", 0)
-                     .filter_gt("revenue", 1000000)
-                     .order_by("revenue", descending=True)
                      .top(10))
-
-            for record in client.query.execute(query):
-                print(record["name"])
+            params = query.build()
     """
 
     table: str
@@ -45,6 +54,7 @@ class QueryBuilder:
     _orderby: List[str] = field(default_factory=list)
     _expand: List[str] = field(default_factory=list)
     _top: Optional[int] = None
+    _page_size: Optional[int] = None
 
     def select(self, *columns: str) -> "QueryBuilder":
         """
@@ -263,7 +273,7 @@ class QueryBuilder:
 
     def top(self, count: int) -> "QueryBuilder":
         """
-        Limit the number of results.
+        Limit the total number of results.
 
         :param count: Maximum number of records to return.
         :type count: int
@@ -277,6 +287,29 @@ class QueryBuilder:
         if count < 1:
             raise ValueError("top count must be at least 1")
         self._top = count
+        return self
+
+    def page_size(self, size: int) -> "QueryBuilder":
+        """
+        Set the number of records per page.
+
+        Controls how many records are returned in each page/batch
+        when iterating through results.
+
+        :param size: Number of records per page.
+        :type size: int
+        :return: Self for method chaining.
+        :rtype: QueryBuilder
+
+        Example::
+
+            query = (QueryBuilder("account")
+                     .top(100)       # Total limit
+                     .page_size(50)) # 50 records per page
+        """
+        if size < 1:
+            raise ValueError("page_size must be at least 1")
+        self._page_size = size
         return self
 
     def expand(self, *relations: str) -> "QueryBuilder":
@@ -324,7 +357,7 @@ class QueryBuilder:
         Returns a dictionary that can be passed to the OData client
         for query execution.
 
-        :return: Dictionary with table, select, filter, orderby, expand, top keys.
+        :return: Dictionary with table, select, filter, orderby, expand, top, page_size keys.
         :rtype: dict
 
         Example::
@@ -344,7 +377,169 @@ class QueryBuilder:
             params["expand"] = list(self._expand)
         if self._top is not None:
             params["top"] = self._top
+        if self._page_size is not None:
+            params["page_size"] = self._page_size
         return params
 
 
-__all__ = ["QueryBuilder"]
+class BoundQueryBuilder:
+    """
+    A QueryBuilder bound to a client for execution.
+
+    Created via ``client.query.builder(table)``. Provides the same fluent
+    interface as QueryBuilder, plus an ``execute()`` method to run the query.
+
+    Example:
+        Fully fluent query execution::
+
+            for page in (client.query.builder("account")
+                         .select("name", "revenue")
+                         .filter_eq("statecode", 0)
+                         .order_by("revenue", descending=True)
+                         .top(100)
+                         .page_size(50)
+                         .execute()):
+                for record in page:
+                    print(f"{record['name']}: ${record['revenue']}")
+    """
+
+    def __init__(self, table: str, query_ops: Any) -> None:
+        """
+        Initialize a BoundQueryBuilder.
+
+        :param table: Table schema name.
+        :param query_ops: QueryOperations instance for execution.
+        """
+        self._builder = QueryBuilder(table)
+        self._query_ops = query_ops
+
+    @property
+    def table(self) -> str:
+        """Return the table name."""
+        return self._builder.table
+
+    def select(self, *columns: str) -> "BoundQueryBuilder":
+        """Select specific columns to retrieve."""
+        self._builder.select(*columns)
+        return self
+
+    def filter_eq(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add equality filter (column eq value)."""
+        self._builder.filter_eq(column, value)
+        return self
+
+    def filter_ne(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add not-equal filter (column ne value)."""
+        self._builder.filter_ne(column, value)
+        return self
+
+    def filter_gt(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add greater-than filter (column gt value)."""
+        self._builder.filter_gt(column, value)
+        return self
+
+    def filter_ge(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add greater-than-or-equal filter (column ge value)."""
+        self._builder.filter_ge(column, value)
+        return self
+
+    def filter_lt(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add less-than filter (column lt value)."""
+        self._builder.filter_lt(column, value)
+        return self
+
+    def filter_le(self, column: str, value: Any) -> "BoundQueryBuilder":
+        """Add less-than-or-equal filter (column le value)."""
+        self._builder.filter_le(column, value)
+        return self
+
+    def filter_contains(self, column: str, value: str) -> "BoundQueryBuilder":
+        """Add contains filter (contains(column, value))."""
+        self._builder.filter_contains(column, value)
+        return self
+
+    def filter_startswith(self, column: str, value: str) -> "BoundQueryBuilder":
+        """Add startswith filter (startswith(column, value))."""
+        self._builder.filter_startswith(column, value)
+        return self
+
+    def filter_endswith(self, column: str, value: str) -> "BoundQueryBuilder":
+        """Add endswith filter (endswith(column, value))."""
+        self._builder.filter_endswith(column, value)
+        return self
+
+    def filter_null(self, column: str) -> "BoundQueryBuilder":
+        """Add null check filter (column eq null)."""
+        self._builder.filter_null(column)
+        return self
+
+    def filter_not_null(self, column: str) -> "BoundQueryBuilder":
+        """Add not-null check filter (column ne null)."""
+        self._builder.filter_not_null(column)
+        return self
+
+    def filter_raw(self, filter_string: str) -> "BoundQueryBuilder":
+        """Add a raw OData filter string."""
+        self._builder.filter_raw(filter_string)
+        return self
+
+    def order_by(self, column: str, descending: bool = False) -> "BoundQueryBuilder":
+        """Add sorting order."""
+        self._builder.order_by(column, descending)
+        return self
+
+    def top(self, count: int) -> "BoundQueryBuilder":
+        """Limit the total number of results."""
+        self._builder.top(count)
+        return self
+
+    def page_size(self, size: int) -> "BoundQueryBuilder":
+        """Set the number of records per page."""
+        self._builder.page_size(size)
+        return self
+
+    def expand(self, *relations: str) -> "BoundQueryBuilder":
+        """Expand navigation properties."""
+        self._builder.expand(*relations)
+        return self
+
+    def build(self) -> dict:
+        """Build query parameters dictionary."""
+        return self._builder.build()
+
+    def execute(self) -> Any:
+        """
+        Execute the query and return an iterator of record pages.
+
+        Returns a generator yielding pages of records. Each page is an
+        OperationResult containing a list of Record objects.
+
+        :return: Generator yielding OperationResult pages of Record objects.
+
+        Example::
+
+            for page in (client.query.builder("account")
+                         .select("name")
+                         .filter_eq("statecode", 0)
+                         .execute()):
+                for record in page:
+                    print(record["name"])
+
+            # With per-page telemetry
+            for page in query.execute():
+                response = page.with_response_details()
+                print(f"Request ID: {response.telemetry['service_request_id']}")
+        """
+        params = self._builder.build()
+        return self._query_ops.get(
+            params["table"],
+            select=params.get("select"),
+            filter=params.get("filter"),
+            orderby=params.get("orderby"),
+            top=params.get("top"),
+            expand=params.get("expand"),
+            page_size=params.get("page_size"),
+        )
+
+
+__all__ = ["QueryBuilder", "BoundQueryBuilder"]

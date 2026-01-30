@@ -12,13 +12,13 @@ All notable changes to this project will be documented in this file.
   - Null filters: `filter_null`, `filter_not_null`
   - Raw filter: `filter_raw(expression)` for complex OData expressions
   - Sorting: `order_by(column, descending=False)` with multi-column support
-  - Limiting: `top(count)` for result limits
+  - Limiting: `top(count)` for total result limits
+  - Pagination: `page_size(size)` for controlling records per page
   - Navigation: `expand(*relations)` for navigation property expansion
-- **QueryOperations methods**:
-  - `client.query.builder(table)` - Factory method for QueryBuilder
-  - `client.query.execute(query)` - Execute QueryBuilder, returns batches with telemetry
-  - `client.query.iterate(table, ...)` - Convenience method yielding individual records
-  - `client.query.iterate_query(query)` - Iterate records from QueryBuilder one at a time
+  - Execution: `execute()` terminal method to run the query and return paginated results
+
+### Deprecated
+- `client.query.execute(query)` - Use fluent `client.query.builder(table)...execute()` instead. The new API is more Pythonic and eliminates the need to pass QueryBuilder objects to a separate execute method.
 
 ## [0.1.0b1] - 2025-11-14
 

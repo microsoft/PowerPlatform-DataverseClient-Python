@@ -5,7 +5,7 @@
 
 import unittest
 
-from PowerPlatform.Dataverse.models.query_builder import QueryBuilder
+from PowerPlatform.Dataverse.models.query_builder import QueryBuilder, BoundQueryBuilder
 
 
 class TestQueryBuilder(unittest.TestCase):
@@ -260,6 +260,205 @@ class TestQueryBuilder(unittest.TestCase):
         # Should be equal but not the same object
         self.assertEqual(params1["select"], params2["select"])
         self.assertIsNot(params1["select"], params2["select"])
+
+    def test_page_size(self):
+        """Test page_size setting."""
+        qb = QueryBuilder("account").page_size(50)
+        params = qb.build()
+        self.assertEqual(params["page_size"], 50)
+
+    def test_page_size_invalid_raises(self):
+        """Test that page_size with invalid value raises."""
+        qb = QueryBuilder("account")
+        with self.assertRaises(ValueError):
+            qb.page_size(0)
+        with self.assertRaises(ValueError):
+            qb.page_size(-1)
+
+    def test_page_size_chaining(self):
+        """Test that page_size returns self for chaining."""
+        qb = QueryBuilder("account")
+        self.assertIs(qb.page_size(50), qb)
+
+    def test_page_size_not_included_when_not_set(self):
+        """Test that page_size is omitted from build() when not set."""
+        qb = QueryBuilder("account")
+        params = qb.build()
+        self.assertNotIn("page_size", params)
+
+    def test_full_query_with_page_size(self):
+        """Test building a complete query including page_size."""
+        qb = (
+            QueryBuilder("account")
+            .select("name")
+            .filter_eq("statecode", 0)
+            .top(100)
+            .page_size(50)
+        )
+        params = qb.build()
+        self.assertEqual(params["top"], 100)
+        self.assertEqual(params["page_size"], 50)
+
+
+class TestBoundQueryBuilder(unittest.TestCase):
+    """Test cases for the BoundQueryBuilder class."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock query_ops for testing
+        self.mock_query_ops = unittest.mock.MagicMock()
+
+    def test_basic_construction(self):
+        """Test basic BoundQueryBuilder construction."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops)
+        self.assertEqual(bqb.table, "account")
+
+    def test_select(self):
+        """Test select method delegates to internal builder."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops)
+        result = bqb.select("name", "revenue")
+        self.assertIs(result, bqb)
+        params = bqb.build()
+        self.assertEqual(params["select"], ["name", "revenue"])
+
+    def test_filter_eq(self):
+        """Test filter_eq method delegates to internal builder."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops)
+        result = bqb.filter_eq("statecode", 0)
+        self.assertIs(result, bqb)
+        params = bqb.build()
+        self.assertEqual(params["filter"], "statecode eq 0")
+
+    def test_filter_ne(self):
+        """Test filter_ne method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_ne("statecode", 1)
+        self.assertEqual(bqb.build()["filter"], "statecode ne 1")
+
+    def test_filter_gt(self):
+        """Test filter_gt method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_gt("revenue", 1000)
+        self.assertEqual(bqb.build()["filter"], "revenue gt 1000")
+
+    def test_filter_ge(self):
+        """Test filter_ge method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_ge("revenue", 1000)
+        self.assertEqual(bqb.build()["filter"], "revenue ge 1000")
+
+    def test_filter_lt(self):
+        """Test filter_lt method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_lt("revenue", 1000)
+        self.assertEqual(bqb.build()["filter"], "revenue lt 1000")
+
+    def test_filter_le(self):
+        """Test filter_le method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_le("revenue", 1000)
+        self.assertEqual(bqb.build()["filter"], "revenue le 1000")
+
+    def test_filter_contains(self):
+        """Test filter_contains method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_contains("name", "Corp")
+        self.assertEqual(bqb.build()["filter"], "contains(name, 'Corp')")
+
+    def test_filter_startswith(self):
+        """Test filter_startswith method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_startswith("name", "Con")
+        self.assertEqual(bqb.build()["filter"], "startswith(name, 'Con')")
+
+    def test_filter_endswith(self):
+        """Test filter_endswith method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_endswith("name", "Ltd")
+        self.assertEqual(bqb.build()["filter"], "endswith(name, 'Ltd')")
+
+    def test_filter_null(self):
+        """Test filter_null method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_null("telephone1")
+        self.assertEqual(bqb.build()["filter"], "telephone1 eq null")
+
+    def test_filter_not_null(self):
+        """Test filter_not_null method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_not_null("telephone1")
+        self.assertEqual(bqb.build()["filter"], "telephone1 ne null")
+
+    def test_filter_raw(self):
+        """Test filter_raw method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).filter_raw("(a eq 1 or b eq 2)")
+        self.assertEqual(bqb.build()["filter"], "(a eq 1 or b eq 2)")
+
+    def test_order_by(self):
+        """Test order_by method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).order_by("revenue", descending=True)
+        self.assertEqual(bqb.build()["orderby"], ["revenue desc"])
+
+    def test_top(self):
+        """Test top method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).top(10)
+        self.assertEqual(bqb.build()["top"], 10)
+
+    def test_page_size(self):
+        """Test page_size method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).page_size(50)
+        self.assertEqual(bqb.build()["page_size"], 50)
+
+    def test_expand(self):
+        """Test expand method."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops).expand("primarycontactid")
+        self.assertEqual(bqb.build()["expand"], ["primarycontactid"])
+
+    def test_method_chaining(self):
+        """Test that all methods return self for chaining."""
+        bqb = BoundQueryBuilder("account", self.mock_query_ops)
+
+        self.assertIs(bqb.select("name"), bqb)
+        self.assertIs(bqb.filter_eq("a", 1), bqb)
+        self.assertIs(bqb.filter_ne("b", 2), bqb)
+        self.assertIs(bqb.filter_gt("c", 3), bqb)
+        self.assertIs(bqb.filter_ge("d", 4), bqb)
+        self.assertIs(bqb.filter_lt("e", 5), bqb)
+        self.assertIs(bqb.filter_le("f", 6), bqb)
+        self.assertIs(bqb.filter_contains("g", "x"), bqb)
+        self.assertIs(bqb.filter_startswith("h", "y"), bqb)
+        self.assertIs(bqb.filter_endswith("i", "z"), bqb)
+        self.assertIs(bqb.filter_null("j"), bqb)
+        self.assertIs(bqb.filter_not_null("k"), bqb)
+        self.assertIs(bqb.filter_raw("l eq 1"), bqb)
+        self.assertIs(bqb.order_by("m"), bqb)
+        self.assertIs(bqb.expand("n"), bqb)
+        self.assertIs(bqb.top(10), bqb)
+        self.assertIs(bqb.page_size(50), bqb)
+
+    def test_execute_calls_query_ops_get(self):
+        """Test that execute() calls query_ops.get() with correct parameters."""
+        bqb = (
+            BoundQueryBuilder("account", self.mock_query_ops)
+            .select("name", "revenue")
+            .filter_eq("statecode", 0)
+            .order_by("revenue", descending=True)
+            .top(100)
+            .page_size(50)
+            .expand("primarycontactid")
+        )
+
+        bqb.execute()
+
+        self.mock_query_ops.get.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0",
+            orderby=["revenue desc"],
+            top=100,
+            expand=["primarycontactid"],
+            page_size=50,
+        )
+
+    def test_execute_returns_query_ops_result(self):
+        """Test that execute() returns the result from query_ops.get()."""
+        mock_result = [{"name": "Test"}]
+        self.mock_query_ops.get.return_value = mock_result
+
+        bqb = BoundQueryBuilder("account", self.mock_query_ops)
+        result = bqb.execute()
+
+        self.assertEqual(result, mock_result)
 
 
 if __name__ == "__main__":
