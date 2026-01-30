@@ -159,6 +159,7 @@ Types on the same line map to the same exact format under the hood
 - `"float"` or `"double"` - Floating point number
 - `"bool"` or `"boolean"` - Yes/No
 - `"datetime"` or `"date"` - Date
+- `"file"` - File column
 - Enum subclass - Local option set (picklist)
 
 #### Manage Columns
