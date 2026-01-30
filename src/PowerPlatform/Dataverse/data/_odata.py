@@ -901,7 +901,7 @@ class _ODataClient(_ODataFileUpload):
     def _wait_for_attribute_visibility(
         self,
         entity_set: str,
-        attribute_logical_name: str,
+        attribute_name: str,
         delays: tuple = (0, 3, 10, 20),
     ) -> None:
         """Wait for a newly created attribute to become visible in the data API.
@@ -910,7 +910,9 @@ class _ODataClient(_ODataFileUpload):
         it becomes queryable in the data API. This method polls the entity set with
         the attribute in the $select clause until it succeeds or all delays are exhausted.
         """
-        probe_url = f"{self.api}/{entity_set}?$top=1&$select={attribute_logical_name}"
+        # Convert to lowercase logical name for URL
+        logical_name = attribute_name.lower()
+        probe_url = f"{self.api}/{entity_set}?$top=1&$select={logical_name}"
         last_error = None
         total_wait = sum(delays)
 
@@ -926,7 +928,7 @@ class _ODataClient(_ODataFileUpload):
 
         # All retries exhausted - raise with context
         raise RuntimeError(
-            f"Attribute '{attribute_logical_name}' did not become visible in the data API "
+            f"Attribute '{logical_name}' did not become visible in the data API "
             f"after {total_wait} seconds (exhausted all retries)."
         ) from last_error
 

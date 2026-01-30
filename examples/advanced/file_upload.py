@@ -210,9 +210,7 @@ table_schema_name = table_info.get("table_schema_name")
 attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
 name_attr = f"{attr_prefix}_name"
 small_file_attr_schema = f"{attr_prefix}_SmallDocument"  # second file attribute for small single-request demo
-small_file_attr_logical = f"{attr_prefix}_smalldocument"  # expected logical name (lowercase)
 chunk_file_attr_schema = f"{attr_prefix}_ChunkDocument"  # attribute for streaming chunk upload demo
-chunk_file_attr_logical = f"{attr_prefix}_chunkdocument"  # expected logical name
 
 # --------------------------- Record create ---------------------------
 record_id = None
@@ -260,7 +258,7 @@ if run_small:
             lambda: client.upload_file(
                 table_schema_name,
                 record_id,
-                small_file_attr_logical,
+                small_file_attr_schema,
                 str(DATASET_FILE),
                 mode="small",
             )
@@ -268,7 +266,7 @@ if run_small:
         print({"small_upload_completed": True, "small_source_size": small_file_size})
         odata = client._get_odata()
         dl_url_single = (
-            f"{odata.api}/{entity_set}({record_id})/{small_file_attr_logical}/$value"  # raw entity_set URL OK
+            f"{odata.api}/{entity_set}({record_id})/{small_file_attr_schema.lower()}/$value"  # raw entity_set URL OK
         )
         resp_single = backoff(lambda: odata._request("get", dl_url_single))
         content_single = resp_single.content or b""
@@ -294,7 +292,7 @@ if run_small:
             lambda: client.upload_file(
                 table_schema_name,
                 record_id,
-                small_file_attr_logical,
+                small_file_attr_schema,
                 str(replacement_file),
                 mode="small",
             )
@@ -332,7 +330,7 @@ if run_chunk:
             lambda: client.upload_file(
                 table_schema_name,
                 record_id,
-                chunk_file_attr_logical,
+                chunk_file_attr_schema,
                 str(DATASET_FILE),
                 mode="chunk",
             )
@@ -340,7 +338,7 @@ if run_chunk:
         print({"chunk_upload_completed": True})
         odata = client._get_odata()
         dl_url_chunk = (
-            f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_logical}/$value"  # raw entity_set for download
+            f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"  # raw entity_set for download
         )
         resp_chunk = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk = resp_chunk.content or b""
@@ -365,7 +363,7 @@ if run_chunk:
             lambda: client.upload_file(
                 table_schema_name,
                 record_id,
-                chunk_file_attr_logical,
+                chunk_file_attr_schema,
                 str(replacement_file),
                 mode="chunk",
             )

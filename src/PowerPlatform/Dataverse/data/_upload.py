@@ -30,7 +30,7 @@ class _ODataFileUpload:
         record_id : :class:`str`
             GUID of the target record.
         file_name_attribute : :class:`str`
-            Logical name of the file column attribute. If the column doesn't exist, it will be created.
+            Schema name of the file column attribute (e.g., "new_Document"). If the column doesn't exist, it will be created.
         path : :class:`str`
             Local filesystem path to the file.
         mode : :class:`str` | None
@@ -66,13 +66,16 @@ class _ODataFileUpload:
             size = os.path.getsize(path)
             mode = "small" if size < 128 * 1024 * 1024 else "chunk"
 
+        # Convert schema name to lowercase logical name for URL usage
+        logical_name = file_name_attribute.lower()
+
         if mode == "small":
             return self._upload_file_small(
-                entity_set, record_id, file_name_attribute, path, content_type=mime_type, if_none_match=if_none_match
+                entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
             )
         if mode == "chunk":
             return self._upload_file_chunk(
-                entity_set, record_id, file_name_attribute, path, if_none_match=if_none_match
+                entity_set, record_id, logical_name, path, if_none_match=if_none_match
             )
         raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 

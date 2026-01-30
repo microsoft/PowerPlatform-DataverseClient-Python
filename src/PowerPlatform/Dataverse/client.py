@@ -617,7 +617,7 @@ class DataverseClient:
         :type table_schema_name: :class:`str`
         :param record_id: GUID of the target record.
         :type record_id: :class:`str`
-        :param file_name_attribute: Logical name of the file column attribute.
+        :param file_name_attribute: Schema name of the file column attribute (e.g., ``"new_Document"``). If the column doesn't exist, it will be created automatically.
         :type file_name_attribute: :class:`str`
         :param path: Local filesystem path to the file. The stored filename will be
             the basename of this path.
@@ -646,7 +646,7 @@ class DataverseClient:
                 client.upload_file(
                     table_schema_name="account",
                     record_id=account_id,
-                    file_name_attribute="new_contract",
+                    file_name_attribute="new_Contract",
                     path="/path/to/contract.pdf",
                     mime_type="application/pdf"
                 )
@@ -656,7 +656,7 @@ class DataverseClient:
                 client.upload_file(
                     table_schema_name="email",
                     record_id=email_id,
-                    file_name_attribute="new_attachment",
+                    file_name_attribute="new_Attachment",
                     path="/path/to/large_file.zip",
                     mode="auto"
                 )
