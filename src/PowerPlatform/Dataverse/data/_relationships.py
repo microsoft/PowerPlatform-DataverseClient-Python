@@ -27,7 +27,7 @@ class _RelationshipOperationsMixin:
         self,
         lookup,
         relationship,
-        solution_unique_name: Optional[str] = None,
+        solution: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a one-to-many relationship with lookup attribute.
@@ -38,8 +38,8 @@ class _RelationshipOperationsMixin:
         :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
         :param relationship: Relationship metadata (OneToManyRelationshipMetadata instance).
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
-        :param solution_unique_name: Optional solution to add the relationship to.
-        :type solution_unique_name: ``str`` | ``None``
+        :param solution: Optional solution unique name to add the relationship to.
+        :type solution: ``str`` | ``None``
 
         :return: Dictionary with relationship_id, attribute_id, and schema names.
         :rtype: ``dict[str, Any]``
@@ -53,8 +53,8 @@ class _RelationshipOperationsMixin:
         payload["Lookup"] = lookup.to_dict()
 
         headers = self._headers().copy()
-        if solution_unique_name:
-            headers["MSCRM.SolutionUniqueName"] = solution_unique_name
+        if solution:
+            headers["MSCRM.SolutionUniqueName"] = solution
 
         r = self._request("post", url, headers=headers, json=payload)
 
@@ -72,7 +72,7 @@ class _RelationshipOperationsMixin:
     def _create_many_to_many_relationship(
         self,
         relationship,
-        solution_unique_name: Optional[str] = None,
+        solution: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a many-to-many relationship.
@@ -81,8 +81,8 @@ class _RelationshipOperationsMixin:
 
         :param relationship: Relationship metadata (ManyToManyRelationshipMetadata instance).
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
-        :param solution_unique_name: Optional solution to add the relationship to.
-        :type solution_unique_name: ``str`` | ``None``
+        :param solution: Optional solution unique name to add the relationship to.
+        :type solution: ``str`` | ``None``
 
         :return: Dictionary with relationship_id and schema name.
         :rtype: ``dict[str, Any]``
@@ -94,8 +94,8 @@ class _RelationshipOperationsMixin:
         payload = relationship.to_dict()
 
         headers = self._headers().copy()
-        if solution_unique_name:
-            headers["MSCRM.SolutionUniqueName"] = solution_unique_name
+        if solution:
+            headers["MSCRM.SolutionUniqueName"] = solution
 
         r = self._request("post", url, headers=headers, json=payload)
 

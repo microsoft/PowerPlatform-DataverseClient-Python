@@ -711,7 +711,8 @@ class DataverseClient:
         self,
         lookup: LookupAttributeMetadata,
         relationship: OneToManyRelationshipMetadata,
-        solution_unique_name: Optional[str] = None,
+        *,
+        solution: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a one-to-many relationship between tables.
@@ -723,8 +724,8 @@ class DataverseClient:
         :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
         :param relationship: Metadata defining the relationship.
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
-        :param solution_unique_name: Optional solution to add relationship to.
-        :type solution_unique_name: :class:`str` or None
+        :param solution: Optional solution unique name to add relationship to.
+        :type solution: :class:`str` or None
 
         :return: Dictionary with relationship_id, lookup_schema_name, and related metadata.
         :rtype: :class:`dict`
@@ -770,13 +771,14 @@ class DataverseClient:
             return od._create_one_to_many_relationship(
                 lookup,
                 relationship,
-                solution_unique_name,
+                solution,
             )
 
     def create_many_to_many_relationship(
         self,
         relationship: ManyToManyRelationshipMetadata,
-        solution_unique_name: Optional[str] = None,
+        *,
+        solution: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a many-to-many relationship between tables.
@@ -786,8 +788,8 @@ class DataverseClient:
 
         :param relationship: Metadata defining the many-to-many relationship.
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
-        :param solution_unique_name: Optional solution to add relationship to.
-        :type solution_unique_name: :class:`str` or None
+        :param solution: Optional solution unique name to add relationship to.
+        :type solution: :class:`str` or None
 
         :return: Dictionary with relationship_id, relationship_schema_name, and entity names.
         :rtype: :class:`dict`
@@ -814,7 +816,7 @@ class DataverseClient:
         with self._scoped_odata() as od:
             return od._create_many_to_many_relationship(
                 relationship,
-                solution_unique_name,
+                solution,
             )
 
     def delete_relationship(self, relationship_id: str) -> None:
@@ -865,11 +867,12 @@ class DataverseClient:
         referencing_table: str,
         lookup_field_name: str,
         referenced_table: str,
+        *,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
         required: bool = False,
         cascade_delete: str = "RemoveLink",
-        solution_unique_name: Optional[str] = None,
+        solution: Optional[str] = None,
         language_code: int = 1033,
     ) -> Dict[str, Any]:
         """
@@ -893,8 +896,8 @@ class DataverseClient:
         :param cascade_delete: Delete behavior (``"RemoveLink"``, ``"Cascade"``, ``"Restrict"``).
             Defaults to ``"RemoveLink"``.
         :type cascade_delete: :class:`str`
-        :param solution_unique_name: Optional solution to add the relationship to.
-        :type solution_unique_name: :class:`str` or None
+        :param solution: Optional solution unique name to add the relationship to.
+        :type solution: :class:`str` or None
         :param language_code: Language code for labels. Defaults to 1033 (English).
         :type language_code: :class:`int`
 
@@ -945,7 +948,7 @@ class DataverseClient:
             cascade_configuration=CascadeConfiguration(delete=cascade_delete),
         )
 
-        return self.create_one_to_many_relationship(lookup, relationship, solution_unique_name)
+        return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
 
 
 __all__ = ["DataverseClient"]

@@ -131,7 +131,7 @@ class TestCreateOneToManyRelationship(unittest.TestCase):
         }
         self.client._mock_request.return_value = mock_response
 
-        self.client._create_one_to_many_relationship(self.lookup, self.relationship, solution_unique_name="MySolution")
+        self.client._create_one_to_many_relationship(self.lookup, self.relationship, solution="MySolution")
 
         # Verify solution header
         call_args = self.client._mock_request.call_args

@@ -164,7 +164,7 @@ class TestCreateLookupField(unittest.TestCase):
         call_args = self.client.create_one_to_many_relationship.call_args
         lookup = call_args[0][0]
         relationship = call_args[0][1]
-        solution = call_args[0][2]
+        solution = call_args.kwargs.get("solution")
 
         # Verify lookup metadata
         self.assertEqual(lookup.schema_name, "new_AccountId")
@@ -175,7 +175,7 @@ class TestCreateLookupField(unittest.TestCase):
         self.assertEqual(relationship.referencing_entity, "new_order")
         self.assertEqual(relationship.referenced_attribute, "accountid")
 
-        # Verify no solution
+        # Verify no solution (keyword-only, defaults to None)
         self.assertIsNone(solution)
 
     def test_lookup_with_display_name(self):
@@ -269,17 +269,17 @@ class TestCreateLookupField(unittest.TestCase):
         cascade_dict = relationship.cascade_configuration.to_dict()
         self.assertEqual(cascade_dict["Delete"], "Cascade")
 
-    def test_solution_unique_name_passed(self):
-        """Test that solution_unique_name is passed through."""
+    def test_solution_passed(self):
+        """Test that solution is passed through."""
         self.client.create_lookup_field(
             referencing_table="new_order",
             lookup_field_name="new_AccountId",
             referenced_table="account",
-            solution_unique_name="MySolution",
+            solution="MySolution",
         )
 
         call_args = self.client.create_one_to_many_relationship.call_args
-        solution = call_args[0][2]
+        solution = call_args.kwargs.get("solution")
 
         self.assertEqual(solution, "MySolution")
 
