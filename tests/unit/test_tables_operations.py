@@ -129,7 +129,7 @@ class TestTableOperations(unittest.TestCase):
         self.assertEqual(response.telemetry["client_request_id"], "delete-123")
 
     def test_tables_info_found(self):
-        """Test tables.info() when table exists."""
+        """Test tables.get() when table exists."""
         expected_result = {
             "table_schema_name": "account",
             "table_logical_name": "account",
@@ -139,28 +139,28 @@ class TestTableOperations(unittest.TestCase):
         mock_metadata = RequestTelemetryData(client_request_id="test-info")
         self.client._odata._get_table_info.return_value = (expected_result, mock_metadata)
 
-        result = self.client.tables.info("account")
+        result = self.client.tables.get("account")
 
         self.client._odata._get_table_info.assert_called_once_with("account")
         self.assertEqual(result["table_logical_name"], "account")
         self.assertEqual(result["entity_set_name"], "accounts")
 
     def test_tables_info_not_found(self):
-        """Test tables.info() when table doesn't exist."""
+        """Test tables.get() when table doesn't exist."""
         mock_metadata = RequestTelemetryData()
         self.client._odata._get_table_info.return_value = (None, mock_metadata)
 
-        result = self.client.tables.info("nonexistent_table")
+        result = self.client.tables.get("nonexistent_table")
 
         self.assertIsNone(result.value)
 
     def test_tables_info_with_telemetry(self):
-        """Test tables.info() with telemetry access."""
+        """Test tables.get() with telemetry access."""
         expected_result = {"table_schema_name": "account"}
         mock_metadata = RequestTelemetryData(client_request_id="info-123")
         self.client._odata._get_table_info.return_value = (expected_result, mock_metadata)
 
-        result = self.client.tables.info("account")
+        result = self.client.tables.get("account")
 
         response = result.with_response_details()
         self.assertEqual(response.telemetry["client_request_id"], "info-123")

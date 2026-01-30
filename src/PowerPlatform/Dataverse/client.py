@@ -88,7 +88,7 @@ class DataverseClient:
             results = client.query.sql("SELECT name FROM account")
 
             # Table operations via tables namespace
-            info = client.tables.info("account")
+            info = client.tables.get("account")
             tables = client.tables.list()
     """
 
@@ -183,7 +183,11 @@ class DataverseClient:
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.records.create(table_schema_name, records)
+        result = self.records.create(table_schema_name, records)
+        # For backward compatibility, wrap single record ID in a list
+        if isinstance(records, dict):
+            return OperationResult([result.value], result._telemetry_data)
+        return result
 
     def update(
         self, table_schema_name: str, ids: Union[str, List[str]], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
@@ -469,7 +473,7 @@ class DataverseClient:
         Get basic metadata for a table if it exists.
 
         .. deprecated::
-            Use ``client.tables.info()`` instead.
+            Use ``client.tables.get()`` instead.
 
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"`` or ``"account"``).
         :type table_schema_name: :class:`str`
@@ -493,11 +497,11 @@ class DataverseClient:
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         warnings.warn(
-            "DataverseClient.get_table_info() is deprecated. Use client.tables.info() instead.",
+            "DataverseClient.get_table_info() is deprecated. Use client.tables.get() instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.tables.info(table_schema_name)
+        return self.tables.get(table_schema_name)
 
     def create_table(
         self,

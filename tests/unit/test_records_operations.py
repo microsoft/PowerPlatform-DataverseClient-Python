@@ -33,7 +33,7 @@ class TestRecordOperations(unittest.TestCase):
         self.assertEqual(self.client.records._client, self.client)
 
     def test_records_create_single(self):
-        """Test records.create() with a single record."""
+        """Test records.create() with a single record returns single ID."""
         # Setup mock return values
         mock_metadata = RequestTelemetryData(client_request_id="test-123")
         self.client._odata._create.return_value = ("00000000-0000-0000-0000-000000000000", mock_metadata)
@@ -42,9 +42,10 @@ class TestRecordOperations(unittest.TestCase):
         # Execute test
         result = self.client.records.create("account", {"name": "Contoso Ltd"})
 
-        # Verify
+        # Verify - single record returns single ID string, not list
         self.client._odata._create.assert_called_once_with("accounts", "account", {"name": "Contoso Ltd"})
-        self.assertEqual(result[0], "00000000-0000-0000-0000-000000000000")
+        self.assertEqual(result.value, "00000000-0000-0000-0000-000000000000")
+        self.assertIsInstance(result.value, str)
         # Verify telemetry access
         response = result.with_response_details()
         self.assertEqual(response.telemetry["client_request_id"], "test-123")

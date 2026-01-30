@@ -35,7 +35,7 @@ class TableOperations:
 
         Inspect table metadata::
 
-            info = client.tables.info("account")
+            info = client.tables.get("account")
             if info:
                 print(f"Entity set: {info['entity_set_name']}")
 
@@ -143,7 +143,7 @@ class TableOperations:
             _, metadata = od._delete_table(table)
             return OperationResult(None, metadata)
 
-    def info(self, table: str) -> OperationResult[Optional[Dict[str, Any]]]:
+    def get(self, table: str) -> OperationResult[Optional[Dict[str, Any]]]:
         """
         Get table metadata.
 
@@ -155,14 +155,14 @@ class TableOperations:
         Example:
             Retrieve table metadata::
 
-                info = client.tables.info("account")
+                info = client.tables.get("account")
                 if info:
                     print(f"Logical name: {info['table_logical_name']}")
                     print(f"Entity set: {info['entity_set_name']}")
 
             Access telemetry data::
 
-                response = client.tables.info("account").with_response_details()
+                response = client.tables.get("account").with_response_details()
                 print(f"Request ID: {response.telemetry['client_request_id']}")
         """
         with self._client._scoped_odata() as od:

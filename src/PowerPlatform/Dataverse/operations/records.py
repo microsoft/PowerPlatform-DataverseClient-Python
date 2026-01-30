@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union, List, TYPE_CHECKING
+from typing import Any, Dict, Optional, Union, List, TYPE_CHECKING, overload
 
 from ..core.results import OperationResult, RequestTelemetryData
 
@@ -23,8 +23,8 @@ class RecordOperations:
     Example:
         Single record operations::
 
-            # Create single record
-            ids = client.records.create("account", {"name": "Contoso"})
+            # Create single record - returns single ID
+            record_id = client.records.create("account", {"name": "Contoso"})
 
             # Update single record
             client.records.update("account", record_id, {"name": "Updated"})
@@ -67,24 +67,40 @@ class RecordOperations:
         """
         self._client = client
 
+    @overload
+    def create(
+        self,
+        table: str,
+        data: Dict[str, Any],
+    ) -> OperationResult[str]: ...
+
+    @overload
+    def create(
+        self,
+        table: str,
+        data: List[Dict[str, Any]],
+    ) -> OperationResult[List[str]]: ...
+
     def create(
         self,
         table: str,
         data: Union[Dict[str, Any], List[Dict[str, Any]]],
-    ) -> OperationResult[List[str]]:
+    ) -> Union[OperationResult[str], OperationResult[List[str]]]:
         """
         Create one or more records.
 
         Automatically detects single vs bulk based on input type:
-        - dict: Creates single record
-        - list[dict]: Creates multiple records using batch API
+        - dict: Creates single record, returns single ID
+        - list[dict]: Creates multiple records using batch API, returns list of IDs
 
         :param table: Table schema name (e.g., "account", "new_MyTable").
         :type table: str
         :param data: Single record dict or list of record dicts.
         :type data: dict or list[dict]
-        :return: OperationResult containing list of created record GUIDs.
-        :rtype: OperationResult[List[str]]
+        :return: OperationResult containing the created record GUID(s).
+            - Single record: OperationResult[str]
+            - Bulk records: OperationResult[List[str]]
+        :rtype: OperationResult[str] or OperationResult[List[str]]
 
         :raises TypeError: If ``data`` is not a dict or list[dict], or if the internal
             client returns an unexpected type.
@@ -92,8 +108,8 @@ class RecordOperations:
         Example:
             Single record::
 
-                ids = client.records.create("account", {"name": "Contoso"})
-                print(ids[0])  # GUID string
+                record_id = client.records.create("account", {"name": "Contoso"})
+                print(record_id)  # GUID string
 
             Multiple records::
 
@@ -115,7 +131,7 @@ class RecordOperations:
                 rid, metadata = od._create(entity_set, table, data)
                 if not isinstance(rid, str):
                     raise TypeError("_create (single) did not return GUID string")
-                return OperationResult([rid], metadata)
+                return OperationResult(rid, metadata)
             if isinstance(data, list):
                 ids, metadata = od._create_multiple(entity_set, table, data)
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):

@@ -110,7 +110,7 @@ class TestDeprecationWarnings(unittest.TestCase):
 
             self.assertEqual(len(w), 1)
             self.assertTrue(issubclass(w[0].category, DeprecationWarning))
-            self.assertIn("client.tables.info()", str(w[0].message))
+            self.assertIn("client.tables.get()", str(w[0].message))
 
     def test_create_table_deprecation_warning(self):
         """Test that client.create_table() emits DeprecationWarning."""
@@ -174,7 +174,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.client._odata = MagicMock()
 
     def test_create_single_backward_compatible(self):
-        """Test legacy create() returns same result as records.create()."""
+        """Test legacy create() returns list for backward compatibility."""
         mock_metadata = RequestTelemetryData(client_request_id="test-123")
         self.client._odata._create.return_value = ("guid-abc", mock_metadata)
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
@@ -189,9 +189,13 @@ class TestBackwardCompatibility(unittest.TestCase):
 
         namespace_result = self.client.records.create("account", {"name": "Test"})
 
-        # Results should be equivalent
-        self.assertEqual(legacy_result[0], namespace_result[0])
-        self.assertEqual(legacy_result.value, namespace_result.value)
+        # Legacy returns list for backward compatibility, namespace returns single string
+        self.assertIsInstance(legacy_result.value, list)
+        self.assertEqual(legacy_result[0], "guid-abc")
+        self.assertIsInstance(namespace_result.value, str)
+        self.assertEqual(namespace_result.value, "guid-abc")
+        # Both represent the same GUID
+        self.assertEqual(legacy_result[0], namespace_result.value)
 
     def test_create_multiple_backward_compatible(self):
         """Test legacy create() with list returns same result as records.create()."""
@@ -312,7 +316,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertEqual(legacy_result.value, namespace_result.value)
 
     def test_get_table_info_backward_compatible(self):
-        """Test legacy get_table_info() returns same result as tables.info()."""
+        """Test legacy get_table_info() returns same result as tables.get()."""
         expected_info = {"table_schema_name": "account"}
         mock_metadata = RequestTelemetryData(client_request_id="test-info")
         self.client._odata._get_table_info.return_value = (expected_info, mock_metadata)
@@ -324,7 +328,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.client._odata._get_table_info.reset_mock()
         self.client._odata._get_table_info.return_value = (expected_info, mock_metadata)
 
-        namespace_result = self.client.tables.info("account")
+        namespace_result = self.client.tables.get("account")
 
         self.assertEqual(legacy_result.value, namespace_result.value)
 
