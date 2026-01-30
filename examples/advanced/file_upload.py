@@ -183,7 +183,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
 
 
 # --------------------------- Table ensure ---------------------------
-TABLE_SCHEMA_NAME = "new_FileSample111"
+TABLE_SCHEMA_NAME = "new_FileSample"
 
 
 def ensure_table():
