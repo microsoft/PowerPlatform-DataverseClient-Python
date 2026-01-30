@@ -908,7 +908,6 @@ class _ODataClient(_ODataFileUpload):
         it becomes queryable in the data API. This method polls the entity set with
         the attribute in the $select clause until it succeeds or all delays are exhausted.
         """
-        import time
 
         probe_url = f"{self.api}/{entity_set}?$top=1&$select={attribute_logical_name}"
         for delay in delays:
