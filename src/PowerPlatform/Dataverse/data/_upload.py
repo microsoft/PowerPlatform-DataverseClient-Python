@@ -74,9 +74,7 @@ class _ODataFileUpload:
                 entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
             )
         if mode == "chunk":
-            return self._upload_file_chunk(
-                entity_set, record_id, logical_name, path, if_none_match=if_none_match
-            )
+            return self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
         raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 
     def _upload_file_small(
