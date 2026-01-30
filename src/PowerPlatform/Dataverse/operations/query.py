@@ -11,7 +11,7 @@ import warnings
 
 from ..core.results import OperationResult
 from ..models.record import Record
-from ..models.query_builder import QueryBuilder, BoundQueryBuilder
+from ..models.query_builder import QueryBuilder
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -180,17 +180,17 @@ class QueryOperations:
             records = [Record.from_api_response("", record_data) for record_data in result]
             return OperationResult(records, metadata)
 
-    def builder(self, table: str) -> BoundQueryBuilder:
+    def builder(self, table: str) -> QueryBuilder:
         """
         Create a fluent query builder for the specified table.
 
-        Returns a BoundQueryBuilder that can be chained with filter methods
+        Returns a QueryBuilder that can be chained with filter methods
         and executed directly via ``.execute()``.
 
         :param table: Table schema name.
         :type table: str
-        :return: BoundQueryBuilder instance for fluent query construction and execution.
-        :rtype: BoundQueryBuilder
+        :return: QueryBuilder instance for fluent query construction and execution.
+        :rtype: QueryBuilder
 
         Example:
             Build and execute a query fluently::
@@ -206,7 +206,9 @@ class QueryOperations:
                     for record in page:
                         print(record["name"])
         """
-        return BoundQueryBuilder(table, self)
+        qb = QueryBuilder(table)
+        qb._query_ops = self
+        return qb
 
     def execute(
         self,

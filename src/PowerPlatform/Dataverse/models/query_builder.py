@@ -11,7 +11,11 @@ against Dataverse tables.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Iterable, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core.results import OperationResult
+    from .record import Record
 
 
 @dataclass
@@ -55,6 +59,7 @@ class QueryBuilder:
     _expand: List[str] = field(default_factory=list)
     _top: Optional[int] = None
     _page_size: Optional[int] = None
+    _query_ops: Any = field(default=None, compare=False, repr=False)
 
     def select(self, *columns: str) -> "QueryBuilder":
         """
@@ -381,140 +386,19 @@ class QueryBuilder:
             params["page_size"] = self._page_size
         return params
 
-
-class BoundQueryBuilder:
-    """
-    A QueryBuilder bound to a client for execution.
-
-    Created via ``client.query.builder(table)``. Provides the same fluent
-    interface as QueryBuilder, plus an ``execute()`` method to run the query.
-
-    Example:
-        Fully fluent query execution::
-
-            for page in (client.query.builder("account")
-                         .select("name", "revenue")
-                         .filter_eq("statecode", 0)
-                         .order_by("revenue", descending=True)
-                         .top(100)
-                         .page_size(50)
-                         .execute()):
-                for record in page:
-                    print(f"{record['name']}: ${record['revenue']}")
-    """
-
-    def __init__(self, table: str, query_ops: Any) -> None:
-        """
-        Initialize a BoundQueryBuilder.
-
-        :param table: Table schema name.
-        :param query_ops: QueryOperations instance for execution.
-        """
-        self._builder = QueryBuilder(table)
-        self._query_ops = query_ops
-
-    @property
-    def table(self) -> str:
-        """Return the table name."""
-        return self._builder.table
-
-    def select(self, *columns: str) -> "BoundQueryBuilder":
-        """Select specific columns to retrieve."""
-        self._builder.select(*columns)
-        return self
-
-    def filter_eq(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add equality filter (column eq value)."""
-        self._builder.filter_eq(column, value)
-        return self
-
-    def filter_ne(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add not-equal filter (column ne value)."""
-        self._builder.filter_ne(column, value)
-        return self
-
-    def filter_gt(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add greater-than filter (column gt value)."""
-        self._builder.filter_gt(column, value)
-        return self
-
-    def filter_ge(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add greater-than-or-equal filter (column ge value)."""
-        self._builder.filter_ge(column, value)
-        return self
-
-    def filter_lt(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add less-than filter (column lt value)."""
-        self._builder.filter_lt(column, value)
-        return self
-
-    def filter_le(self, column: str, value: Any) -> "BoundQueryBuilder":
-        """Add less-than-or-equal filter (column le value)."""
-        self._builder.filter_le(column, value)
-        return self
-
-    def filter_contains(self, column: str, value: str) -> "BoundQueryBuilder":
-        """Add contains filter (contains(column, value))."""
-        self._builder.filter_contains(column, value)
-        return self
-
-    def filter_startswith(self, column: str, value: str) -> "BoundQueryBuilder":
-        """Add startswith filter (startswith(column, value))."""
-        self._builder.filter_startswith(column, value)
-        return self
-
-    def filter_endswith(self, column: str, value: str) -> "BoundQueryBuilder":
-        """Add endswith filter (endswith(column, value))."""
-        self._builder.filter_endswith(column, value)
-        return self
-
-    def filter_null(self, column: str) -> "BoundQueryBuilder":
-        """Add null check filter (column eq null)."""
-        self._builder.filter_null(column)
-        return self
-
-    def filter_not_null(self, column: str) -> "BoundQueryBuilder":
-        """Add not-null check filter (column ne null)."""
-        self._builder.filter_not_null(column)
-        return self
-
-    def filter_raw(self, filter_string: str) -> "BoundQueryBuilder":
-        """Add a raw OData filter string."""
-        self._builder.filter_raw(filter_string)
-        return self
-
-    def order_by(self, column: str, descending: bool = False) -> "BoundQueryBuilder":
-        """Add sorting order."""
-        self._builder.order_by(column, descending)
-        return self
-
-    def top(self, count: int) -> "BoundQueryBuilder":
-        """Limit the total number of results."""
-        self._builder.top(count)
-        return self
-
-    def page_size(self, size: int) -> "BoundQueryBuilder":
-        """Set the number of records per page."""
-        self._builder.page_size(size)
-        return self
-
-    def expand(self, *relations: str) -> "BoundQueryBuilder":
-        """Expand navigation properties."""
-        self._builder.expand(*relations)
-        return self
-
-    def build(self) -> dict:
-        """Build query parameters dictionary."""
-        return self._builder.build()
-
-    def execute(self) -> Any:
+    def execute(self) -> "Iterable[OperationResult[List[Record]]]":
         """
         Execute the query and return an iterator of record pages.
+
+        This method is only available when the QueryBuilder was created via
+        ``client.query.builder(table)``. Standalone QueryBuilder instances
+        must use ``client.query.execute(query)`` instead.
 
         Returns a generator yielding pages of records. Each page is an
         OperationResult containing a list of Record objects.
 
         :return: Generator yielding OperationResult pages of Record objects.
+        :raises RuntimeError: If the query was not created via client.query.builder().
 
         Example::
 
@@ -530,16 +414,20 @@ class BoundQueryBuilder:
                 response = page.with_response_details()
                 print(f"Request ID: {response.telemetry['service_request_id']}")
         """
-        params = self._builder.build()
+        if self._query_ops is None:
+            raise RuntimeError(
+                "Cannot execute: query was not created via client.query.builder(). "
+                "Use client.query.execute(query) instead."
+            )
         return self._query_ops.get(
-            params["table"],
-            select=params.get("select"),
-            filter=params.get("filter"),
-            orderby=params.get("orderby"),
-            top=params.get("top"),
-            expand=params.get("expand"),
-            page_size=params.get("page_size"),
+            self.table,
+            select=self._select if self._select else None,
+            filter=" and ".join(self._filter) if self._filter else None,
+            orderby=list(self._orderby) if self._orderby else None,
+            top=self._top,
+            expand=list(self._expand) if self._expand else None,
+            page_size=self._page_size,
         )
 
 
-__all__ = ["QueryBuilder", "BoundQueryBuilder"]
+__all__ = ["QueryBuilder"]

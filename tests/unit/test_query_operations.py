@@ -11,7 +11,7 @@ from azure.core.credentials import TokenCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.results import RequestTelemetryData
 from PowerPlatform.Dataverse.models.record import Record
-from PowerPlatform.Dataverse.models.query_builder import QueryBuilder, BoundQueryBuilder
+from PowerPlatform.Dataverse.models.query_builder import QueryBuilder
 
 
 class TestQueryOperations(unittest.TestCase):
@@ -228,10 +228,11 @@ class TestQueryOperations(unittest.TestCase):
     # QueryBuilder integration tests
 
     def test_query_builder_factory(self):
-        """Test that query.builder() returns a BoundQueryBuilder instance."""
+        """Test that query.builder() returns a QueryBuilder with _query_ops set."""
         qb = self.client.query.builder("account")
-        self.assertIsInstance(qb, BoundQueryBuilder)
+        self.assertIsInstance(qb, QueryBuilder)
         self.assertEqual(qb.table, "account")
+        self.assertIsNotNone(qb._query_ops)
 
     def test_query_execute_basic(self):
         """Test query.execute() with a QueryBuilder."""
@@ -326,8 +327,8 @@ class TestQueryOperations(unittest.TestCase):
         self.assertEqual(records[0]["name"], "Big Corp")
         self.assertEqual(records[1]["name"], "Mega Inc")
 
-    def test_bound_query_builder_execute(self):
-        """Test BoundQueryBuilder.execute() - the recommended fluent API."""
+    def test_query_builder_execute(self):
+        """Test QueryBuilder.execute() - the recommended fluent API."""
         expected_page = [
             {"accountid": "1", "name": "Big Corp", "revenue": 5000000},
             {"accountid": "2", "name": "Mega Inc", "revenue": 4000000},
