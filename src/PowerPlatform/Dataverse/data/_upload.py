@@ -13,7 +13,7 @@ class _ODataFileUpload:
 
     def _upload_file(
         self,
-        entity_set: str,
+        table_schema_name: str,
         record_id: str,
         file_name_attribute: str,
         path: str,
@@ -25,12 +25,12 @@ class _ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : :class:`str`
-            Target entity set (plural logical name), e.g. "accounts".
+        table_schema_name : :class:`str`
+            Table schema name (singular logical name), e.g. "account".
         record_id : :class:`str`
             GUID of the target record.
         file_name_attribute : :class:`str`
-            Logical name of the file column attribute
+            Logical name of the file column attribute. If the column doesn't exist, it will be created.
         path : :class:`str`
             Local filesystem path to the file.
         mode : :class:`str` | None
@@ -41,6 +41,25 @@ class _ODataFileUpload:
             When True (default) only succeeds if column empty. When False overwrites (If-Match: *).
         """
         import os
+
+        # Resolve entity set from table schema name
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+
+        # Check if the file column exists, create it if it doesn't
+        entity_metadata = self._get_entity_by_table_schema_name(table_schema_name)
+        if entity_metadata:
+            metadata_id = entity_metadata.get("MetadataId")
+            if metadata_id:
+                attr_metadata = self._get_attribute_metadata(metadata_id, file_name_attribute)
+                if not attr_metadata:
+                    # Attribute doesn't exist, create it
+                    self._create_columns(table_schema_name, {file_name_attribute: "file"})
+                    # Wait for the attribute to become visible in the data API
+                    if not self._wait_for_attribute_visibility(entity_set, file_name_attribute):
+                        raise RuntimeError(
+                            f"Attribute '{file_name_attribute}' was created but did not become visible "
+                            f"in the data API after 33 seconds (max retry timeout). The upload cannot proceed. Retry upload later might help."
+                        )
 
         mode = (mode or "auto").lower()
 

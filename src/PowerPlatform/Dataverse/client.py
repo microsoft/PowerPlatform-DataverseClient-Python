@@ -661,9 +661,8 @@ class DataverseClient:
                 )
         """
         with self._scoped_odata() as od:
-            entity_set = od._entity_set_from_schema_name(table_schema_name)
             od._upload_file(
-                entity_set,
+                table_schema_name,
                 record_id,
                 file_name_attribute,
                 path,

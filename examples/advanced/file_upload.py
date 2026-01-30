@@ -48,11 +48,11 @@ mode_int = int(mode_raw)
 run_small = mode_int in (1, 3)
 run_chunk = mode_int in (2, 3)
 
-delete_table_choice = input("Delete the table at end? (y/N): ").strip() or "n"
-cleanup_table = delete_table_choice.lower() in ("y", "yes", "true", "1")
-
 delete_record_choice = input("Delete the created record at end? (Y/n): ").strip() or "y"
 cleanup_record = delete_record_choice.lower() in ("y", "yes", "true", "1")
+
+delete_table_choice = input("Delete the table at end? (y/N): ").strip() or "n"
+cleanup_table = delete_table_choice.lower() in ("y", "yes", "true", "1")
 
 credential = InteractiveBrowserCredential()
 client = DataverseClient(base_url=base_url, credential=credential)
@@ -183,7 +183,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
 
 
 # --------------------------- Table ensure ---------------------------
-TABLE_SCHEMA_NAME = "new_FileSample"
+TABLE_SCHEMA_NAME = "new_FileSample111"
 
 
 def ensure_table():
@@ -192,7 +192,7 @@ def ensure_table():
     if existing:
         print({"table": TABLE_SCHEMA_NAME, "existed": True})
         return existing
-    log("client.create_table('new_FileSample', schema={'new_Title': 'string'})")
+    log(f"client.create_table('{TABLE_SCHEMA_NAME}', schema={{'new_Title': 'string'}})")
     info = backoff(lambda: client.create_table(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
     print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get("metadata_id")})
     return info
@@ -213,99 +213,6 @@ small_file_attr_schema = f"{attr_prefix}_SmallDocument"  # second file attribute
 small_file_attr_logical = f"{attr_prefix}_smalldocument"  # expected logical name (lowercase)
 chunk_file_attr_schema = f"{attr_prefix}_ChunkDocument"  # attribute for streaming chunk upload demo
 chunk_file_attr_logical = f"{attr_prefix}_chunkdocument"  # expected logical name
-
-
-def ensure_file_attribute_generic(schema_name: str, label: str, key_prefix: str):
-    meta_id = table_info.get("metadata_id")
-    if not meta_id:
-        print({f"{key_prefix}_attribute": "skipped", "reason": "missing metadata_id"})
-        return False
-    odata = client._get_odata()
-    # Probe existing
-    try:
-        url = (
-            f"{odata.api}/EntityDefinitions({meta_id})/Attributes?$select=SchemaName&$filter="
-            f"SchemaName eq '{schema_name}'"
-        )
-        r = backoff(lambda: odata._request("get", url), delays=ATTRIBUTE_VISIBILITY_DELAYS)
-        val = []
-        try:
-            val = r.json().get("value", [])
-        except Exception:  # noqa: BLE001
-            pass
-        if any(a.get("SchemaName") == schema_name for a in val if isinstance(a, dict)):
-            return True
-    except Exception as ex:  # noqa: BLE001
-        print({f"{key_prefix}_file_attr_probe_error": str(ex)})
-
-    payload = {
-        "@odata.type": "Microsoft.Dynamics.CRM.FileAttributeMetadata",
-        "SchemaName": schema_name,
-        "DisplayName": {
-            "@odata.type": "Microsoft.Dynamics.CRM.Label",
-            "LocalizedLabels": [
-                {
-                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-                    "Label": label,
-                    "LanguageCode": int(client._config.language_code),
-                }
-            ],
-        },
-        "RequiredLevel": {"Value": "None"},
-    }
-    try:
-        url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
-        backoff(lambda: odata._request("post", url, json=payload), delays=ATTRIBUTE_VISIBILITY_DELAYS)
-        print({f"{key_prefix}_file_attribute_created": True})
-        time.sleep(2)
-        return True
-    except Exception as ex:  # noqa: BLE001
-        resp = getattr(ex, "response", None)
-        body_l = None
-        try:
-            body_l = resp.text.lower() if getattr(resp, "text", None) else None
-        except Exception:  # noqa: BLE001
-            pass
-        if body_l and ("duplicate" in body_l or "exists" in body_l):
-            print({f"{key_prefix}_file_attribute_created": False, "reason": "already exists (race)"})
-            return True
-        print({f"{key_prefix}_file_attribute_created": False, "error": str(ex)})
-        return False
-
-
-def wait_for_attribute_visibility(logical_name: str, label: str):
-    if not logical_name or not entity_set:
-        return False
-    odata = client._get_odata()
-    probe_url = f"{odata.api}/{entity_set}?$top=1&$select={logical_name}"
-    waited = 0
-    last_error = None
-    for delay in ATTRIBUTE_VISIBILITY_DELAYS:
-        if delay:
-            time.sleep(delay)
-            waited += delay
-        try:
-            resp = odata._request("get", probe_url)
-            try:
-                resp.json()
-            except Exception:  # noqa: BLE001
-                pass
-            if waited:
-                print({f"{label}_attribute_visible_wait_seconds": waited})
-            return True
-        except Exception as ex:  # noqa: BLE001
-            last_error = ex
-            continue
-    raise RuntimeError(f"Timed out waiting for attribute '{logical_name}' to materialize") from last_error
-
-
-# Conditionally ensure each attribute only if its mode is selected
-if run_small:
-    ensure_file_attribute_generic(small_file_attr_schema, "Small Document", "small")
-    wait_for_attribute_visibility(small_file_attr_logical, "small")
-if run_chunk:
-    ensure_file_attribute_generic(chunk_file_attr_schema, "Chunk Document", "chunk")
-    wait_for_attribute_visibility(chunk_file_attr_logical, "chunk")
 
 # --------------------------- Record create ---------------------------
 record_id = None

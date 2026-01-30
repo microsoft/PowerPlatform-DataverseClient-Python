@@ -896,6 +896,31 @@ class _ODataClient(_ODataFileUpload):
                 return item
         return None
 
+    def _wait_for_attribute_visibility(
+        self,
+        entity_set: str,
+        attribute_logical_name: str,
+        delays: tuple = (0, 3, 10, 20),
+    ) -> bool:
+        """Wait for a newly created attribute to become visible in the data API.
+
+        After creating an attribute via the metadata API, there can be a delay before
+        it becomes queryable in the data API. This method polls the entity set with
+        the attribute in the $select clause until it succeeds or all delays are exhausted.
+        """
+        import time
+
+        probe_url = f"{self.api}/{entity_set}?$top=1&$select={attribute_logical_name}"
+        for delay in delays:
+            if delay:
+                time.sleep(delay)
+            try:
+                self._request("get", probe_url)
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
     # ---------------------- Enum / Option Set helpers ------------------
     def _build_localizedlabels_payload(self, translations: Dict[int, str]) -> Dict[str, Any]:
         """Build a Dataverse Label object from {<language_code>: <text>} entries.
@@ -1238,6 +1263,13 @@ class _ODataClient(_ODataFileUpload):
                     },
                     "IsGlobal": False,
                 },
+            }
+        if dtype_l == "file":
+            return {
+                "@odata.type": "Microsoft.Dynamics.CRM.FileAttributeMetadata",
+                "SchemaName": column_schema_name,
+                "DisplayName": self._label(label),
+                "RequiredLevel": {"Value": "None"},
             }
         return None
 
