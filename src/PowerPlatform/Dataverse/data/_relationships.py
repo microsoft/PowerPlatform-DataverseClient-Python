@@ -32,8 +32,7 @@ class _RelationshipOperationsMixin:
         """
         Create a one-to-many relationship with lookup attribute.
 
-        This mirrors the CreateOneToManyRequest from the .NET SDK by posting
-        to /RelationshipDefinitions with OneToManyRelationshipMetadata.
+        Posts to /RelationshipDefinitions with OneToManyRelationshipMetadata.
 
         :param lookup: Lookup attribute metadata (LookupAttributeMetadata instance).
         :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
@@ -78,8 +77,7 @@ class _RelationshipOperationsMixin:
         """
         Create a many-to-many relationship.
 
-        This mirrors the CreateManyToManyRequest from the .NET SDK by posting
-        to /RelationshipDefinitions with ManyToManyRelationshipMetadata.
+        Posts to /RelationshipDefinitions with ManyToManyRelationshipMetadata.
 
         :param relationship: Relationship metadata (ManyToManyRelationshipMetadata instance).
         :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata

@@ -15,6 +15,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
+from ..common.constants import (
+    ODATA_TYPE_LOCALIZED_LABEL,
+    ODATA_TYPE_LABEL,
+    ODATA_TYPE_LOOKUP_ATTRIBUTE,
+    ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
+    ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
+)
+
 
 @dataclass
 class LocalizedLabel:
@@ -35,9 +43,21 @@ class LocalizedLabel:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> label = LocalizedLabel(label="Account", language_code=1033)
+            >>> label.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.LocalizedLabel',
+                'Label': 'Account',
+                'LanguageCode': 1033
+            }
+        """
         result = {
-            "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+            "@odata.type": ODATA_TYPE_LOCALIZED_LABEL,
             "Label": self.label,
             "LanguageCode": self.language_code,
         }
@@ -65,9 +85,23 @@ class Label:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> label = Label(localized_labels=[LocalizedLabel("Account", 1033)])
+            >>> label.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.Label',
+                'LocalizedLabels': [
+                    {'@odata.type': '...', 'Label': 'Account', 'LanguageCode': 1033}
+                ],
+                'UserLocalizedLabel': {'@odata.type': '...', 'Label': 'Account', ...}
+            }
+        """
         result = {
-            "@odata.type": "Microsoft.Dynamics.CRM.Label",
+            "@odata.type": ODATA_TYPE_LABEL,
             "LocalizedLabels": [ll.to_dict() for ll in self.localized_labels],
         }
         # Use explicit user_localized_label, or default to first localized label
@@ -118,7 +152,22 @@ class CascadeConfiguration:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> config = CascadeConfiguration(delete="Cascade", assign="NoCascade")
+            >>> config.to_dict()
+            {
+                'Assign': 'NoCascade',
+                'Delete': 'Cascade',
+                'Merge': 'NoCascade',
+                'Reparent': 'NoCascade',
+                'Share': 'NoCascade',
+                'Unshare': 'NoCascade'
+            }
+        """
         result = {
             "Assign": self.assign,
             "Delete": self.delete,
@@ -163,7 +212,15 @@ class AssociatedMenuConfiguration:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> menu = AssociatedMenuConfiguration(behavior="UseLabel", group="Details")
+            >>> menu.to_dict()
+            {'Behavior': 'UseLabel', 'Group': 'Details', 'Order': 10000}
+        """
         result = {
             "Behavior": self.behavior,
             "Group": self.group,
@@ -209,9 +266,27 @@ class LookupAttributeMetadata:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> lookup = LookupAttributeMetadata(
+            ...     schema_name="new_AccountId",
+            ...     display_name=Label([LocalizedLabel("Account", 1033)])
+            ... )
+            >>> lookup.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.LookupAttributeMetadata',
+                'SchemaName': 'new_AccountId',
+                'AttributeType': 'Lookup',
+                'AttributeTypeName': {'Value': 'LookupType'},
+                'DisplayName': {...},
+                'RequiredLevel': {'Value': 'None', 'CanBeChanged': True, ...}
+            }
+        """
         result = {
-            "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
+            "@odata.type": ODATA_TYPE_LOOKUP_ATTRIBUTE,
             "SchemaName": self.schema_name,
             "AttributeType": "Lookup",
             "AttributeTypeName": {"Value": "LookupType"},
@@ -265,9 +340,29 @@ class OneToManyRelationshipMetadata:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> rel = OneToManyRelationshipMetadata(
+            ...     schema_name="new_account_orders",
+            ...     referenced_entity="account",
+            ...     referencing_entity="new_order",
+            ...     referenced_attribute="accountid"
+            ... )
+            >>> rel.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata',
+                'SchemaName': 'new_account_orders',
+                'ReferencedEntity': 'account',
+                'ReferencingEntity': 'new_order',
+                'ReferencedAttribute': 'accountid',
+                'CascadeConfiguration': {...}
+            }
+        """
         result = {
-            "@odata.type": "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            "@odata.type": ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
             "SchemaName": self.schema_name,
             "ReferencedEntity": self.referenced_entity,
             "ReferencingEntity": self.referencing_entity,
@@ -317,11 +412,29 @@ class ManyToManyRelationshipMetadata:
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to Web API JSON format."""
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> rel = ManyToManyRelationshipMetadata(
+            ...     schema_name="new_account_contact",
+            ...     entity1_logical_name="account",
+            ...     entity2_logical_name="contact"
+            ... )
+            >>> rel.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata',
+                'SchemaName': 'new_account_contact',
+                'Entity1LogicalName': 'account',
+                'Entity2LogicalName': 'contact',
+                'IntersectEntityName': 'new_account_contact'
+            }
+        """
         # IntersectEntityName is required - use provided value or default to schema_name
         intersect_name = self.intersect_entity_name or self.schema_name
         result = {
-            "@odata.type": "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+            "@odata.type": ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
             "SchemaName": self.schema_name,
             "Entity1LogicalName": self.entity1_logical_name,
             "Entity2LogicalName": self.entity2_logical_name,
