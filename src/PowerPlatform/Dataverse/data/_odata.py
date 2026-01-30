@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from ..core._http import _HttpClient
-from ._upload import _ODataFileUpload
+from ._upload import _FileUploadMixin
 from ._relationships import _RelationshipOperationsMixin
 from ..core.errors import *
 from ..core._error_codes import (
@@ -77,7 +77,7 @@ class _RequestContext:
         )
 
 
-class _ODataClient(_ODataFileUpload, _RelationshipOperationsMixin):
+class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     @staticmethod
