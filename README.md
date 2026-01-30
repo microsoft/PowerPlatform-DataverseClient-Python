@@ -25,6 +25,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Bulk operations](#bulk-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
+  - [Relationship management](#relationship-management)
   - [File operations](#file-operations)
 - [Next steps](#next-steps)
 - [Troubleshooting](#troubleshooting)
@@ -36,6 +37,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
+- **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
@@ -57,21 +59,7 @@ Install the PowerPlatform Dataverse Client using [pip](https://pypi.org/project/
 pip install PowerPlatform-Dataverse-Client
 ```
 
-(Optional) Install Claude Skill globally with the Client:
-
-```bash
-pip install PowerPlatform-Dataverse-Client && dataverse-install-claude-skill
-```
-
-This installs a Claude Skill that enables Claude Code to:
-- Apply SDK best practices automatically
-- Provide context-aware code suggestions
-- Help with error handling and troubleshooting
-- Guide you through common patterns
-
-The skill works with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use it when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definition here: `.claude/skills/dataverse-sdk/SKILL.md`.
-
-For development from source (Claude Skill auto loaded):
+For development from source:
 
 ```bash
 git clone https://github.com/microsoft/PowerPlatform-DataverseClient-Python.git
@@ -239,16 +227,6 @@ table_info = client.create_table(
     primary_column_schema_name="new_ProductName"  # Optional: custom primary column (default is "{customization prefix value}_Name")
 )
 
-# Get table information
-info = client.get_table_info("new_Product")
-print(f"Logical name: {info['table_logical_name']}")
-print(f"Entity set: {info['entity_set_name']}")
-
-# List all tables
-tables = client.list_tables()
-for table in tables:
-    print(table)
-
 # Add columns to existing table (columns must include customization prefix value)
 client.create_columns("new_Product", {"new_Category": "string"})
 
@@ -259,8 +237,70 @@ client.delete_columns("new_Product", ["new_Category"])
 client.delete_table("new_Product")
 ```
 
-> **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`). 
+> **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`).
 > This ensures explicit, predictable naming and aligns with Dataverse metadata requirements.
+
+### Relationship management
+
+Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
+
+```python
+from PowerPlatform.Dataverse.models.metadata import (
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    ManyToManyRelationshipMetadata,
+    Label,
+    LocalizedLabel,
+)
+
+# Create a one-to-many relationship: Department (1) -> Employee (N)
+# This adds a "Department" lookup field to the Employee table
+lookup = LookupAttributeMetadata(
+    schema_name="new_DepartmentId",
+    display_name=Label(localized_labels=[LocalizedLabel(label="Department", language_code=1033)]),
+)
+
+relationship = OneToManyRelationshipMetadata(
+    schema_name="new_Department_Employee",
+    referenced_entity="new_department",   # Parent table (the "one" side)
+    referencing_entity="new_employee",    # Child table (the "many" side)
+    referenced_attribute="new_departmentid",
+)
+
+result = client.create_one_to_many_relationship(lookup, relationship)
+print(f"Created lookup field: {result['lookup_schema_name']}")
+
+# Create a many-to-many relationship: Employee (N) <-> Project (N)
+# Employees work on multiple projects; projects have multiple team members
+m2m_relationship = ManyToManyRelationshipMetadata(
+    schema_name="new_employee_project",
+    entity1_logical_name="new_employee",
+    entity2_logical_name="new_project",
+)
+
+result = client.create_many_to_many_relationship(m2m_relationship)
+print(f"Created M:N relationship: {result['relationship_schema_name']}")
+
+# Query relationship metadata
+rel = client.get_relationship("new_Department_Employee")
+if rel:
+    print(f"Found: {rel['SchemaName']}")
+
+# Delete a relationship
+client.delete_relationship(result['relationship_id'])
+```
+
+For simpler scenarios, use the convenience method:
+
+```python
+# Quick way to create a lookup field with sensible defaults
+result = client.create_lookup_field(
+    referencing_table="contact",       # Child table gets the lookup field
+    lookup_field_name="new_AccountId",
+    referenced_table="account",        # Parent table being referenced
+    display_name="Account",
+)
+```
 
 ### File operations
 
@@ -285,7 +325,8 @@ Explore our comprehensive examples in the [`examples/`](https://github.com/micro
 - **[Functional Testing](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/basic/functional_testing.py)** - Test core functionality in your environment
 
 **🚀 Advanced Usage:**
-- **[Complete Walkthrough](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns  
+- **[Complete Walkthrough](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns
+- **[Relationship Management](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py)** - Create and manage table relationships
 - **[File Upload](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
 
 📖 See the [examples README](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for detailed guidance and learning progression.
@@ -326,9 +367,9 @@ except ValidationError as e:
 
 ### Authentication issues
 
-**Common fixes:**
+**Common fixes:** 
 - Verify environment URL format: `https://yourorg.crm.dynamics.com` (no trailing slash)
-- Ensure Azure Identity credentials have proper Dataverse permissions
+- Ensure Azure Identity credentials have proper Dataverse permissions  
 - Check app registration permissions are granted and admin-consented
 
 ### Performance considerations
@@ -337,7 +378,7 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
-| **Bulk Operations** | Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
+| **Bulk Operations** | Pass lists to `create()`, `update()`, and `delete()` for automatic bulk processing |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
@@ -347,8 +388,7 @@ For optimal performance in production environments:
 ### Limitations
 
 - SQL queries are **read-only** and support a limited subset of SQL syntax
-- Create Table supports a limited number of column types. Lookup columns are not yet supported.
-- Creating relationships between tables is not yet supported.
+- Create Table supports a limited number of column types (string, int, decimal, bool, datetime, picklist)
 - File uploads are limited by Dataverse file size restrictions (default 128MB per file)
 
 ## Contributing

@@ -167,7 +167,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             if attempts > 1:
                 retry_count = attempts - 1
                 print(
-                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
+                    f"   ↺ Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
                 )
             return result
         except Exception as ex:  # noqa: BLE001
@@ -177,7 +177,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
         if attempts:
             retry_count = max(attempts - 1, 0)
             print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
+                f"   ⚠ Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
             )
         raise last
 

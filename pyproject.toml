@@ -37,9 +37,6 @@ dependencies = [
 "Issues" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python/issues"
 "Documentation" = "https://github.com/microsoft/PowerPlatform-DataverseClient-Python#readme"
 
-[project.scripts]
-dataverse-install-claude-skill = "PowerPlatform.Dataverse._skill_installer:main"
-
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
@@ -61,7 +58,6 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
-"PowerPlatform.Dataverse.claude_skill" = ["SKILL.md"]
 
 # Microsoft Python Standards - Linting & Formatting
 [tool.black]
