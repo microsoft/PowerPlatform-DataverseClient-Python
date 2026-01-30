@@ -27,7 +27,6 @@ from PowerPlatform.Dataverse.models.metadata import (
     Label,
     LocalizedLabel,
     CascadeConfiguration,
-    AssociatedMenuConfiguration,
 )
 
 
@@ -221,12 +220,6 @@ def main():
             assign="NoCascade",
             merge="NoCascade",
         ),
-        associated_menu_configuration=AssociatedMenuConfiguration(
-            behavior="UseLabel",
-            group="Details",
-            label=Label(localized_labels=[LocalizedLabel(label="Employees", language_code=1033)]),
-            order=10000,
-        ),
     )
 
     # Create the relationship
@@ -285,16 +278,6 @@ def main():
         schema_name="new_employee_project",
         entity1_logical_name=emp_table["table_logical_name"],
         entity2_logical_name=proj_table["table_logical_name"],
-        entity1_associated_menu_configuration=AssociatedMenuConfiguration(
-            behavior="UseLabel",
-            group="Details",
-            label=Label(localized_labels=[LocalizedLabel(label="Projects", language_code=1033)]),
-        ),
-        entity2_associated_menu_configuration=AssociatedMenuConfiguration(
-            behavior="UseLabel",
-            group="Details",
-            label=Label(localized_labels=[LocalizedLabel(label="Team Members", language_code=1033)]),
-        ),
     )
 
     result3 = backoff(

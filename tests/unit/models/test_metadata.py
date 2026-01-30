@@ -7,7 +7,6 @@ from PowerPlatform.Dataverse.models.metadata import (
     LocalizedLabel,
     Label,
     CascadeConfiguration,
-    AssociatedMenuConfiguration,
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
@@ -130,44 +129,6 @@ class TestCascadeConfiguration:
         assert result["RollupView"] == "NoCascade"
 
 
-class TestAssociatedMenuConfiguration:
-    """Tests for AssociatedMenuConfiguration."""
-
-    def test_to_dict_defaults(self):
-        """Test default values."""
-        menu = AssociatedMenuConfiguration()
-        result = menu.to_dict()
-
-        assert result["Behavior"] == "UseLabel"
-        assert result["Group"] == "Details"
-        assert result["Order"] == 10000
-        assert "Label" not in result
-
-    def test_to_dict_with_label(self):
-        """Test with a label."""
-        menu = AssociatedMenuConfiguration(
-            label=Label(localized_labels=[LocalizedLabel(label="Related Items", language_code=1033)])
-        )
-        result = menu.to_dict()
-
-        assert result["Label"]["LocalizedLabels"][0]["Label"] == "Related Items"
-
-    def test_to_dict_with_additional_properties(self):
-        """Test additional properties like Icon and ViewId."""
-        menu = AssociatedMenuConfiguration(
-            additional_properties={
-                "Icon": "custom_icon",
-                "ViewId": "00000000-0000-0000-0000-000000000000",
-                "AvailableOffline": True,
-            }
-        )
-        result = menu.to_dict()
-
-        assert result["Icon"] == "custom_icon"
-        assert result["ViewId"] == "00000000-0000-0000-0000-000000000000"
-        assert result["AvailableOffline"] is True
-
-
 class TestLookupAttributeMetadata:
     """Tests for LookupAttributeMetadata."""
 
@@ -263,23 +224,6 @@ class TestOneToManyRelationshipMetadata:
         assert result["CascadeConfiguration"]["Delete"] == "Cascade"
         assert result["CascadeConfiguration"]["Assign"] == "Cascade"
 
-    def test_to_dict_with_menu_configuration(self):
-        """Test with associated menu configuration."""
-        rel = OneToManyRelationshipMetadata(
-            schema_name="new_account_orders",
-            referenced_entity="account",
-            referencing_entity="new_order",
-            referenced_attribute="accountid",
-            associated_menu_configuration=AssociatedMenuConfiguration(
-                behavior="UseLabel",
-                label=Label(localized_labels=[LocalizedLabel(label="Orders", language_code=1033)]),
-            ),
-        )
-        result = rel.to_dict()
-
-        assert "AssociatedMenuConfiguration" in result
-        assert result["AssociatedMenuConfiguration"]["Label"]["LocalizedLabels"][0]["Label"] == "Orders"
-
     def test_to_dict_with_referencing_attribute(self):
         """Test with explicit referencing attribute."""
         rel = OneToManyRelationshipMetadata(
@@ -343,26 +287,6 @@ class TestManyToManyRelationshipMetadata:
         result = rel.to_dict()
 
         assert result["IntersectEntityName"] == "new_account_contact_assoc"
-
-    def test_to_dict_with_menu_configurations(self):
-        """Test with associated menu configurations for both entities."""
-        rel = ManyToManyRelationshipMetadata(
-            schema_name="new_account_contact",
-            entity1_logical_name="account",
-            entity2_logical_name="contact",
-            entity1_associated_menu_configuration=AssociatedMenuConfiguration(
-                label=Label(localized_labels=[LocalizedLabel(label="Contacts", language_code=1033)])
-            ),
-            entity2_associated_menu_configuration=AssociatedMenuConfiguration(
-                label=Label(localized_labels=[LocalizedLabel(label="Accounts", language_code=1033)])
-            ),
-        )
-        result = rel.to_dict()
-
-        assert "Entity1AssociatedMenuConfiguration" in result
-        assert "Entity2AssociatedMenuConfiguration" in result
-        assert result["Entity1AssociatedMenuConfiguration"]["Label"]["LocalizedLabels"][0]["Label"] == "Contacts"
-        assert result["Entity2AssociatedMenuConfiguration"]["Label"]["LocalizedLabels"][0]["Label"] == "Accounts"
 
     def test_to_dict_with_additional_properties(self):
         """Test additional properties like navigation property names."""

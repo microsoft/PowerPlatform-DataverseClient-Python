@@ -186,58 +186,6 @@ class CascadeConfiguration:
 
 
 @dataclass
-class AssociatedMenuConfiguration:
-    """
-    Configuration for how the relationship appears in the associated menu.
-
-    :param behavior: Display behavior in the menu.
-    :type behavior: str
-    :param group: The menu group where the item appears.
-    :type group: str
-    :param label: Display label for the menu item.
-    :type label: Optional[Label]
-    :param order: Display order within the group.
-    :type order: int
-    :param additional_properties: Optional dict of additional properties to include
-        in the Web API payload (e.g., "Icon", "ViewId", "AvailableOffline").
-        These are merged last and can override default values.
-    :type additional_properties: Optional[Dict[str, Any]]
-
-    Valid behavior values:
-        - "UseCollectionName": Use the collection name
-        - "UseLabel": Use the specified label
-        - "DoNotDisplay": Do not display in the menu
-    """
-
-    behavior: str = "UseLabel"
-    group: str = "Details"
-    label: Optional[Label] = None
-    order: int = 10000
-    additional_properties: Optional[Dict[str, Any]] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert to Web API JSON format.
-
-        Example::
-
-            >>> menu = AssociatedMenuConfiguration(behavior="UseLabel", group="Details")
-            >>> menu.to_dict()
-            {'Behavior': 'UseLabel', 'Group': 'Details', 'Order': 10000}
-        """
-        result = {
-            "Behavior": self.behavior,
-            "Group": self.group,
-            "Order": self.order,
-        }
-        if self.label:
-            result["Label"] = self.label.to_dict()
-        if self.additional_properties:
-            result.update(self.additional_properties)
-        return result
-
-
-@dataclass
 class LookupAttributeMetadata:
     """
     Metadata for a lookup attribute.
@@ -323,8 +271,6 @@ class OneToManyRelationshipMetadata:
     :type referenced_attribute: str
     :param cascade_configuration: Cascade behavior configuration.
     :type cascade_configuration: CascadeConfiguration
-    :param associated_menu_configuration: Optional menu display configuration.
-    :type associated_menu_configuration: Optional[AssociatedMenuConfiguration]
     :param referencing_attribute: Optional name for the referencing attribute (usually auto-generated).
     :type referencing_attribute: Optional[str]
     :param additional_properties: Optional dict of additional properties to include
@@ -339,7 +285,6 @@ class OneToManyRelationshipMetadata:
     referencing_entity: str
     referenced_attribute: str
     cascade_configuration: CascadeConfiguration = field(default_factory=CascadeConfiguration)
-    associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
     referencing_attribute: Optional[str] = None
     additional_properties: Optional[Dict[str, Any]] = None
 
@@ -373,8 +318,6 @@ class OneToManyRelationshipMetadata:
             "ReferencedAttribute": self.referenced_attribute,
             "CascadeConfiguration": self.cascade_configuration.to_dict(),
         }
-        if self.associated_menu_configuration:
-            result["AssociatedMenuConfiguration"] = self.associated_menu_configuration.to_dict()
         if self.referencing_attribute:
             result["ReferencingAttribute"] = self.referencing_attribute
         if self.additional_properties:
@@ -395,10 +338,6 @@ class ManyToManyRelationshipMetadata:
     :type entity2_logical_name: str
     :param intersect_entity_name: Name for the intersect table (defaults to schema_name if not provided).
     :type intersect_entity_name: Optional[str]
-    :param entity1_associated_menu_configuration: Menu configuration for entity1.
-    :type entity1_associated_menu_configuration: Optional[AssociatedMenuConfiguration]
-    :param entity2_associated_menu_configuration: Menu configuration for entity2.
-    :type entity2_associated_menu_configuration: Optional[AssociatedMenuConfiguration]
     :param additional_properties: Optional dict of additional properties to include
         in the Web API payload. Useful for setting inherited properties like
         "IsValidForAdvancedFind", "IsCustomizable", "SecurityTypes", or direct
@@ -411,8 +350,6 @@ class ManyToManyRelationshipMetadata:
     entity1_logical_name: str
     entity2_logical_name: str
     intersect_entity_name: Optional[str] = None
-    entity1_associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
-    entity2_associated_menu_configuration: Optional[AssociatedMenuConfiguration] = None
     additional_properties: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -444,10 +381,6 @@ class ManyToManyRelationshipMetadata:
             "Entity2LogicalName": self.entity2_logical_name,
             "IntersectEntityName": intersect_name,
         }
-        if self.entity1_associated_menu_configuration:
-            result["Entity1AssociatedMenuConfiguration"] = self.entity1_associated_menu_configuration.to_dict()
-        if self.entity2_associated_menu_configuration:
-            result["Entity2AssociatedMenuConfiguration"] = self.entity2_associated_menu_configuration.to_dict()
         if self.additional_properties:
             result.update(self.additional_properties)
         return result
@@ -457,7 +390,6 @@ __all__ = [
     "LocalizedLabel",
     "Label",
     "CascadeConfiguration",
-    "AssociatedMenuConfiguration",
     "LookupAttributeMetadata",
     "OneToManyRelationshipMetadata",
     "ManyToManyRelationshipMetadata",
