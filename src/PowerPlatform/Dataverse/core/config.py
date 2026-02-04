@@ -11,8 +11,12 @@ convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseCon
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .telemetry import TelemetryConfig
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,8 @@ class DataverseConfig:
     :type http_backoff: :class:`float` or None
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
     :type http_timeout: :class:`float` or None
+    :param telemetry: Optional telemetry configuration for tracing, metrics, and logging.
+    :type telemetry: :class:`~PowerPlatform.Dataverse.core.telemetry.TelemetryConfig` or None
     """
 
     language_code: int = 1033
@@ -37,18 +43,42 @@ class DataverseConfig:
     http_backoff: Optional[float] = None
     http_timeout: Optional[float] = None
 
+    # Telemetry configuration
+    telemetry: Optional["TelemetryConfig"] = None
+
     @classmethod
     def from_env(cls) -> "DataverseConfig":
         """
-        Create a configuration instance with default settings.
+        Create a configuration instance from environment variables.
 
-        :return: Configuration instance with default values.
+        Environment variables:
+            - DATAVERSE_LANGUAGE_CODE: LCID for localized labels (default: 1033)
+            - DATAVERSE_TELEMETRY_ENABLED: Enable telemetry (default: false)
+            - DATAVERSE_TRACING_ENABLED: Enable tracing when telemetry enabled (default: true)
+            - DATAVERSE_METRICS_ENABLED: Enable metrics when telemetry enabled (default: false)
+            - DATAVERSE_LOGGING_ENABLED: Enable logging when telemetry enabled (default: true)
+            - DATAVERSE_LOG_LEVEL: Log level (default: WARNING)
+            - OTEL_SERVICE_NAME: OpenTelemetry service name
+
+        :return: Configuration instance with values from environment.
         :rtype: ~PowerPlatform.Dataverse.core.config.DataverseConfig
         """
-        # Environment-free defaults
+        from .telemetry import TelemetryConfig
+
+        telemetry = None
+        if os.getenv("DATAVERSE_TELEMETRY_ENABLED", "").lower() == "true":
+            telemetry = TelemetryConfig(
+                enable_tracing=os.getenv("DATAVERSE_TRACING_ENABLED", "true").lower() == "true",
+                enable_metrics=os.getenv("DATAVERSE_METRICS_ENABLED", "false").lower() == "true",
+                enable_logging=os.getenv("DATAVERSE_LOGGING_ENABLED", "true").lower() == "true",
+                log_level=os.getenv("DATAVERSE_LOG_LEVEL", "WARNING"),
+                service_name=os.getenv("OTEL_SERVICE_NAME"),
+            )
+
         return cls(
-            language_code=1033,
+            language_code=int(os.getenv("DATAVERSE_LANGUAGE_CODE", "1033")),
             http_retries=None,
             http_backoff=None,
             http_timeout=None,
+            telemetry=telemetry,
         )
