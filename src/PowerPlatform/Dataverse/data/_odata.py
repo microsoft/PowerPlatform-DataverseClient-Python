@@ -865,10 +865,12 @@ class _ODataClient(_ODataFileUpload):
     def _get_attribute_metadata(
         self,
         entity_metadata_id: str,
-        column_schema_name: str,
+        column_name: str,
         extra_select: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        attr_escaped = self._escape_odata_quotes(column_schema_name)
+        # Convert to lowercase logical name for lookup
+        logical_name = column_name.lower()
+        attr_escaped = self._escape_odata_quotes(logical_name)
         url = f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes"
         select_fields = ["MetadataId", "LogicalName", "SchemaName"]
         if extra_select:
@@ -882,7 +884,7 @@ class _ODataClient(_ODataFileUpload):
                     select_fields.append(piece)
         params = {
             "$select": ",".join(select_fields),
-            "$filter": f"SchemaName eq '{attr_escaped}'",
+            "$filter": f"LogicalName eq '{attr_escaped}'",
         }
         r = self._request("get", url, params=params)
         try:
@@ -895,6 +897,40 @@ class _ODataClient(_ODataFileUpload):
             if isinstance(item, dict):
                 return item
         return None
+
+    def _wait_for_attribute_visibility(
+        self,
+        entity_set: str,
+        attribute_name: str,
+        delays: tuple = (0, 3, 10, 20),
+    ) -> None:
+        """Wait for a newly created attribute to become visible in the data API.
+
+        After creating an attribute via the metadata API, there can be a delay before
+        it becomes queryable in the data API. This method polls the entity set with
+        the attribute in the $select clause until it succeeds or all delays are exhausted.
+        """
+        # Convert to lowercase logical name for URL
+        logical_name = attribute_name.lower()
+        probe_url = f"{self.api}/{entity_set}?$top=1&$select={logical_name}"
+        last_error = None
+        total_wait = sum(delays)
+
+        for delay in delays:
+            if delay:
+                time.sleep(delay)
+            try:
+                self._request("get", probe_url)
+                return
+            except Exception as ex:
+                last_error = ex
+                continue
+
+        # All retries exhausted - raise with context
+        raise RuntimeError(
+            f"Attribute '{logical_name}' did not become visible in the data API "
+            f"after {total_wait} seconds (exhausted all retries)."
+        ) from last_error
 
     # ---------------------- Enum / Option Set helpers ------------------
     def _build_localizedlabels_payload(self, translations: Dict[int, str]) -> Dict[str, Any]:
@@ -1238,6 +1274,13 @@ class _ODataClient(_ODataFileUpload):
                     },
                     "IsGlobal": False,
                 },
+            }
+        if dtype_l == "file":
+            return {
+                "@odata.type": "Microsoft.Dynamics.CRM.FileAttributeMetadata",
+                "SchemaName": column_schema_name,
+                "DisplayName": self._label(label),
+                "RequiredLevel": {"Value": "None"},
             }
         return None
 

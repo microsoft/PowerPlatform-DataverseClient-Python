@@ -13,7 +13,7 @@ class _ODataFileUpload:
 
     def _upload_file(
         self,
-        entity_set: str,
+        table_schema_name: str,
         record_id: str,
         file_name_attribute: str,
         path: str,
@@ -25,12 +25,12 @@ class _ODataFileUpload:
 
         Parameters
         ----------
-        entity_set : :class:`str`
-            Target entity set (plural logical name), e.g. "accounts".
+        table_schema_name : :class:`str`
+            Table schema name, e.g. "account" or "new_MyTestTable".
         record_id : :class:`str`
             GUID of the target record.
         file_name_attribute : :class:`str`
-            Logical name of the file column attribute
+            Schema name of the file column attribute (e.g., "new_Document"). If the column doesn't exist, it will be created.
         path : :class:`str`
             Local filesystem path to the file.
         mode : :class:`str` | None
@@ -42,6 +42,22 @@ class _ODataFileUpload:
         """
         import os
 
+        # Resolve entity set from table schema name
+        entity_set = self._entity_set_from_schema_name(table_schema_name)
+
+        # Check if the file column exists, create it if it doesn't
+        entity_metadata = self._get_entity_by_table_schema_name(table_schema_name)
+        if entity_metadata:
+            metadata_id = entity_metadata.get("MetadataId")
+            if metadata_id:
+                attr_metadata = self._get_attribute_metadata(metadata_id, file_name_attribute)
+                if not attr_metadata:
+                    # Attribute doesn't exist, create it
+                    self._create_columns(table_schema_name, {file_name_attribute: "file"})
+                    # Wait for the attribute to become visible in the data API
+                    # Raises RuntimeError with underlying exception if timeout occurs
+                    self._wait_for_attribute_visibility(entity_set, file_name_attribute)
+
         mode = (mode or "auto").lower()
 
         if mode == "auto":
@@ -50,14 +66,15 @@ class _ODataFileUpload:
             size = os.path.getsize(path)
             mode = "small" if size < 128 * 1024 * 1024 else "chunk"
 
+        # Convert schema name to lowercase logical name for URL usage
+        logical_name = file_name_attribute.lower()
+
         if mode == "small":
             return self._upload_file_small(
-                entity_set, record_id, file_name_attribute, path, content_type=mime_type, if_none_match=if_none_match
+                entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
             )
         if mode == "chunk":
-            return self._upload_file_chunk(
-                entity_set, record_id, file_name_attribute, path, if_none_match=if_none_match
-            )
+            return self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
         raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 
     def _upload_file_small(
