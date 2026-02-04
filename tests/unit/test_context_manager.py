@@ -122,7 +122,7 @@ class TestContextManager(unittest.TestCase):
 
         # This should work
         result = client.records.create("account", {"name": "Test"})
-        self.assertEqual(result[0], "guid-123")
+        self.assertEqual(result, "guid-123")
 
     def test_close_also_closes_odata(self):
         """Test that close() also closes the OData client."""
