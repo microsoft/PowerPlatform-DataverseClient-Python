@@ -370,6 +370,7 @@ When contributing new features to this SDK, please follow these guidelines:
 1. **All public methods in client.py** - Public API methods must be defined in [client.py](src/PowerPlatform/Dataverse/client.py)
 2. **Add README example for public methods** - Add usage examples to this README for public API methods
 3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
+4. **Update documentation** when adding features - Keep README and SKILL files (note that each skill has 2 copies) in sync
 
 ## Trademarks
 
