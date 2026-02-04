@@ -1,5 +1,5 @@
 ---
-name: powerplatform-dataverseclient-python
+name: dataverse-sdk-use
 description: Guidance for using the PowerPlatform Dataverse Client Python SDK. Use when calling the SDK like creating CRUD operations, SQL queries, table metadata management, and upload files.
 ---
 

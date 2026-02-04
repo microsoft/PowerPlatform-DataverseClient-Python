@@ -63,13 +63,11 @@ pip install PowerPlatform-Dataverse-Client
 pip install PowerPlatform-Dataverse-Client && dataverse-install-claude-skill
 ```
 
-This installs a Claude Skill that enables Claude Code to:
-- Apply SDK best practices automatically
-- Provide context-aware code suggestions
-- Help with error handling and troubleshooting
-- Guide you through common patterns
+This installs two Claude Skills that enable Claude Code to:
+- **dataverse-sdk-use**: Apply SDK best practices for using the SDK in your applications
+- **dataverse-sdk-dev**: Provide guidance for developing/contributing to the SDK itself
 
-The skill works with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use it when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definition here: `.claude/skills/dataverse-sdk/SKILL.md`.
+The skills work with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use the appropriate skill when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definitions here: [.claude/skills/dataverse-sdk-use/SKILL.md](.claude/skills/dataverse-sdk-use/SKILL.md) and [.claude/skills/dataverse-sdk-dev/SKILL.md](.claude/skills/dataverse-sdk-dev/SKILL.md).
 
 For development from source (Claude Skill auto loaded):
 
@@ -364,6 +362,14 @@ provided by the bot. You will only need to do this once across all repos using o
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
+### API Design Guidelines
+
+When contributing new features to this SDK, please follow these guidelines:
+
+1. **All public methods in client.py** - Public API methods must be defined in [client.py](src/PowerPlatform/Dataverse/client.py)
+2. **Add README example for public methods** - Add usage examples to this README for public API methods
+3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
 
 ## Trademarks
 
