@@ -14,6 +14,7 @@ from azure.core.credentials import TokenCredential
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .core.results import OperationResult, RequestTelemetryData
+from .core.telemetry import create_telemetry_manager
 from .data._odata import _ODataClient
 from .operations.records import RecordOperations
 from .operations.query import QueryOperations
@@ -125,6 +126,11 @@ class DataverseClient:
         self._session: Optional[requests.Session] = None
         self._owns_session: bool = False
 
+        # Create telemetry manager
+        self._telemetry = create_telemetry_manager(
+            self._config.telemetry if self._config else None
+        )
+
         # Initialize operation namespaces
         self.records = RecordOperations(self)
         self.query = QueryOperations(self)
@@ -208,6 +214,7 @@ class DataverseClient:
                 self._base_url,
                 self._config,
                 session=self._session,
+                telemetry=self._telemetry,
             )
         return self._odata
 

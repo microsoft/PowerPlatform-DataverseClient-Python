@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     import requests
 
 from ..core._http import _HttpClient
+from ..core.telemetry import TelemetryManager, NoOpTelemetryManager
 from ._upload import _ODataFileUpload
 from ..core.errors import *
 from ..core.results import RequestTelemetryData
@@ -123,6 +124,7 @@ class _ODataClient(_ODataFileUpload):
         base_url: str,
         config=None,
         session: Optional["requests.Session"] = None,
+        telemetry: Optional[Union[TelemetryManager, NoOpTelemetryManager]] = None,
     ) -> None:
         """Initialize the OData client.
 
@@ -163,6 +165,8 @@ class _ODataClient(_ODataFileUpload):
         # Picklist label cache: (normalized_table_schema_name, normalized_attribute) -> {'map': {...}, 'ts': epoch_seconds}
         self._picklist_label_cache = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
+        # Telemetry manager for tracing, metrics, and hooks
+        self._telemetry = telemetry or NoOpTelemetryManager()
 
     @contextmanager
     def _call_scope(self):
@@ -208,13 +212,22 @@ class _ODataClient(_ODataFileUpload):
         return self._http._request(method, url, **kwargs)
 
     def _request(
-        self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs
+        self,
+        method: str,
+        url: str,
+        *,
+        expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES,
+        operation: str = "unknown",
+        table_name: Optional[str] = None,
+        **kwargs,
     ) -> _ODataRequestResult:
         """Execute an HTTP request and return (response, RequestTelemetryData) tuple.
 
         :param method: HTTP method (GET, POST, PATCH, DELETE).
         :param url: Request URL.
         :param expected: Tuple of expected HTTP status codes.
+        :param operation: Operation name for telemetry (e.g., "records.create").
+        :param table_name: Optional table name for telemetry.
         :param kwargs: Additional request arguments.
         :return: Tuple of (response, RequestTelemetryData).
         :raises HttpError: If the response status code is not in expected.
@@ -227,66 +240,84 @@ class _ODataClient(_ODataFileUpload):
             **kwargs,
         )
 
-        r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
+        client_request_id = request_context.headers.get("x-ms-client-request-id", "")
+        correlation_id = request_context.headers.get("x-ms-correlation-id", "")
 
-        # Extract metadata from response headers and request context
-        response_headers = getattr(r, "headers", {}) or {}
-        service_request_id = (
-            response_headers.get("x-ms-service-request-id")
-            or response_headers.get("req_id")
-            or response_headers.get("x-ms-request-id")
-        )
-        metadata = RequestTelemetryData(
-            client_request_id=request_context.headers.get("x-ms-client-request-id"),
-            correlation_id=request_context.headers.get("x-ms-correlation-id"),
-            service_request_id=service_request_id,
-        )
+        with self._telemetry.trace_request(
+            operation=operation,
+            method=method.upper(),
+            url=url,
+            client_request_id=client_request_id,
+            correlation_id=correlation_id,
+            table_name=table_name,
+        ) as telemetry_ctx:
+            r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
 
-        if r.status_code in request_context.expected:
-            return (r, metadata)
+            # Extract metadata from response headers and request context
+            response_headers = getattr(r, "headers", {}) or {}
+            service_request_id = (
+                response_headers.get("x-ms-service-request-id")
+                or response_headers.get("req_id")
+                or response_headers.get("x-ms-request-id")
+            )
+            metadata = RequestTelemetryData(
+                client_request_id=request_context.headers.get("x-ms-client-request-id"),
+                correlation_id=request_context.headers.get("x-ms-correlation-id"),
+                service_request_id=service_request_id,
+            )
 
-        body_excerpt = (getattr(r, "text", "") or "")[:200]
-        svc_code = None
-        msg = f"HTTP {r.status_code}"
-        try:
-            data = r.json() if getattr(r, "text", None) else {}
-            if isinstance(data, dict):
-                inner = data.get("error")
-                if isinstance(inner, dict):
-                    svc_code = inner.get("code")
-                    imsg = inner.get("message")
-                    if isinstance(imsg, str) and imsg.strip():
-                        msg = imsg.strip()
-                else:
-                    imsg2 = data.get("message")
-                    if isinstance(imsg2, str) and imsg2.strip():
-                        msg = imsg2.strip()
-        except Exception:
-            pass
-        sc = r.status_code
-        subcode = _http_subcode(sc)
-        traceparent = response_headers.get("traceparent")
-        ra = response_headers.get("Retry-After")
-        retry_after = None
-        if ra:
+            # Record telemetry
+            self._telemetry.record_response(
+                telemetry_ctx,
+                status_code=r.status_code,
+                service_request_id=service_request_id,
+            )
+
+            if r.status_code in request_context.expected:
+                return (r, metadata)
+
+            body_excerpt = (getattr(r, "text", "") or "")[:200]
+            svc_code = None
+            msg = f"HTTP {r.status_code}"
             try:
-                retry_after = int(ra)
+                data = r.json() if getattr(r, "text", None) else {}
+                if isinstance(data, dict):
+                    inner = data.get("error")
+                    if isinstance(inner, dict):
+                        svc_code = inner.get("code")
+                        imsg = inner.get("message")
+                        if isinstance(imsg, str) and imsg.strip():
+                            msg = imsg.strip()
+                    else:
+                        imsg2 = data.get("message")
+                        if isinstance(imsg2, str) and imsg2.strip():
+                            msg = imsg2.strip()
             except Exception:
-                retry_after = None
-        is_transient = _is_transient_status(sc)
-        raise HttpError(
-            msg,
-            status_code=sc,
-            subcode=subcode,
-            service_error_code=svc_code,
-            correlation_id=metadata.correlation_id,
-            client_request_id=metadata.client_request_id,
-            service_request_id=metadata.service_request_id,
-            traceparent=traceparent,
-            body_excerpt=body_excerpt,
-            retry_after=retry_after,
-            is_transient=is_transient,
-        )
+                pass
+            sc = r.status_code
+            subcode = _http_subcode(sc)
+            traceparent = response_headers.get("traceparent")
+            ra = response_headers.get("Retry-After")
+            retry_after = None
+            if ra:
+                try:
+                    retry_after = int(ra)
+                except Exception:
+                    retry_after = None
+            is_transient = _is_transient_status(sc)
+            raise HttpError(
+                msg,
+                status_code=sc,
+                subcode=subcode,
+                service_error_code=svc_code,
+                correlation_id=metadata.correlation_id,
+                client_request_id=metadata.client_request_id,
+                service_request_id=metadata.service_request_id,
+                traceparent=traceparent,
+                body_excerpt=body_excerpt,
+                retry_after=retry_after,
+                is_transient=is_transient,
+            )
 
     # --- CRUD Internal functions ---
     def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> _ODataRequestResult:
@@ -309,7 +340,9 @@ class _ODataClient(_ODataFileUpload):
         record = self._lowercase_keys(record)
         record = self._convert_labels_to_ints(table_schema_name, record)
         url = f"{self.api}/{entity_set}"
-        r, metadata = self._request("post", url, json=record)
+        r, metadata = self._request(
+            "post", url, json=record, operation="records.create", table_name=table_schema_name
+        )
 
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
@@ -364,7 +397,9 @@ class _ODataClient(_ODataFileUpload):
         # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
         # The action currently returns only Ids; no need to request representation.
-        r, metadata = self._request("post", url, json=payload)
+        r, metadata = self._request(
+            "post", url, json=payload, operation="records.create_multiple", table_name=table_schema_name
+        )
         try:
             body = r.json() if r.text else {}
         except ValueError:
@@ -503,7 +538,10 @@ class _ODataClient(_ODataFileUpload):
         }
 
         url = f"{self.api}/BulkDelete"
-        response, metadata = self._request("post", url, json=payload, expected=(200, 202, 204))
+        response, metadata = self._request(
+            "post", url, json=payload, expected=(200, 202, 204),
+            operation="records.bulk_delete", table_name=table_schema_name
+        )
 
         job_id = None
         try:
@@ -549,7 +587,10 @@ class _ODataClient(_ODataFileUpload):
         data = self._convert_labels_to_ints(table_schema_name, data)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        _, metadata = self._request("patch", url, headers={"If-Match": "*"}, json=data)
+        _, metadata = self._request(
+            "patch", url, headers={"If-Match": "*"}, json=data,
+            operation="records.update", table_name=table_schema_name
+        )
         return (None, metadata)
 
     def _update_multiple(
@@ -593,7 +634,9 @@ class _ODataClient(_ODataFileUpload):
 
         payload = {"Targets": enriched}
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple"
-        _, metadata = self._request("post", url, json=payload)
+        _, metadata = self._request(
+            "post", url, json=payload, operation="records.update_multiple", table_name=table_schema_name
+        )
         # Intentionally ignore response content: no stable contract for IDs across environments.
         return (None, metadata)
 
@@ -610,7 +653,10 @@ class _ODataClient(_ODataFileUpload):
         """
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        _, metadata = self._request("delete", url, headers={"If-Match": "*"})
+        _, metadata = self._request(
+            "delete", url, headers={"If-Match": "*"},
+            operation="records.delete", table_name=table_schema_name
+        )
         return (None, metadata)
 
     def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> _ODataRequestResult:
@@ -632,7 +678,9 @@ class _ODataClient(_ODataFileUpload):
             params["$select"] = ",".join(select)
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r, metadata = self._request("get", url, params=params)
+        r, metadata = self._request(
+            "get", url, params=params, operation="records.get", table_name=table_schema_name
+        )
         return (r.json(), metadata)
 
     def _get_multiple(
@@ -676,7 +724,10 @@ class _ODataClient(_ODataFileUpload):
             url: str, *, params: Optional[Dict[str, Any]] = None
         ) -> Tuple[Dict[str, Any], RequestTelemetryData]:
             headers = extra_headers if extra_headers else None
-            r, metadata = self._request("get", url, headers=headers, params=params)
+            r, metadata = self._request(
+                "get", url, headers=headers, params=params,
+                operation="query.get", table_name=table_schema_name
+            )
             try:
                 return r.json(), metadata
             except ValueError:
@@ -745,7 +796,9 @@ class _ODataClient(_ODataFileUpload):
         # Issue GET /{entity_set}?sql=<query>
         url = f"{self.api}/{entity_set}"
         params = {"sql": sql}
-        r, metadata = self._request("get", url, params=params)
+        r, metadata = self._request(
+            "get", url, params=params, operation="query.sql", table_name=logical
+        )
         try:
             body = r.json()
         except ValueError:
@@ -801,7 +854,9 @@ class _ODataClient(_ODataFileUpload):
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r, _ = self._request("get", url, params=params)
+        r, _ = self._request(
+            "get", url, params=params, operation="metadata.resolve_entity_set", table_name=table_schema_name
+        )
         try:
             body = r.json()
             items = body.get("value", []) if isinstance(body, dict) else []
@@ -870,7 +925,10 @@ class _ODataClient(_ODataFileUpload):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r, metadata = self._request("get", url, params=params, headers=headers)
+        r, metadata = self._request(
+            "get", url, params=params, headers=headers,
+            operation="metadata.get_entity", table_name=table_schema_name
+        )
         items = r.json().get("value", [])
         return (items[0] if items else None), metadata
 
@@ -897,7 +955,10 @@ class _ODataClient(_ODataFileUpload):
         params = None
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
-        _, metadata = self._request("post", url, json=payload, params=params)
+        _, metadata = self._request(
+            "post", url, json=payload, params=params,
+            operation="metadata.create_entity", table_name=table_schema_name
+        )
         ent, _ = self._get_entity_by_table_schema_name(
             table_schema_name,
             headers={"Consistency": "Strong"},
@@ -932,7 +993,7 @@ class _ODataClient(_ODataFileUpload):
             "$select": ",".join(select_fields),
             "$filter": f"SchemaName eq '{attr_escaped}'",
         }
-        r, _ = self._request("get", url, params=params)
+        r, _ = self._request("get", url, params=params, operation="metadata.get_attribute")
         try:
             body = r.json() if r.text else {}
         except ValueError:
@@ -1108,7 +1169,9 @@ class _ODataClient(_ODataFileUpload):
         backoff_seconds = 0.4
         for attempt in range(1, max_attempts + 1):
             try:
-                r_type, _ = self._request("get", url_type)
+                r_type, _ = self._request(
+                    "get", url_type, operation="metadata.get_picklist_type", table_name=table_schema_name
+                )
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
@@ -1142,7 +1205,9 @@ class _ODataClient(_ODataFileUpload):
         r_opts = None
         for attempt in range(1, max_attempts + 1):
             try:
-                r_opts, _ = self._request("get", cast_url)
+                r_opts, _ = self._request(
+                    "get", cast_url, operation="metadata.get_picklist_options", table_name=table_schema_name
+                )
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
@@ -1319,7 +1384,7 @@ class _ODataClient(_ODataFileUpload):
         """
         url = f"{self.api}/EntityDefinitions"
         params = {"$filter": "IsPrivate eq false"}
-        r, metadata = self._request("get", url, params=params)
+        r, metadata = self._request("get", url, params=params, operation="metadata.list_tables")
         return r.json().get("value", []), metadata
 
     def _delete_table(self, table_schema_name: str) -> _ODataRequestResult:
@@ -1342,7 +1407,9 @@ class _ODataClient(_ODataFileUpload):
             )
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
-        _, metadata = self._request("delete", url)
+        _, metadata = self._request(
+            "delete", url, operation="metadata.delete_table", table_name=table_schema_name
+        )
         return None, metadata
 
     def _create_table(
@@ -1461,7 +1528,10 @@ class _ODataClient(_ODataFileUpload):
                 raise ValueError(f"Unsupported column type '{column_type}' for '{column_name}'.")
 
             url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
-            _, last_metadata = self._request("post", url, json=payload)
+            _, last_metadata = self._request(
+                "post", url, json=payload,
+                operation="metadata.create_column", table_name=table_schema_name
+            )
 
             created.append(column_name)
 
@@ -1532,7 +1602,10 @@ class _ODataClient(_ODataFileUpload):
                 raise RuntimeError(f"Metadata incomplete for column '{column_name}' (missing MetadataId).")
 
             attr_url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes({attr_metadata_id})"
-            _, last_metadata = self._request("delete", attr_url, headers={"If-Match": "*"})
+            _, last_metadata = self._request(
+                "delete", attr_url, headers={"If-Match": "*"},
+                operation="metadata.delete_column", table_name=table_schema_name
+            )
 
             attr_type = attr_meta.get("@odata.type") or attr_meta.get("AttributeType")
             if isinstance(attr_type, str):
