@@ -142,6 +142,9 @@ class RequestContext:
     # Custom data bag for hooks to share state
     custom_data: Dict[str, Any] = field(default_factory=dict)
 
+    # Internal: span reference for adding response attributes
+    _span: Any = field(default=None, repr=False)
+
 
 @dataclass
 class ResponseContext:
@@ -343,6 +346,7 @@ class TelemetryManager:
                     ),
                 },
             )
+            ctx._span = span
 
         try:
             yield ctx
@@ -374,6 +378,12 @@ class TelemetryManager:
             error=error,
             retry_count=retry_count,
         )
+
+        # Add response attributes to span
+        if ctx._span:
+            ctx._span.set_attribute(OTEL_ATTR_HTTP_STATUS_CODE, status_code)
+            if service_request_id:
+                ctx._span.set_attribute(OTEL_ATTR_DATAVERSE_SERVICE_REQUEST_ID, service_request_id)
 
         # Record metrics
         if self._request_duration:
