@@ -1,4 +1,4 @@
-# PowerPlatform Dataverse Client for Python
+# PowerPlatform Dataverse Client for Python 
 
 [![PyPI version](https://img.shields.io/pypi/v/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
 [![Python](https://img.shields.io/pypi/pyversions/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
