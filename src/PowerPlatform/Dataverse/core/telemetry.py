@@ -26,6 +26,18 @@ from typing import (
     runtime_checkable,
 )
 
+from ..common.constants import (
+    OTEL_ATTR_DB_SYSTEM,
+    OTEL_ATTR_DB_OPERATION,
+    OTEL_ATTR_HTTP_METHOD,
+    OTEL_ATTR_HTTP_URL,
+    OTEL_ATTR_HTTP_STATUS_CODE,
+    OTEL_ATTR_DATAVERSE_TABLE,
+    OTEL_ATTR_DATAVERSE_REQUEST_ID,
+    OTEL_ATTR_DATAVERSE_CORRELATION_ID,
+    OTEL_ATTR_DATAVERSE_SERVICE_REQUEST_ID,
+)
+
 # Optional OpenTelemetry imports
 try:
     from opentelemetry import trace, metrics
@@ -202,17 +214,6 @@ class TelemetryManager:
     This class is internal and not part of the public API.
     """
 
-    # OpenTelemetry semantic convention attribute names
-    ATTR_DB_SYSTEM = "db.system"
-    ATTR_DB_OPERATION = "db.operation"
-    ATTR_HTTP_METHOD = "http.request.method"
-    ATTR_HTTP_URL = "url.full"
-    ATTR_HTTP_STATUS_CODE = "http.response.status_code"
-    ATTR_DATAVERSE_TABLE = "dataverse.table"
-    ATTR_DATAVERSE_REQUEST_ID = "dataverse.client_request_id"
-    ATTR_DATAVERSE_CORRELATION_ID = "dataverse.correlation_id"
-    ATTR_DATAVERSE_SERVICE_REQUEST_ID = "dataverse.service_request_id"
-
     def __init__(self, config: Optional[TelemetryConfig] = None) -> None:
         self._config = config or TelemetryConfig()
         self._tracer: Optional[Any] = None  # Tracer type when available
@@ -329,14 +330,14 @@ class TelemetryManager:
                 span_name,
                 kind=trace.SpanKind.CLIENT,
                 attributes={
-                    self.ATTR_DB_SYSTEM: "dataverse",
-                    self.ATTR_DB_OPERATION: operation,
-                    self.ATTR_HTTP_METHOD: method,
-                    self.ATTR_HTTP_URL: url,
-                    self.ATTR_DATAVERSE_REQUEST_ID: client_request_id,
-                    self.ATTR_DATAVERSE_CORRELATION_ID: correlation_id,
+                    OTEL_ATTR_DB_SYSTEM: "dataverse",
+                    OTEL_ATTR_DB_OPERATION: operation,
+                    OTEL_ATTR_HTTP_METHOD: method,
+                    OTEL_ATTR_HTTP_URL: url,
+                    OTEL_ATTR_DATAVERSE_REQUEST_ID: client_request_id,
+                    OTEL_ATTR_DATAVERSE_CORRELATION_ID: correlation_id,
                     **(
-                        {self.ATTR_DATAVERSE_TABLE: table_name}
+                        {OTEL_ATTR_DATAVERSE_TABLE: table_name}
                         if table_name
                         else {}
                     ),

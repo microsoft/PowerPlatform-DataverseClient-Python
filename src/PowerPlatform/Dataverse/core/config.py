@@ -13,10 +13,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
-if TYPE_CHECKING:
-    from .telemetry import TelemetryConfig
+from .telemetry import TelemetryConfig
 
 
 @dataclass(frozen=True)
@@ -44,7 +43,7 @@ class DataverseConfig:
     http_timeout: Optional[float] = None
 
     # Telemetry configuration
-    telemetry: Optional["TelemetryConfig"] = None
+    telemetry: Optional[TelemetryConfig] = None
 
     @classmethod
     def from_env(cls) -> "DataverseConfig":
@@ -63,8 +62,6 @@ class DataverseConfig:
         :return: Configuration instance with values from environment.
         :rtype: ~PowerPlatform.Dataverse.core.config.DataverseConfig
         """
-        from .telemetry import TelemetryConfig
-
         telemetry = None
         if os.getenv("DATAVERSE_TELEMETRY_ENABLED", "").lower() == "true":
             telemetry = TelemetryConfig(
