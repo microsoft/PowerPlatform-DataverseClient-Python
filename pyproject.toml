@@ -61,7 +61,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
-"PowerPlatform.Dataverse.claude_skill" = ["SKILL.md"]
+"PowerPlatform.Dataverse.claude_skill" = ["*/SKILL.md"]
 
 # Microsoft Python Standards - Linting & Formatting
 [tool.black]

@@ -4,6 +4,7 @@
 """
 Claude Code skill package for the PowerPlatform Dataverse Client SDK.
 
-This package contains the SKILL.md file that provides guidance to Claude Code
-when working with the Dataverse SDK.
+This package contains two skills:
+- dataverse-sdk-use: Guidance for using the SDK in your applications
+- dataverse-sdk-dev: Guidance for developing/contributing to the SDK itself
 """
