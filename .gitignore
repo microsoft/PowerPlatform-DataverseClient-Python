@@ -22,3 +22,6 @@ htmlcov/
 Thumbs.db
 .DS_Store
 *.tm7
+
+# Claude local settings
+.claude/*.local.json
