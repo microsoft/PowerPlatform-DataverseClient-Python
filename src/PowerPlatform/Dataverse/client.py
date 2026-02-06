@@ -518,19 +518,19 @@ class DataverseClient:
         with self._scoped_odata() as od:
             od._delete_table(table_schema_name)
 
-    def list_tables(self) -> list[str]:
+    def list_tables(self) -> list[dict[str, Any]]:
         """
-        List all custom tables in the Dataverse environment.
+        List all non-private tables in the Dataverse environment.
 
-        :return: List of custom table names.
-        :rtype: :class:`list` of :class:`str`
+        :return: List of EntityDefinition metadata dictionaries.
+        :rtype: :class:`list` of :class:`dict`
 
         Example:
-            List all custom tables::
+        List all non-private tables and print their logical names::
 
-                tables = client.list_tables()
-                for table in tables:
-                    print(table)
+            tables = client.list_tables()
+            for table in tables:
+                print(table["LogicalName"])
         """
         with self._scoped_odata() as od:
             return od._list_tables()
