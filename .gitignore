@@ -25,3 +25,4 @@ Thumbs.db
 
 # Claude local settings
 .claude/*.local.json
+.claude/*.local.md

@@ -23,6 +23,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Quick start](#quick-start)
   - [Basic CRUD operations](#basic-crud-operations)
   - [Bulk operations](#bulk-operations)
+  - [DataFrame operations](#dataframe-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
   - [File operations](#file-operations)
@@ -36,6 +37,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
+- **🐼 DataFrame Support**: Pandas wrappers for all CRUD operations, returning DataFrames and Series
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
@@ -174,6 +176,39 @@ client.update("account", ids, {"industry": "Technology"})
 
 # Bulk delete
 client.delete("account", ids, use_bulk_delete=True)
+```
+
+### DataFrame operations
+
+The SDK provides pandas wrappers for all CRUD operations, using DataFrames and Series for input and output.
+
+```python
+import pandas as pd
+
+# Query records as paged DataFrames (one DataFrame per page)
+for df_page in client.get_dataframe("account", filter="statecode eq 0", select=["name", "telephone1"]):
+    print(f"Page has {len(df_page)} rows")
+
+# Collect all pages into one DataFrame
+df = pd.concat(client.get_dataframe("account", select=["name"], top=100), ignore_index=True)
+print(f"Found {len(df)} accounts")
+
+# Fetch a single record as a one-row DataFrame
+df = client.get_dataframe("account", record_id=account_id, select=["name"])
+
+# Create records from a DataFrame (returns a Series of GUIDs)
+new_accounts = pd.DataFrame([
+    {"name": "Contoso", "telephone1": "555-0100"},
+    {"name": "Fabrikam", "telephone1": "555-0200"},
+])
+new_accounts["accountid"] = client.create_dataframe("account", new_accounts)
+
+# Update records from a DataFrame (id_column identifies the GUID column)
+new_accounts["telephone1"] = ["555-0199", "555-0299"]
+client.update_dataframe("account", new_accounts, id_column="accountid")
+
+# Delete records by passing a Series of GUIDs
+client.delete_dataframe("account", new_accounts["accountid"])
 ```
 
 ### Query data
