@@ -6,9 +6,9 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Union, List, Iterable, Iterator
 from contextlib import contextmanager
 
-import pandas as pd
-
 from azure.core.credentials import TokenCredential
+
+import pandas as pd
 
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
