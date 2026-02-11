@@ -96,15 +96,17 @@ class TestDataFrameGet(unittest.TestCase):
         self.client._odata._get_multiple.return_value = iter([])
 
         # Consume the generator to trigger the underlying call
-        list(self.client.get_dataframe(
-            "account",
-            select=["name"],
-            filter="statecode eq 0",
-            orderby=["name asc"],
-            top=50,
-            expand=["primarycontactid"],
-            page_size=25,
-        ))
+        list(
+            self.client.get_dataframe(
+                "account",
+                select=["name"],
+                filter="statecode eq 0",
+                orderby=["name asc"],
+                top=50,
+                expand=["primarycontactid"],
+                page_size=25,
+            )
+        )
 
         self.client._odata._get_multiple.assert_called_once_with(
             "account",
@@ -128,10 +130,12 @@ class TestDataFrameCreate(unittest.TestCase):
 
     def test_create_dataframe(self):
         """DataFrame rows are converted to dicts and returned IDs are a Series."""
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": "555-0200"},
+            ]
+        )
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
@@ -195,10 +199,12 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_dataframe(self):
         """DataFrame rows are split into IDs and changes, then passed to update."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "telephone1": "555-0100"},
-            {"accountid": "guid-2", "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "telephone1": "555-0100"},
+                {"accountid": "guid-2", "telephone1": "555-0200"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid")
 
@@ -223,9 +229,11 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_multiple_change_columns(self):
         """Multiple change columns are all included in the update payload (single row uses _update)."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name", "telephone1": "555-0100"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name", "telephone1": "555-0100"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid")
 
@@ -256,9 +264,7 @@ class TestDataFrameDelete(unittest.TestCase):
         job_id = self.client.delete_dataframe("account", ids)
 
         self.assertEqual(job_id, "job-123")
-        self.client._odata._delete_multiple.assert_called_once_with(
-            "account", ["guid-1", "guid-2", "guid-3"]
-        )
+        self.client._odata._delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2", "guid-3"])
 
     def test_delete_from_dataframe_column(self):
         """Series extracted from a DataFrame column works directly."""
@@ -267,9 +273,7 @@ class TestDataFrameDelete(unittest.TestCase):
 
         self.client.delete_dataframe("account", df["accountid"])
 
-        self.client._odata._delete_multiple.assert_called_once_with(
-            "account", ["guid-1", "guid-2"]
-        )
+        self.client._odata._delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2"])
 
     def test_delete_dataframe_sequential(self):
         """use_bulk_delete=False deletes records sequentially."""
@@ -293,5 +297,3 @@ class TestDataFrameDelete(unittest.TestCase):
         result = self.client.delete_dataframe("account", ids)
 
         self.assertIsNone(result)
-
-
