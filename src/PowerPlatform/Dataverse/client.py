@@ -542,8 +542,8 @@ class DataverseClient:
         :type table_schema_name: :class:`str`
         :param ids: Series of record GUIDs to delete.
         :type ids: ~pandas.Series
-        :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
-            return its async job identifier. When ``False`` each record is deleted sequentially.
+        :param use_bulk_delete: When ``True`` (default) and ``ids`` contains multiple values, execute the BulkDelete
+            action and return its async job identifier. When ``False`` each record is deleted sequentially.
         :type use_bulk_delete: :class:`bool`
 
         :raises TypeError: If ``ids`` is not a pandas Series.
