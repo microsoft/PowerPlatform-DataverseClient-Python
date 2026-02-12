@@ -124,6 +124,13 @@ def main():
     verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
+    # Clear a field by updating to None
+    print("\n  Clearing websiteurl for Contoso by setting to None...")
+    clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
+    client.update_dataframe(table, clear_df, id_column="accountid")
+    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    print(f"  Verified (Contoso websiteurl should be empty):\n{verified.to_string(index=False)}")
+
     # ── 7. Delete records by passing a Series of GUIDs ────────────
     print("\n" + "-" * 60)
     print("7. Delete records by passing a Series of GUIDs")

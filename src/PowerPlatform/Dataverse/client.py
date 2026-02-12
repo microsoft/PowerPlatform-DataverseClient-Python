@@ -417,7 +417,7 @@ class DataverseClient:
 
             Collect all pages into one DataFrame::
 
-                all_data = pd.concat(client.get_dataframe("account", select=["name"]))
+                all_data = pd.concat(client.get_dataframe("account", select=["name"]), ignore_index=True)
         """
         if record_id is not None:
             result = self.get(
