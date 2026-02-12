@@ -189,10 +189,12 @@ class TestDataFrameCreate(unittest.TestCase):
 
     def test_create_converts_nan_to_none(self):
         """NaN values are converted to None in the payload."""
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": None},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": None},
+            ]
+        )
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
@@ -277,10 +279,12 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_preserves_none_for_clearing_fields(self):
         """None values in update are kept as None to allow clearing fields in Dataverse."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
-            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+                {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid")
 
