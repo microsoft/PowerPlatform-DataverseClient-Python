@@ -13,7 +13,7 @@ This skill provides guidance for developers working on the PowerPlatform Dataver
 
 ### API Design
 
-1. **All public methods in client.py** - Public API methods must be in client.py
+1. **client.py** - client.py only contains public API methods and all public methods must be in client.py
 2. **Every public method needs README example** - Public API methods must have examples in README.md
 3. **Reuse existing APIs** - Always check if an existing method can be used before making direct Web API calls
 4. **Update documentation** when adding features - Keep README and SKILL files (both copies) in sync

@@ -40,15 +40,20 @@ def main():
     test_filter = f"contains(name,'{tag}')"
     print(f"[INFO] Using tag '{tag}' to identify test records")
 
+    select_cols = ["name", "telephone1", "websiteurl", "lastonholdtime"]
+
     # ── 1. Create records from a DataFrame ────────────────────────
     print("\n" + "-" * 60)
     print("1. Create records from a DataFrame")
     print("-" * 60)
 
     new_accounts = pd.DataFrame([
-        {"name": f"Contoso_{tag}", "telephone1": "555-0100", "websiteurl": "https://contoso.com"},
-        {"name": f"Fabrikam_{tag}", "telephone1": "555-0200", "websiteurl": "https://fabrikam.com"},
-        {"name": f"Northwind_{tag}", "telephone1": "555-0300", "websiteurl": "https://northwind.com"},
+        {"name": f"Contoso_{tag}", "telephone1": "555-0100", "websiteurl": "https://contoso.com",
+         "lastonholdtime": pd.Timestamp("2024-06-15 10:30:00")},
+        {"name": f"Fabrikam_{tag}", "telephone1": "555-0200", "websiteurl": None,
+         "lastonholdtime": None},
+        {"name": f"Northwind_{tag}", "telephone1": None, "websiteurl": "https://northwind.com",
+         "lastonholdtime": pd.Timestamp("2024-12-01 08:00:00")},
     ])
     print(f"  Input DataFrame:\n{new_accounts.to_string(index=False)}\n")
 
@@ -63,7 +68,7 @@ def main():
     print("-" * 60)
 
     page_count = 0
-    for df_page in client.get_dataframe(table, select=["name", "telephone1"], filter=test_filter, page_size=2):
+    for df_page in client.get_dataframe(table, select=select_cols, filter=test_filter, page_size=2):
         page_count += 1
         print(f"  Page {page_count} ({len(df_page)} records):\n{df_page.to_string(index=False)}")
 
@@ -73,7 +78,7 @@ def main():
     print("-" * 60)
 
     all_records = pd.concat(
-        client.get_dataframe(table, select=["name", "telephone1"], filter=test_filter, page_size=2),
+        client.get_dataframe(table, select=select_cols, filter=test_filter, page_size=2),
         ignore_index=True,
     )
     print(f"[OK] Got {len(all_records)} total records in one DataFrame")
@@ -87,7 +92,7 @@ def main():
 
     first_id = new_accounts["accountid"].iloc[0]
     print(f"  Fetching record {first_id}...")
-    single = client.get_dataframe(table, record_id=first_id, select=["name", "telephone1"])
+    single = client.get_dataframe(table, record_id=first_id, select=select_cols)
     print(f"[OK] Single record DataFrame:\n{single.to_string(index=False)}")
 
     # ── 5. Update records from a DataFrame ────────────────────────
@@ -101,7 +106,7 @@ def main():
     print("[OK] Updated 3 records")
 
     # Verify the updates with a bulk get
-    verified = next(client.get_dataframe(table, select=["name", "telephone1"], filter=test_filter))
+    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # ── 6. Broadcast update (same value to all records) ───────────
@@ -116,7 +121,7 @@ def main():
     print("[OK] Broadcast update complete")
 
     # Verify all records have the same websiteurl
-    verified = next(client.get_dataframe(table, select=["name", "websiteurl"], filter=test_filter))
+    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # ── 7. Delete records by passing a Series of GUIDs ────────────
@@ -129,7 +134,7 @@ def main():
     print(f"[OK] Deleted {len(new_accounts)} records")
 
     # Verify deletions - filter for our tagged records should return 0
-    remaining = list(client.get_dataframe(table, select=["name"], filter=test_filter))
+    remaining = list(client.get_dataframe(table, select=select_cols, filter=test_filter))
     count = sum(len(page) for page in remaining)
     print(f"  Verified: {count} test records remaining (expected 0)")
 

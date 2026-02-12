@@ -13,6 +13,7 @@ import pandas as pd
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
+from .utils._pandas import dataframe_to_records
 
 
 class DataverseClient:
@@ -472,7 +473,7 @@ class DataverseClient:
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
 
-        record_list = records.to_dict(orient="records")
+        record_list = dataframe_to_records(records)
         ids = self.create(table_schema_name, record_list)
         return pd.Series(ids, index=records.index)
 
@@ -522,7 +523,7 @@ class DataverseClient:
 
         ids = records[id_column].tolist()
         change_columns = [column for column in records.columns if column != id_column]
-        changes = records[change_columns].to_dict(orient="records")
+        changes = dataframe_to_records(records[change_columns])
 
         if len(ids) == 1:
             self.update(table_schema_name, ids[0], changes[0])

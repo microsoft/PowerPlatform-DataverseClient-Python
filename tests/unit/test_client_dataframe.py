@@ -187,6 +187,36 @@ class TestDataFrameCreate(unittest.TestCase):
         self.assertIsInstance(ids, pd.Series)
         self.assertEqual(len(ids), 0)
 
+    def test_create_drops_nan_values(self):
+        """NaN values are stripped from the payload (field omitted, not sent as NaN)."""
+        df = pd.DataFrame([
+            {"name": "Contoso", "telephone1": "555-0100"},
+            {"name": "Fabrikam", "telephone1": None},
+        ])
+        self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+        self.client.create_dataframe("account", df)
+
+        call_args = self.client._odata._create_multiple.call_args
+        records_arg = call_args[0][2]
+        self.assertEqual(records_arg[0], {"name": "Contoso", "telephone1": "555-0100"})
+        self.assertEqual(records_arg[1], {"name": "Fabrikam"})
+        self.assertNotIn("telephone1", records_arg[1])
+
+    def test_create_converts_timestamps_to_iso(self):
+        """Timestamp values are converted to ISO 8601 strings."""
+        ts = pd.Timestamp("2024-01-15 10:30:00")
+        df = pd.DataFrame([{"name": "Contoso", "createdon": ts}])
+        self.client._odata._create_multiple.return_value = ["guid-1"]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+        self.client.create_dataframe("account", df)
+
+        call_args = self.client._odata._create_multiple.call_args
+        records_arg = call_args[0][2]
+        self.assertEqual(records_arg[0]["createdon"], "2024-01-15T10:30:00")
+
 
 class TestDataFrameUpdate(unittest.TestCase):
     """Tests for update_dataframe."""
@@ -245,6 +275,20 @@ class TestDataFrameUpdate(unittest.TestCase):
         self.assertIn("name", changes)
         self.assertIn("telephone1", changes)
         self.assertNotIn("accountid", changes)
+
+    def test_update_drops_nan_from_changes(self):
+        """NaN values in change columns are stripped from the payload."""
+        df = pd.DataFrame([
+            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+        ])
+
+        self.client.update_dataframe("account", df, id_column="accountid")
+
+        call_args = self.client._odata._update_by_ids.call_args[0]
+        changes = call_args[2]
+        self.assertEqual(changes[0], {"name": "New Name"})
+        self.assertEqual(changes[1], {"telephone1": "555-0200"})
 
 
 class TestDataFrameDelete(unittest.TestCase):
