@@ -527,7 +527,7 @@ class DataverseClient:
 
         Example:
             List all non-private tables and print their logical names::
-    
+
                 tables = client.list_tables()
                 for table in tables:
                     print(table["LogicalName"])
