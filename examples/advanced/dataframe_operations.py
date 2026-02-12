@@ -47,14 +47,23 @@ def main():
     print("1. Create records from a DataFrame")
     print("-" * 60)
 
-    new_accounts = pd.DataFrame([
-        {"name": f"Contoso_{tag}", "telephone1": "555-0100", "websiteurl": "https://contoso.com",
-         "lastonholdtime": pd.Timestamp("2024-06-15 10:30:00")},
-        {"name": f"Fabrikam_{tag}", "telephone1": "555-0200", "websiteurl": None,
-         "lastonholdtime": None},
-        {"name": f"Northwind_{tag}", "telephone1": None, "websiteurl": "https://northwind.com",
-         "lastonholdtime": pd.Timestamp("2024-12-01 08:00:00")},
-    ])
+    new_accounts = pd.DataFrame(
+        [
+            {
+                "name": f"Contoso_{tag}",
+                "telephone1": "555-0100",
+                "websiteurl": "https://contoso.com",
+                "lastonholdtime": pd.Timestamp("2024-06-15 10:30:00"),
+            },
+            {"name": f"Fabrikam_{tag}", "telephone1": "555-0200", "websiteurl": None, "lastonholdtime": None},
+            {
+                "name": f"Northwind_{tag}",
+                "telephone1": None,
+                "websiteurl": "https://northwind.com",
+                "lastonholdtime": pd.Timestamp("2024-12-01 08:00:00"),
+            },
+        ]
+    )
     print(f"  Input DataFrame:\n{new_accounts.to_string(index=False)}\n")
 
     # create_dataframe returns a Series of GUIDs aligned with the input rows
@@ -126,9 +135,11 @@ def main():
 
     # Default: NaN/None fields are skipped (not overridden on server)
     print("\n  Updating with NaN values (default: clear_nulls=False, fields should stay unchanged)...")
-    sparse_df = pd.DataFrame([
-        {"accountid": new_accounts["accountid"].iloc[0], "telephone1": "555-9999", "websiteurl": None},
-    ])
+    sparse_df = pd.DataFrame(
+        [
+            {"accountid": new_accounts["accountid"].iloc[0], "telephone1": "555-9999", "websiteurl": None},
+        ]
+    )
     client.update_dataframe(table, sparse_df, id_column="accountid")
     verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n{verified.to_string(index=False)}")
