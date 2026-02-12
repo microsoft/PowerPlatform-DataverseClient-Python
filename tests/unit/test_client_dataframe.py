@@ -4,8 +4,8 @@
 import unittest
 from unittest.mock import MagicMock
 
-import pandas as pd
 from azure.core.credentials import TokenCredential
+import pandas as pd
 
 from PowerPlatform.Dataverse.client import DataverseClient
 

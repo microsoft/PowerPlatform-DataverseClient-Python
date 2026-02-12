@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from azure.core.credentials import TokenCredential
 
 import pandas as pd
-
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
