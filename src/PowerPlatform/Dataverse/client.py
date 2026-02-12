@@ -8,9 +8,11 @@ from contextlib import contextmanager
 
 from azure.core.credentials import TokenCredential
 
+import pandas as pd
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
+from .utils._pandas import dataframe_to_records, strip_odata_keys
 
 
 class DataverseClient:
@@ -359,6 +361,223 @@ class DataverseClient:
                 )
 
         return _paged()
+
+    # ---------------- DataFrame CRUD wrappers ----------------
+
+    def get_dataframe(
+        self,
+        table_schema_name: str,
+        record_id: Optional[str] = None,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+    ) -> Union[pd.DataFrame, Iterable[pd.DataFrame]]:
+        """
+        Fetch records and return as pandas DataFrames.
+
+        When ``record_id`` is provided, returns a single-row DataFrame.
+        When ``record_id`` is None, returns a generator yielding one DataFrame per page,
+        matching the paging behavior of :meth:`get`.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table_schema_name: :class:`str`
+        :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
+        :type record_id: :class:`str` or None
+        :param select: Optional list of attribute logical names to retrieve.
+        :type select: :class:`list` of :class:`str` or None
+        :param filter: Optional OData filter string. Column names must use exact lowercase logical names.
+        :type filter: :class:`str` or None
+        :param orderby: Optional list of attributes to sort by.
+        :type orderby: :class:`list` of :class:`str` or None
+        :param top: Optional maximum number of records to return.
+        :type top: :class:`int` or None
+        :param expand: Optional list of navigation properties to expand (case-sensitive).
+        :type expand: :class:`list` of :class:`str` or None
+        :param page_size: Optional number of records per page for pagination.
+        :type page_size: :class:`int` or None
+
+        :return: Single-row DataFrame if ``record_id`` is provided, otherwise a generator
+            yielding one DataFrame per page of results.
+        :rtype: ~pandas.DataFrame or :class:`collections.abc.Iterable` of ~pandas.DataFrame
+
+        Example:
+            Fetch a single record as a DataFrame::
+
+                df = client.get_dataframe("account", record_id=account_id, select=["name", "telephone1"])
+                print(df)
+
+            Iterate over paged results::
+
+                for df_page in client.get_dataframe("account", filter="statecode eq 0", top=100):
+                    print(f"Page has {len(df_page)} rows")
+
+            Collect all pages into one DataFrame::
+
+                all_data = pd.concat(client.get_dataframe("account", select=["name"]), ignore_index=True)
+        """
+        if record_id is not None:
+            result = self.get(
+                table_schema_name,
+                record_id=record_id,
+                select=select,
+            )
+            return pd.DataFrame([strip_odata_keys(result)])
+
+        def _paged_df() -> Iterable[pd.DataFrame]:
+            for batch in self.get(
+                table_schema_name,
+                select=select,
+                filter=filter,
+                orderby=orderby,
+                top=top,
+                expand=expand,
+                page_size=page_size,
+            ):
+                yield pd.DataFrame([strip_odata_keys(row) for row in batch])
+
+        return _paged_df()
+
+    def create_dataframe(
+        self,
+        table_schema_name: str,
+        records: pd.DataFrame,
+    ) -> pd.Series:
+        """
+        Create records from a pandas DataFrame.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table_schema_name: :class:`str`
+        :param records: DataFrame where each row is a record to create.
+        :type records: ~pandas.DataFrame
+
+        :return: Series of created record GUIDs, aligned with the input DataFrame index.
+        :rtype: ~pandas.Series
+
+        :raises TypeError: If ``records`` is not a pandas DataFrame.
+
+        Example:
+            Create records from a DataFrame::
+
+                import pandas as pd
+
+                df = pd.DataFrame([
+                    {"name": "Contoso", "telephone1": "555-0100"},
+                    {"name": "Fabrikam", "telephone1": "555-0200"},
+                ])
+                df["accountid"] = client.create_dataframe("account", df)
+        """
+        if not isinstance(records, pd.DataFrame):
+            raise TypeError("records must be a pandas DataFrame")
+
+        record_list = dataframe_to_records(records)
+        ids = self.create(table_schema_name, record_list)
+        return pd.Series(ids, index=records.index)
+
+    def update_dataframe(
+        self,
+        table_schema_name: str,
+        records: pd.DataFrame,
+        id_column: str,
+        clear_nulls: bool = False,
+    ) -> None:
+        """
+        Update records from a pandas DataFrame.
+
+        Each row in the DataFrame represents an update. The ``id_column`` specifies which
+        column contains the record GUIDs.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table_schema_name: :class:`str`
+        :param records: DataFrame where each row contains record GUID and fields to update.
+        :type records: ~pd.DataFrame
+        :param id_column: Name of the DataFrame column containing record GUIDs.
+        :type id_column: :class:`str`
+        :param clear_nulls: When ``False`` (default), missing values (NaN/None) are skipped
+            (the field is left unchanged on the server). When ``True``, missing values are sent
+            as ``null`` to Dataverse, clearing the field. Use ``True`` only when you intentionally
+            want NaN/None values to clear fields.
+        :type clear_nulls: :class:`bool`
+
+        :raises TypeError: If ``records`` is not a pandas DataFrame.
+        :raises ValueError: If ``id_column`` is not found in the DataFrame.
+
+        Example:
+            Update records with different values per row::
+
+                import pandas as pd
+
+                df = pd.DataFrame([
+                    {"accountid": "guid-1", "telephone1": "555-0100"},
+                    {"accountid": "guid-2", "telephone1": "555-0200"},
+                ])
+                client.update_dataframe("account", df, id_column="accountid")
+
+            Broadcast the same change to all records::
+
+                df = pd.DataFrame({"accountid": ["guid-1", "guid-2", "guid-3"]})
+                df["websiteurl"] = "https://example.com"
+                client.update_dataframe("account", df, id_column="accountid")
+
+            Clear a field by setting clear_nulls=True::
+
+                df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
+                client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
+        """
+        if not isinstance(records, pd.DataFrame):
+            raise TypeError("records must be a pandas DataFrame")
+        if id_column not in records.columns:
+            raise ValueError(f"id_column '{id_column}' not found in DataFrame columns")
+
+        ids = records[id_column].tolist()
+        change_columns = [column for column in records.columns if column != id_column]
+        changes = dataframe_to_records(records[change_columns], na_as_null=clear_nulls)
+
+        if len(ids) == 1:
+            self.update(table_schema_name, ids[0], changes[0])
+        else:
+            self.update(table_schema_name, ids, changes)
+
+    def delete_dataframe(
+        self,
+        table_schema_name: str,
+        ids: pd.Series,
+        use_bulk_delete: bool = True,
+    ) -> Optional[str]:
+        """
+        Delete records by passing a pandas Series of GUIDs.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table_schema_name: :class:`str`
+        :param ids: Series of record GUIDs to delete.
+        :type ids: ~pandas.Series
+        :param use_bulk_delete: When ``True`` (default) and ``ids`` contains multiple values, execute the BulkDelete
+            action and return its async job identifier. When ``False`` each record is deleted sequentially.
+        :type use_bulk_delete: :class:`bool`
+
+        :raises TypeError: If ``ids`` is not a pandas Series.
+
+        :return: BulkDelete job ID when deleting multiple records via BulkDelete; otherwise ``None``.
+        :rtype: :class:`str` or None
+
+        Example:
+            Delete records using a Series::
+
+                import pandas as pd
+
+                ids = pd.Series(["guid-1", "guid-2", "guid-3"])
+                client.delete_dataframe("account", ids)
+        """
+        if not isinstance(ids, pd.Series):
+            raise TypeError("ids must be a pandas Series")
+
+        id_list = ids.tolist()
+        if len(id_list) == 1:
+            return self.delete(table_schema_name, id_list[0])
+        else:
+            return self.delete(table_schema_name, id_list, use_bulk_delete=use_bulk_delete)
 
     # SQL via Web API sql parameter
     def query_sql(self, sql: str):
