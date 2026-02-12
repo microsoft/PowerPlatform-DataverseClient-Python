@@ -68,6 +68,7 @@ def log(call: str):
 _FILE_HASH_CACHE = {}
 ATTRIBUTE_VISIBILITY_DELAYS = (0, 3, 10, 20, 35, 50, 70, 90, 120)
 
+
 def file_sha256(path: Path):  # returns (hex_digest, size_bytes)
     try:
         m = _FILE_HASH_CACHE.get(path)
@@ -166,9 +167,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             result = op()
             if attempts > 1:
                 retry_count = attempts - 1
-                print(
-                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
+                print(f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total.")
             return result
         except Exception as ex:  # noqa: BLE001
             last = ex
@@ -176,9 +175,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
+            print(f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total.")
         raise last
 
 
@@ -337,9 +334,7 @@ if run_chunk:
         )
         print({"chunk_upload_completed": True})
         odata = client._get_odata()
-        dl_url_chunk = (
-            f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"  # raw entity_set for download
-        )
+        dl_url_chunk = f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"  # raw entity_set for download
         resp_chunk = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk = resp_chunk.content or b""
         import hashlib  # noqa: WPS433

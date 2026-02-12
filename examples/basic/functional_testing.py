@@ -91,22 +91,16 @@ def wait_for_table_metadata(
                 odata._entity_set_from_schema_name(table_schema_name)
 
                 if attempt > 1:
-                    print(
-                        f"   [OK] Table metadata available after {attempt} attempts."
-                    )
+                    print(f"   [OK] Table metadata available after {attempt} attempts.")
                 return info
         except Exception:
             pass
 
         if attempt < retries:
-            print(
-                f"   Waiting for table metadata to publish (attempt {attempt}/{retries})..."
-            )
+            print(f"   Waiting for table metadata to publish (attempt {attempt}/{retries})...")
             time.sleep(delay_seconds)
 
-    raise RuntimeError(
-        "Table metadata did not become available in time. Please retry later."
-    )
+    raise RuntimeError("Table metadata did not become available in time. Please retry later.")
 
 
 def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
@@ -229,9 +223,7 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
-                    print(
-                        f"   Record not queryable yet (attempt {attempt}/{retries}). Retrying in {delay_seconds}s..."
-                    )
+                    print(f"   Record not queryable yet (attempt {attempt}/{retries}). Retrying in {delay_seconds}s...")
                     time.sleep(delay_seconds)
                     continue
                 raise
@@ -301,9 +293,7 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
-                    print(
-                        f"   Query retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
-                    )
+                    print(f"   Query retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s...")
                     time.sleep(delay_seconds)
                     continue
                 raise
@@ -373,9 +363,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
                     print("[OK] Test table deleted successfully (404 reported).")
                     break
                 if attempt < retries:
-                    print(
-                        f"   Table delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s..."
-                    )
+                    print(f"   Table delete retry {attempt}/{retries} after error ({err}). Waiting {delay_seconds}s...")
                     time.sleep(delay_seconds)
                     continue
                 print(f"[WARN] Failed to delete test table: {err}")

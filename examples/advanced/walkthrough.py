@@ -52,9 +52,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
             result = op()
             if attempts > 1:
                 retry_count = attempts - 1
-                print(
-                    f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total."
-                )
+                print(f"   [INFO] Backoff succeeded after {retry_count} retry(s); waited {total_delay}s total.")
             return result
         except Exception as ex:  # noqa: BLE001
             last = ex
@@ -62,9 +60,7 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             retry_count = max(attempts - 1, 0)
-            print(
-                f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total."
-            )
+            print(f"   [WARN] Backoff exhausted after {retry_count} retry(s); waited {total_delay}s total.")
         raise last
 
 
@@ -339,7 +335,7 @@ def main():
         print(f"[OK] Deleted table: {table_name}")
     except Exception as ex:  # noqa: BLE001
         code = getattr(getattr(ex, "response", None), "status_code", None)
-        if (isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404):
+        if isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404:
             print(f"[OK] Table removed: {table_name}")
         else:
             raise
