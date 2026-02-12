@@ -526,11 +526,11 @@ class DataverseClient:
         :rtype: :class:`list` of :class:`dict`
 
         Example:
-        List all non-private tables and print their logical names::
-
-            tables = client.list_tables()
-            for table in tables:
-                print(table["LogicalName"])
+            List all non-private tables and print their logical names::
+    
+                tables = client.list_tables()
+                for table in tables:
+                    print(table["LogicalName"])
         """
         with self._scoped_odata() as od:
             return od._list_tables()
