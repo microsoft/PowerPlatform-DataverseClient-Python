@@ -22,3 +22,8 @@ def dataframe_to_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
                 clean[k] = None
         records.append(clean)
     return records
+
+
+def strip_odata_keys(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove OData metadata keys (keys containing '@') from a record dict."""
+    return {k: v for k, v in record.items() if "@" not in k}

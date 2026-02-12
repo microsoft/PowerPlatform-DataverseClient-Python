@@ -13,7 +13,7 @@ import pandas as pd
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
-from .utils._pandas import dataframe_to_records
+from .utils._pandas import dataframe_to_records, strip_odata_keys
 
 
 class DataverseClient:
@@ -425,7 +425,7 @@ class DataverseClient:
                 record_id=record_id,
                 select=select,
             )
-            return pd.DataFrame([result])
+            return pd.DataFrame([strip_odata_keys(result)])
 
         def _paged_df() -> Iterable[pd.DataFrame]:
             for batch in self.get(
@@ -437,7 +437,7 @@ class DataverseClient:
                 expand=expand,
                 page_size=page_size,
             ):
-                yield pd.DataFrame(batch)
+                yield pd.DataFrame([strip_odata_keys(row) for row in batch])
 
         return _paged_df()
 
@@ -563,7 +563,11 @@ class DataverseClient:
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
 
-        return self.delete(table_schema_name, ids.tolist(), use_bulk_delete=use_bulk_delete)
+        id_list = ids.tolist()
+        if len(id_list) == 1:
+            return self.delete(table_schema_name, id_list[0])
+        else:
+            return self.delete(table_schema_name, id_list, use_bulk_delete=use_bulk_delete)
 
     # SQL via Web API sql parameter
     def query_sql(self, sql: str):
