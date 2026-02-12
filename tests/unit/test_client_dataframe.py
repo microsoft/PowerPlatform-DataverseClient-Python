@@ -189,10 +189,12 @@ class TestDataFrameCreate(unittest.TestCase):
 
     def test_create_drops_nan_values(self):
         """NaN values are stripped from the payload (field omitted, not sent as NaN)."""
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": None},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": None},
+            ]
+        )
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
@@ -278,10 +280,12 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_drops_nan_from_changes(self):
         """NaN values in change columns are stripped from the payload."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
-            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+                {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid")
 
