@@ -482,6 +482,7 @@ class DataverseClient:
         table_schema_name: str,
         records: pd.DataFrame,
         id_column: str,
+        clear_nulls: bool = False,
     ) -> None:
         """
         Update records from a pandas DataFrame.
@@ -495,6 +496,11 @@ class DataverseClient:
         :type records: ~pd.DataFrame
         :param id_column: Name of the DataFrame column containing record GUIDs.
         :type id_column: :class:`str`
+        :param clear_nulls: When ``False`` (default), missing values (NaN/None) are skipped
+            (the field is left unchanged on the server). When ``True``, missing values are sent
+            as ``null`` to Dataverse, clearing the field. Use ``True`` only when you intentionally
+            want NaN/None values to clear fields.
+        :type clear_nulls: :class:`bool`
 
         :raises TypeError: If ``records`` is not a pandas DataFrame.
         :raises ValueError: If ``id_column`` is not found in the DataFrame.
@@ -515,6 +521,11 @@ class DataverseClient:
                 df = pd.DataFrame({"accountid": ["guid-1", "guid-2", "guid-3"]})
                 df["websiteurl"] = "https://example.com"
                 client.update_dataframe("account", df, id_column="accountid")
+
+            Clear a field by setting clear_nulls=True::
+
+                df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
+                client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
         """
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
@@ -523,7 +534,7 @@ class DataverseClient:
 
         ids = records[id_column].tolist()
         change_columns = [column for column in records.columns if column != id_column]
-        changes = dataframe_to_records(records[change_columns])
+        changes = dataframe_to_records(records[change_columns], na_as_null=clear_nulls)
 
         if len(ids) == 1:
             self.update(table_schema_name, ids[0], changes[0])

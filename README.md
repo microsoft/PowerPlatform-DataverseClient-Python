@@ -207,6 +207,10 @@ new_accounts["accountid"] = client.create_dataframe("account", new_accounts)
 new_accounts["telephone1"] = ["555-0199", "555-0299"]
 client.update_dataframe("account", new_accounts, id_column="accountid")
 
+# Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
+df = pd.DataFrame([{"accountid": ids[0], "websiteurl": None}])
+client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
+
 # Delete records by passing a Series of GUIDs
 client.delete_dataframe("account", new_accounts["accountid"])
 ```

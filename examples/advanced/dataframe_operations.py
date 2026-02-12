@@ -124,10 +124,19 @@ def main():
     verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
-    # Clear a field by updating to None
-    print("\n  Clearing websiteurl for Contoso by setting to None...")
+    # Default: NaN/None fields are skipped (not overridden on server)
+    print("\n  Updating with NaN values (default: clear_nulls=False, fields should stay unchanged)...")
+    sparse_df = pd.DataFrame([
+        {"accountid": new_accounts["accountid"].iloc[0], "telephone1": "555-9999", "websiteurl": None},
+    ])
+    client.update_dataframe(table, sparse_df, id_column="accountid")
+    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    print(f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n{verified.to_string(index=False)}")
+
+    # Opt-in: clear_nulls=True sends None as null to clear the field
+    print("\n  Clearing websiteurl for Contoso with clear_nulls=True...")
     clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
-    client.update_dataframe(table, clear_df, id_column="accountid")
+    client.update_dataframe(table, clear_df, id_column="accountid", clear_nulls=True)
     verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
     print(f"  Verified (Contoso websiteurl should be empty):\n{verified.to_string(index=False)}")
 

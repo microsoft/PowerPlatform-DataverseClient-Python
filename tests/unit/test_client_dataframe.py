@@ -187,14 +187,12 @@ class TestDataFrameCreate(unittest.TestCase):
         self.assertIsInstance(ids, pd.Series)
         self.assertEqual(len(ids), 0)
 
-    def test_create_converts_nan_to_none(self):
-        """NaN values are converted to None in the payload."""
-        df = pd.DataFrame(
-            [
-                {"name": "Contoso", "telephone1": "555-0100"},
-                {"name": "Fabrikam", "telephone1": None},
-            ]
-        )
+    def test_create_drops_nan_values(self):
+        """NaN/None values are omitted from the create payload."""
+        df = pd.DataFrame([
+            {"name": "Contoso", "telephone1": "555-0100"},
+            {"name": "Fabrikam", "telephone1": None},
+        ])
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
@@ -203,7 +201,8 @@ class TestDataFrameCreate(unittest.TestCase):
         call_args = self.client._odata._create_multiple.call_args
         records_arg = call_args[0][2]
         self.assertEqual(records_arg[0], {"name": "Contoso", "telephone1": "555-0100"})
-        self.assertEqual(records_arg[1], {"name": "Fabrikam", "telephone1": None})
+        self.assertEqual(records_arg[1], {"name": "Fabrikam"})
+        self.assertNotIn("telephone1", records_arg[1])
 
     def test_create_converts_timestamps_to_iso(self):
         """Timestamp values are converted to ISO 8601 strings."""
@@ -277,16 +276,28 @@ class TestDataFrameUpdate(unittest.TestCase):
         self.assertIn("telephone1", changes)
         self.assertNotIn("accountid", changes)
 
-    def test_update_preserves_none_for_clearing_fields(self):
-        """None values in update are kept as None to allow clearing fields in Dataverse."""
-        df = pd.DataFrame(
-            [
-                {"accountid": "guid-1", "name": "New Name", "telephone1": None},
-                {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
-            ]
-        )
+    def test_update_skips_nan_by_default(self):
+        """NaN/None values are skipped by default (field left unchanged on server)."""
+        df = pd.DataFrame([
+            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+        ])
 
         self.client.update_dataframe("account", df, id_column="accountid")
+
+        call_args = self.client._odata._update_by_ids.call_args[0]
+        changes = call_args[2]
+        self.assertEqual(changes[0], {"name": "New Name"})
+        self.assertEqual(changes[1], {"telephone1": "555-0200"})
+
+    def test_update_clear_nulls_sends_none(self):
+        """With clear_nulls=True, NaN/None values are sent as None to clear fields."""
+        df = pd.DataFrame([
+            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+        ])
+
+        self.client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
 
         call_args = self.client._odata._update_by_ids.call_args[0]
         changes = call_args[2]
