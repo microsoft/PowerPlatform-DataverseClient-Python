@@ -189,10 +189,12 @@ class TestDataFrameCreate(unittest.TestCase):
 
     def test_create_drops_nan_values(self):
         """NaN/None values are omitted from the create payload."""
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": None},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": None},
+            ]
+        )
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
@@ -278,10 +280,12 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_skips_nan_by_default(self):
         """NaN/None values are skipped by default (field left unchanged on server)."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
-            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+                {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid")
 
@@ -292,10 +296,12 @@ class TestDataFrameUpdate(unittest.TestCase):
 
     def test_update_clear_nulls_sends_none(self):
         """With clear_nulls=True, NaN/None values are sent as None to clear fields."""
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name", "telephone1": None},
-            {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name", "telephone1": None},
+                {"accountid": "guid-2", "name": None, "telephone1": "555-0200"},
+            ]
+        )
 
         self.client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
 
