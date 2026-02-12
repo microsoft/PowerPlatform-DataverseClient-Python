@@ -337,9 +337,8 @@ if run_chunk:
         )
         print({"chunk_upload_completed": True})
         odata = client._get_odata()
-        dl_url_chunk = (
-            f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"  # raw entity_set for download
-        )
+        # raw entity_set for download
+        dl_url_chunk = f"{odata.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"
         resp_chunk = backoff(lambda: odata._request("get", dl_url_chunk))
         content_chunk = resp_chunk.content or b""
         import hashlib  # noqa: WPS433

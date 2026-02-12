@@ -364,7 +364,8 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
                     if _table_still_exists(client, table_info.get("table_schema_name")):
                         if attempt < retries:
                             print(
-                                f"   Table delete retry {attempt}/{retries} after metadata 404 ({err}). Waiting {delay_seconds}s..."
+                                f"   Table delete retry {attempt}/{retries} after metadata 404 ({err}). "
+                                f"Waiting {delay_seconds}s..."
                             )
                             time.sleep(delay_seconds)
                             continue
