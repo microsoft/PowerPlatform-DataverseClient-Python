@@ -26,3 +26,4 @@ This skill provides guidance for developers working on the PowerPlatform Dataver
 8. **No noqa comments** - Do not add `# noqa: BLE001` or similar linter suppression comments
 9. **Document public APIs** - Add Sphinx-style docstrings with examples for public methods
 10. **Define __all__ in module files, not __init__.py** - Use `__all__` to control exports in the actual module file (e.g., errors.py), not in `__init__.py`.
+11. **Run black before committing** - Always run `python -m black <changed files>` before committing. CI will reject unformatted code. Config is in `pyproject.toml` under `[tool.black]`.
