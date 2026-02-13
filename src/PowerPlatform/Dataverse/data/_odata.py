@@ -1114,7 +1114,9 @@ class _ODataClient(_ODataFileUpload):
         body_type = r_type.json()
         items = body_type.get("value", []) if isinstance(body_type, dict) else []
         if not items:
-            return None
+            # cache empty result
+            self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
+            return {}
         attr_md = items[0]
         if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
             self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
