@@ -32,7 +32,7 @@ jobs:
     
     - name: Check format with black
       run: |
-        black src tests --check
+        black src tests examples --check
     
     - name: Lint with flake8
       run: |
