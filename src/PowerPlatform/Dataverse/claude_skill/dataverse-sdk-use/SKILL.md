@@ -1,5 +1,5 @@
 ---
-name: powerplatform-dataverseclient-python
+name: dataverse-sdk-use
 description: Guidance for using the PowerPlatform Dataverse Client Python SDK. Use when calling the SDK like creating CRUD operations, SQL queries, table metadata management, and upload files.
 ---
 
@@ -31,7 +31,7 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 from azure.identity import (
     InteractiveBrowserCredential, 
     ClientSecretCredential,
-    ClientCertificateCredential,
+    CertificateCredential,
     AzureCliCredential
 )
 from PowerPlatform.Dataverse.client import DataverseClient
@@ -45,7 +45,7 @@ credential = AzureCliCredential()
 
 # Production options
 credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-credential = ClientCertificateCredential(tenant_id, client_id, cert_path)
+credential = CertificateCredential(tenant_id, client_id, cert_path)
 
 # Create client (no trailing slash on URL!)
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
@@ -159,6 +159,7 @@ Types on the same line map to the same exact format under the hood
 - `"float"` or `"double"` - Floating point number
 - `"bool"` or `"boolean"` - Yes/No
 - `"datetime"` or `"date"` - Date
+- `"file"` - File column
 - Enum subclass - Local option set (picklist)
 
 #### Manage Columns
@@ -199,7 +200,7 @@ client.delete_table("new_Product")
 client.upload_file(
     table_schema_name="account",
     record_id=account_id,
-    file_name_attribute="new_document",
+    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
     path="/path/to/document.pdf"
 )
 ```
@@ -256,7 +257,7 @@ except ValidationError as e:
 2. **Specify select fields** - Limit returned columns to reduce payload size
 3. **Control page size** - Use `top` and `page_size` parameters appropriately
 4. **Reuse client instances** - Don't create new clients for each operation
-5. **Use production credentials** - ClientSecretCredential or ClientCertificateCredential for unattended operations
+5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
 8. **Use lowercase** - Generally using lowercase input won't go wrong, except for custom table/column naming

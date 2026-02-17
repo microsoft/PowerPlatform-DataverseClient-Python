@@ -173,8 +173,7 @@ def show_usage_examples():
     print("\nUsage Examples")
     print("=" * 50)
 
-    print(
-        """
+    print("""
 Basic Setup:
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
@@ -244,8 +243,7 @@ print(f"Table: {info['table_schema_name']}")
 tables = client.list_tables()
 print(f"Found {len(tables)} tables")
 ```
-"""
-    )
+""")
 
 
 def interactive_test():
