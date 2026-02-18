@@ -61,32 +61,32 @@ class QueryOperations:
 
         :param table: Schema name of the table (e.g. ``"account"`` or
             ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
         :param select: Optional list of column logical names to include.
             Column names are automatically lowercased.
-        :type select: list[str] | None
+        :type select: :class:`list` of :class:`str` or None
         :param filter: Optional OData ``$filter`` expression (e.g.
             ``"name eq 'Contoso'"``). Column names in filter expressions must
             use exact lowercase logical names. Passed directly without
             transformation.
-        :type filter: str | None
+        :type filter: :class:`str` or None
         :param orderby: Optional list of sort expressions (e.g.
             ``["name asc", "createdon desc"]``). Column names are automatically
             lowercased.
-        :type orderby: list[str] | None
+        :type orderby: :class:`list` of :class:`str` or None
         :param top: Optional maximum total number of records to return.
-        :type top: int | None
+        :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (e.g.
             ``["primarycontactid"]``). Case-sensitive; must match server-defined
             names exactly.
-        :type expand: list[str] | None
+        :type expand: :class:`list` of :class:`str` or None
         :param page_size: Optional per-page size hint sent via
             ``Prefer: odata.maxpagesize``.
-        :type page_size: int | None
+        :type page_size: :class:`int` or None
 
         :return: Generator yielding pages, where each page is a list of record
             dictionaries.
-        :rtype: Iterable[list[dict[str, Any]]]
+        :rtype: :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
 
         Example:
             Query with filtering and pagination::
@@ -134,11 +134,11 @@ class QueryOperations:
         names only), and a simple table alias after FROM.
 
         :param sql: Supported SQL SELECT statement.
-        :type sql: str
+        :type sql: :class:`str`
 
         :return: List of result row dictionaries. Returns an empty list when no
             rows match.
-        :rtype: list[dict[str, Any]]
+        :rtype: :class:`list` of :class:`dict`
 
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``sql`` is not a string or is empty.

@@ -63,14 +63,14 @@ class RecordOperations:
         records via the ``CreateMultiple`` action and returns a list of GUIDs.
 
         :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
         :param data: A single record dictionary or a list of record dictionaries.
             Each dictionary maps column schema names to values.
-        :type data: dict[str, Any] | list[dict[str, Any]]
+        :type data: :class:`dict` or :class:`list` of :class:`dict`
 
         :return: A single GUID string for a single record, or a list of GUID
             strings for bulk creation.
-        :rtype: str | list[str]
+        :rtype: :class:`str` or :class:`list` of :class:`str`
 
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
@@ -122,12 +122,12 @@ class RecordOperations:
            equal length).
 
         :param table: Schema name of the table (e.g. ``"account"``).
-        :type table: str
+        :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: str | list[str]
+        :type ids: :class:`str` or :class:`list` of :class:`str`
         :param changes: A dictionary of field changes (single/broadcast), or a
             list of dictionaries (paired, one per ID).
-        :type changes: dict[str, Any] | list[dict[str, Any]]
+        :type changes: :class:`dict` or :class:`list` of :class:`dict`
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes``
             does not match the expected pattern.
@@ -182,16 +182,16 @@ class RecordOperations:
         ID) or deletes each record sequentially depending on ``use_bulk_delete``.
 
         :param table: Schema name of the table (e.g. ``"account"``).
-        :type table: str
+        :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: str | list[str]
+        :type ids: :class:`str` or :class:`list` of :class:`str`
         :param use_bulk_delete: When True (default) and ``ids`` is a list, use
             the BulkDelete action and return its async job ID. When False, delete
             records one at a time.
-        :type use_bulk_delete: bool
+        :type use_bulk_delete: :class:`bool`
 
         :return: The BulkDelete job ID when bulk-deleting; otherwise None.
-        :rtype: str | None
+        :rtype: :class:`str` or None
 
         :raises TypeError: If ``ids`` is not str or list[str].
 
@@ -232,15 +232,15 @@ class RecordOperations:
         """Fetch a single record by its GUID.
 
         :param table: Schema name of the table (e.g. ``"account"``).
-        :type table: str
+        :type table: :class:`str`
         :param record_id: GUID of the record to retrieve.
-        :type record_id: str
+        :type record_id: :class:`str`
         :param select: Optional list of column logical names to include in the
             response.
-        :type select: list[str] | None
+        :type select: :class:`list` of :class:`str` or None
 
         :return: Record dictionary with the requested attributes.
-        :rtype: dict[str, Any]
+        :rtype: :class:`dict`
 
         :raises TypeError: If ``record_id`` is not a string.
 

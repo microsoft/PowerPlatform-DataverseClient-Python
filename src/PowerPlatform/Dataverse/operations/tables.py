@@ -67,7 +67,7 @@ class TableOperations:
 
         :param table: Schema name of the table with customization prefix
             (e.g. ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
             (or ``"text"``), ``"int"`` (or ``"integer"``), ``"decimal"``
@@ -75,19 +75,19 @@ class TableOperations:
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
             (for local option sets).
-        :type columns: dict[str, Any]
+        :type columns: :class:`dict`
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.
-        :type solution: str | None
+        :type solution: :class:`str` or None
         :param primary_column: Optional primary name column schema name with
             customization prefix (e.g. ``"new_ProductName"``). If not provided,
             defaults to ``"{prefix}_Name"``.
-        :type primary_column: str | None
+        :type primary_column: :class:`str` or None
 
         :return: Dictionary containing table metadata including
             ``table_schema_name``, ``entity_set_name``, ``table_logical_name``,
             ``metadata_id``, and ``columns_created``.
-        :rtype: dict[str, Any]
+        :rtype: :class:`dict`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
@@ -127,7 +127,7 @@ class TableOperations:
         """Delete a custom table by schema name.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist or deletion fails.
@@ -150,12 +150,12 @@ class TableOperations:
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
             or ``"account"``).
-        :type table: str
+        :type table: :class:`str`
 
         :return: Dictionary containing ``table_schema_name``,
             ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
             Returns None if the table is not found.
-        :rtype: dict[str, Any] | None
+        :rtype: :class:`dict` or None
 
         Example::
 
@@ -173,7 +173,7 @@ class TableOperations:
         """List all non-private tables in the Dataverse environment.
 
         :return: List of EntityDefinition metadata dictionaries.
-        :rtype: list[dict[str, Any]]
+        :rtype: :class:`list` of :class:`dict`
 
         Example::
 
@@ -194,14 +194,14 @@ class TableOperations:
         """Add one or more columns to an existing table.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types are the same as for
             :meth:`create`.
-        :type columns: dict[str, Any]
+        :type columns: :class:`dict`
 
         :return: Schema names of the columns that were created.
-        :rtype: list[str]
+        :rtype: :class:`list` of :class:`str`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist.
@@ -227,14 +227,14 @@ class TableOperations:
         """Remove one or more columns from a table.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``).
-        :type table: str
+        :type table: :class:`str`
         :param columns: Column schema name or list of column schema names to
             remove. Must include the customization prefix (e.g.
             ``"new_TestColumn"``).
-        :type columns: str | list[str]
+        :type columns: :class:`str` or :class:`list` of :class:`str`
 
         :return: Schema names of the columns that were removed.
-        :rtype: list[str]
+        :rtype: :class:`list` of :class:`str`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table or a specified column does not exist.
