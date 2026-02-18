@@ -69,9 +69,12 @@ class TableOperations:
             (e.g. ``"new_MyTestTable"``).
         :type table: str
         :param columns: Mapping of column schema names (with customization
-            prefix) to their types. Supported types include ``"string"``,
-            ``"int"``, ``"decimal"``, ``"float"``, ``"datetime"``, ``"bool"``,
-            ``"file"``, and ``Enum`` subclasses (for local option sets).
+            prefix) to their types. Supported types include ``"string"``
+            (or ``"text"``), ``"int"`` (or ``"integer"``), ``"decimal"``
+            (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
+            (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
+            ``Enum`` subclasses
+            (for local option sets).
         :type columns: dict[str, Any]
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.

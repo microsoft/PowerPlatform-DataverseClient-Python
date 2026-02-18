@@ -140,10 +140,8 @@ class QueryOperations:
             rows match.
         :rtype: list[dict[str, Any]]
 
-        :raises ~PowerPlatform.Dataverse.core.errors.SQLParseError:
-            If the SQL query uses unsupported syntax.
-        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
-            If the Web API returns an error.
+        :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
+            If ``sql`` is not a string or is empty.
 
         Example:
             Basic SQL query::

@@ -45,10 +45,16 @@ class DataverseClient:
     .. note::
         The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
 
+    .. note::
+        All methods that communicate with the Dataverse Web API may raise
+        :class:`~PowerPlatform.Dataverse.core.errors.HttpError` on non-successful
+        HTTP responses (e.g. 401, 403, 404, 429, 500). Individual method
+        docstrings document only domain-specific exceptions.
+
     Operations are organized into namespaces:
 
     - ``client.records`` -- create, update, delete, get individual records
-    - ``client.query`` -- paginated queries and SQL
+    - ``client.query`` -- paginated OData queries and read-only SQL queries (via Web API ``?sql=`` parameter)
     - ``client.tables`` -- table and column metadata management
 
     Example:
@@ -277,8 +283,10 @@ class DataverseClient:
     ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
         """
         .. note::
-            Deprecated. Use :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.get`
-            or :meth:`~PowerPlatform.Dataverse.operations.query.QueryOperations.get` instead.
+            Deprecated. This method has been split into two:
+
+            - **Single record by ID** -- use ``client.records.get(table, record_id)``
+            - **Query / filter multiple records** -- use ``client.query.get(table, filter=..., select=...)``
 
         Fetch a single record by ID or query multiple records.
 

@@ -88,13 +88,19 @@ class RecordOperations:
                 ])
                 print(f"Created {len(guids)} accounts")
         """
-        if not isinstance(data, (dict, list)):
-            raise TypeError("data must be dict or list[dict]")
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
-                return od._create(entity_set, table, data)
-            return od._create_multiple(entity_set, table, data)
+                rid = od._create(entity_set, table, data)
+                if not isinstance(rid, str):
+                    raise TypeError("_create (single) did not return GUID string")
+                return rid
+            if isinstance(data, list):
+                ids = od._create_multiple(entity_set, table, data)
+                if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+                    raise TypeError("_create (multi) did not return list[str]")
+                return ids
+        raise TypeError("data must be dict or list[dict]")
 
     # ------------------------------------------------------------------ update
 
