@@ -19,6 +19,7 @@ from .models.metadata import (
     LocalizedLabel,
     CascadeConfiguration,
 )
+from .common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 
 class DataverseClient:
@@ -760,7 +761,7 @@ class DataverseClient:
                     referencing_entity="new_employee",    # Child table (the "many" side)
                     referenced_attribute="new_departmentid",
                     cascade_configuration=CascadeConfiguration(
-                        delete="RemoveLink",  # When department deleted, unlink employees
+                        delete=CASCADE_BEHAVIOR_REMOVE_LINK,
                     ),
                 )
 
@@ -871,7 +872,7 @@ class DataverseClient:
         display_name: Optional[str] = None,
         description: Optional[str] = None,
         required: bool = False,
-        cascade_delete: str = "RemoveLink",
+        cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
         solution: Optional[str] = None,
         language_code: int = 1033,
     ) -> Dict[str, Any]:
@@ -915,7 +916,7 @@ class DataverseClient:
                     referenced_table="account",
                     display_name="Account",
                     required=True,
-                    cascade_delete="RemoveLink"
+                    cascade_delete=CASCADE_BEHAVIOR_REMOVE_LINK
                 )
 
                 print(f"Created lookup: {result['lookup_schema_name']}")

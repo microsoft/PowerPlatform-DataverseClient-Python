@@ -28,6 +28,10 @@ from PowerPlatform.Dataverse.models.metadata import (
     LocalizedLabel,
     CascadeConfiguration,
 )
+from PowerPlatform.Dataverse.common.constants import (
+    CASCADE_BEHAVIOR_NO_CASCADE,
+    CASCADE_BEHAVIOR_REMOVE_LINK,
+)
 
 
 # Simple logging helper
@@ -216,9 +220,9 @@ def main():
         referencing_entity=emp_table["table_logical_name"],
         referenced_attribute=f"{dept_table['table_logical_name']}id",
         cascade_configuration=CascadeConfiguration(
-            delete="RemoveLink",  # When department is deleted, remove the link but keep employees
-            assign="NoCascade",
-            merge="NoCascade",
+            delete=CASCADE_BEHAVIOR_REMOVE_LINK,
+            assign=CASCADE_BEHAVIOR_NO_CASCADE,
+            merge=CASCADE_BEHAVIOR_NO_CASCADE,
         ),
     )
 
@@ -255,7 +259,7 @@ def main():
             display_name="Manager",
             description="The employee's direct manager",
             required=False,
-            cascade_delete="RemoveLink",
+            cascade_delete=CASCADE_BEHAVIOR_REMOVE_LINK,
         )
     )
 
