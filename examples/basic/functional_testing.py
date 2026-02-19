@@ -26,7 +26,7 @@ Note: This is an advanced testing script. For basic installation validation,
 
 import sys
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 # Import SDK components (assumes installation is already validated)
@@ -63,7 +63,7 @@ def setup_authentication() -> DataverseClient:
 
         # Test the connection
         print("Testing connection...")
-        tables = client.list_tables()
+        tables = client.tables.list()
         print(f"[OK] Connection successful! Found {len(tables)} tables.")
         return client
 
@@ -83,7 +83,7 @@ def wait_for_table_metadata(
 
     for attempt in range(1, retries + 1):
         try:
-            info = client.get_table_info(table_schema_name)
+            info = client.tables.get(table_schema_name)
             if info and info.get("entity_set_name"):
                 # Check for PrimaryIdAttribute next, make sure it's available
                 # so subsequent CRUD calls do not hit a cached miss despite table_info succeeding.
@@ -112,7 +112,7 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
 
     try:
         # Check if table already exists
-        existing_table = client.get_table_info(table_schema_name)
+        existing_table = client.tables.get(table_schema_name)
         if existing_table:
             print(f"[OK] Test table '{table_schema_name}' already exists")
             return existing_table
@@ -123,9 +123,9 @@ def ensure_test_table(client: DataverseClient) -> Dict[str, Any]:
     try:
         print("Creating new test table...")
         # Create the test table with various field types
-        table_info = client.create_table(
+        table_info = client.tables.create(
             table_schema_name,
-            primary_column_schema_name="test_name",
+            primary_column="test_name",
             columns={
                 "test_description": "string",  # Description field
                 "test_count": "int",  # Integer field
@@ -168,10 +168,10 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
 
     try:
         print("Creating test record...")
-        created_ids: Optional[List[str]] = None
+        created_id: Optional[str] = None
         for attempt in range(1, retries + 1):
             try:
-                created_ids = client.create(table_schema_name, test_data)
+                created_id = client.records.create(table_schema_name, test_data)
                 if attempt > 1:
                     print(f"   [OK] Record creation succeeded after {attempt} attempts.")
                 break
@@ -184,14 +184,13 @@ def test_create_record(client: DataverseClient, table_info: Dict[str, Any]) -> s
                     continue
                 raise
 
-        if isinstance(created_ids, list) and created_ids:
-            record_id = created_ids[0]
+        if created_id:
             print(f"[OK] Record created successfully!")
-            print(f"   Record ID: {record_id}")
+            print(f"   Record ID: {created_id}")
             print(f"   Name: {test_data[f'{attr_prefix}_name']}")
-            return record_id
+            return created_id
         else:
-            raise ValueError("Unexpected response from create operation")
+            raise ValueError("Unexpected response from records.create operation")
 
     except HttpError as e:
         print(f"[ERR] HTTP error during record creation: {e}")
@@ -217,7 +216,7 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
         record = None
         for attempt in range(1, retries + 1):
             try:
-                record = client.get(table_schema_name, record_id)
+                record = client.records.get(table_schema_name, record_id)
                 if attempt > 1:
                     print(f"   [OK] Record read succeeded after {attempt} attempts.")
                 break
@@ -272,7 +271,7 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
         print("Querying records from test table...")
         for attempt in range(1, retries + 1):
             try:
-                records_iterator = client.get(
+                records_iterator = client.query.get(
                     table_schema_name,
                     select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"],
                     filter=f"{attr_prefix}_is_active eq true",
@@ -318,7 +317,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     if cleanup_choice in ["y", "yes"]:
         for attempt in range(1, retries + 1):
             try:
-                client.delete(table_schema_name, record_id)
+                client.records.delete(table_schema_name, record_id)
                 print("[OK] Test record deleted successfully")
                 break
             except HttpError as err:
@@ -345,7 +344,7 @@ def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], recor
     if table_cleanup in ["y", "yes"]:
         for attempt in range(1, retries + 1):
             try:
-                client.delete_table(table_info.get("table_schema_name"))
+                client.tables.delete(table_info.get("table_schema_name"))
                 print("[OK] Test table deleted successfully")
                 break
             except HttpError as err:
@@ -378,7 +377,7 @@ def _table_still_exists(client: DataverseClient, table_schema_name: Optional[str
     if not table_schema_name:
         return False
     try:
-        info = client.get_table_info(table_schema_name)
+        info = client.tables.get(table_schema_name)
         return bool(info and info.get("entity_set_name"))
     except HttpError as probe_err:
         if getattr(probe_err, "status_code", None) == 404:
