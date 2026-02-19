@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.operations.records import RecordOperations
 
 
@@ -147,6 +148,135 @@ class TestRecordOperations(unittest.TestCase):
         self.client._odata._get.assert_called_once_with("account", "guid-1", select=["name", "telephone1"])
         self.assertIsInstance(result, dict)
         self.assertEqual(result, expected)
+
+    # ------------------------------------------------------------------ upsert
+
+    def test_upsert_single_calls_upsert(self):
+        """upsert() with a single item (UpsertItem or dict) should call _upsert."""
+        cases = [
+            (
+                "UpsertItem",
+                UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso"}),
+            ),
+            (
+                "dict",
+                {"alternate_key": {"accountnumber": "ACC-001"}, "record": {"name": "Contoso"}},
+            ),
+        ]
+        for label, item in cases:
+            with self.subTest(input=label):
+                self.client._odata._upsert.reset_mock()
+                self.client._odata._upsert_multiple.reset_mock()
+                self.client._odata._entity_set_from_schema_name.reset_mock()
+                self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+                result = self.client.records.upsert("account", [item])
+
+                self.client._odata._entity_set_from_schema_name.assert_called_once_with("account")
+                self.client._odata._upsert.assert_called_once_with(
+                    "accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"}
+                )
+                self.client._odata._upsert_multiple.assert_not_called()
+                self.assertIsNone(result)
+
+    def test_upsert_multiple_calls_upsert_multiple(self):
+        """upsert() with multiple items (UpsertItem or dict) should call _upsert_multiple."""
+        expected_alt_keys = [
+            {"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+            {"accountnumber": "ACC-002", "address1_postalcode": "10001"},
+        ]
+        expected_records = [{"name": "Contoso Ltd"}, {"name": "Fabrikam Inc"}]
+        cases = [
+            (
+                "UpsertItem",
+                [
+                    UpsertItem(
+                        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+                        record={"name": "Contoso Ltd"},
+                    ),
+                    UpsertItem(
+                        alternate_key={"accountnumber": "ACC-002", "address1_postalcode": "10001"},
+                        record={"name": "Fabrikam Inc"},
+                    ),
+                ],
+            ),
+            (
+                "dict",
+                [
+                    {
+                        "alternate_key": {"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+                        "record": {"name": "Contoso Ltd"},
+                    },
+                    {
+                        "alternate_key": {"accountnumber": "ACC-002", "address1_postalcode": "10001"},
+                        "record": {"name": "Fabrikam Inc"},
+                    },
+                ],
+            ),
+        ]
+        for label, items in cases:
+            with self.subTest(input=label):
+                self.client._odata._upsert.reset_mock()
+                self.client._odata._upsert_multiple.reset_mock()
+                self.client._odata._entity_set_from_schema_name.reset_mock()
+                self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+                result = self.client.records.upsert("account", items)
+
+                self.client._odata._entity_set_from_schema_name.assert_called_once_with("account")
+                self.client._odata._upsert_multiple.assert_called_once_with(
+                    "accounts", "account", expected_alt_keys, expected_records
+                )
+                self.client._odata._upsert.assert_not_called()
+                self.assertIsNone(result)
+
+    def test_upsert_returns_none(self):
+        """upsert() should always return None."""
+        self.client._odata._entity_set_from_schema_name.return_value = "contacts"
+        item = UpsertItem(alternate_key={"externalid": "EXT-42"}, record={"firstname": "Jane"})
+
+        result = self.client.records.upsert("contact", [item])
+
+        self.assertIsNone(result)
+
+    def test_upsert_empty_list_raises_type_error(self):
+        """upsert() with an empty list should raise TypeError."""
+        with self.assertRaises(TypeError):
+            self.client.records.upsert("account", [])
+
+    def test_upsert_non_list_raises_type_error(self):
+        """upsert() with a non-list argument should raise TypeError."""
+        item = UpsertItem(alternate_key={"accountnumber": "X"}, record={"name": "Y"})
+        with self.assertRaises(TypeError):
+            self.client.records.upsert("account", item)
+
+    def test_upsert_invalid_item_type_raises_type_error(self):
+        """upsert() with an item that is neither UpsertItem nor a valid dict should raise TypeError."""
+        with self.assertRaises(TypeError):
+            self.client.records.upsert("account", [42])
+
+    def test_upsert_dict_missing_record_key_raises_type_error(self):
+        """upsert() with a dict missing the 'record' key should raise TypeError."""
+        with self.assertRaises(TypeError):
+            self.client.records.upsert("account", [{"alternate_key": {"name": "acc1"}}])
+
+    def test_upsert_composite_alternate_key(self):
+        """upsert() with a composite alternate key including an int value routes correctly."""
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        item = UpsertItem(
+            alternate_key={"accountnumber": "ACC-001", "numberofemployees": 250},
+            record={"name": "Contoso Ltd"},
+        )
+
+        self.client.records.upsert("account", [item])
+
+        self.client._odata._upsert.assert_called_once_with(
+            "accounts",
+            "account",
+            {"accountnumber": "ACC-001", "numberofemployees": 250},
+            {"name": "Contoso Ltd"},
+        )
+        self.client._odata._upsert_multiple.assert_not_called()
 
 
 if __name__ == "__main__":
