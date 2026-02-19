@@ -18,6 +18,7 @@ This skill provides guidance for developers working on the PowerPlatform Dataver
 3. **Reuse existing APIs** - Always check if an existing method can be used before making direct Web API calls
 4. **Update documentation** when adding features - Keep README and SKILL files (both copies) in sync
 5. **Consider backwards compatibility** - Avoid breaking changes
+6. **Internal vs public naming** - Modules, files, and functions not meant to be part of the public API must use a `_` prefix (e.g., `_odata.py`, `_relationships.py`). Files without the prefix (e.g., `constants.py`, `metadata.py`) are public and importable by SDK consumers
 
 ### Code Style
 

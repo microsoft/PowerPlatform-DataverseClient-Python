@@ -433,6 +433,7 @@ When contributing new features to this SDK, please follow these guidelines:
 2. **Add README example for public methods** - Add usage examples to this README for public API methods
 3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
 4. **Update documentation** when adding features - Keep README and SKILL files (note that each skill has 2 copies) in sync
+5. **Internal vs public naming** - Modules, files, and functions not meant to be part of the public API must use a `_` prefix (e.g., `_odata.py`, `_relationships.py`). Files without the prefix (e.g., `constants.py`, `metadata.py`) are public and importable by SDK consumers
 
 ## Trademarks
 

@@ -19,13 +19,13 @@ ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP = "Microsoft.Dynamics.CRM.ManyToManyRelatio
 # See: https://learn.microsoft.com/en-us/power-apps/developer/data-platform/configure-entity-relationship-cascading-behavior
 
 CASCADE_BEHAVIOR_CASCADE = "Cascade"
-"""Apply the action to all referencing table records associated with the referenced table record."""
+"""Perform the action on all referencing table records associated with the referenced table record."""
 
 CASCADE_BEHAVIOR_NO_CASCADE = "NoCascade"
 """Do not apply the action to any referencing table records associated with the referenced table record."""
 
 CASCADE_BEHAVIOR_REMOVE_LINK = "RemoveLink"
-"""Remove the value of the referencing column for all referencing table records associated with the referenced table record."""
+"""Remove the value of the referencing column for all referencing table records when the referenced record is deleted."""
 
 CASCADE_BEHAVIOR_RESTRICT = "Restrict"
-"""Prevent the action on the referenced table record if there are any referencing table records associated with it."""
+"""Prevent the referenced table record from being deleted when referencing table records exist."""
