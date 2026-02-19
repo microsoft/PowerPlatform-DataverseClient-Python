@@ -13,11 +13,12 @@ This skill provides guidance for developers working on the PowerPlatform Dataver
 
 ### API Design
 
-1. **Public API in operation namespaces** - New public methods go in the appropriate namespace module under `src/PowerPlatform/Dataverse/operations/` (`records.py`, `query.py`, `tables.py`). The `client.py` file exposes these via namespace properties (`client.records`, `client.query`, `client.tables`)
+1. **Public methods in operation namespaces** - New public methods go in the appropriate namespace module under `src/PowerPlatform/Dataverse/operations/` (`records.py`, `query.py`, `tables.py`). The `client.py` file exposes these via namespace properties (`client.records`, `client.query`, `client.tables`). Public types and constants live in their own modules (e.g., `models/metadata.py`, `common/constants.py`)
 2. **Every public method needs README example** - Public API methods must have examples in README.md
 3. **Reuse existing APIs** - Always check if an existing method can be used before making direct Web API calls
 4. **Update documentation** when adding features - Keep README and SKILL files (both copies) in sync
 5. **Consider backwards compatibility** - Avoid breaking changes
+6. **Internal vs public naming** - Modules, files, and functions not meant to be part of the public API must use a `_` prefix (e.g., `_odata.py`, `_relationships.py`). Files without the prefix (e.g., `constants.py`, `metadata.py`) are public and importable by SDK consumers
 
 ### Code Style
 

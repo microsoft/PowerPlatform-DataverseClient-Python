@@ -1,0 +1,396 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+"""
+Metadata entity types for Microsoft Dataverse.
+
+These classes represent the metadata entity types used in the Dataverse Web API
+for defining and managing table definitions, attributes, and relationships.
+
+See: https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/reference/metadataentitytypes
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+
+from ..common.constants import (
+    ODATA_TYPE_LOCALIZED_LABEL,
+    ODATA_TYPE_LABEL,
+    ODATA_TYPE_LOOKUP_ATTRIBUTE,
+    ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
+    ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
+    CASCADE_BEHAVIOR_CASCADE,
+    CASCADE_BEHAVIOR_NO_CASCADE,
+    CASCADE_BEHAVIOR_REMOVE_LINK,
+    CASCADE_BEHAVIOR_RESTRICT,
+)
+
+
+@dataclass
+class LocalizedLabel:
+    """
+    Represents a localized label with a language code.
+
+    :param label: The text of the label.
+    :type label: str
+    :param language_code: The language code (LCID), e.g., 1033 for English.
+    :type language_code: int
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+    """
+
+    label: str
+    language_code: int
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> label = LocalizedLabel(label="Account", language_code=1033)
+            >>> label.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.LocalizedLabel',
+                'Label': 'Account',
+                'LanguageCode': 1033
+            }
+        """
+        result = {
+            "@odata.type": ODATA_TYPE_LOCALIZED_LABEL,
+            "Label": self.label,
+            "LanguageCode": self.language_code,
+        }
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+@dataclass
+class Label:
+    """
+    Represents a label that can have multiple localized versions.
+
+    :param localized_labels: List of LocalizedLabel instances.
+    :type localized_labels: List[LocalizedLabel]
+    :param user_localized_label: Optional user-specific localized label.
+    :type user_localized_label: Optional[LocalizedLabel]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+    """
+
+    localized_labels: List[LocalizedLabel]
+    user_localized_label: Optional[LocalizedLabel] = None
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> label = Label(localized_labels=[LocalizedLabel("Account", 1033)])
+            >>> label.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.Label',
+                'LocalizedLabels': [
+                    {'@odata.type': '...', 'Label': 'Account', 'LanguageCode': 1033}
+                ],
+                'UserLocalizedLabel': {'@odata.type': '...', 'Label': 'Account', ...}
+            }
+        """
+        result = {
+            "@odata.type": ODATA_TYPE_LABEL,
+            "LocalizedLabels": [ll.to_dict() for ll in self.localized_labels],
+        }
+        # Use explicit user_localized_label, or default to first localized label
+        if self.user_localized_label:
+            result["UserLocalizedLabel"] = self.user_localized_label.to_dict()
+        elif self.localized_labels:
+            result["UserLocalizedLabel"] = self.localized_labels[0].to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+@dataclass
+class CascadeConfiguration:
+    """
+    Defines cascade behavior for relationship operations.
+
+    :param assign: Cascade behavior for assign operations.
+    :type assign: str
+    :param delete: Cascade behavior for delete operations.
+    :type delete: str
+    :param merge: Cascade behavior for merge operations.
+    :type merge: str
+    :param reparent: Cascade behavior for reparent operations.
+    :type reparent: str
+    :param share: Cascade behavior for share operations.
+    :type share: str
+    :param unshare: Cascade behavior for unshare operations.
+    :type unshare: str
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload (e.g., "Archive", "RollupView"). These are merged
+        last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+
+    Valid values for each parameter:
+        - "Cascade": Perform the operation on all related records
+        - "NoCascade": Do not perform the operation on related records
+        - "RemoveLink": Remove the relationship link but keep the records
+        - "Restrict": Prevent the operation if related records exist
+    """
+
+    assign: str = CASCADE_BEHAVIOR_NO_CASCADE
+    delete: str = CASCADE_BEHAVIOR_REMOVE_LINK
+    merge: str = CASCADE_BEHAVIOR_NO_CASCADE
+    reparent: str = CASCADE_BEHAVIOR_NO_CASCADE
+    share: str = CASCADE_BEHAVIOR_NO_CASCADE
+    unshare: str = CASCADE_BEHAVIOR_NO_CASCADE
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> config = CascadeConfiguration(delete="Cascade", assign="NoCascade")
+            >>> config.to_dict()
+            {
+                'Assign': 'NoCascade',
+                'Delete': 'Cascade',
+                'Merge': 'NoCascade',
+                'Reparent': 'NoCascade',
+                'Share': 'NoCascade',
+                'Unshare': 'NoCascade'
+            }
+        """
+        result = {
+            "Assign": self.assign,
+            "Delete": self.delete,
+            "Merge": self.merge,
+            "Reparent": self.reparent,
+            "Share": self.share,
+            "Unshare": self.unshare,
+        }
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+@dataclass
+class LookupAttributeMetadata:
+    """
+    Metadata for a lookup attribute.
+
+    :param schema_name: Schema name for the attribute (e.g., "new_AccountId").
+    :type schema_name: str
+    :param display_name: Display name for the attribute.
+    :type display_name: Label
+    :param description: Optional description of the attribute.
+    :type description: Optional[Label]
+    :param required_level: Requirement level for the attribute.
+    :type required_level: str
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting properties like "Targets" (to
+        specify which entity types the lookup can reference), "LogicalName",
+        "IsSecured", "IsValidForAdvancedFind", etc. These are merged last and
+        can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+
+    Valid required_level values:
+        - "None": The attribute is optional
+        - "Recommended": The attribute is recommended
+        - "ApplicationRequired": The attribute is required
+    """
+
+    schema_name: str
+    display_name: Label
+    description: Optional[Label] = None
+    required_level: str = "None"
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> lookup = LookupAttributeMetadata(
+            ...     schema_name="new_AccountId",
+            ...     display_name=Label([LocalizedLabel("Account", 1033)])
+            ... )
+            >>> lookup.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.LookupAttributeMetadata',
+                'SchemaName': 'new_AccountId',
+                'AttributeType': 'Lookup',
+                'AttributeTypeName': {'Value': 'LookupType'},
+                'DisplayName': {...},
+                'RequiredLevel': {'Value': 'None', 'CanBeChanged': True, ...}
+            }
+        """
+        result = {
+            "@odata.type": ODATA_TYPE_LOOKUP_ATTRIBUTE,
+            "SchemaName": self.schema_name,
+            "AttributeType": "Lookup",
+            "AttributeTypeName": {"Value": "LookupType"},
+            "DisplayName": self.display_name.to_dict(),
+            "RequiredLevel": {
+                "Value": self.required_level,
+                "CanBeChanged": True,
+                "ManagedPropertyLogicalName": "canmodifyrequirementlevelsettings",
+            },
+        }
+        if self.description:
+            result["Description"] = self.description.to_dict()
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+@dataclass
+class OneToManyRelationshipMetadata:
+    """
+    Metadata for a one-to-many entity relationship.
+
+    :param schema_name: Schema name for the relationship (e.g., "new_Account_Orders").
+    :type schema_name: str
+    :param referenced_entity: Logical name of the referenced (parent) entity.
+    :type referenced_entity: str
+    :param referencing_entity: Logical name of the referencing (child) entity.
+    :type referencing_entity: str
+    :param referenced_attribute: Attribute on the referenced entity (typically the primary key).
+    :type referenced_attribute: str
+    :param cascade_configuration: Cascade behavior configuration.
+    :type cascade_configuration: CascadeConfiguration
+    :param referencing_attribute: Optional name for the referencing attribute (usually auto-generated).
+    :type referencing_attribute: Optional[str]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting inherited properties like
+        "IsValidForAdvancedFind", "IsCustomizable", "SecurityTypes", etc.
+        These are merged last and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+    """
+
+    schema_name: str
+    referenced_entity: str
+    referencing_entity: str
+    referenced_attribute: str
+    cascade_configuration: CascadeConfiguration = field(default_factory=CascadeConfiguration)
+    referencing_attribute: Optional[str] = None
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> rel = OneToManyRelationshipMetadata(
+            ...     schema_name="new_account_orders",
+            ...     referenced_entity="account",
+            ...     referencing_entity="new_order",
+            ...     referenced_attribute="accountid"
+            ... )
+            >>> rel.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata',
+                'SchemaName': 'new_account_orders',
+                'ReferencedEntity': 'account',
+                'ReferencingEntity': 'new_order',
+                'ReferencedAttribute': 'accountid',
+                'CascadeConfiguration': {...}
+            }
+        """
+        result = {
+            "@odata.type": ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
+            "SchemaName": self.schema_name,
+            "ReferencedEntity": self.referenced_entity,
+            "ReferencingEntity": self.referencing_entity,
+            "ReferencedAttribute": self.referenced_attribute,
+            "CascadeConfiguration": self.cascade_configuration.to_dict(),
+        }
+        if self.referencing_attribute:
+            result["ReferencingAttribute"] = self.referencing_attribute
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+@dataclass
+class ManyToManyRelationshipMetadata:
+    """
+    Metadata for a many-to-many entity relationship.
+
+    :param schema_name: Schema name for the relationship.
+    :type schema_name: str
+    :param entity1_logical_name: Logical name of the first entity.
+    :type entity1_logical_name: str
+    :param entity2_logical_name: Logical name of the second entity.
+    :type entity2_logical_name: str
+    :param intersect_entity_name: Name for the intersect table (defaults to schema_name if not provided).
+    :type intersect_entity_name: Optional[str]
+    :param additional_properties: Optional dict of additional properties to include
+        in the Web API payload. Useful for setting inherited properties like
+        "IsValidForAdvancedFind", "IsCustomizable", "SecurityTypes", or direct
+        properties like "Entity1NavigationPropertyName". These are merged last
+        and can override default values.
+    :type additional_properties: Optional[Dict[str, Any]]
+    """
+
+    schema_name: str
+    entity1_logical_name: str
+    entity2_logical_name: str
+    intersect_entity_name: Optional[str] = None
+    additional_properties: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to Web API JSON format.
+
+        Example::
+
+            >>> rel = ManyToManyRelationshipMetadata(
+            ...     schema_name="new_account_contact",
+            ...     entity1_logical_name="account",
+            ...     entity2_logical_name="contact"
+            ... )
+            >>> rel.to_dict()
+            {
+                '@odata.type': 'Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata',
+                'SchemaName': 'new_account_contact',
+                'Entity1LogicalName': 'account',
+                'Entity2LogicalName': 'contact',
+                'IntersectEntityName': 'new_account_contact'
+            }
+        """
+        # IntersectEntityName is required - use provided value or default to schema_name
+        intersect_name = self.intersect_entity_name or self.schema_name
+        result = {
+            "@odata.type": ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
+            "SchemaName": self.schema_name,
+            "Entity1LogicalName": self.entity1_logical_name,
+            "Entity2LogicalName": self.entity2_logical_name,
+            "IntersectEntityName": intersect_name,
+        }
+        if self.additional_properties:
+            result.update(self.additional_properties)
+        return result
+
+
+__all__ = [
+    "LocalizedLabel",
+    "Label",
+    "CascadeConfiguration",
+    "LookupAttributeMetadata",
+    "OneToManyRelationshipMetadata",
+    "ManyToManyRelationshipMetadata",
+]
