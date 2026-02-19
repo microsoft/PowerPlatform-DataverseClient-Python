@@ -148,6 +148,49 @@ class TestRecordOperations(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertEqual(result, expected)
 
+    def test_get_single_with_query_params_raises(self):
+        """get() with record_id and query params should raise ValueError."""
+        with self.assertRaises(ValueError):
+            self.client.records.get("account", "guid-1", filter="statecode eq 0")
+
+    def test_get_paginated(self):
+        """get() without record_id should yield pages from _get_multiple."""
+        page_1 = [{"accountid": "1", "name": "A"}]
+        page_2 = [{"accountid": "2", "name": "B"}]
+        self.client._odata._get_multiple.return_value = iter([page_1, page_2])
+
+        pages = list(self.client.records.get("account"))
+
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0], page_1)
+        self.assertEqual(pages[1], page_2)
+
+    def test_get_paginated_with_all_params(self):
+        """get() without record_id should pass all query params to _get_multiple."""
+        self.client._odata._get_multiple.return_value = iter([])
+
+        list(
+            self.client.records.get(
+                "account",
+                select=["name", "telephone1"],
+                filter="statecode eq 0",
+                orderby=["name asc", "createdon desc"],
+                top=50,
+                expand=["primarycontactid"],
+                page_size=25,
+            )
+        )
+
+        self.client._odata._get_multiple.assert_called_once_with(
+            "account",
+            select=["name", "telephone1"],
+            filter="statecode eq 0",
+            orderby=["name asc", "createdon desc"],
+            top=50,
+            expand=["primarycontactid"],
+            page_size=25,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
