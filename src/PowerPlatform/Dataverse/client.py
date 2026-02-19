@@ -53,8 +53,8 @@ class DataverseClient:
 
     Operations are organized into namespaces:
 
-    - ``client.records`` -- create, update, delete, get individual records
-    - ``client.query`` -- paginated OData queries and read-only SQL queries (via Web API ``?sql=`` parameter)
+    - ``client.records`` -- create, update, delete, and get records (single or paginated queries)
+    - ``client.query`` -- query and search operations
     - ``client.tables`` -- table and column metadata management
 
     Example:
@@ -76,7 +76,7 @@ class DataverseClient:
             client.records.update("account", record_id, {"telephone1": "555-0100"})
 
             # Query records
-            for page in client.query.get("account", filter="name eq 'Contoso Ltd'"):
+            for page in client.records.get("account", filter="name eq 'Contoso Ltd'"):
                 for account in page:
                     print(account["name"])
 
@@ -283,10 +283,10 @@ class DataverseClient:
     ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
         """
         .. note::
-            Deprecated. This method has been split into two:
+            Deprecated. Use :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.get` instead.
 
-            - **Single record by ID** -- use ``client.records.get(table, record_id)``
-            - **Query / filter multiple records** -- use ``client.query.get(table, filter=..., select=...)``
+            - **Single record by ID** -- ``client.records.get(table, record_id)``
+            - **Query / filter multiple records** -- ``client.records.get(table, filter=..., select=...)``
 
         Fetch a single record by ID or query multiple records.
 
@@ -354,14 +354,14 @@ class DataverseClient:
                     print(f"Batch size: {len(batch)}")
         """
         warnings.warn(
-            "client.get() is deprecated. Use client.records.get() or client.query.get() instead.",
+            "client.get() is deprecated. Use client.records.get() instead.",
             DeprecationWarning,
             stacklevel=2,
         )
         if record_id is not None:
             return self.records.get(table_schema_name, record_id, select=select)
         else:
-            return self.query.get(
+            return self.records.get(
                 table_schema_name,
                 select=select,
                 filter=filter,
