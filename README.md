@@ -111,9 +111,10 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 | Concept | Description |
 |---------|-------------|
-| **DataverseClient** | Main entry point for all operations with environment connection |
+| **DataverseClient** | Main entry point; provides `records`, `query`, and `tables` namespaces |
+| **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (queries), and `client.tables` (metadata) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
-| **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |  
+| **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
 | **Paging** | Automatic handling of large result sets with iterators |
 | **Structured Errors** | Detailed exception hierarchy with retry guidance and diagnostic information |
@@ -132,32 +133,31 @@ credential = InteractiveBrowserCredential()
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
 # Create a contact
-contact_id = client.create("contact", {"firstname": "John", "lastname": "Doe"})[0]
+contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
 # Read the contact back
-contact = client.get("contact", contact_id, select=["firstname", "lastname"])
+contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
 print(f"Created: {contact['firstname']} {contact['lastname']}")
 
 # Clean up
-client.delete("contact", contact_id)
+client.records.delete("contact", contact_id)
 ```
 
 ### Basic CRUD operations
 
 ```python
 # Create a record
-account_ids = client.create("account", {"name": "Contoso Ltd"})
-account_id = account_ids[0]
+account_id = client.records.create("account", {"name": "Contoso Ltd"})
 
 # Read a record
-account = client.get("account", account_id)
+account = client.records.get("account", account_id)
 print(account["name"])
 
 # Update a record
-client.update("account", account_id, {"telephone1": "555-0199"})
+client.records.update("account", account_id, {"telephone1": "555-0199"})
 
 # Delete a record
-client.delete("account", account_id)
+client.records.delete("account", account_id)
 ```
 
 ### Bulk operations
@@ -169,20 +169,20 @@ payloads = [
     {"name": "Company B"},
     {"name": "Company C"}
 ]
-ids = client.create("account", payloads)
+ids = client.records.create("account", payloads)
 
 # Bulk update (broadcast same change to all)
-client.update("account", ids, {"industry": "Technology"})
+client.records.update("account", ids, {"industry": "Technology"})
 
 # Bulk delete
-client.delete("account", ids, use_bulk_delete=True)
+client.records.delete("account", ids, use_bulk_delete=True)
 ```
 
 ### Query data
 
 ```python
 # SQL query (read-only)
-results = client.query_sql(
+results = client.query.sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
 )
 for record in results:
@@ -190,24 +190,22 @@ for record in results:
 
 # OData query with paging
 # Note: filter and expand parameters are case sensitive
-pages = client.get(
+for page in client.query.get(
     "account",
     select=["accountid", "name"],  # select is case-insensitive (automatically lowercased)
     filter="statecode eq 0",       # filter must use lowercase logical names (not transformed)
-    top=100
-)
-for page in pages:
+    top=100,
+):
     for record in page:
         print(record["name"])
 
 # Query with navigation property expansion (case-sensitive!)
-pages = client.get(
+for page in client.query.get(
     "account",
     select=["name"],
     expand=["primarycontactid"],  # Navigation property names are case-sensitive
-    filter="statecode eq 0"       # Column names must be lowercase logical names
-)
-for page in pages:
+    filter="statecode eq 0",      # Column names must be lowercase logical names
+):
     for account in page:
         contact = account.get("primarycontactid", {})
         print(f"{account['name']} - Contact: {contact.get('fullname', 'N/A')}")
@@ -222,41 +220,41 @@ for page in pages:
 
 ```python
 # Create a custom table, including the customization prefix value in the schema names for the table and columns.
-table_info = client.create_table("new_Product", {
+table_info = client.tables.create("new_Product", {
     "new_Code": "string",
-    "new_Price": "decimal", 
+    "new_Price": "decimal",
     "new_Active": "bool"
 })
 
 # Create with custom primary column name and solution assignment
-table_info = client.create_table(
-    table_schema_name="new_Product",
+table_info = client.tables.create(
+    "new_Product",
     columns={
         "new_Code": "string",
         "new_Price": "decimal"
     },
-    solution_unique_name="MyPublisher",  # Optional: add to specific solution
-    primary_column_schema_name="new_ProductName"  # Optional: custom primary column (default is "{customization prefix value}_Name")
+    solution="MyPublisher",  # Optional: add to specific solution
+    primary_column="new_ProductName",  # Optional: custom primary column (default is "{customization prefix value}_Name")
 )
 
 # Get table information
-info = client.get_table_info("new_Product")
+info = client.tables.get("new_Product")
 print(f"Logical name: {info['table_logical_name']}")
 print(f"Entity set: {info['entity_set_name']}")
 
 # List all tables
-tables = client.list_tables()
+tables = client.tables.list()
 for table in tables:
     print(table)
 
 # Add columns to existing table (columns must include customization prefix value)
-client.create_columns("new_Product", {"new_Category": "string"})
+client.tables.add_columns("new_Product", {"new_Category": "string"})
 
 # Remove columns
-client.delete_columns("new_Product", ["new_Category"])
+client.tables.remove_columns("new_Product", ["new_Category"])
 
 # Clean up
-client.delete_table("new_Product")
+client.tables.delete("new_Product")
 ```
 
 > **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`).
@@ -376,7 +374,7 @@ from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 
 try:
-    client.get("account", "invalid-id")
+    client.records.get("account", "invalid-id")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
     print(f"Error code: {e.code}")
@@ -400,7 +398,7 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
-| **Bulk Operations** | Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
+| **Bulk Operations** | Pass lists to `records.create()`, `records.update()` for automatic bulk processing, for `records.delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
 | **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
@@ -431,7 +429,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 When contributing new features to this SDK, please follow these guidelines:
 
-1. **All public methods in client.py** - Public API methods must be defined in [client.py](src/PowerPlatform/Dataverse/client.py)
+1. **Public API in operation namespaces** - New public methods go in the appropriate namespace module under [operations/](src/PowerPlatform/Dataverse/operations/)
 2. **Add README example for public methods** - Add usage examples to this README for public API methods
 3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
 4. **Update documentation** when adding features - Keep README and SKILL files (note that each skill has 2 copies) in sync

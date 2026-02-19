@@ -185,12 +185,12 @@ TABLE_SCHEMA_NAME = "new_FileSample"
 
 def ensure_table():
     # Check by schema
-    existing = backoff(lambda: client.get_table_info(TABLE_SCHEMA_NAME))
+    existing = backoff(lambda: client.tables.get(TABLE_SCHEMA_NAME))
     if existing:
         print({"table": TABLE_SCHEMA_NAME, "existed": True})
         return existing
-    log(f"client.create_table('{TABLE_SCHEMA_NAME}', schema={{'new_Title': 'string'}})")
-    info = backoff(lambda: client.create_table(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
+    log(f"client.tables.create('{TABLE_SCHEMA_NAME}', schema={{'new_Title': 'string'}})")
+    info = backoff(lambda: client.tables.create(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
     print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get("metadata_id")})
     return info
 
@@ -213,12 +213,8 @@ chunk_file_attr_schema = f"{attr_prefix}_ChunkDocument"  # attribute for streami
 record_id = None
 try:
     payload = {name_attr: "File Sample Record"}
-    log(f"client.create('{table_schema_name}', payload)")
-    created_ids = backoff(lambda: client.create(table_schema_name, payload))
-    if isinstance(created_ids, list) and created_ids:
-        record_id = created_ids[0]
-    else:
-        raise RuntimeError("Unexpected create return; expected list[str] with at least one GUID")
+    log(f"client.records.create('{table_schema_name}', payload)")
+    record_id = backoff(lambda: client.records.create(table_schema_name, payload))
     print({"record_created": True, "id": record_id, "table schema name": table_schema_name})
 except Exception as e:  # noqa: BLE001
     print({"record_created": False, "error": str(e)})
@@ -386,8 +382,8 @@ if run_chunk:
 # --------------------------- Cleanup ---------------------------
 if cleanup_record and record_id:
     try:
-        log(f"client.delete('{table_schema_name}', '{record_id}')")
-        backoff(lambda: client.delete(table_schema_name, record_id))
+        log(f"client.records.delete('{table_schema_name}', '{record_id}')")
+        backoff(lambda: client.records.delete(table_schema_name, record_id))
         print({"record_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"record_deleted": False, "error": str(e)})
@@ -396,8 +392,8 @@ else:
 
 if cleanup_table:
     try:
-        log(f"client.delete_table('{TABLE_SCHEMA_NAME}')")
-        backoff(lambda: client.delete_table(TABLE_SCHEMA_NAME))
+        log(f"client.tables.delete('{TABLE_SCHEMA_NAME}')")
+        backoff(lambda: client.tables.delete(TABLE_SCHEMA_NAME))
         print({"table_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"table_deleted": False, "error": str(e)})
