@@ -136,6 +136,72 @@ class TestTableOperations(unittest.TestCase):
         self.client._odata._delete_columns.assert_called_once_with("new_Product", ["new_Notes", "new_Active"])
         self.assertEqual(result, ["new_Notes", "new_Active"])
 
+    # ---------------------------------------------------- create_one_to_many
+
+    def test_create_one_to_many(self):
+        """create_one_to_many() should call _create_one_to_many_relationship."""
+        expected = {
+            "relationship_id": "rel-guid-1",
+            "relationship_schema_name": "new_Dept_Emp",
+            "lookup_schema_name": "new_DeptId",
+            "referenced_entity": "new_department",
+            "referencing_entity": "new_employee",
+        }
+        self.client._odata._create_one_to_many_relationship.return_value = expected
+
+        lookup = MagicMock()
+        relationship = MagicMock()
+        result = self.client.tables.create_one_to_many_relationship(lookup, relationship, solution="MySolution")
+
+        self.client._odata._create_one_to_many_relationship.assert_called_once_with(lookup, relationship, "MySolution")
+        self.assertEqual(result, expected)
+
+    # --------------------------------------------------- create_many_to_many
+
+    def test_create_many_to_many(self):
+        """create_many_to_many() should call _create_many_to_many_relationship."""
+        expected = {
+            "relationship_id": "rel-guid-2",
+            "relationship_schema_name": "new_emp_proj",
+            "entity1_logical_name": "new_employee",
+            "entity2_logical_name": "new_project",
+        }
+        self.client._odata._create_many_to_many_relationship.return_value = expected
+
+        relationship = MagicMock()
+        result = self.client.tables.create_many_to_many_relationship(relationship, solution="MySolution")
+
+        self.client._odata._create_many_to_many_relationship.assert_called_once_with(relationship, "MySolution")
+        self.assertEqual(result, expected)
+
+    # ----------------------------------------------------- delete_relationship
+
+    def test_delete_relationship(self):
+        """delete_relationship() should call _delete_relationship."""
+        self.client.tables.delete_relationship("rel-guid-1")
+
+        self.client._odata._delete_relationship.assert_called_once_with("rel-guid-1")
+
+    # ------------------------------------------------------- get_relationship
+
+    def test_get_relationship(self):
+        """get_relationship() should call _get_relationship and return the dict."""
+        expected = {"SchemaName": "new_Dept_Emp", "MetadataId": "rel-guid-1"}
+        self.client._odata._get_relationship.return_value = expected
+
+        result = self.client.tables.get_relationship("new_Dept_Emp")
+
+        self.client._odata._get_relationship.assert_called_once_with("new_Dept_Emp")
+        self.assertEqual(result, expected)
+
+    def test_get_relationship_returns_none(self):
+        """get_relationship() should return None when not found."""
+        self.client._odata._get_relationship.return_value = None
+
+        result = self.client.tables.get_relationship("nonexistent")
+
+        self.assertIsNone(result)
+
 
 if __name__ == "__main__":
     unittest.main()

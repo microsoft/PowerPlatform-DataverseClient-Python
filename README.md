@@ -112,7 +112,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | Concept | Description |
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, and `tables` namespaces |
-| **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (queries), and `client.tables` (metadata) |
+| **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (queries), and `client.tables` (metadata & relationships) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -287,7 +287,7 @@ relationship = OneToManyRelationshipMetadata(
     referenced_attribute="new_departmentid",
 )
 
-result = client.create_one_to_many_relationship(lookup, relationship)
+result = client.tables.create_one_to_many_relationship(lookup, relationship)
 print(f"Created lookup field: {result['lookup_schema_name']}")
 
 # Create a many-to-many relationship: Employee (N) <-> Project (N)
@@ -298,23 +298,23 @@ m2m_relationship = ManyToManyRelationshipMetadata(
     entity2_logical_name="new_project",
 )
 
-result = client.create_many_to_many_relationship(m2m_relationship)
+result = client.tables.create_many_to_many_relationship(m2m_relationship)
 print(f"Created M:N relationship: {result['relationship_schema_name']}")
 
 # Query relationship metadata
-rel = client.get_relationship("new_Department_Employee")
+rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
     print(f"Found: {rel['SchemaName']}")
 
 # Delete a relationship
-client.delete_relationship(result['relationship_id'])
+client.tables.delete_relationship(result['relationship_id'])
 ```
 
 For simpler scenarios, use the convenience method:
 
 ```python
 # Quick way to create a lookup field with sensible defaults
-result = client.create_lookup_field(
+result = client.tables.create_lookup_field(
     referencing_table="contact",       # Child table gets the lookup field
     lookup_field_name="new_AccountId",
     referenced_table="account",        # Parent table being referenced

@@ -41,11 +41,11 @@ def log_call(description):
 
 def delete_relationship_if_exists(client, schema_name):
     """Delete a relationship by schema name if it exists."""
-    rel = client.get_relationship(schema_name)
+    rel = client.tables.get_relationship(schema_name)
     if rel:
         rel_id = rel.get("MetadataId")
         if rel_id:
-            client.delete_relationship(rel_id)
+            client.tables.delete_relationship(rel_id)
             print(f"   (Cleaned up existing relationship: {schema_name})")
             return True
     return False
@@ -75,8 +75,8 @@ def cleanup_previous_run(client):
     # Delete tables
     for table_name in tables:
         try:
-            if client.get_table_info(table_name):
-                client.delete_table(table_name)
+            if client.tables.get(table_name):
+                client.tables.delete(table_name)
                 print(f"   (Cleaned up existing table: {table_name})")
         except Exception as e:
             print(f"   [WARN] Could not delete table {table_name}: {e}")
@@ -159,7 +159,7 @@ def main():
     log_call("Creating 'new_Department' table")
 
     dept_table = backoff(
-        lambda: client.create_table(
+        lambda: client.tables.create(
             "new_Department",
             {
                 "new_DepartmentCode": "string",
@@ -173,7 +173,7 @@ def main():
     log_call("Creating 'new_Employee' table")
 
     emp_table = backoff(
-        lambda: client.create_table(
+        lambda: client.tables.create(
             "new_Employee",
             {
                 "new_EmployeeNumber": "string",
@@ -187,7 +187,7 @@ def main():
     log_call("Creating 'new_Project' table")
 
     proj_table = backoff(
-        lambda: client.create_table(
+        lambda: client.tables.create(
             "new_Project",
             {
                 "new_ProjectCode": "string",
@@ -228,7 +228,7 @@ def main():
 
     # Create the relationship
     result = backoff(
-        lambda: client.create_one_to_many_relationship(
+        lambda: client.tables.create_one_to_many_relationship(
             lookup=lookup,
             relationship=relationship,
         )
@@ -252,7 +252,7 @@ def main():
     # Use the convenience method for simpler scenarios
     # An Employee has a Manager (who is a Contact in the system)
     result2 = backoff(
-        lambda: client.create_lookup_field(
+        lambda: client.tables.create_lookup_field(
             referencing_table=emp_table["table_logical_name"],
             lookup_field_name="new_ManagerId",
             referenced_table="contact",
@@ -285,7 +285,7 @@ def main():
     )
 
     result3 = backoff(
-        lambda: client.create_many_to_many_relationship(
+        lambda: client.tables.create_many_to_many_relationship(
             relationship=m2m_relationship,
         )
     )
@@ -304,7 +304,7 @@ def main():
 
     log_call("Retrieving 1:N relationship by schema name")
 
-    rel_metadata = client.get_relationship("new_Department_Employee")
+    rel_metadata = client.tables.get_relationship("new_Department_Employee")
     if rel_metadata:
         print(f"[OK] Found relationship: {rel_metadata.get('SchemaName')}")
         print(f"  Type: {rel_metadata.get('@odata.type')}")
@@ -315,7 +315,7 @@ def main():
 
     log_call("Retrieving M:N relationship by schema name")
 
-    m2m_metadata = client.get_relationship("new_employee_project")
+    m2m_metadata = client.tables.get_relationship("new_employee_project")
     if m2m_metadata:
         print(f"[OK] Found relationship: {m2m_metadata.get('SchemaName')}")
         print(f"  Type: {m2m_metadata.get('@odata.type')}")
@@ -338,21 +338,21 @@ def main():
         log_call("Deleting relationships")
         try:
             if rel_id_1:
-                backoff(lambda: client.delete_relationship(rel_id_1))
+                backoff(lambda: client.tables.delete_relationship(rel_id_1))
                 print(f"  [OK] Deleted relationship: new_Department_Employee")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 1: {e}")
 
         try:
             if rel_id_2:
-                backoff(lambda: client.delete_relationship(rel_id_2))
+                backoff(lambda: client.tables.delete_relationship(rel_id_2))
                 print(f"  [OK] Deleted relationship: contact->employee (Manager)")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 2: {e}")
 
         try:
             if rel_id_3:
-                backoff(lambda: client.delete_relationship(rel_id_3))
+                backoff(lambda: client.tables.delete_relationship(rel_id_3))
                 print(f"  [OK] Deleted relationship: new_employee_project")
         except Exception as e:
             print(f"  [WARN] Error deleting relationship 3: {e}")
@@ -361,7 +361,7 @@ def main():
         log_call("Deleting tables")
         for table_name in ["new_Employee", "new_Department", "new_Project"]:
             try:
-                backoff(lambda name=table_name: client.delete_table(name))
+                backoff(lambda name=table_name: client.tables.delete(name))
                 print(f"  [OK] Deleted table: {table_name}")
             except Exception as e:
                 print(f"  [WARN] Error deleting {table_name}: {e}")
