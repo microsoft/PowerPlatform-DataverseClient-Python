@@ -46,7 +46,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ### Prerequisites
 
-- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  
+- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  test
 - **Microsoft Dataverse environment** with appropriate permissions
 - **OAuth authentication configured** for your application
 
