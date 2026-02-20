@@ -191,11 +191,17 @@ class TestRecordOperations(unittest.TestCase):
                 "UpsertItem",
                 [
                     UpsertItem(
-                        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+                        alternate_key={
+                            "accountnumber": "ACC-001",
+                            "address1_postalcode": "98052",
+                        },
                         record={"name": "Contoso Ltd"},
                     ),
                     UpsertItem(
-                        alternate_key={"accountnumber": "ACC-002", "address1_postalcode": "10001"},
+                        alternate_key={
+                            "accountnumber": "ACC-002",
+                            "address1_postalcode": "10001",
+                        },
                         record={"name": "Fabrikam Inc"},
                     ),
                 ],
@@ -204,11 +210,17 @@ class TestRecordOperations(unittest.TestCase):
                 "dict",
                 [
                     {
-                        "alternate_key": {"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+                        "alternate_key": {
+                            "accountnumber": "ACC-001",
+                            "address1_postalcode": "98052",
+                        },
                         "record": {"name": "Contoso Ltd"},
                     },
                     {
-                        "alternate_key": {"accountnumber": "ACC-002", "address1_postalcode": "10001"},
+                        "alternate_key": {
+                            "accountnumber": "ACC-002",
+                            "address1_postalcode": "10001",
+                        },
                         "record": {"name": "Fabrikam Inc"},
                     },
                 ],

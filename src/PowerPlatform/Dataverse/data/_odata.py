@@ -358,11 +358,20 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         String values are single-quoted and escaped; all other values are rendered as-is.
 
         :param alternate_key: Mapping of alternate key attribute names to their values.
+            Must be a non-empty dict with string keys.
         :type alternate_key: ``dict[str, Any]``
 
         :return: Comma-separated key=value pairs suitable for use in a URL segment.
         :rtype: ``str``
+
+        :raises ValueError: If ``alternate_key`` is empty.
+        :raises TypeError: If any key in ``alternate_key`` is not a string.
         """
+        if not alternate_key:
+            raise ValueError("alternate_key must be a non-empty dict")
+        bad_keys = [k for k in alternate_key if not isinstance(k, str)]
+        if bad_keys:
+            raise TypeError(f"alternate_key keys must be strings; got: {bad_keys!r}")
         parts = []
         for k, v in alternate_key.items():
             k_lower = k.lower() if isinstance(k, str) else k
@@ -433,20 +442,26 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :return: ``None``
         :rtype: ``None``
 
-        :raises ValueError: If ``alternate_keys`` and ``records`` differ in length.
+        :raises ValueError: If ``alternate_keys`` and ``records`` differ in length, or if
+            any record payload contains an alternate key field with a conflicting value.
         """
         if len(alternate_keys) != len(records):
             raise ValueError(
-                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
+                f"alternate_keys and records must have the same length "
+                f"({len(alternate_keys)} != {len(records)})"
             )
         logical_name = table_schema_name.lower()
         targets: List[Dict[str, Any]] = []
         for alt_key, record in zip(alternate_keys, records):
-            combined: Dict[str, Any] = {}
-            combined.update(self._lowercase_keys(alt_key))
+            alt_key_lower = self._lowercase_keys(alt_key)
             record_processed = self._lowercase_keys(record)
             record_processed = self._convert_labels_to_ints(table_schema_name, record_processed)
-            combined.update(record_processed)
+            conflicting = {k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]}
+            if conflicting:
+                raise ValueError(
+                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}"
+                )
+            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
             if "@odata.type" not in combined:
                 combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
             key_str = self._build_alternate_key_str(alt_key)

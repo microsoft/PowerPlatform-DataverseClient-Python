@@ -57,6 +57,26 @@ class TestUpsertMultipleValidation(unittest.TestCase):
         self.assertEqual(len(post_calls), 1)
         self.assertIn("UpsertMultiple", post_calls[0].args[1])
 
+    def test_record_conflicts_with_alternate_key_raises_value_error(self):
+        """_upsert_multiple raises ValueError when a record field contradicts its alternate key."""
+        with self.assertRaises(ValueError) as ctx:
+            self.od._upsert_multiple(
+                "accounts",
+                "account",
+                [{"accountnumber": "ACC-001"}],
+                [{"accountnumber": "ACC-WRONG", "name": "Contoso"}],
+            )
+        self.assertIn("accountnumber", str(ctx.exception))
+
+    def test_record_matching_alternate_key_field_does_not_raise(self):
+        """_upsert_multiple does not raise when a record field matches its alternate key value."""
+        self.od._upsert_multiple(
+            "accounts",
+            "account",
+            [{"accountnumber": "ACC-001"}],
+            [{"accountnumber": "ACC-001", "name": "Contoso"}],
+        )
+
 
 class TestBuildAlternateKeyStr(unittest.TestCase):
     """Unit tests for _ODataClient._build_alternate_key_str."""
@@ -76,7 +96,9 @@ class TestBuildAlternateKeyStr(unittest.TestCase):
 
     def test_composite_key_string_and_string(self):
         """Composite key with two string values produces comma-separated pairs."""
-        result = self.od._build_alternate_key_str({"accountnumber": "ACC-001", "address1_postalcode": "98052"})
+        result = self.od._build_alternate_key_str(
+            {"accountnumber": "ACC-001", "address1_postalcode": "98052"}
+        )
         self.assertEqual(result, "accountnumber='ACC-001',address1_postalcode='98052'")
 
     def test_composite_key_string_and_int(self):
@@ -93,6 +115,16 @@ class TestBuildAlternateKeyStr(unittest.TestCase):
         """Single quotes in string values are doubled (OData escaping)."""
         result = self.od._build_alternate_key_str({"name": "O'Brien"})
         self.assertEqual(result, "name='O''Brien'")
+
+    def test_empty_dict_raises_value_error(self):
+        """Empty alternate_key raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._build_alternate_key_str({})
+
+    def test_non_string_key_raises_type_error(self):
+        """Non-string key raises TypeError."""
+        with self.assertRaises(TypeError):
+            self.od._build_alternate_key_str({1: "ACC-001"})
 
 
 class TestUpsert(unittest.TestCase):
@@ -128,7 +160,8 @@ class TestUpsert(unittest.TestCase):
             {"name": "Contoso"},
         )
         call = self._patch_call()
-        self.assertIn("accountnumber='ACC-001',address1_postalcode='98052'", call.args[1])
+        expected_key = "accountnumber='ACC-001',address1_postalcode='98052'"
+        self.assertIn(expected_key, call.args[1])
 
     def test_record_keys_lowercased(self):
         """Record field names are lowercased before sending."""
