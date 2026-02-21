@@ -107,6 +107,39 @@ client.records.update("account", account_id, {"telephone1": "555-0200"})
 client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 ```
 
+#### Upsert Records
+Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+```python
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+# Single upsert
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd", "telephone1": "555-0100"},
+    )
+])
+
+# Bulk upsert (uses UpsertMultiple API automatically)
+client.records.upsert("account", [
+    UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso Ltd"}),
+    UpsertItem(alternate_key={"accountnumber": "ACC-002"}, record={"name": "Fabrikam Inc"}),
+])
+
+# Composite alternate key
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+        record={"name": "Contoso Ltd"},
+    )
+])
+
+# Plain dict syntax (no import needed)
+client.records.upsert("account", [
+    {"alternate_key": {"accountnumber": "ACC-001"}, "record": {"name": "Contoso Ltd"}}
+])
+```
+
 #### Delete Records
 ```python
 # Single delete
