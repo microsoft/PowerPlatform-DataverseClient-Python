@@ -518,11 +518,7 @@ class RecordOperations:
         for i in items:
             if isinstance(i, UpsertItem):
                 normalized.append(i)
-            elif (
-                isinstance(i, dict)
-                and isinstance(i.get("alternate_key"), dict)
-                and isinstance(i.get("record"), dict)
-            ):
+            elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
                 normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
             else:
                 raise TypeError("Each item must be a UpsertItem or a dict with 'alternate_key' and 'record' keys")
