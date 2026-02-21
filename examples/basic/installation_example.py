@@ -218,7 +218,7 @@ client.records.delete("account", account_id)
 Querying Data:
 ```python
 # Query with OData filter
-accounts = client.query.get("account",
+accounts = client.records.get("account",
                      filter="name eq 'Contoso Ltd'",
                      select=["name", "telephone1"],
                      top=10)

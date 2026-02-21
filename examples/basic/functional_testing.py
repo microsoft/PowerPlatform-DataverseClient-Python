@@ -271,7 +271,7 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
         print("Querying records from test table...")
         for attempt in range(1, retries + 1):
             try:
-                records_iterator = client.query.get(
+                records_iterator = client.records.get(
                     table_schema_name,
                     select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"],
                     filter=f"{attr_prefix}_is_active eq true",

@@ -193,9 +193,9 @@ def main():
     )
 
     # Multiple read with filter
-    log_call(f"client.query.get('{table_name}', filter='new_quantity gt 5')")
+    log_call(f"client.records.get('{table_name}', filter='new_quantity gt 5')")
     all_records = []
-    records_iterator = backoff(lambda: client.query.get(table_name, filter="new_quantity gt 5"))
+    records_iterator = backoff(lambda: client.records.get(table_name, filter="new_quantity gt 5"))
     for page in records_iterator:
         all_records.extend(page)
     print(f"[OK] Found {len(all_records)} records with new_quantity > 5")
@@ -243,9 +243,9 @@ def main():
     print(f"[OK] Created {len(paging_ids)} records for paging demo")
 
     # Query with paging
-    log_call(f"client.query.get('{table_name}', page_size=5)")
+    log_call(f"client.records.get('{table_name}', page_size=5)")
     print("Fetching records with page_size=5...")
-    paging_iterator = backoff(lambda: client.query.get(table_name, orderby=["new_Quantity"], page_size=5))
+    paging_iterator = backoff(lambda: client.records.get(table_name, orderby=["new_Quantity"], page_size=5))
     for page_num, page in enumerate(paging_iterator, start=1):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
