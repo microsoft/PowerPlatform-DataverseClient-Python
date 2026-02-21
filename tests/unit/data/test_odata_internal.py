@@ -96,9 +96,7 @@ class TestBuildAlternateKeyStr(unittest.TestCase):
 
     def test_composite_key_string_and_string(self):
         """Composite key with two string values produces comma-separated pairs."""
-        result = self.od._build_alternate_key_str(
-            {"accountnumber": "ACC-001", "address1_postalcode": "98052"}
-        )
+        result = self.od._build_alternate_key_str({"accountnumber": "ACC-001", "address1_postalcode": "98052"})
         self.assertEqual(result, "accountnumber='ACC-001',address1_postalcode='98052'")
 
     def test_composite_key_string_and_int(self):

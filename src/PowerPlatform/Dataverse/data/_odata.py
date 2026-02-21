@@ -447,8 +447,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         if len(alternate_keys) != len(records):
             raise ValueError(
-                f"alternate_keys and records must have the same length "
-                f"({len(alternate_keys)} != {len(records)})"
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
             )
         logical_name = table_schema_name.lower()
         targets: List[Dict[str, Any]] = []
@@ -456,11 +455,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             alt_key_lower = self._lowercase_keys(alt_key)
             record_processed = self._lowercase_keys(record)
             record_processed = self._convert_labels_to_ints(table_schema_name, record_processed)
-            conflicting = {k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]}
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
             if conflicting:
-                raise ValueError(
-                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}"
-                )
+                raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
             combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
             if "@odata.type" not in combined:
                 combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
