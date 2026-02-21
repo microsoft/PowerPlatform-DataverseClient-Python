@@ -112,7 +112,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | Concept | Description |
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, and `tables` namespaces |
-| **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (queries), and `client.tables` (metadata & relationships) |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), and `client.tables` (metadata) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -190,7 +190,7 @@ for record in results:
 
 # OData query with paging
 # Note: filter and expand parameters are case sensitive
-for page in client.query.get(
+for page in client.records.get(
     "account",
     select=["accountid", "name"],  # select is case-insensitive (automatically lowercased)
     filter="statecode eq 0",       # filter must use lowercase logical names (not transformed)
@@ -200,7 +200,7 @@ for page in client.query.get(
         print(record["name"])
 
 # Query with navigation property expansion (case-sensitive!)
-for page in client.query.get(
+for page in client.records.get(
     "account",
     select=["name"],
     expand=["primarycontactid"],  # Navigation property names are case-sensitive

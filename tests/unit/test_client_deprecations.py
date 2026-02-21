@@ -107,7 +107,7 @@ class TestClientDeprecations(unittest.TestCase):
 
     def test_get_multiple_warns(self):
         """client.get() without record_id emits a DeprecationWarning and delegates
-        to query.get.
+        to records.get.
         """
         page = [{"accountid": "1", "name": "A"}, {"accountid": "2", "name": "B"}]
         self.client._odata._get_multiple.return_value = iter([page])

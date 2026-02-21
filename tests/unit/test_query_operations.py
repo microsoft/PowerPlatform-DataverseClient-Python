@@ -25,47 +25,6 @@ class TestQueryOperations(unittest.TestCase):
         """The client.query attribute should be a QueryOperations instance."""
         self.assertIsInstance(self.client.query, QueryOperations)
 
-    # ----------------------------------------------------------- get (paginated)
-
-    def test_get_paginated(self):
-        """get() should yield pages from the underlying _get_multiple generator."""
-        page_1 = [{"accountid": "1", "name": "A"}]
-        page_2 = [{"accountid": "2", "name": "B"}]
-        self.client._odata._get_multiple.return_value = iter([page_1, page_2])
-
-        pages = list(self.client.query.get("account"))
-
-        self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page_1)
-        self.assertEqual(pages[1], page_2)
-
-    def test_get_with_all_params(self):
-        """get() should pass all keyword arguments through to _get_multiple."""
-        self.client._odata._get_multiple.return_value = iter([])
-
-        # Consume the generator so the call actually happens
-        list(
-            self.client.query.get(
-                "account",
-                select=["name", "telephone1"],
-                filter="statecode eq 0",
-                orderby=["name asc", "createdon desc"],
-                top=50,
-                expand=["primarycontactid"],
-                page_size=25,
-            )
-        )
-
-        self.client._odata._get_multiple.assert_called_once_with(
-            "account",
-            select=["name", "telephone1"],
-            filter="statecode eq 0",
-            orderby=["name asc", "createdon desc"],
-            top=50,
-            expand=["primarycontactid"],
-            page_size=25,
-        )
-
     # -------------------------------------------------------------------- sql
 
     def test_sql(self):
