@@ -185,6 +185,11 @@ Use `client.records.upsert()` to create or update records identified by alternat
 key matches an existing record it is updated; otherwise the record is created. A single item uses
 a PATCH request; multiple items use the `UpsertMultiple` bulk action.
 
+> **Prerequisite**: The table must have an **alternate key** configured in Dataverse for the
+> columns used in `alternate_key`. Alternate keys are defined in the table's metadata (Power Apps
+> maker portal → Table → Keys, or via the Dataverse API). Without a configured alternate key,
+> upsert requests will be rejected by Dataverse with a 400 error.
+
 ```python
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 

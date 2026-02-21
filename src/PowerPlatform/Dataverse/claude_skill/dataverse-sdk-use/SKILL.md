@@ -109,6 +109,7 @@ client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 
 #### Upsert Records
 Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+> **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
 ```python
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
