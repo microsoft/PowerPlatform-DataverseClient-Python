@@ -111,4 +111,3 @@ class FileOperations:
                 mime_type=mime_type,
                 if_none_match=if_none_match,
             )
-        return None
