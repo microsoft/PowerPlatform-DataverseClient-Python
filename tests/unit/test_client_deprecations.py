@@ -5,7 +5,7 @@
 
 Each deprecated method on the client should:
 1. Emit a DeprecationWarning.
-2. Delegate to the correct namespace method (records / query / tables).
+2. Delegate to the correct namespace method (records / query / tables / files).
 3. Return the expected value, including any backward-compatibility shims.
 """
 
@@ -263,6 +263,25 @@ class TestClientDeprecations(unittest.TestCase):
             ["new_Notes", "new_Active"],
         )
         self.assertEqual(result, ["new_Notes", "new_Active"])
+
+    # ----------------------------------------------------------- upload_file
+
+    def test_upload_file_warns(self):
+        """client.upload_file() emits a DeprecationWarning and delegates
+        to files.upload.
+        """
+        with self.assertWarns(DeprecationWarning):
+            self.client.upload_file("account", "guid-1", "new_Document", "/path/to/file.pdf")
+
+        self.client._odata._upload_file.assert_called_once_with(
+            "account",
+            "guid-1",
+            "new_Document",
+            "/path/to/file.pdf",
+            mode=None,
+            mime_type=None,
+            if_none_match=True,
+        )
 
 
 if __name__ == "__main__":

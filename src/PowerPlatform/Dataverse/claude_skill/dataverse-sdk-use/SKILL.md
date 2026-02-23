@@ -21,6 +21,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.records` -- CRUD and OData queries
 - `client.query` -- query and search operations
 - `client.tables` -- table metadata, columns, and relationships
+- `client.files` -- file upload operations
 
 ### Bulk Operations
 The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation
@@ -301,11 +302,11 @@ client.tables.delete_relationship(result["relationship_id"])
 
 ```python
 # Upload file to a file column
-client.upload_file(
-    table_schema_name="account",
+client.files.upload(
+    table="account",
     record_id=account_id,
-    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
-    path="/path/to/document.pdf"
+    file_column="new_Document",  # If the file column doesn't exist, it will be created automatically
+    path="/path/to/document.pdf",
 )
 ```
 
