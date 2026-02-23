@@ -1452,7 +1452,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         url = f"{self.api}/EntityDefinitions"
         base_filter = "IsPrivate eq false"
         if filter:
-            combined_filter = f"{base_filter} and {filter}"
+            combined_filter = f"{base_filter} and ({filter})"
         else:
             combined_filter = base_filter
         params: Dict[str, str] = {"$filter": combined_filter}

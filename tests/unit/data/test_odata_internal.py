@@ -126,7 +126,7 @@ class TestBuildAlternateKeyStr(unittest.TestCase):
 
 
 class TestListTables(unittest.TestCase):
-    """Unit tests for _ODataClient._list_tables filter parameter."""
+    """Unit tests for _ODataClient._list_tables filter and select parameters."""
 
     def setUp(self):
         self.od = _make_odata_client()
@@ -157,7 +157,7 @@ class TestListTables(unittest.TestCase):
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(
             params["$filter"],
-            "IsPrivate eq false and SchemaName eq 'Account'",
+            "IsPrivate eq false and (SchemaName eq 'Account')",
         )
 
     def test_filter_none_same_as_no_filter(self):
@@ -229,7 +229,7 @@ class TestListTables(unittest.TestCase):
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(
             params["$filter"],
-            "IsPrivate eq false and SchemaName eq 'Account'",
+            "IsPrivate eq false and (SchemaName eq 'Account')",
         )
         self.assertEqual(params["$select"], "LogicalName,SchemaName")
 
