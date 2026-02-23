@@ -165,6 +165,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         self.od._list_tables(filter=None)
 
+        self.od._request.assert_called_once()
         call_kwargs = self.od._request.call_args
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(params["$filter"], "IsPrivate eq false")
@@ -194,6 +195,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         self.od._list_tables(select=None)
 
+        self.od._request.assert_called_once()
         call_kwargs = self.od._request.call_args
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertNotIn("$select", params)
@@ -203,6 +205,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         self.od._list_tables(select=[])
 
+        self.od._request.assert_called_once()
         call_kwargs = self.od._request.call_args
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertNotIn("$select", params)
@@ -212,6 +215,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         self.od._list_tables(select=["EntitySetName", "LogicalName"])
 
+        self.od._request.assert_called_once()
         call_kwargs = self.od._request.call_args
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(params["$select"], "EntitySetName,LogicalName")
@@ -238,6 +242,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         self.od._list_tables(select=["LogicalName"])
 
+        self.od._request.assert_called_once()
         call_kwargs = self.od._request.call_args
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(params["$select"], "LogicalName")

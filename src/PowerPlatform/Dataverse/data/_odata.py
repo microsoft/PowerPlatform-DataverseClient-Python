@@ -1433,7 +1433,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :param filter: Optional additional OData ``$filter`` expression that is
             combined with the default ``IsPrivate eq false`` clause using
             ``and``.  For example, ``"SchemaName eq 'Account'"`` becomes
-            ``"IsPrivate eq false and SchemaName eq 'Account'"``.
+            ``"IsPrivate eq false and (SchemaName eq 'Account')"``.
             When ``None`` (the default), only the ``IsPrivate eq false`` filter
             is applied.
         :type filter: ``str`` or ``None``
