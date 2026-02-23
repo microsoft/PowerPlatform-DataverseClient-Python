@@ -8,10 +8,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-__all__ = ["RelationshipInfo"]
+from PowerPlatform.Dataverse.common.constants import (
+    ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
+    ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
+)
 
-_OTM_ODATA_TYPE = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
-_MTM_ODATA_TYPE = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
+__all__ = ["RelationshipInfo"]
 
 
 @dataclass
@@ -137,7 +139,7 @@ class RelationshipInfo:
         rel_id = response_data.get("MetadataId")
         schema_name = response_data.get("SchemaName", "")
 
-        if _OTM_ODATA_TYPE in odata_type:
+        if ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP in odata_type:
             return cls(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
@@ -147,7 +149,7 @@ class RelationshipInfo:
                 lookup_schema_name=response_data.get("ReferencingEntityNavigationPropertyName"),
             )
 
-        if _MTM_ODATA_TYPE in odata_type:
+        if ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP in odata_type:
             return cls(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
