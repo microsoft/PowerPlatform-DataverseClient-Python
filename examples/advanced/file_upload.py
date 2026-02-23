@@ -90,32 +90,22 @@ def file_sha256(path: Path):  # returns (hex_digest, size_bytes)
 
 
 def generate_test_file(size_mb: int = 10) -> Path:
-    """Generate a dummy file of specified size for testing purposes.
+    """Generate a dummy text file of specified size for testing purposes.
 
-    Creates a minimal PDF-like file with random padding to reach the target
+    Creates a plain text file with repeating content to reach the target
     size. No external dependencies required.
     """
-    test_file = Path(__file__).resolve().parent / f"test_dummy_{size_mb}mb.pdf"
+    test_file = Path(__file__).resolve().parent / f"test_dummy_{size_mb}mb.txt"
     target_size = size_mb * 1024 * 1024
 
-    # Minimal PDF structure so the file is recognized as PDF
-    pdf_header = b"%PDF-1.4\n"
-    pdf_body = b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-    pdf_body += b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
-    pdf_body += b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n"
-
-    # Fill with dummy data to reach target size
-    current_size = len(pdf_header) + len(pdf_body)
-    padding_needed = target_size - current_size - 50  # Reserve space for trailer
-    padding = b"% " + (b"padding " * (padding_needed // 8))[:padding_needed] + b"\n"
-
-    pdf_trailer = b"xref\n0 4\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n"
-
+    line = b"The quick brown fox jumps over the lazy dog. " * 2 + b"\n"
     with test_file.open("wb") as f:
-        f.write(pdf_header)
-        f.write(pdf_body)
-        f.write(padding)
-        f.write(pdf_trailer)
+        written = 0
+        while written < target_size:
+            chunk = line * min(1000, (target_size - written) // len(line) + 1)
+            chunk = chunk[: target_size - written]
+            f.write(chunk)
+            written += len(chunk)
 
     print({"test_file_generated": str(test_file), "size_mb": test_file.stat().st_size / (1024 * 1024)})
     return test_file
