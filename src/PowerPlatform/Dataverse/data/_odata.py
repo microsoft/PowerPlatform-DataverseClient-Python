@@ -1423,7 +1423,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "columns_created": [],
         }
 
-    def _list_tables(self, filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _list_tables(
+        self,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables (``IsPrivate eq false``).
 
         :param filter: Optional additional OData ``$filter`` expression that is
@@ -1433,6 +1437,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             When ``None`` (the default), only the ``IsPrivate eq false`` filter
             is applied.
         :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase) because
+            ``EntityDefinitions`` uses PascalCase property names.
+            When ``None`` (the default), no ``$select`` is applied and all
+            properties are returned.
+        :type select: ``list[str]`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
         :rtype: ``list[dict[str, Any]]``
@@ -1445,7 +1455,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             combined_filter = f"{base_filter} and {filter}"
         else:
             combined_filter = base_filter
-        params = {"$filter": combined_filter}
+        params: Dict[str, str] = {"$filter": combined_filter}
+        if select:
+            params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
 

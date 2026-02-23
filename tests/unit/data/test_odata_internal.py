@@ -179,6 +179,69 @@ class TestListTables(unittest.TestCase):
         result = self.od._list_tables()
         self.assertEqual(result, expected)
 
+    def test_select_adds_query_param(self):
+        """_list_tables(select=...) adds $select as comma-joined string."""
+        self._setup_response([])
+        self.od._list_tables(select=["LogicalName", "SchemaName", "DisplayName"])
+
+        self.od._request.assert_called_once()
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(params["$select"], "LogicalName,SchemaName,DisplayName")
+
+    def test_select_none_omits_query_param(self):
+        """_list_tables(select=None) does not add $select to params."""
+        self._setup_response([])
+        self.od._list_tables(select=None)
+
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertNotIn("$select", params)
+
+    def test_select_empty_list_omits_query_param(self):
+        """_list_tables(select=[]) does not add $select (empty list is falsy)."""
+        self._setup_response([])
+        self.od._list_tables(select=[])
+
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertNotIn("$select", params)
+
+    def test_select_preserves_case(self):
+        """_list_tables does not lowercase select values (PascalCase preserved)."""
+        self._setup_response([])
+        self.od._list_tables(select=["EntitySetName", "LogicalName"])
+
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(params["$select"], "EntitySetName,LogicalName")
+
+    def test_select_with_filter(self):
+        """_list_tables with both select and filter sends both params."""
+        self._setup_response([{"LogicalName": "account"}])
+        self.od._list_tables(
+            filter="SchemaName eq 'Account'",
+            select=["LogicalName", "SchemaName"],
+        )
+
+        self.od._request.assert_called_once()
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(
+            params["$filter"],
+            "IsPrivate eq false and SchemaName eq 'Account'",
+        )
+        self.assertEqual(params["$select"], "LogicalName,SchemaName")
+
+    def test_select_single_property(self):
+        """_list_tables(select=[...]) with a single property works correctly."""
+        self._setup_response([])
+        self.od._list_tables(select=["LogicalName"])
+
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(params["$select"], "LogicalName")
+
 
 class TestUpsert(unittest.TestCase):
     """Unit tests for _ODataClient._upsert."""

@@ -179,7 +179,12 @@ class TableOperations:
 
     # ------------------------------------------------------------------- list
 
-    def list(self, *, filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables in the Dataverse environment.
 
         By default returns every table where ``IsPrivate eq false``.  Supply
@@ -193,6 +198,13 @@ class TableOperations:
             expressions must use the exact property names from the
             ``EntityDefinitions`` metadata (typically PascalCase).
         :type filter: :class:`str` or None
+        :param select: Optional list of property names to include in the
+            response (projected via the OData ``$select`` query option).
+            Property names must use the exact PascalCase names from the
+            ``EntityDefinitions`` metadata (e.g.
+            ``["LogicalName", "SchemaName", "DisplayName"]``).
+            When ``None`` (the default), all properties are returned.
+        :type select: :class:`list` of :class:`str` or None
 
         :return: List of EntityDefinition metadata dictionaries.
         :rtype: :class:`list` of :class:`dict`
@@ -208,9 +220,14 @@ class TableOperations:
             custom_tables = client.tables.list(
                 filter="startswith(SchemaName, 'new_')"
             )
+
+            # List tables with only specific properties
+            tables = client.tables.list(
+                select=["LogicalName", "SchemaName", "EntitySetName"]
+            )
         """
         with self._client._scoped_odata() as od:
-            return od._list_tables(filter=filter)
+            return od._list_tables(filter=filter, select=select)
 
     # ------------------------------------------------------------- add_columns
 
