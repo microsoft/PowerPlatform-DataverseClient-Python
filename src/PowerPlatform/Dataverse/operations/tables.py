@@ -179,20 +179,38 @@ class TableOperations:
 
     # ------------------------------------------------------------------- list
 
-    def list(self) -> List[Dict[str, Any]]:
+    def list(self, *, filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all non-private tables in the Dataverse environment.
+
+        By default returns every table where ``IsPrivate eq false``.  Supply
+        an optional OData ``$filter`` expression to further narrow the results.
+        The expression is combined with the default ``IsPrivate eq false``
+        clause using ``and``.
+
+        :param filter: Optional OData ``$filter`` expression to further narrow
+            the list of returned tables (e.g.
+            ``"SchemaName eq 'Account'"``).  Column names in filter
+            expressions must use the exact property names from the
+            ``EntityDefinitions`` metadata (typically PascalCase).
+        :type filter: :class:`str` or None
 
         :return: List of EntityDefinition metadata dictionaries.
         :rtype: :class:`list` of :class:`dict`
 
         Example::
 
+            # List all non-private tables
             tables = client.tables.list()
             for table in tables:
                 print(table["LogicalName"])
+
+            # List only tables whose schema name starts with "new_"
+            custom_tables = client.tables.list(
+                filter="startswith(SchemaName, 'new_')"
+            )
         """
         with self._client._scoped_odata() as od:
-            return od._list_tables()
+            return od._list_tables(filter=filter)
 
     # ------------------------------------------------------------- add_columns
 

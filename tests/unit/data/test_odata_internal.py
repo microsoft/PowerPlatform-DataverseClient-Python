@@ -125,6 +125,61 @@ class TestBuildAlternateKeyStr(unittest.TestCase):
             self.od._build_alternate_key_str({1: "ACC-001"})
 
 
+class TestListTables(unittest.TestCase):
+    """Unit tests for _ODataClient._list_tables filter parameter."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+
+    def _setup_response(self, value):
+        """Configure _request to return a response with the given value list."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"value": value}
+        self.od._request.return_value = mock_response
+
+    def test_no_filter_uses_default(self):
+        """_list_tables() without filter sends only IsPrivate eq false."""
+        self._setup_response([])
+        self.od._list_tables()
+
+        self.od._request.assert_called_once()
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(params["$filter"], "IsPrivate eq false")
+
+    def test_filter_combined_with_default(self):
+        """_list_tables(filter=...) combines user filter with IsPrivate eq false."""
+        self._setup_response([{"LogicalName": "account"}])
+        self.od._list_tables(filter="SchemaName eq 'Account'")
+
+        self.od._request.assert_called_once()
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(
+            params["$filter"],
+            "IsPrivate eq false and SchemaName eq 'Account'",
+        )
+
+    def test_filter_none_same_as_no_filter(self):
+        """_list_tables(filter=None) is equivalent to _list_tables()."""
+        self._setup_response([])
+        self.od._list_tables(filter=None)
+
+        call_kwargs = self.od._request.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
+        self.assertEqual(params["$filter"], "IsPrivate eq false")
+
+    def test_returns_value_list(self):
+        """_list_tables returns the 'value' array from the response."""
+        expected = [
+            {"LogicalName": "account"},
+            {"LogicalName": "contact"},
+        ]
+        self._setup_response(expected)
+        result = self.od._list_tables()
+        self.assertEqual(result, expected)
+
+
 class TestUpsert(unittest.TestCase):
     """Unit tests for _ODataClient._upsert."""
 

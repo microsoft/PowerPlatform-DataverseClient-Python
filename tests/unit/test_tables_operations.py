@@ -100,8 +100,33 @@ class TestTableOperations(unittest.TestCase):
 
         result = self.client.tables.list()
 
-        self.client._odata._list_tables.assert_called_once()
+        self.client._odata._list_tables.assert_called_once_with(filter=None)
         self.assertIsInstance(result, list)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_filter(self):
+        """list(filter=...) should pass the filter expression to _list_tables."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(filter="SchemaName eq 'Account'")
+
+        self.client._odata._list_tables.assert_called_once_with(filter="SchemaName eq 'Account'")
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_filter_none_explicit(self):
+        """list(filter=None) should behave identically to list() with no args."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(filter=None)
+
+        self.client._odata._list_tables.assert_called_once_with(filter=None)
         self.assertEqual(result, expected_tables)
 
     # ------------------------------------------------------------ add_columns

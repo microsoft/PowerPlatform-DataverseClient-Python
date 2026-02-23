@@ -1423,8 +1423,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "columns_created": [],
         }
 
-    def _list_tables(self) -> List[Dict[str, Any]]:
+    def _list_tables(self, filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all non-private tables (``IsPrivate eq false``).
+
+        :param filter: Optional additional OData ``$filter`` expression that is
+            combined with the default ``IsPrivate eq false`` clause using
+            ``and``.  For example, ``"SchemaName eq 'Account'"`` becomes
+            ``"IsPrivate eq false and SchemaName eq 'Account'"``.
+            When ``None`` (the default), only the ``IsPrivate eq false`` filter
+            is applied.
+        :type filter: ``str`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
         :rtype: ``list[dict[str, Any]]``
@@ -1432,7 +1440,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :raises HttpError: If the metadata request fails.
         """
         url = f"{self.api}/EntityDefinitions"
-        params = {"$filter": "IsPrivate eq false"}
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and {filter}"
+        else:
+            combined_filter = base_filter
+        params = {"$filter": combined_filter}
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
 
