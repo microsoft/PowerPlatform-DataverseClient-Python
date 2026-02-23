@@ -247,6 +247,13 @@ class TestListTables(unittest.TestCase):
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         self.assertEqual(params["$select"], "LogicalName")
 
+    def test_select_bare_string_raises_type_error(self):
+        """_list_tables(select='LogicalName') raises TypeError for bare str."""
+        self._setup_response([])
+        with self.assertRaises(TypeError) as ctx:
+            self.od._list_tables(select="LogicalName")
+        self.assertIn("list of strings", str(ctx.exception))
+
 
 class TestUpsert(unittest.TestCase):
     """Unit tests for _ODataClient._upsert."""

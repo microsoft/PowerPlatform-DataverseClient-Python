@@ -1440,8 +1440,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase) because
             ``EntityDefinitions`` uses PascalCase property names.
-            When ``None`` (the default), no ``$select`` is applied and all
-            properties are returned.
+            When ``None`` (the default) or an empty list, no ``$select`` is
+            applied and all properties are returned.  Passing a bare string
+            raises ``TypeError``.
         :type select: ``list[str]`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
@@ -1456,6 +1457,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         else:
             combined_filter = base_filter
         params: Dict[str, str] = {"$filter": combined_filter}
+        if select is not None and isinstance(select, str):
+            raise TypeError(
+                "select must be a list of strings, not a single str; "
+                "did you mean ['" + select + "'] instead of '" + select + "'?"
+            )
         if select:
             params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)

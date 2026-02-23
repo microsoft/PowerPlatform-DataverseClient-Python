@@ -203,7 +203,8 @@ class TableOperations:
             Property names must use the exact PascalCase names from the
             ``EntityDefinitions`` metadata (e.g.
             ``["LogicalName", "SchemaName", "DisplayName"]``).
-            When ``None`` (the default), all properties are returned.
+            When ``None`` (the default) or an empty list, all properties are
+            returned.
         :type select: :class:`list` of :class:`str` or None
 
         :return: List of EntityDefinition metadata dictionaries.
