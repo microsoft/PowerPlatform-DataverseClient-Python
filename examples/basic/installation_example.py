@@ -63,6 +63,7 @@ from datetime import datetime
 from PowerPlatform.Dataverse.operations.records import RecordOperations
 from PowerPlatform.Dataverse.operations.query import QueryOperations
 from PowerPlatform.Dataverse.operations.tables import TableOperations
+from PowerPlatform.Dataverse.operations.files import FileOperations
 
 
 def validate_imports():
@@ -123,17 +124,19 @@ def validate_client_methods(DataverseClient):
     print("\nValidating Client Methods...")
     print("-" * 50)
 
-    # Validate namespace API: client.records, client.query, client.tables
+    # Validate namespace API: client.records, client.query, client.tables, client.files
     expected_namespaces = {
         "records": ["create", "get", "update", "delete"],
-        "query": ["get", "sql"],
+        "query": ["sql"],
         "tables": ["create", "get", "list", "delete", "add_columns", "remove_columns"],
+        "files": ["upload"],
     }
 
     ns_classes = {
         "records": RecordOperations,
         "query": QueryOperations,
         "tables": TableOperations,
+        "files": FileOperations,
     }
 
     missing_methods = []
