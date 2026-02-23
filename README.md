@@ -23,6 +23,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Quick start](#quick-start)
   - [Basic CRUD operations](#basic-crud-operations)
   - [Bulk operations](#bulk-operations)
+  - [Upsert operations](#upsert-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
@@ -34,7 +35,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 ## Key features
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
-- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
+- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, `UpsertMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
@@ -176,6 +177,57 @@ client.records.update("account", ids, {"industry": "Technology"})
 
 # Bulk delete
 client.records.delete("account", ids, use_bulk_delete=True)
+```
+
+### Upsert operations
+
+Use `client.records.upsert()` to create or update records identified by alternate keys. When the
+key matches an existing record it is updated; otherwise the record is created. A single item uses
+a PATCH request; multiple items use the `UpsertMultiple` bulk action.
+
+> **Prerequisite**: The table must have an **alternate key** configured in Dataverse for the
+> columns used in `alternate_key`. Alternate keys are defined in the table's metadata (Power Apps
+> maker portal → Table → Keys, or via the Dataverse API). Without a configured alternate key,
+> upsert requests will be rejected by Dataverse with a 400 error.
+
+```python
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+# Upsert a single record
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd", "telephone1": "555-0100"},
+    )
+])
+
+# Upsert multiple records (uses UpsertMultiple bulk action)
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd"},
+    ),
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-002"},
+        record={"name": "Fabrikam Inc"},
+    ),
+])
+
+# Composite alternate key (multiple columns identify the record)
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+        record={"name": "Contoso Ltd"},
+    )
+])
+
+# Plain dict syntax (no import needed)
+client.records.upsert("account", [
+    {
+        "alternate_key": {"accountnumber": "ACC-001"},
+        "record": {"name": "Contoso Ltd"},
+    }
+])
 ```
 
 ### Query data
