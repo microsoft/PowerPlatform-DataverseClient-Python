@@ -245,6 +245,7 @@ if run_small:
                 small_file_attr_schema,
                 str(replacement_file),
                 mode="small",
+                if_none_match=False,
             )
         )
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
@@ -314,6 +315,7 @@ if run_chunk:
                 chunk_file_attr_schema,
                 str(replacement_file),
                 mode="chunk",
+                if_none_match=False,
             )
         )
         print({"chunk_replace_upload_completed": True})

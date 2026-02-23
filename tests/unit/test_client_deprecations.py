@@ -5,7 +5,7 @@
 
 Each deprecated method on the client should:
 1. Emit a DeprecationWarning.
-2. Delegate to the correct namespace method (records / query / tables).
+2. Delegate to the correct namespace method (records / query / tables / files).
 3. Return the expected value, including any backward-compatibility shims.
 """
 
