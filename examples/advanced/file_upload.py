@@ -206,10 +206,10 @@ if run_small:
         DATASET_FILE, small_file_size, src_hash = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(
             lambda: client.files.upload(
-                table_schema_name,
-                record_id,
-                small_file_attr_schema,
-                str(DATASET_FILE),
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=small_file_attr_schema,
+                path=str(DATASET_FILE),
                 mode="small",
             )
         )
@@ -240,10 +240,10 @@ if run_small:
         replacement_file, replace_size_small, replace_hash_small = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(
             lambda: client.files.upload(
-                table_schema_name,
-                record_id,
-                small_file_attr_schema,
-                str(replacement_file),
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=small_file_attr_schema,
+                path=str(replacement_file),
                 mode="small",
                 if_none_match=False,
             )
@@ -279,10 +279,10 @@ if run_chunk:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(
             lambda: client.files.upload(
-                table_schema_name,
-                record_id,
-                chunk_file_attr_schema,
-                str(DATASET_FILE),
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=chunk_file_attr_schema,
+                path=str(DATASET_FILE),
                 mode="chunk",
             )
         )
@@ -310,10 +310,10 @@ if run_chunk:
         replacement_file, replace_size_chunk, replace_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(
             lambda: client.files.upload(
-                table_schema_name,
-                record_id,
-                chunk_file_attr_schema,
-                str(replacement_file),
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=chunk_file_attr_schema,
+                path=str(replacement_file),
                 mode="chunk",
                 if_none_match=False,
             )
