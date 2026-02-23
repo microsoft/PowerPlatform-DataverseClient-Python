@@ -16,6 +16,7 @@ from ..models.metadata import (
     CascadeConfiguration,
 )
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
+from ..models.relationship_info import RelationshipInfo
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -268,7 +269,7 @@ class TableOperations:
         relationship: OneToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a one-to-many relationship between tables.
 
         This operation creates both the relationship and the lookup attribute
@@ -281,9 +282,9 @@ class TableOperations:
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``lookup_schema_name``, and entity names.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -322,13 +323,20 @@ class TableOperations:
                 )
 
                 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-                print(f"Created lookup field: {result['lookup_schema_name']}")
+                print(f"Created lookup field: {result.lookup_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_one_to_many_relationship(
+            raw = od._create_one_to_many_relationship(
                 lookup,
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_one_to_many(
+                relationship_id=raw.get("relationship_id"),
+                relationship_schema_name=raw.get("relationship_schema_name", ""),
+                lookup_schema_name=raw.get("lookup_schema_name", ""),
+                referenced_entity=raw.get("referenced_entity", ""),
+                referencing_entity=raw.get("referencing_entity", ""),
             )
 
     # ----------------------------------------------------- create_many_to_many
@@ -338,7 +346,7 @@ class TableOperations:
         relationship: ManyToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a many-to-many relationship between tables.
 
         This operation creates a many-to-many relationship and an intersect
@@ -349,9 +357,9 @@ class TableOperations:
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``,
+        :return: Relationship metadata with ``relationship_id``,
             ``relationship_schema_name``, and entity names.
-        :rtype: :class:`dict`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -370,12 +378,18 @@ class TableOperations:
                 )
 
                 result = client.tables.create_many_to_many_relationship(relationship)
-                print(f"Created: {result['relationship_schema_name']}")
+                print(f"Created: {result.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_many_to_many_relationship(
+            raw = od._create_many_to_many_relationship(
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_many_to_many(
+                relationship_id=raw.get("relationship_id"),
+                relationship_schema_name=raw.get("relationship_schema_name", ""),
+                entity1_logical_name=raw.get("entity1_logical_name", ""),
+                entity2_logical_name=raw.get("entity2_logical_name", ""),
             )
 
     # ------------------------------------------------------- delete_relationship
@@ -404,14 +418,15 @@ class TableOperations:
 
     # -------------------------------------------------------- get_relationship
 
-    def get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:
+    def get_relationship(self, schema_name: str) -> Optional[RelationshipInfo]:
         """Retrieve relationship metadata by schema name.
 
         :param schema_name: The schema name of the relationship.
         :type schema_name: :class:`str`
 
-        :return: Relationship metadata dictionary, or None if not found.
-        :rtype: :class:`dict` or None
+        :return: Relationship metadata, or ``None`` if not found.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
+            or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -420,10 +435,13 @@ class TableOperations:
 
             rel = client.tables.get_relationship("new_Department_Employee")
             if rel:
-                print(f"Found: {rel['SchemaName']}")
+                print(f"Found: {rel.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._get_relationship(schema_name)
+            raw = od._get_relationship(schema_name)
+            if raw is None:
+                return None
+            return RelationshipInfo.from_api_response(raw)
 
     # ------------------------------------------------------- create_lookup_field
 
@@ -439,7 +457,7 @@ class TableOperations:
         cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
         solution: Optional[str] = None,
         language_code: int = 1033,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a simple lookup field relationship.
 
         This is a convenience method that wraps :meth:`create_one_to_many_relationship`
@@ -471,9 +489,9 @@ class TableOperations:
             (English).
         :type language_code: :class:`int`
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``lookup_schema_name``, and entity names.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
