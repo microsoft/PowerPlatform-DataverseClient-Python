@@ -64,6 +64,11 @@ from PowerPlatform.Dataverse.operations.records import RecordOperations
 from PowerPlatform.Dataverse.operations.query import QueryOperations
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
+try:
+    from PowerPlatform.Dataverse.operations.files import FileOperations
+except ImportError:
+    FileOperations = None  # type: ignore[assignment,misc]
+
 
 def validate_imports():
     """Validate that all key imports work correctly."""
@@ -123,18 +128,35 @@ def validate_client_methods(DataverseClient):
     print("\nValidating Client Methods...")
     print("-" * 50)
 
-    # Validate namespace API: client.records, client.query, client.tables
+    # Validate namespace API: client.records, client.query, client.tables, client.files
     expected_namespaces = {
-        "records": ["create", "get", "update", "delete"],
-        "query": ["get", "sql"],
-        "tables": ["create", "get", "list", "delete", "add_columns", "remove_columns"],
+        "records": ["create", "get", "update", "delete", "upsert"],
+        "query": ["sql"],
+        "tables": [
+            "create",
+            "get",
+            "list",
+            "delete",
+            "add_columns",
+            "remove_columns",
+            "create_one_to_many_relationship",
+            "create_many_to_many_relationship",
+            "delete_relationship",
+            "get_relationship",
+            "create_lookup_field",
+        ],
     }
+
+    if FileOperations is not None:
+        expected_namespaces["files"] = ["upload"]
 
     ns_classes = {
         "records": RecordOperations,
         "query": QueryOperations,
         "tables": TableOperations,
     }
+    if FileOperations is not None:
+        ns_classes["files"] = FileOperations
 
     missing_methods = []
     for ns, methods in expected_namespaces.items():
