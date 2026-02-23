@@ -112,8 +112,8 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 | Concept | Description |
 |---------|-------------|
-| **DataverseClient** | Main entry point; provides `records`, `query`, and `tables` namespaces |
-| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), and `client.tables` (metadata) |
+| **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), `client.tables` (metadata), and `client.files` (file uploads) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -378,11 +378,11 @@ result = client.tables.create_lookup_field(
 
 ```python
 # Upload a file to a record
-client.upload_file(
-    table_schema_name="account",
-    record_id=account_id,
-    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
-    path="/path/to/document.pdf"
+client.files.upload(
+    "account",
+    account_id,
+    "new_Document",  # If the file column doesn't exist, it will be created automatically
+    "/path/to/document.pdf",
 )
 ```
 

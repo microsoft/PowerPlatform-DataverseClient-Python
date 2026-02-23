@@ -14,6 +14,7 @@ from .core.config import DataverseConfig
 from .data._odata import _ODataClient
 from .operations.records import RecordOperations
 from .operations.query import QueryOperations
+from .operations.files import FileOperations
 from .operations.tables import TableOperations
 
 
@@ -56,6 +57,7 @@ class DataverseClient:
     - ``client.records`` -- create, update, delete, and get records (single or paginated queries)
     - ``client.query`` -- query and search operations
     - ``client.tables`` -- table and column metadata management
+    - ``client.files`` -- file upload operations
 
     Example:
         Create a client and perform basic operations::
@@ -101,6 +103,7 @@ class DataverseClient:
         self.records = RecordOperations(self)
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
+        self.files = FileOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """
@@ -665,67 +668,41 @@ class DataverseClient:
         if_none_match: bool = True,
     ) -> None:
         """
+        .. note::
+            Deprecated. Use :meth:`~PowerPlatform.Dataverse.operations.files.FileOperations.upload` instead.
+
         Upload a file to a Dataverse file column.
 
-        :param table_schema_name: Schema name of the table, e.g. ``"account"`` or ``"new_MyTestTable"``.
+        :param table_schema_name: Schema name of the table.
         :type table_schema_name: :class:`str`
         :param record_id: GUID of the target record.
         :type record_id: :class:`str`
-        :param file_name_attribute: Schema name of the file column attribute (e.g., ``"new_Document"``). If the column doesn't exist, it will be created automatically.
+        :param file_name_attribute: Schema name of the file column attribute.
         :type file_name_attribute: :class:`str`
-        :param path: Local filesystem path to the file. The stored filename will be
-            the basename of this path.
+        :param path: Local filesystem path to the file.
         :type path: :class:`str`
         :param mode: Upload strategy: ``"auto"`` (default), ``"small"``, or ``"chunk"``.
-            Auto mode selects small or chunked upload based on file size.
         :type mode: :class:`str` or None
-        :param mime_type: Explicit MIME type to store with the file (e.g. ``"application/pdf"``).
-            If not provided, the MIME type may be inferred from the file extension.
+        :param mime_type: Explicit MIME type to store with the file.
         :type mime_type: :class:`str` or None
-        :param if_none_match: When True (default), sends ``If-None-Match: null`` header to only
-            succeed if the column is currently empty. Set False to always overwrite using
-            ``If-Match: *``. Used for small and chunk modes only.
+        :param if_none_match: When True (default), only succeed if the column is
+            currently empty.
         :type if_none_match: :class:`bool`
-
-        :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the upload fails or the file column is not empty
-            when ``if_none_match=True``.
-        :raises FileNotFoundError: If the specified file path does not exist.
-
-        .. note::
-            Large files are automatically chunked to avoid request size limits. The chunk mode performs multiple requests with resumable upload support.
-
-        Example:
-            Upload a PDF file::
-
-                client.upload_file(
-                    table_schema_name="account",
-                    record_id=account_id,
-                    file_name_attribute="new_Contract",
-                    path="/path/to/contract.pdf",
-                    mime_type="application/pdf"
-                )
-
-            Upload with auto mode selection::
-
-                client.upload_file(
-                    table_schema_name="email",
-                    record_id=email_id,
-                    file_name_attribute="new_Attachment",
-                    path="/path/to/large_file.zip",
-                    mode="auto"
-                )
         """
-        with self._scoped_odata() as od:
-            od._upload_file(
-                table_schema_name,
-                record_id,
-                file_name_attribute,
-                path,
-                mode=mode,
-                mime_type=mime_type,
-                if_none_match=if_none_match,
-            )
-            return None
+        warnings.warn(
+            "client.upload_file() is deprecated. Use client.files.upload() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.files.upload(
+            table_schema_name,
+            record_id,
+            file_name_attribute,
+            path,
+            mode=mode,
+            mime_type=mime_type,
+            if_none_match=if_none_match,
+        )
 
     # Cache utilities
     def flush_cache(self, kind) -> int:
