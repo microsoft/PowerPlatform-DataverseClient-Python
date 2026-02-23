@@ -273,7 +273,7 @@ if run_small:
 
 # --------------------------- Chunk (streaming) upload demo ---------------------------
 if run_chunk:
-    print("Streaming chunk upload demo (upload_file_chunk):")
+    print("Streaming chunk upload demo (mode='chunk'):")
     try:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(
