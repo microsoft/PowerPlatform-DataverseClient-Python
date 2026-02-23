@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.record import Record
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.operations.records import RecordOperations
 
@@ -139,15 +140,18 @@ class TestRecordOperations(unittest.TestCase):
     # --------------------------------------------------------------------- get
 
     def test_get_single(self):
-        """get() with a record_id should call _get with correct params and return a dict."""
-        expected = {"accountid": "guid-1", "name": "Contoso"}
-        self.client._odata._get.return_value = expected
+        """get() with a record_id should return a Record with dict-like access."""
+        raw = {"accountid": "guid-1", "name": "Contoso"}
+        self.client._odata._get.return_value = raw
 
         result = self.client.records.get("account", "guid-1", select=["name", "telephone1"])
 
         self.client._odata._get.assert_called_once_with("account", "guid-1", select=["name", "telephone1"])
-        self.assertIsInstance(result, dict)
-        self.assertEqual(result, expected)
+        self.assertIsInstance(result, Record)
+        self.assertEqual(result.id, "guid-1")
+        self.assertEqual(result.table, "account")
+        self.assertEqual(result["name"], "Contoso")
+        self.assertEqual(result["accountid"], "guid-1")
 
     def test_get_single_with_query_params_raises(self):
         """get() with record_id and query params should raise ValueError."""
@@ -155,7 +159,7 @@ class TestRecordOperations(unittest.TestCase):
             self.client.records.get("account", "guid-1", filter="statecode eq 0")
 
     def test_get_paginated(self):
-        """get() without record_id should yield pages from _get_multiple."""
+        """get() without record_id should yield pages of Record objects."""
         page_1 = [{"accountid": "1", "name": "A"}]
         page_2 = [{"accountid": "2", "name": "B"}]
         self.client._odata._get_multiple.return_value = iter([page_1, page_2])
@@ -163,8 +167,11 @@ class TestRecordOperations(unittest.TestCase):
         pages = list(self.client.records.get("account"))
 
         self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page_1)
-        self.assertEqual(pages[1], page_2)
+        self.assertIsInstance(pages[0][0], Record)
+        self.assertEqual(pages[0][0]["name"], "A")
+        self.assertEqual(pages[0][0].table, "account")
+        self.assertIsInstance(pages[1][0], Record)
+        self.assertEqual(pages[1][0]["name"], "B")
 
     def test_get_paginated_with_all_params(self):
         """get() without record_id should pass all query params to _get_multiple."""
