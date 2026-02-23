@@ -264,6 +264,25 @@ class TestClientDeprecations(unittest.TestCase):
         )
         self.assertEqual(result, ["new_Notes", "new_Active"])
 
+    # ----------------------------------------------------------- upload_file
+
+    def test_upload_file_warns(self):
+        """client.upload_file() emits a DeprecationWarning and delegates
+        to files.upload.
+        """
+        with self.assertWarns(DeprecationWarning):
+            self.client.upload_file("account", "guid-1", "new_Document", "/path/to/file.pdf")
+
+        self.client._odata._upload_file.assert_called_once_with(
+            "account",
+            "guid-1",
+            "new_Document",
+            "/path/to/file.pdf",
+            mode=None,
+            mime_type=None,
+            if_none_match=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
