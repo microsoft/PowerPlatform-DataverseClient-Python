@@ -67,8 +67,8 @@ class FileOperations:
             file size.
         :type mode: :class:`str` or None
         :param mime_type: Explicit MIME type to store with the file (e.g.
-            ``"application/pdf"``). If not provided, the MIME type may be
-            inferred from the file extension.
+            ``"application/pdf"``). If not provided, defaults to
+            ``"application/octet-stream"``.
         :type mime_type: :class:`str` or None
         :param if_none_match: When True (default), sends
             ``If-None-Match: null`` header to only succeed if the column is
