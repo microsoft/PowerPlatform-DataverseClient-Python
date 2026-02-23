@@ -125,9 +125,21 @@ def validate_client_methods(DataverseClient):
 
     # Validate namespace API: client.records, client.query, client.tables
     expected_namespaces = {
-        "records": ["create", "get", "update", "delete"],
-        "query": ["get", "sql"],
-        "tables": ["create", "get", "list", "delete", "add_columns", "remove_columns"],
+        "records": ["create", "get", "update", "delete", "upsert"],
+        "query": ["sql"],
+        "tables": [
+            "create",
+            "get",
+            "list",
+            "delete",
+            "add_columns",
+            "remove_columns",
+            "create_one_to_many_relationship",
+            "create_many_to_many_relationship",
+            "delete_relationship",
+            "get_relationship",
+            "create_lookup_field",
+        ],
     }
 
     ns_classes = {
