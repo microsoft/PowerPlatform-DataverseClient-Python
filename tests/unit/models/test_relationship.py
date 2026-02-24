@@ -138,16 +138,14 @@ class TestRelationshipInfoFromApiResponse(unittest.TestCase):
             RelationshipInfo.from_api_response(raw)
         self.assertIn("Unrecognized relationship", str(ctx.exception))
 
-    def test_missing_fields(self):
-        """Should handle missing optional fields without error."""
+    def test_missing_required_fields_raises(self):
+        """Should raise KeyError when required API fields are missing."""
         raw = {
             "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
             "SchemaName": "minimal",
         }
-        info = RelationshipInfo.from_api_response(raw)
-        self.assertEqual(info.relationship_type, "one_to_many")
-        self.assertIsNone(info.relationship_id)
-        self.assertEqual(info.referenced_entity, "")
+        with self.assertRaises(KeyError):
+            RelationshipInfo.from_api_response(raw)
 
 
 class TestCascadeConfiguration:
