@@ -419,17 +419,19 @@ class RelationshipInfo:
             return cls.from_one_to_many(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
-                referenced_entity=response_data.get("ReferencedEntity", ""),
-                referencing_entity=response_data.get("ReferencingEntity", ""),
-                lookup_schema_name=response_data.get("ReferencingEntityNavigationPropertyName", ""),
+                referenced_entity=response_data["ReferencedEntity"],
+                referencing_entity=response_data["ReferencingEntity"],
+                lookup_schema_name=response_data.get(
+                    "ReferencingEntityNavigationPropertyName", ""
+                ),  # nav property may be absent
             )
 
         if ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP in odata_type:
             return cls.from_many_to_many(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
-                entity1_logical_name=response_data.get("Entity1LogicalName", ""),
-                entity2_logical_name=response_data.get("Entity2LogicalName", ""),
+                entity1_logical_name=response_data["Entity1LogicalName"],
+                entity2_logical_name=response_data["Entity2LogicalName"],
             )
 
         raise ValueError(f"Unrecognized relationship @odata.type: {odata_type!r}")
