@@ -1423,8 +1423,27 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "columns_created": [],
         }
 
-    def _list_tables(self) -> List[Dict[str, Any]]:
+    def _list_tables(
+        self,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables (``IsPrivate eq false``).
+
+        :param filter: Optional additional OData ``$filter`` expression that is
+            combined with the default ``IsPrivate eq false`` clause using
+            ``and``.  For example, ``"SchemaName eq 'Account'"`` becomes
+            ``"IsPrivate eq false and (SchemaName eq 'Account')"``.
+            When ``None`` (the default), only the ``IsPrivate eq false`` filter
+            is applied.
+        :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase) because
+            ``EntityDefinitions`` uses PascalCase property names.
+            When ``None`` (the default) or an empty list, no ``$select`` is
+            applied and all properties are returned.  Passing a bare string
+            raises ``TypeError``.
+        :type select: ``list[str]`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
         :rtype: ``list[dict[str, Any]]``
@@ -1432,7 +1451,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :raises HttpError: If the metadata request fails.
         """
         url = f"{self.api}/EntityDefinitions"
-        params = {"$filter": "IsPrivate eq false"}
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and ({filter})"
+        else:
+            combined_filter = base_filter
+        params: Dict[str, str] = {"$filter": combined_filter}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
 

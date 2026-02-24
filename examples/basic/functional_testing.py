@@ -65,6 +65,13 @@ def setup_authentication() -> DataverseClient:
         print("Testing connection...")
         tables = client.tables.list()
         print(f"[OK] Connection successful! Found {len(tables)} tables.")
+
+        # Test filtered + selected list
+        user_owned = client.tables.list(
+            filter="OwnershipType eq Microsoft.Dynamics.CRM.OwnershipTypes'UserOwned'",
+            select=["LogicalName", "SchemaName", "DisplayName"],
+        )
+        print(f"[OK] Found {len(user_owned)} user-owned tables (filter + select).")
         return client
 
     except Exception as e:
