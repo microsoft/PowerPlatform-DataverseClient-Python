@@ -492,7 +492,9 @@ class TableOperations:
         :type language_code: :class:`int`
 
         :return: Relationship metadata with ``relationship_id``,
-            ``lookup_schema_name``, and entity names.
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
         :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
