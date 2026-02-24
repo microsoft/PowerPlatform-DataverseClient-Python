@@ -109,11 +109,6 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
 
 
 def main():
-    # Initialize relationship IDs to None for cleanup safety
-    rel_id_1 = None
-    rel_id_2 = None
-    rel_id_3 = None
-
     print("=" * 80)
     print("Dataverse SDK - Relationship Management Example")
     print("=" * 80)
@@ -136,8 +131,16 @@ def main():
     credential = InteractiveBrowserCredential()
 
     log_call(f"DataverseClient(base_url='{base_url}', credential=...)")
-    client = DataverseClient(base_url=base_url, credential=credential)
-    print(f"[OK] Connected to: {base_url}")
+    with DataverseClient(base_url=base_url, credential=credential) as client:
+        print(f"[OK] Connected to: {base_url}")
+        _run_example(client)
+
+
+def _run_example(client):
+    # Initialize relationship IDs to None for cleanup safety
+    rel_id_1 = None
+    rel_id_2 = None
+    rel_id_3 = None
 
     # ============================================================================
     # 2. CLEANUP PREVIOUS RUN (Idempotency)

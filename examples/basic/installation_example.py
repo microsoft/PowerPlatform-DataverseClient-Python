@@ -205,11 +205,12 @@ from azure.identity import InteractiveBrowserCredential
 # Set up authentication
 credential = InteractiveBrowserCredential()
 
-# Create client
-client = DataverseClient(
-    "https://yourorg.crm.dynamics.com",
-    credential
-)
+# Recommended: use context manager for connection pooling and automatic cleanup
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+
+# Or without context manager:
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
 CRUD Operations:
@@ -307,19 +308,18 @@ def interactive_test():
         credential = InteractiveBrowserCredential()
 
         print("  Creating client...")
-        client = DataverseClient(org_url.rstrip("/"), credential)
+        with DataverseClient(org_url.rstrip("/"), credential) as client:
+            print("  Testing connection...")
+            tables = client.tables.list()
+            print(f"  [OK] Connection successful!")
+            print(f"  Found {len(tables)} tables in environment")
 
-        print("  Testing connection...")
-        tables = client.tables.list()
-        print(f"  [OK] Connection successful!")
-        print(f"  Found {len(tables)} tables in environment")
-
-        custom_tables = client.tables.list(
-            filter="IsCustomEntity eq true",
-            select=["LogicalName", "SchemaName"],
-        )
-        print(f"  Found {len(custom_tables)} custom tables (filter + select)")
-        print(f"  Connected to: {org_url}")
+            custom_tables = client.tables.list(
+                filter="IsCustomEntity eq true",
+                select=["LogicalName", "SchemaName"],
+            )
+            print(f"  Found {len(custom_tables)} custom tables (filter + select)")
+            print(f"  Connected to: {org_url}")
 
         print("\n  Your SDK is ready for use!")
         print("  Check the usage examples above for common patterns")
