@@ -252,7 +252,7 @@ class TestListTables(unittest.TestCase):
         self._setup_response([])
         with self.assertRaises(TypeError) as ctx:
             self.od._list_tables(select="LogicalName")
-        self.assertIn("list of strings", str(ctx.exception))
+        self.assertIn("list of property names", str(ctx.exception))
 
 
 class TestUpsert(unittest.TestCase):
