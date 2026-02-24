@@ -7,16 +7,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from ..models.metadata import (
+from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
     CascadeConfiguration,
+    RelationshipInfo,
 )
+from ..models.labels import Label, LocalizedLabel
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
-from ..models.relationship_info import RelationshipInfo
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -276,9 +275,9 @@ class TableOperations:
         on the referencing table.
 
         :param lookup: Metadata defining the lookup attribute.
-        :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
+        :type lookup: ~PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata
         :param relationship: Metadata defining the relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
@@ -286,7 +285,7 @@ class TableOperations:
             ``relationship_schema_name``, ``relationship_type``,
             ``lookup_schema_name``, ``referenced_entity``, and
             ``referencing_entity``.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -294,7 +293,7 @@ class TableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     LookupAttributeMetadata,
                     OneToManyRelationshipMetadata,
                     Label,
@@ -355,14 +354,14 @@ class TableOperations:
         table to manage the relationship.
 
         :param relationship: Metadata defining the many-to-many relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
         :return: Relationship metadata with ``relationship_id``,
             ``relationship_schema_name``, ``relationship_type``,
             ``entity1_logical_name``, and ``entity2_logical_name``.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -370,7 +369,7 @@ class TableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     ManyToManyRelationshipMetadata,
                 )
 
@@ -428,7 +427,7 @@ class TableOperations:
         :type schema_name: :class:`str`
 
         :return: Relationship metadata, or ``None`` if not found.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
             or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
@@ -494,7 +493,7 @@ class TableOperations:
 
         :return: Relationship metadata with ``relationship_id``,
             ``lookup_schema_name``, and entity names.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
