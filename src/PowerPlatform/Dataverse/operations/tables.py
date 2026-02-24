@@ -283,7 +283,9 @@ class TableOperations:
         :type solution: :class:`str` or None
 
         :return: Relationship metadata with ``relationship_id``,
-            ``lookup_schema_name``, and entity names.
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
         :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
@@ -358,7 +360,8 @@ class TableOperations:
         :type solution: :class:`str` or None
 
         :return: Relationship metadata with ``relationship_id``,
-            ``relationship_schema_name``, and entity names.
+            ``relationship_schema_name``, ``relationship_type``,
+            ``entity1_logical_name``, and ``entity2_logical_name``.
         :rtype: :class:`~PowerPlatform.Dataverse.models.relationship_info.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:

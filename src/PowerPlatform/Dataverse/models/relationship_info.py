@@ -130,36 +130,34 @@ class RelationshipInfo:
 
         Detects one-to-many vs many-to-many from the ``@odata.type`` field
         in the response and maps PascalCase keys to snake_case attributes.
+        Dataverse only supports these two relationship types; an unrecognized
+        ``@odata.type`` raises :class:`ValueError`.
 
         :param response_data: Raw relationship metadata from the Web API.
         :type response_data: :class:`dict`
         :rtype: :class:`RelationshipInfo`
+        :raises ValueError: If the ``@odata.type`` is not a recognized
+            relationship type.
         """
         odata_type = response_data.get("@odata.type", "")
         rel_id = response_data.get("MetadataId")
         schema_name = response_data.get("SchemaName", "")
 
         if ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP in odata_type:
-            return cls(
+            return cls.from_one_to_many(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
-                relationship_type="one_to_many",
-                referenced_entity=response_data.get("ReferencedEntity"),
-                referencing_entity=response_data.get("ReferencingEntity"),
-                lookup_schema_name=response_data.get("ReferencingEntityNavigationPropertyName"),
+                referenced_entity=response_data.get("ReferencedEntity", ""),
+                referencing_entity=response_data.get("ReferencingEntity", ""),
+                lookup_schema_name=response_data.get("ReferencingEntityNavigationPropertyName", ""),
             )
 
         if ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP in odata_type:
-            return cls(
+            return cls.from_many_to_many(
                 relationship_id=rel_id,
                 relationship_schema_name=schema_name,
-                relationship_type="many_to_many",
-                entity1_logical_name=response_data.get("Entity1LogicalName"),
-                entity2_logical_name=response_data.get("Entity2LogicalName"),
+                entity1_logical_name=response_data.get("Entity1LogicalName", ""),
+                entity2_logical_name=response_data.get("Entity2LogicalName", ""),
             )
 
-        # Fallback: unknown type, populate what we can
-        return cls(
-            relationship_id=rel_id,
-            relationship_schema_name=schema_name,
-        )
+        raise ValueError(f"Unrecognized relationship @odata.type: {odata_type!r}")

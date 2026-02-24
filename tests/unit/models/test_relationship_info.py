@@ -124,13 +124,12 @@ class TestRelationshipInfoFromApiResponse(unittest.TestCase):
         self.assertEqual(info.entity1_logical_name, "new_employee")
         self.assertEqual(info.entity2_logical_name, "new_project")
 
-    def test_unknown_type_fallback(self):
-        """Should handle unknown @odata.type gracefully."""
+    def test_unknown_type_raises(self):
+        """Should raise ValueError for unrecognized @odata.type."""
         raw = {"MetadataId": "guid", "SchemaName": "unknown_rel"}
-        info = RelationshipInfo.from_api_response(raw)
-        self.assertEqual(info.relationship_id, "guid")
-        self.assertEqual(info.relationship_schema_name, "unknown_rel")
-        self.assertEqual(info.relationship_type, "")
+        with self.assertRaises(ValueError) as ctx:
+            RelationshipInfo.from_api_response(raw)
+        self.assertIn("Unrecognized relationship", str(ctx.exception))
 
     def test_missing_fields(self):
         """Should handle missing optional fields without error."""
@@ -141,7 +140,7 @@ class TestRelationshipInfoFromApiResponse(unittest.TestCase):
         info = RelationshipInfo.from_api_response(raw)
         self.assertEqual(info.relationship_type, "one_to_many")
         self.assertIsNone(info.relationship_id)
-        self.assertIsNone(info.referenced_entity)
+        self.assertEqual(info.referenced_entity, "")
 
 
 if __name__ == "__main__":
