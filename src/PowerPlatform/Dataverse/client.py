@@ -7,6 +7,8 @@ import warnings
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Union
 
+import requests
+
 from azure.core.credentials import TokenCredential
 
 from .core._auth import _AuthManager
@@ -59,31 +61,29 @@ class DataverseClient:
     - ``client.tables`` -- table and column metadata management
     - ``client.files`` -- file upload operations
 
+    The client supports Python's context manager protocol for automatic resource
+    cleanup and HTTP connection pooling:
+
     Example:
-        Create a client and perform basic operations::
+        **Recommended -- context manager** (enables HTTP connection pooling)::
 
             from azure.identity import InteractiveBrowserCredential
             from PowerPlatform.Dataverse.client import DataverseClient
 
             credential = InteractiveBrowserCredential()
-            client = DataverseClient(
-                "https://org.crm.dynamics.com",
-                credential
-            )
 
-            # Create a record
-            record_id = client.records.create("account", {"name": "Contoso Ltd"})
+            with DataverseClient("https://org.crm.dynamics.com", credential) as client:
+                record_id = client.records.create("account", {"name": "Contoso Ltd"})
+                client.records.update("account", record_id, {"telephone1": "555-0100"})
+            # Session closed, caches cleared automatically
 
-            # Update a record
-            client.records.update("account", record_id, {"telephone1": "555-0100"})
+        **Manual lifecycle**::
 
-            # Query records
-            for page in client.records.get("account", filter="name eq 'Contoso Ltd'"):
-                for account in page:
-                    print(account["name"])
-
-            # Delete a record
-            client.records.delete("account", record_id)
+            client = DataverseClient("https://org.crm.dynamics.com", credential)
+            try:
+                record_id = client.records.create("account", {"name": "Contoso Ltd"})
+            finally:
+                client.close()
     """
 
     def __init__(
@@ -98,6 +98,8 @@ class DataverseClient:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
         self._odata: Optional[_ODataClient] = None
+        self._session: Optional[requests.Session] = None
+        self._closed: bool = False
 
         # Operation namespaces
         self.records = RecordOperations(self)
@@ -120,15 +122,73 @@ class DataverseClient:
                 self.auth,
                 self._base_url,
                 self._config,
+                session=self._session,
             )
         return self._odata
 
     @contextmanager
     def _scoped_odata(self) -> Iterator[_ODataClient]:
         """Yield the low-level client while ensuring a correlation scope is active."""
+        self._check_closed()
         od = self._get_odata()
         with od._call_scope():
             yield od
+
+    # ---------------- Context manager / lifecycle ----------------
+
+    def __enter__(self) -> DataverseClient:
+        """Enter the context manager.
+
+        Creates a :class:`requests.Session` for HTTP connection pooling.
+        All operations within the ``with`` block reuse this session for
+        better performance (TCP and TLS reuse).
+
+        :return: The client instance.
+        :rtype: DataverseClient
+        """
+        if self._session is None:
+            self._session = requests.Session()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the context manager with cleanup.
+
+        Calls :meth:`close` to release resources. Exceptions are not
+        suppressed.
+        """
+        self.close()
+
+    def close(self) -> None:
+        """Close the client and release resources.
+
+        Closes the HTTP session (if any), clears internal caches, and
+        marks the client as closed. Safe to call multiple times. After
+        closing, any operation will raise :class:`RuntimeError`.
+
+        Called automatically when using the client as a context manager.
+
+        Example::
+
+            client = DataverseClient(base_url, credential)
+            try:
+                client.records.create("account", {"name": "Contoso"})
+            finally:
+                client.close()
+        """
+        if self._closed:
+            return
+        if self._odata is not None:
+            self._odata.close()
+            self._odata = None
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+        self._closed = True
+
+    def _check_closed(self) -> None:
+        """Raise :class:`RuntimeError` if the client has been closed."""
+        if self._closed:
+            raise RuntimeError("DataverseClient is closed")
 
     # ---------------- Unified CRUD: create/update/delete ----------------
     def create(self, table_schema_name: str, records: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:

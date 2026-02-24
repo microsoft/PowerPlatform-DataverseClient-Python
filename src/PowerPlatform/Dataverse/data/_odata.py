@@ -116,6 +116,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         auth,
         base_url: str,
         config=None,
+        session=None,
     ) -> None:
         """Initialize the OData client.
 
@@ -127,6 +128,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
+        :param session: Optional ``requests.Session`` for HTTP connection pooling.
+        :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -144,6 +147,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
+            session=session,
         )
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -162,6 +166,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             yield shared_id
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+    def close(self) -> None:
+        """Close the OData client and release resources.
+
+        Clears all internal caches and closes the underlying HTTP client.
+        Safe to call multiple times.
+        """
+        self._logical_to_entityset_cache.clear()
+        self._logical_primaryid_cache.clear()
+        self._picklist_label_cache.clear()
+        if self._http is not None:
+            self._http.close()
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
