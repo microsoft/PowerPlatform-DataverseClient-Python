@@ -1458,10 +1458,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             combined_filter = base_filter
         params: Dict[str, str] = {"$filter": combined_filter}
         if select is not None and isinstance(select, str):
-            raise TypeError(
-                "select must be a list of strings, not a single str; "
-                "did you mean ['" + select + "'] instead of '" + select + "'?"
-            )
+            raise TypeError("select must be a list of property names, not a bare string")
         if select:
             params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)
