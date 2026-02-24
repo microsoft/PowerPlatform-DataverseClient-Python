@@ -333,11 +333,11 @@ class TableOperations:
                 solution,
             )
             return RelationshipInfo.from_one_to_many(
-                relationship_id=raw.get("relationship_id"),
-                relationship_schema_name=raw.get("relationship_schema_name", ""),
-                lookup_schema_name=raw.get("lookup_schema_name", ""),
-                referenced_entity=raw.get("referenced_entity", ""),
-                referencing_entity=raw.get("referencing_entity", ""),
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                lookup_schema_name=raw["lookup_schema_name"],
+                referenced_entity=raw["referenced_entity"],
+                referencing_entity=raw["referencing_entity"],
             )
 
     # ----------------------------------------------------- create_many_to_many
@@ -388,10 +388,10 @@ class TableOperations:
                 solution,
             )
             return RelationshipInfo.from_many_to_many(
-                relationship_id=raw.get("relationship_id"),
-                relationship_schema_name=raw.get("relationship_schema_name", ""),
-                entity1_logical_name=raw.get("entity1_logical_name", ""),
-                entity2_logical_name=raw.get("entity2_logical_name", ""),
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                entity1_logical_name=raw["entity1_logical_name"],
+                entity2_logical_name=raw["entity2_logical_name"],
             )
 
     # ------------------------------------------------------- delete_relationship
