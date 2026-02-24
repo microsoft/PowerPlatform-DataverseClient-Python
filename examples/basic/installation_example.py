@@ -265,6 +265,13 @@ print(f"Table: {info['table_schema_name']}")
 # List all tables
 tables = client.tables.list()
 print(f"Found {len(tables)} tables")
+
+# List with filter and select
+custom_tables = client.tables.list(
+    filter="IsCustomEntity eq true",
+    select=["LogicalName", "SchemaName", "DisplayName"],
+)
+print(f"Found {len(custom_tables)} custom tables")
 ```
 """)
 
@@ -304,9 +311,14 @@ def interactive_test():
 
         print("  Testing connection...")
         tables = client.tables.list()
-
         print(f"  [OK] Connection successful!")
         print(f"  Found {len(tables)} tables in environment")
+
+        custom_tables = client.tables.list(
+            filter="IsCustomEntity eq true",
+            select=["LogicalName", "SchemaName"],
+        )
+        print(f"  Found {len(custom_tables)} custom tables (filter + select)")
         print(f"  Connected to: {org_url}")
 
         print("\n  Your SDK is ready for use!")

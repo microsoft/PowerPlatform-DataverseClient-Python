@@ -187,20 +187,56 @@ class TableOperations:
 
     # ------------------------------------------------------------------- list
 
-    def list(self) -> List[Dict[str, Any]]:
+    def list(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables in the Dataverse environment.
+
+        By default returns every table where ``IsPrivate eq false``.  Supply
+        an optional OData ``$filter`` expression to further narrow the results.
+        The expression is combined with the default ``IsPrivate eq false``
+        clause using ``and``.
+
+        :param filter: Optional OData ``$filter`` expression to further narrow
+            the list of returned tables (e.g.
+            ``"SchemaName eq 'Account'"``).  Column names in filter
+            expressions must use the exact property names from the
+            ``EntityDefinitions`` metadata (typically PascalCase).
+        :type filter: :class:`str` or None
+        :param select: Optional list of property names to include in the
+            response (projected via the OData ``$select`` query option).
+            Property names must use the exact PascalCase names from the
+            ``EntityDefinitions`` metadata (e.g.
+            ``["LogicalName", "SchemaName", "DisplayName"]``).
+            When ``None`` (the default) or an empty list, all properties are
+            returned.
+        :type select: :class:`list` of :class:`str` or None
 
         :return: List of EntityDefinition metadata dictionaries.
         :rtype: :class:`list` of :class:`dict`
 
         Example::
 
+            # List all non-private tables
             tables = client.tables.list()
             for table in tables:
                 print(table["LogicalName"])
+
+            # List only tables whose schema name starts with "new_"
+            custom_tables = client.tables.list(
+                filter="startswith(SchemaName, 'new_')"
+            )
+
+            # List tables with only specific properties
+            tables = client.tables.list(
+                select=["LogicalName", "SchemaName", "EntitySetName"]
+            )
         """
         with self._client._scoped_odata() as od:
-            return od._list_tables()
+            return od._list_tables(filter=filter, select=select)
 
     # ------------------------------------------------------------- add_columns
 
