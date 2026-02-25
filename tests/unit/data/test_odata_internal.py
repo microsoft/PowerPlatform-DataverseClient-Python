@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import json
 import unittest
 from unittest.mock import MagicMock
 
@@ -179,9 +180,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables()
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$filter"], "IsPrivate eq false")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$filter=IsPrivate eq false", url)
 
     def test_filter_combined_with_default(self):
         """_list_tables(filter=...) combines user filter with IsPrivate eq false."""
@@ -189,12 +189,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(filter="SchemaName eq 'Account'")
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(
-            params["$filter"],
-            "IsPrivate eq false and (SchemaName eq 'Account')",
-        )
+        url = self.od._request.call_args[0][1]
+        self.assertIn("IsPrivate eq false and (SchemaName eq 'Account')", url)
 
     def test_filter_none_same_as_no_filter(self):
         """_list_tables(filter=None) is equivalent to _list_tables()."""
@@ -202,9 +198,9 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(filter=None)
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$filter"], "IsPrivate eq false")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$filter=IsPrivate eq false", url)
+        self.assertNotIn("and", url)
 
     def test_returns_value_list(self):
         """_list_tables returns the 'value' array from the response."""
@@ -222,9 +218,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["LogicalName", "SchemaName", "DisplayName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "LogicalName,SchemaName,DisplayName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=LogicalName,SchemaName,DisplayName", url)
 
     def test_select_none_omits_query_param(self):
         """_list_tables(select=None) does not add $select to params."""
@@ -232,9 +227,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=None)
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertNotIn("$select", params)
+        url = self.od._request.call_args[0][1]
+        self.assertNotIn("$select", url)
 
     def test_select_empty_list_omits_query_param(self):
         """_list_tables(select=[]) does not add $select (empty list is falsy)."""
@@ -242,9 +236,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=[])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertNotIn("$select", params)
+        url = self.od._request.call_args[0][1]
+        self.assertNotIn("$select", url)
 
     def test_select_preserves_case(self):
         """_list_tables does not lowercase select values (PascalCase preserved)."""
@@ -252,9 +245,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["EntitySetName", "LogicalName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "EntitySetName,LogicalName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=EntitySetName,LogicalName", url)
 
     def test_select_with_filter(self):
         """_list_tables with both select and filter sends both params."""
@@ -265,13 +257,9 @@ class TestListTables(unittest.TestCase):
         )
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(
-            params["$filter"],
-            "IsPrivate eq false and (SchemaName eq 'Account')",
-        )
-        self.assertEqual(params["$select"], "LogicalName,SchemaName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("IsPrivate eq false and (SchemaName eq 'Account')", url)
+        self.assertIn("$select=LogicalName,SchemaName", url)
 
     def test_select_single_property(self):
         """_list_tables(select=[...]) with a single property works correctly."""
@@ -279,9 +267,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["LogicalName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "LogicalName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=LogicalName", url)
 
     def test_select_bare_string_raises_type_error(self):
         """_list_tables(select='LogicalName') raises TypeError for bare str."""
@@ -313,7 +300,7 @@ class TestCreate(unittest.TestCase):
         """Regular record field names are lowercased before sending."""
         self.od._create("accounts", "account", {"Name": "Contoso", "AccountNumber": "ACC-001"})
         call = self._post_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertIn("accountnumber", payload)
         self.assertNotIn("Name", payload)
@@ -331,7 +318,7 @@ class TestCreate(unittest.TestCase):
             },
         )
         call = self._post_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_name", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertIn("new_AgentId@odata.bind", payload)
@@ -397,7 +384,7 @@ class TestUpdate(unittest.TestCase):
         """Regular field names are lowercased in _update."""
         self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"New_Status": 100000001})
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_status", payload)
         self.assertNotIn("New_Status", payload)
 
@@ -412,7 +399,7 @@ class TestUpdate(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_status", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertNotIn("new_customerid@odata.bind", payload)
@@ -481,7 +468,7 @@ class TestUpsert(unittest.TestCase):
         """Record field names are lowercased before sending."""
         self.od._upsert("accounts", "account", {"accountnumber": "ACC-001"}, {"Name": "Contoso"})
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertNotIn("Name", payload)
 
@@ -497,7 +484,7 @@ class TestUpsert(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         # Regular field is lowercased
         self.assertIn("name", payload)
         # @odata.bind key preserves original casing
