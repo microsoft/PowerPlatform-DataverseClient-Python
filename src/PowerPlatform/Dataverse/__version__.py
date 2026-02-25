@@ -3,4 +3,9 @@
 
 """Version information for PowerPlatform-Dataverse-Client package."""
 
-__version__ = "0.1.0b5"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("PowerPlatform-Dataverse-Client")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev0"
