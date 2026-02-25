@@ -15,7 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RelationshipInfo` typed return model for relationship operations (#114)
 - `client.records.upsert()` for upsert operations (#106)
 - Cascade behavior constants and input models (`CascadeConfiguration`, `LookupAttributeMetadata`, etc.)
-- Backward compatibility test suite (`tests/integration/test_backward_compat.py`)
 
 ### Changed
 - Reorganized models: `metadata.py` split into `relationship.py` (relationship models) and `labels.py` (Label/LocalizedLabel) (#114)
