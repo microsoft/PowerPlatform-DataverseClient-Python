@@ -9,23 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Operation namespaces: `client.records`, `client.query`, `client.tables`, `client.files` (#102)
+- Relationship management: `create_one_to_many_relationship`, `create_many_to_many_relationship`, `get_relationship`, `delete_relationship`, `create_lookup_field` with typed `RelationshipInfo` return model (#105, #114)
+- `client.records.upsert()` for upsert operations with alternate key support (#106)
 - `client.files.upload()` for file upload operations (#111)
-- `client.tables.list(filter=, select=)` parameters (#112)
-- Relationship management: `create_one_to_many_relationship`, `create_many_to_many_relationship`, `get_relationship`, `delete_relationship`, `create_lookup_field` (#105, #114)
-- `RelationshipInfo` typed return model for relationship operations (#114)
-- `client.records.upsert()` for upsert operations (#106)
-- Cascade behavior constants and input models (`CascadeConfiguration`, `LookupAttributeMetadata`, etc.)
+- `client.tables.list(filter=, select=)` parameters for filtering and projecting table metadata (#112)
+- Cascade behavior constants (`CASCADE_BEHAVIOR_CASCADE`, `CASCADE_BEHAVIOR_REMOVE_LINK`, etc.) and input models (`CascadeConfiguration`, `LookupAttributeMetadata`, `Label`, `LocalizedLabel`)
 
-### Changed
-- Reorganized models: `metadata.py` split into `relationship.py` (relationship models) and `labels.py` (Label/LocalizedLabel) (#114)
-- Relationship methods return `RelationshipInfo` dataclass instead of raw `dict` (#114)
-- All flat methods on `DataverseClient` now emit `DeprecationWarning` and delegate to namespaced operations
-- `tables.list()` filter now wraps user filter in parentheses to prevent OData operator precedence issues (#112)
-
-### Fixed
-- Installation example validation updated for current API surface (#113)
-- File upload example: replaced ReportLab PDF dependency with plain text file generation (#111)
-- `if_none_match=False` added to file replacement uploads (#111)
+### Deprecated
+- All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `query_sql`, `upload_file`, etc.) now emit `DeprecationWarning` and delegate to the corresponding namespaced operations
 
 ## [0.1.0b3] - 2025-12-19
 
