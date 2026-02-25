@@ -15,6 +15,7 @@ from .data._odata import _ODataClient
 from .operations.records import RecordOperations
 from .operations.query import QueryOperations
 from .operations.tables import TableOperations
+from .operations.batch import BatchOperations
 
 
 class DataverseClient:
@@ -56,6 +57,7 @@ class DataverseClient:
     - ``client.records`` -- create, update, delete, and get records (single or paginated queries)
     - ``client.query`` -- query and search operations
     - ``client.tables`` -- table and column metadata management
+    - ``client.batch`` -- batch multiple operations into a single HTTP request
 
     Example:
         Create a client and perform basic operations::
@@ -101,6 +103,7 @@ class DataverseClient:
         self.records = RecordOperations(self)
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
+        self.batch = BatchOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """
