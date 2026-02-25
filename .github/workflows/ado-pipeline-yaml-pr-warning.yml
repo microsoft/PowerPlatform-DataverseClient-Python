@@ -1,4 +1,4 @@
-name: Warn - Check ADO pipeline settings when PR updates ADO pipeline YAML
+name: Warn when ADO pipeline YAML file changes
 
 on:
   pull_request:
