@@ -1,0 +1,36 @@
+name: Warn when ADO PR pipeline YAML changes
+
+on:
+  pull_request:
+    paths:
+      - ".azdo/ci-pr.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  warn:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit warning in logs
+        run: |
+          echo "::warning file=.azdo/ci-pr.yaml::This PR changes .azdo/ci-pr.yaml. After merge, Azure DevOps may disable/require approval for the PR pipeline YAML until it is re-enabled/approved."
+
+          echo "ADO pipeline: DV-Python-SDK-PullRequest (definitionId=29922)"
+          echo "https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29922"
+
+      - name: Add workflow summary
+        run: |
+          {
+            echo "## ADO PR pipeline YAML change detected"
+            echo ""
+            echo "**File changed:** \`.azdo/ci-pr.yaml\`"
+            echo ""
+            echo "**Why this matters:** After this is merged, Azure DevOps may disable/require approval for the PR pipeline YAML."
+            echo ""
+            echo "**Action required (post-merge):** Re-enable / approve the updated YAML for:"
+            echo "- **DV-Python-SDK-PullRequest** (definitionId=29922)"
+            echo "- https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29922"
+            echo ""
+            echo "Then trigger a run to confirm PR validation works."
+          } >> "$GITHUB_STEP_SUMMARY"
