@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from ..core._http import _HttpClient
+from ..core.telemetry import create_telemetry_manager
 from ._upload import _FileUploadMixin
 from ._relationships import _RelationshipOperationsMixin
 from ..core.errors import *
@@ -41,6 +42,22 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+
+# Telemetry operation context -- set by operations namespaces, read by _request()
+_OPERATION_NAME: ContextVar[Optional[str]] = ContextVar("_OPERATION_NAME", default=None)
+_OPERATION_TABLE: ContextVar[Optional[str]] = ContextVar("_OPERATION_TABLE", default=None)
+
+
+@contextmanager
+def _operation_scope(operation: str, table: Optional[str] = None):
+    """Set the operation name and table for telemetry within this scope."""
+    op_token = _OPERATION_NAME.set(operation)
+    tbl_token = _OPERATION_TABLE.set(table)
+    try:
+        yield
+    finally:
+        _OPERATION_NAME.reset(op_token)
+        _OPERATION_TABLE.reset(tbl_token)
 
 
 @dataclass
@@ -145,6 +162,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
         )
+        # Telemetry
+        self._telemetry = create_telemetry_manager(getattr(self.config, "telemetry", None))
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
@@ -196,61 +215,91 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             **kwargs,
         )
 
-        r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
-        if r.status_code in request_context.expected:
-            return r
-        response_headers = getattr(r, "headers", {}) or {}
-        body_excerpt = (getattr(r, "text", "") or "")[:200]
-        svc_code = None
-        msg = f"HTTP {r.status_code}"
-        try:
-            data = r.json() if getattr(r, "text", None) else {}
-            if isinstance(data, dict):
-                inner = data.get("error")
-                if isinstance(inner, dict):
-                    svc_code = inner.get("code")
-                    imsg = inner.get("message")
-                    if isinstance(imsg, str) and imsg.strip():
-                        msg = imsg.strip()
-                else:
-                    imsg2 = data.get("message")
-                    if isinstance(imsg2, str) and imsg2.strip():
-                        msg = imsg2.strip()
-        except Exception:
-            pass
-        sc = r.status_code
-        subcode = _http_subcode(sc)
-        request_id = (
-            response_headers.get("x-ms-service-request-id")
-            or response_headers.get("req_id")
-            or response_headers.get("x-ms-request-id")
-        )
-        traceparent = response_headers.get("traceparent")
-        ra = response_headers.get("Retry-After")
-        retry_after = None
-        if ra:
+        # Read operation context from ContextVars (set by operations namespaces)
+        operation = _OPERATION_NAME.get() or "http.request"
+        table_name = _OPERATION_TABLE.get()
+
+        # Merge any hook-provided headers
+        hook_headers = self._telemetry.get_additional_headers()
+        if hook_headers:
+            request_context.headers.update(hook_headers)
+            request_context.kwargs["headers"] = request_context.headers
+
+        with self._telemetry.trace_request(
+            operation=operation,
+            method=method.upper(),
+            url=url,
+            client_request_id=request_context.headers.get("x-ms-client-request-id", ""),
+            correlation_id=request_context.headers.get("x-ms-correlation-id", ""),
+            table_name=table_name,
+        ) as tracked:
             try:
-                retry_after = int(ra)
+                r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
+            except Exception as exc:
+                self._telemetry.record_response(tracked, status_code=0, error=exc)
+                raise
+
+            # Extract response headers once -- shared between telemetry and error building
+            response_headers = getattr(r, "headers", {}) or {}
+            service_request_id = (
+                response_headers.get("x-ms-service-request-id")
+                or response_headers.get("req_id")
+                or response_headers.get("x-ms-request-id")
+            )
+
+            if r.status_code in request_context.expected:
+                self._telemetry.record_response(
+                    tracked, status_code=r.status_code, service_request_id=service_request_id
+                )
+                return r
+
+            # Error path: build HttpError (logic unchanged)
+            body_excerpt = (getattr(r, "text", "") or "")[:200]
+            svc_code = None
+            msg = f"HTTP {r.status_code}"
+            try:
+                data = r.json() if getattr(r, "text", None) else {}
+                if isinstance(data, dict):
+                    inner = data.get("error")
+                    if isinstance(inner, dict):
+                        svc_code = inner.get("code")
+                        imsg = inner.get("message")
+                        if isinstance(imsg, str) and imsg.strip():
+                            msg = imsg.strip()
+                    else:
+                        imsg2 = data.get("message")
+                        if isinstance(imsg2, str) and imsg2.strip():
+                            msg = imsg2.strip()
             except Exception:
-                retry_after = None
-        is_transient = _is_transient_status(sc)
-        raise HttpError(
-            msg,
-            status_code=sc,
-            subcode=subcode,
-            service_error_code=svc_code,
-            correlation_id=request_context.headers.get(
-                "x-ms-correlation-id"
-            ),  # this is a value set on client side, although it's logged on server side too
-            client_request_id=request_context.headers.get(
-                "x-ms-client-request-id"
-            ),  # this is a value set on client side, although it's logged on server side too
-            service_request_id=request_id,
-            traceparent=traceparent,
-            body_excerpt=body_excerpt,
-            retry_after=retry_after,
-            is_transient=is_transient,
-        )
+                pass
+            sc = r.status_code
+            subcode = _http_subcode(sc)
+            traceparent = response_headers.get("traceparent")
+            ra = response_headers.get("Retry-After")
+            retry_after = None
+            if ra:
+                try:
+                    retry_after = int(ra)
+                except Exception:
+                    retry_after = None
+            is_transient = _is_transient_status(sc)
+            http_error = HttpError(
+                msg,
+                status_code=sc,
+                subcode=subcode,
+                service_error_code=svc_code,
+                correlation_id=request_context.headers.get("x-ms-correlation-id"),
+                client_request_id=request_context.headers.get("x-ms-client-request-id"),
+                service_request_id=service_request_id,
+                traceparent=traceparent,
+                body_excerpt=body_excerpt,
+                retry_after=retry_after,
+                is_transient=is_transient,
+            )
+            self._telemetry.record_response(
+                tracked, status_code=sc, service_request_id=service_request_id, error=http_error
+            )
+            raise http_error
 
     # --- CRUD Internal functions ---
     def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:

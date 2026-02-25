@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, TYPE_CHECKING
 
+from ..data._odata import _operation_scope
+
 if TYPE_CHECKING:
     from ..client import DataverseClient
 
@@ -72,4 +74,5 @@ class QueryOperations:
                 )
         """
         with self._client._scoped_odata() as od:
-            return od._query_sql(sql)
+            with _operation_scope("query.sql"):
+                return od._query_sql(sql)
