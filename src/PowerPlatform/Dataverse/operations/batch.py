@@ -205,7 +205,7 @@ class BatchRecordOperations:
 
         - **Single** ``(table, "guid")`` -> one DELETE request.
         - **List + use_bulk_delete=True** (default) -> one ``BulkDelete`` POST.
-          The async job ID will be available in ``BatchItemResponse.body["JobId"]``.
+          The async job ID will be available in ``BatchItemResponse.data["JobId"]``.
         - **List + use_bulk_delete=False** -> one DELETE per record.
 
         :param table: Table schema name.
@@ -233,7 +233,7 @@ class BatchRecordOperations:
         incompatible with a single batch request.
 
         The response body will be available in
-        :attr:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse.body`
+        :attr:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse.data`
         after :meth:`BatchRequest.execute`.
 
         :param table: Table schema name.
@@ -312,7 +312,7 @@ class BatchTableOperations:
         """
         Add a table-metadata-get operation to the batch.
 
-        The response will be in ``BatchItemResponse.body`` after execute.
+        The response will be in ``BatchItemResponse.data`` after execute.
 
         :param table: Schema name of the table.
         """
@@ -408,7 +408,7 @@ class BatchTableOperations:
         """
         Add a relationship-metadata-get operation to the batch.
 
-        The response will be in ``BatchItemResponse.body`` after execute.
+        The response will be in ``BatchItemResponse.data`` after execute.
 
         :param schema_name: Schema name of the relationship.
         """
