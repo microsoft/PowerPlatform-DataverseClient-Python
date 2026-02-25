@@ -628,7 +628,7 @@ def _parse_http_response_part(text: str, content_id: Optional[str]) -> Optional[
         if m:
             entity_id = m.group(1)
     body_text = "\n".join(lines[body_start:]).strip()
-    body: Optional[Dict[str, Any]] = None
+    data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     error_code: Optional[str] = None
     if body_text:
@@ -640,14 +640,14 @@ def _parse_http_response_part(text: str, content_id: Optional[str]) -> Optional[
                     error_message = err.get("message")
                     error_code = err.get("code")
                 else:
-                    body = parsed
+                    data = parsed
         except (json.JSONDecodeError, ValueError):
             pass
     return BatchItemResponse(
         status_code=status_code,
         content_id=content_id,
         entity_id=entity_id,
-        body=body,
+        data=data,
         error_message=error_message,
         error_code=error_code,
     )

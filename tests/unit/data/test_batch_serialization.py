@@ -64,7 +64,7 @@ class TestParseHttpResponsePart(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.status_code, 204)
         self.assertTrue(item.is_success)
-        self.assertIsNone(item.body)
+        self.assertIsNone(item.data)
         self.assertIsNone(item.entity_id)
 
     def test_created_with_entity_id(self):
@@ -84,7 +84,7 @@ class TestParseHttpResponsePart(unittest.TestCase):
         text = f"HTTP/1.1 200 OK\r\n" f"Content-Type: application/json\r\n" f"\r\n" f"{body_str}"
         item = _parse_http_response_part(text, content_id=None)
         self.assertEqual(item.status_code, 200)
-        self.assertEqual(item.body, body)
+        self.assertEqual(item.data, body)
         self.assertIsNone(item.error_message)
 
     def test_error_response(self):
@@ -96,7 +96,7 @@ class TestParseHttpResponsePart(unittest.TestCase):
         self.assertFalse(item.is_success)
         self.assertEqual(item.error_message, "Object does not exist")
         self.assertEqual(item.error_code, "0x80040217")
-        self.assertIsNone(item.body)
+        self.assertIsNone(item.data)
 
     def test_content_id_passed_through(self):
         text = "HTTP/1.1 204 No Content\r\n\r\n"

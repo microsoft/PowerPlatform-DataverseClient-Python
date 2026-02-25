@@ -292,9 +292,9 @@ result = batch.execute()
 for item in result.responses:
     if item.is_success:
         print(f"[OK] {item.status_code} entity_id={item.entity_id}")
-        if item.body:
-            # GET responses populate item.body with the parsed JSON record
-            print(item.body.get("name"))
+        if item.data:
+            # GET responses populate item.data with the parsed JSON record
+            print(item.data.get("name"))
     else:
         print(f"[ERR] {item.status_code}: {item.error_message}")
 

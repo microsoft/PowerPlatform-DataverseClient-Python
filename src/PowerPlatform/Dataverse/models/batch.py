@@ -23,7 +23,7 @@ class BatchItemResponse:
     :param content_id: ``Content-ID`` value from the changeset response part, if any.
     :param entity_id: GUID extracted from the ``OData-EntityId`` response header.
         Set for successful create (POST) operations.
-    :param body: Parsed JSON response body (e.g. for GET operations).
+    :param data: Parsed JSON response body (e.g. for GET operations).
     :param error_message: Error message when the operation failed.
     :param error_code: Service error code when the operation failed.
 
@@ -39,7 +39,7 @@ class BatchItemResponse:
     status_code: int
     content_id: Optional[str] = None
     entity_id: Optional[str] = None
-    body: Optional[Dict[str, Any]] = None
+    data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     error_code: Optional[str] = None
 

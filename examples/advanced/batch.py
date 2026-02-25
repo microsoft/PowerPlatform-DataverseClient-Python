@@ -131,8 +131,8 @@ batch = client.batch.new()
 batch.query.sql("SELECT TOP 5 accountid, name FROM account ORDER BY name")
 
 result = batch.execute()
-if result.responses and result.responses[0].is_success and result.responses[0].body:
-    rows = result.responses[0].body.get("value", [])
+if result.responses and result.responses[0].is_success and result.responses[0].data:
+    rows = result.responses[0].data.get("value", [])
     print(f"[OK] Retrieved {len(rows)} accounts")
     for row in rows:
         print(f"  {row.get('name')}")
@@ -155,8 +155,8 @@ print("\n[INFO] Example 5: Mixed batch")
 # result = batch.execute()
 # update_response = result.responses[0]
 # account_data = result.responses[1]
-# if account_data.is_success and account_data.body:
-#     print(f"Account: {account_data.body.get('name')}")
+# if account_data.is_success and account_data.data:
+#     print(f"Account: {account_data.data.get('name')}")
 
 
 # ---------------------------------------------------------------------------
