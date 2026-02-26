@@ -119,6 +119,6 @@ published release:
 
 ```bash
 # After publishing v0.1.0b4, bump to v0.1.0b5 on main
-# Update version in pyproject.toml (single source of truth)
+# Update version in pyproject.toml
 # Commit directly to main: "Bump version to 0.1.0b5 for next development cycle"
 ```
