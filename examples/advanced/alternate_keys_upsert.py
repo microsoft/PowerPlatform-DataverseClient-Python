@@ -134,7 +134,7 @@ def main():
     # ------------------------------------------------------------------
     # Step 4: Upsert records (creates new)
     # ------------------------------------------------------------------
-    print("\n4. Upserting records (initial create)...")
+    print("\n4a. Upsert single record (PATCH, creates new)...")
     client.records.upsert(
         TABLE_NAME,
         [
@@ -142,18 +142,30 @@ def main():
                 alternate_key={KEY_COLUMN.lower(): "EXT-001"},
                 record={"new_productname": "Widget A", "new_price": 9.99},
             ),
+        ],
+    )
+    print("   Upserted EXT-001 (single)")
+
+    print("\n4b. Upsert multiple records (UpsertMultiple bulk, creates new)...")
+    client.records.upsert(
+        TABLE_NAME,
+        [
             UpsertItem(
                 alternate_key={KEY_COLUMN.lower(): "EXT-002"},
                 record={"new_productname": "Widget B", "new_price": 19.99},
             ),
+            UpsertItem(
+                alternate_key={KEY_COLUMN.lower(): "EXT-003"},
+                record={"new_productname": "Widget C", "new_price": 29.99},
+            ),
         ],
     )
-    print("   Upserted 2 records")
+    print("   Upserted EXT-002, EXT-003 (bulk)")
 
     # ------------------------------------------------------------------
-    # Step 5: Upsert again (updates existing)
+    # Step 5: Upsert again (updates existing via single PATCH)
     # ------------------------------------------------------------------
-    print("\n5. Upserting records (update existing)...")
+    print("\n5. Upserting record (update existing via PATCH)...")
     client.records.upsert(
         TABLE_NAME,
         [
