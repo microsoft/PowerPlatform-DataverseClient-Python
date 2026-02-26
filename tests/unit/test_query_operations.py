@@ -67,12 +67,13 @@ class TestQueryOperations(unittest.TestCase):
         self.assertEqual(qb.table, "account")
         self.assertIs(qb._query_ops, self.client.query)
 
-    def test_builder_execute_basic(self):
-        """builder().execute() should call _get_multiple with built params."""
-        expected_page = [{"accountid": "1", "name": "Test"}]
-        self.client._odata._get_multiple.return_value = iter([expected_page])
+    def test_builder_execute_flat_default(self):
+        """builder().execute() should return flat records by default."""
+        self.client._odata._get_multiple.return_value = iter(
+            [[{"accountid": "1", "name": "Test"}]]
+        )
 
-        pages = list(
+        records = list(
             self.client.query.builder("account")
             .select("name")
             .filter_eq("statecode", 0)
@@ -89,8 +90,34 @@ class TestQueryOperations(unittest.TestCase):
             expand=None,
             page_size=None,
         )
-        self.assertEqual(len(pages), 1)
-        self.assertEqual(pages[0], expected_page)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["name"], "Test")
+
+    def test_builder_execute_flat_multiple_pages(self):
+        """execute() should flatten records from multiple pages."""
+        self.client._odata._get_multiple.return_value = iter(
+            [[{"accountid": "1"}], [{"accountid": "2"}]]
+        )
+
+        records = list(self.client.query.builder("account").execute())
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["accountid"], "1")
+        self.assertEqual(records[1]["accountid"], "2")
+
+    def test_builder_execute_by_page(self):
+        """execute(by_page=True) should yield pages."""
+        page1 = [{"accountid": "1"}]
+        page2 = [{"accountid": "2"}]
+        self.client._odata._get_multiple.return_value = iter([page1, page2])
+
+        pages = list(
+            self.client.query.builder("account").execute(by_page=True)
+        )
+
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0], page1)
+        self.assertEqual(pages[1], page2)
 
     def test_builder_execute_all_params(self):
         """builder().execute() should forward all parameters."""
@@ -118,20 +145,6 @@ class TestQueryOperations(unittest.TestCase):
             page_size=25,
         )
 
-    def test_builder_execute_multiple_pages(self):
-        """builder().execute() should yield multiple pages."""
-        page1 = [{"accountid": "1"}]
-        page2 = [{"accountid": "2"}]
-        self.client._odata._get_multiple.return_value = iter([page1, page2])
-
-        pages = list(
-            self.client.query.builder("account").execute()
-        )
-
-        self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page1)
-        self.assertEqual(pages[1], page2)
-
     def test_builder_execute_with_where(self):
         """builder().where().execute() should compile expression to filter."""
         from PowerPlatform.Dataverse.models.filters import eq, gt
@@ -152,13 +165,13 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_full_fluent_workflow(self):
         """End-to-end test of the fluent query workflow."""
-        expected_page = [
+        expected_records = [
             {"accountid": "1", "name": "Big Corp", "revenue": 5000000},
             {"accountid": "2", "name": "Mega Inc", "revenue": 4000000},
         ]
-        self.client._odata._get_multiple.return_value = iter([expected_page])
+        self.client._odata._get_multiple.return_value = iter([expected_records])
 
-        pages = list(
+        records = list(
             self.client.query.builder("account")
             .select("name", "revenue")
             .filter_eq("statecode", 0)
@@ -170,10 +183,9 @@ class TestQueryOperations(unittest.TestCase):
             .execute()
         )
 
-        self.assertEqual(len(pages), 1)
-        self.assertEqual(len(pages[0]), 2)
-        self.assertEqual(pages[0][0]["name"], "Big Corp")
-        self.assertEqual(pages[0][1]["name"], "Mega Inc")
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["name"], "Big Corp")
+        self.assertEqual(records[1]["name"], "Mega Inc")
 
 
 if __name__ == "__main__":
