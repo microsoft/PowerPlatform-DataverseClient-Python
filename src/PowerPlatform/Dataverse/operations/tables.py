@@ -14,6 +14,7 @@ from ..models.relationship import (
     CascadeConfiguration,
     RelationshipInfo,
 )
+from ..models.table_info import AlternateKeyInfo
 from ..models.labels import Label, LocalizedLabel
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
@@ -578,3 +579,111 @@ class TableOperations:
         )
 
         return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
+
+    # ------------------------------------------------- create_alternate_key
+
+    def create_alternate_key(
+        self,
+        table: str,
+        key_name: str,
+        columns: List[str],
+    ) -> AlternateKeyInfo:
+        """Create an alternate key on a table.
+
+        Alternate keys allow upsert operations to identify records by one or
+        more columns instead of the primary GUID. After creation the key is
+        queued for index building; its :attr:`~AlternateKeyInfo.status` will
+        transition from ``"Pending"`` to ``"Active"`` once the index is ready.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_name: Schema name for the new alternate key
+            (e.g. ``"new_product_code_key"``).
+        :type key_name: :class:`str`
+        :param columns: List of column logical names that compose the key
+            (e.g. ``["new_productcode"]``).
+        :type columns: :class:`list` of :class:`str`
+
+        :return: Metadata for the newly created alternate key.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            Create a single-column alternate key for upsert::
+
+                key = client.tables.create_alternate_key(
+                    "new_Product",
+                    "new_product_code_key",
+                    ["new_productcode"],
+                )
+                print(f"Key ID: {key.metadata_id}")
+                print(f"Columns: {key.key_attributes}")
+        """
+        with self._client._scoped_odata() as od:
+            raw = od._create_alternate_key(table, key_name, columns)
+            return AlternateKeyInfo(
+                metadata_id=raw["metadata_id"],
+                schema_name=raw["schema_name"],
+                key_attributes=raw["key_attributes"],
+            )
+
+    # --------------------------------------------------- get_alternate_keys
+
+    def get_alternate_keys(self, table: str) -> List[AlternateKeyInfo]:
+        """List all alternate keys defined on a table.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+
+        :return: List of alternate key metadata objects. May be empty if no
+            alternate keys are defined.
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            List alternate keys and print their status::
+
+                keys = client.tables.get_alternate_keys("new_Product")
+                for key in keys:
+                    print(f"{key.schema_name}: {key.status}")
+        """
+        with self._client._scoped_odata() as od:
+            raw_list = od._get_alternate_keys(table)
+            return [AlternateKeyInfo.from_api_response(item) for item in raw_list]
+
+    # ------------------------------------------------ delete_alternate_key
+
+    def delete_alternate_key(self, table: str, key_id: str) -> None:
+        """Delete an alternate key by its metadata ID.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_id: Metadata GUID of the alternate key to delete.
+        :type key_id: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        .. warning::
+            Deleting an alternate key that is in use by upsert operations will
+            cause those operations to fail. This operation is irreversible.
+
+        Example::
+
+            client.tables.delete_alternate_key(
+                "new_Product",
+                "12345678-1234-1234-1234-123456789abc",
+            )
+        """
+        with self._client._scoped_odata() as od:
+            od._delete_alternate_key(table, key_id)
