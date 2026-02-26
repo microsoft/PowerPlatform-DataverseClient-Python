@@ -1519,6 +1519,21 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         payload = {
             "SchemaName": key_name,
             "KeyAttributes": columns,
+            "DisplayName": {
+                "@odata.type": "Microsoft.Dynamics.CRM.Label",
+                "LocalizedLabels": [
+                    {
+                        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                        "Label": key_name,
+                        "LanguageCode": 1033,
+                    }
+                ],
+                "UserLocalizedLabel": {
+                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
+                    "Label": key_name,
+                    "LanguageCode": 1033,
+                },
+            },
         }
         r = self._request("post", url, json=payload)
         metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
