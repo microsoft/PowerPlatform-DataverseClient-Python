@@ -1,6 +1,6 @@
 # Azure DevOps PR validation pipeline
 # Matches GitHub Actions workflow for consistency
-
+# test changes
 pr:
 - main
 
