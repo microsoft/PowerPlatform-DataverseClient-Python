@@ -460,7 +460,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
             if conflicting:
                 raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
-            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
+            combined: Dict[str, Any] = dict(record_processed)
             if "@odata.type" not in combined:
                 combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
             key_str = self._build_alternate_key_str(alt_key)
