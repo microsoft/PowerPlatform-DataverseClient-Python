@@ -1488,11 +1488,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
     # ------------------- Alternate key metadata helpers -------------------
 
-    def _create_alternate_key(self, table_schema_name: str, key_name: str, columns: List[str]) -> Dict[str, Any]:
+    def _create_alternate_key(
+        self,
+        table_schema_name: str,
+        key_name: str,
+        columns: List[str],
+        display_name_label=None,
+    ) -> Dict[str, Any]:
         """Create an alternate key on a table.
 
         Issues ``POST EntityDefinitions(LogicalName='{logical_name}')/Keys``
-        with payload ``{"SchemaName": key_name, "KeyAttributes": columns}``.
+        with ``EntityKeyMetadata`` payload.
 
         :param table_schema_name: Schema name of the table.
         :type table_schema_name: ``str``
@@ -1500,6 +1506,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type key_name: ``str``
         :param columns: List of column logical names that compose the key.
         :type columns: ``list[str]``
+        :param display_name_label: Label for the key display name.
+        :type display_name_label: ``Label`` or ``None``
 
         :return: Dictionary with ``metadata_id``, ``schema_name``, and ``key_attributes``.
         :rtype: ``dict[str, Any]``
@@ -1516,25 +1524,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         logical_name = ent.get("LogicalName", table_schema_name.lower())
         url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
-        payload = {
+        payload: Dict[str, Any] = {
             "SchemaName": key_name,
             "KeyAttributes": columns,
-            "DisplayName": {
-                "@odata.type": "Microsoft.Dynamics.CRM.Label",
-                "LocalizedLabels": [
-                    {
-                        "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-                        "Label": key_name,
-                        "LanguageCode": 1033,
-                    }
-                ],
-                "UserLocalizedLabel": {
-                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-                    "Label": key_name,
-                    "LanguageCode": 1033,
-                },
-            },
         }
+        if display_name_label is not None:
+            payload["DisplayName"] = display_name_label.to_dict()
         r = self._request("post", url, json=payload)
         metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
 

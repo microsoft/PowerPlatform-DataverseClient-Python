@@ -587,6 +587,9 @@ class TableOperations:
         table: str,
         key_name: str,
         columns: List[str],
+        *,
+        display_name: Optional[str] = None,
+        language_code: int = 1033,
     ) -> AlternateKeyInfo:
         """Create an alternate key on a table.
 
@@ -603,6 +606,12 @@ class TableOperations:
         :param columns: List of column logical names that compose the key
             (e.g. ``["new_productcode"]``).
         :type columns: :class:`list` of :class:`str`
+        :param display_name: Display name for the key. Defaults to
+            ``key_name`` if not provided.
+        :type display_name: :class:`str` or None
+        :param language_code: Language code for labels. Defaults to 1033
+            (English).
+        :type language_code: :class:`int`
 
         :return: Metadata for the newly created alternate key.
         :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
@@ -619,12 +628,14 @@ class TableOperations:
                     "new_Product",
                     "new_product_code_key",
                     ["new_productcode"],
+                    display_name="Product Code",
                 )
                 print(f"Key ID: {key.metadata_id}")
                 print(f"Columns: {key.key_attributes}")
         """
+        label = Label(localized_labels=[LocalizedLabel(label=display_name or key_name, language_code=language_code)])
         with self._client._scoped_odata() as od:
-            raw = od._create_alternate_key(table, key_name, columns)
+            raw = od._create_alternate_key(table, key_name, columns, label)
             return AlternateKeyInfo(
                 metadata_id=raw["metadata_id"],
                 schema_name=raw["schema_name"],

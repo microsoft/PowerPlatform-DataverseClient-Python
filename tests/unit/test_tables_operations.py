@@ -312,11 +312,13 @@ class TestTableOperations(unittest.TestCase):
             ["new_productcode"],
         )
 
-        self.client._odata._create_alternate_key.assert_called_once_with(
-            "new_Product",
-            "new_product_code_key",
-            ["new_productcode"],
-        )
+        self.client._odata._create_alternate_key.assert_called_once()
+        call_args = self.client._odata._create_alternate_key.call_args
+        self.assertEqual(call_args[0][0], "new_Product")
+        self.assertEqual(call_args[0][1], "new_product_code_key")
+        self.assertEqual(call_args[0][2], ["new_productcode"])
+        # 4th arg is a Label object for the display name
+        self.assertIsNotNone(call_args[0][3])
         self.assertIsInstance(result, AlternateKeyInfo)
         self.assertEqual(result.metadata_id, "key-guid-1")
         self.assertEqual(result.schema_name, "new_product_code_key")
