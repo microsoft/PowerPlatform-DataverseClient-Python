@@ -146,7 +146,7 @@ def main():
     )
     print("   Upserted EXT-001 (single)")
 
-    print("\n4b. Upsert multiple records (UpsertMultiple bulk, creates new)...")
+    print("\n4b. Upsert second record (single PATCH)...")
     client.records.upsert(
         TABLE_NAME,
         [
@@ -154,13 +154,9 @@ def main():
                 alternate_key={KEY_COLUMN.lower(): "EXT-002"},
                 record={"new_productname": "Widget B", "new_price": 19.99},
             ),
-            UpsertItem(
-                alternate_key={KEY_COLUMN.lower(): "EXT-003"},
-                record={"new_productname": "Widget C", "new_price": 29.99},
-            ),
         ],
     )
-    print("   Upserted EXT-002, EXT-003 (bulk)")
+    print("   Upserted EXT-002 (single)")
 
     # ------------------------------------------------------------------
     # Step 5: Upsert again (updates existing via single PATCH)
