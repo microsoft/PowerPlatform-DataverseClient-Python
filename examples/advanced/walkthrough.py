@@ -258,19 +258,17 @@ def main():
     print("7. QueryBuilder - Fluent Queries")
     print("=" * 80)
 
-    # Basic fluent query: active records sorted by amount
+    # Basic fluent query: active records sorted by amount (flat iteration)
     log_call("client.query.builder(...).select().filter_eq().order_by().execute()")
     print("Querying incomplete records ordered by amount (fluent builder)...")
-    qb_records = []
-    for page in backoff(
+    qb_records = list(backoff(
         lambda: client.query.builder(table_name)
         .select("new_Title", "new_Amount", "new_Priority")
         .filter_eq("new_Completed", False)
         .order_by("new_Amount", descending=True)
         .top(10)
         .execute()
-    ):
-        qb_records.extend(page)
+    ))
     print(f"[OK] QueryBuilder found {len(qb_records)} incomplete records:")
     for rec in qb_records[:5]:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
@@ -278,14 +276,12 @@ def main():
     # filter_in: records with specific priorities
     log_call("client.query.builder(...).filter_in('new_Priority', [HIGH, LOW]).execute()")
     print("Querying records with HIGH or LOW priority (filter_in)...")
-    priority_records = []
-    for page in backoff(
+    priority_records = list(backoff(
         lambda: client.query.builder(table_name)
         .select("new_Title", "new_Priority")
         .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
         .execute()
-    ):
-        priority_records.extend(page)
+    ))
     print(f"[OK] Found {len(priority_records)} records with HIGH or LOW priority")
     for rec in priority_records[:5]:
         print(f"  - '{rec.get('new_title')}' Priority={rec.get('new_priority')}")
@@ -293,14 +289,12 @@ def main():
     # filter_between: amount in a range
     log_call("client.query.builder(...).filter_between('new_Amount', 500, 1500).execute()")
     print("Querying records with amount between 500 and 1500 (filter_between)...")
-    range_records = []
-    for page in backoff(
+    range_records = list(backoff(
         lambda: client.query.builder(table_name)
         .select("new_Title", "new_Amount")
         .filter_between("new_Amount", 500, 1500)
         .execute()
-    ):
-        range_records.extend(page)
+    ))
     print(f"[OK] Found {len(range_records)} records with amount in [500, 1500]")
     for rec in range_records:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
@@ -308,8 +302,7 @@ def main():
     # Composable expression tree with where()
     log_call("client.query.builder(...).where((eq(...) | eq(...)) & gt(...)).execute()")
     print("Querying with composable expression tree (where)...")
-    expr_records = []
-    for page in backoff(
+    expr_records = list(backoff(
         lambda: client.query.builder(table_name)
         .select("new_Title", "new_Amount", "new_Quantity")
         .where(
@@ -318,16 +311,15 @@ def main():
         .order_by("new_Amount", descending=True)
         .top(5)
         .execute()
-    ):
-        expr_records.extend(page)
+    ))
     print(f"[OK] Expression tree query found {len(expr_records)} records:")
     for rec in expr_records:
         print(
             f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')} Qty={rec.get('new_quantity')}"
         )
 
-    # Combined: fluent filters + expression tree + paging
-    log_call("client.query.builder(...).filter_eq().where(between()).page_size().execute()")
+    # Combined: fluent filters + expression tree + paging (by_page=True)
+    log_call("client.query.builder(...).filter_eq().where(between()).page_size().execute(by_page=True)")
     print("Querying with combined fluent + expression filters and paging...")
     combined_page_count = 0
     combined_record_count = 0
@@ -338,7 +330,7 @@ def main():
         .where(between("new_Quantity", 1, 15))
         .order_by("new_Quantity")
         .page_size(3)
-        .execute()
+        .execute(by_page=True)
     ):
         combined_page_count += 1
         combined_record_count += len(page)

@@ -452,22 +452,44 @@ class TestExecute(unittest.TestCase):
             page_size=50,
         )
 
-    def test_execute_returns_result(self):
+    def test_execute_returns_flat_records_by_default(self):
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
         mock_odata = MagicMock()
         mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
         mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
 
-        expected = [{"name": "Test"}]
-        mock_odata._get_multiple.return_value = iter([expected])
+        mock_odata._get_multiple.return_value = iter(
+            [[{"name": "A"}, {"name": "B"}], [{"name": "C"}]]
+        )
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        pages = list(qb.execute())
+        records = list(qb.execute())
 
-        self.assertEqual(len(pages), 1)
-        self.assertEqual(pages[0], expected)
+        self.assertEqual(len(records), 3)
+        self.assertEqual(records[0]["name"], "A")
+        self.assertEqual(records[1]["name"], "B")
+        self.assertEqual(records[2]["name"], "C")
+
+    def test_execute_by_page_returns_pages(self):
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_odata = MagicMock()
+        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
+        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
+
+        page1 = [{"name": "A"}, {"name": "B"}]
+        page2 = [{"name": "C"}]
+        mock_odata._get_multiple.return_value = iter([page1, page2])
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        pages = list(qb.execute(by_page=True))
+
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0], page1)
+        self.assertEqual(pages[1], page2)
 
     def test_execute_passes_none_for_empty_options(self):
         mock_query_ops = MagicMock()

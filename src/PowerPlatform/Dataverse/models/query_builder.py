@@ -9,29 +9,32 @@ against Dataverse tables with method chaining.
 
 Example::
 
-    # Via client (recommended)
-    for page in (client.query.builder("account")
-                 .select("name", "revenue")
-                 .filter_eq("statecode", 0)
-                 .filter_gt("revenue", 1000000)
-                 .order_by("revenue", descending=True)
-                 .top(100)
-                 .page_size(50)
-                 .execute()):
-        for record in page:
-            print(record["name"])
+    # Via client (recommended) -- flat iteration over records
+    for record in (client.query.builder("account")
+                   .select("name", "revenue")
+                   .filter_eq("statecode", 0)
+                   .filter_gt("revenue", 1000000)
+                   .order_by("revenue", descending=True)
+                   .top(100)
+                   .execute()):
+        print(record["name"])
 
     # With composable expression tree
     from PowerPlatform.Dataverse.models.filters import eq, gt
 
+    for record in (client.query.builder("account")
+                   .select("name", "revenue")
+                   .where((eq("statecode", 0) | eq("statecode", 1))
+                          & gt("revenue", 100000))
+                   .top(100)
+                   .execute()):
+        print(record["name"])
+
+    # Opt-in paged iteration (for batch processing)
     for page in (client.query.builder("account")
-                 .select("name", "revenue")
-                 .where((eq("statecode", 0) | eq("statecode", 1))
-                        & gt("revenue", 100000))
-                 .top(100)
-                 .execute()):
-        for record in page:
-            print(record["name"])
+                 .select("name")
+                 .execute(by_page=True)):
+        process_batch(page)
 """
 
 from __future__ import annotations
@@ -394,28 +397,42 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- execute
 
-    def execute(self) -> Iterable[List[Dict[str, Any]]]:
-        """Execute the query and return paginated results.
+    def execute(self, *, by_page: bool = False) -> Union[Iterable[Dict[str, Any]], Iterable[List[Dict[str, Any]]]]:
+        """Execute the query and return results.
+
+        By default, returns a flat iterator over individual records,
+        abstracting away OData paging.  Pass ``by_page=True`` to get
+        page-level iteration instead (useful for batch processing).
 
         This method is only available when the QueryBuilder was created
         via ``client.query.builder(table)``.  Standalone ``QueryBuilder``
         instances should use :meth:`build` to get parameters and pass them
         to ``client.records.get()`` manually.
 
-        :return: Generator yielding pages, where each page is a list of
-            record dictionaries.
-        :rtype: Iterable[List[Dict[str, Any]]]
+        :param by_page: If ``True``, yield pages (lists of record dicts)
+            instead of individual records. Defaults to ``False``.
+        :type by_page: bool
+        :return: Generator yielding individual record dicts (default) or
+            pages of record dicts (when ``by_page=True``).
+        :rtype: Iterable[Dict[str, Any]] or Iterable[List[Dict[str, Any]]]
         :raises RuntimeError: If the query was not created via
             ``client.query.builder()``.
 
-        Example::
+        Example:
+            Flat iteration (default)::
 
-            for page in (client.query.builder("account")
-                         .select("name")
-                         .filter_eq("statecode", 0)
-                         .execute()):
-                for record in page:
+                for record in (client.query.builder("account")
+                               .select("name")
+                               .filter_eq("statecode", 0)
+                               .execute()):
                     print(record["name"])
+
+            Paged iteration::
+
+                for page in (client.query.builder("account")
+                             .select("name")
+                             .execute(by_page=True)):
+                    process_batch(page)
         """
         if self._query_ops is None:
             raise RuntimeError(
@@ -437,4 +454,11 @@ class QueryBuilder:
                     page_size=params.get("page_size"),
                 )
 
-        return _paged()
+        if by_page:
+            return _paged()
+
+        def _flat() -> Iterable[Dict[str, Any]]:
+            for page in _paged():
+                yield from page
+
+        return _flat()
