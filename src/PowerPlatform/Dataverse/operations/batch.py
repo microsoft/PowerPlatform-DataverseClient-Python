@@ -16,6 +16,7 @@ from ..data._batch import (
     _RecordUpdate,
     _RecordDelete,
     _RecordGet,
+    _RecordUpsert,
     _TableCreate,
     _TableDelete,
     _TableGet,
@@ -30,6 +31,7 @@ from ..data._batch import (
     _QuerySql,
 )
 from ..models.batch import BatchResult
+from ..models.upsert import UpsertItem
 from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
@@ -241,6 +243,59 @@ class BatchRecordOperations:
         :param select: Optional list of column names to include.
         """
         self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
+
+    def upsert(
+        self,
+        table: str,
+        items: List[Union[UpsertItem, Dict[str, Any]]],
+    ) -> None:
+        """
+        Add an upsert operation to the batch.
+
+        Mirrors :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.upsert`
+        exactly: a single item becomes a PATCH request using the alternate key; multiple
+        items become one ``UpsertMultiple`` POST.
+
+        Each item must be a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
+        or a plain ``dict`` with ``"alternate_key"`` and ``"record"`` keys (both dicts).
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :param items: Non-empty list of :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
+            instances or equivalent dicts.
+
+        Example::
+
+            from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+            batch.records.upsert("account", [
+                UpsertItem(
+                    alternate_key={"accountnumber": "ACC-001"},
+                    record={"name": "Contoso Ltd"},
+                ),
+                UpsertItem(
+                    alternate_key={"accountnumber": "ACC-002"},
+                    record={"name": "Fabrikam Inc"},
+                ),
+            ])
+        """
+        if not isinstance(items, list) or not items:
+            raise ValidationError("items must be a non-empty list", subcode="VALIDATION_UPSERT_EMPTY")
+        normalized: List[UpsertItem] = []
+        for i in items:
+            if isinstance(i, UpsertItem):
+                normalized.append(i)
+            elif (
+                isinstance(i, dict)
+                and isinstance(i.get("alternate_key"), dict)
+                and isinstance(i.get("record"), dict)
+            ):
+                normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
+            else:
+                raise ValidationError(
+                    "Each upsert item must be a UpsertItem or a dict with 'alternate_key' and 'record' keys.",
+                    subcode="VALIDATION_UPSERT_ITEM",
+                )
+        self._batch._items.append(_RecordUpsert(table=table, items=normalized))
 
 
 class BatchTableOperations:
