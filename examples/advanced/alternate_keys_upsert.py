@@ -159,28 +159,20 @@ def main():
     print("   Upserted EXT-002 (single)")
 
     print("\n4c. Upsert multiple records (UpsertMultiple bulk)...")
-    try:
-        client.records.upsert(
-            TABLE_NAME,
-            [
-                UpsertItem(
-                    alternate_key={KEY_COLUMN.lower(): "EXT-003"},
-                    record={"new_productname": "Widget C", "new_price": 29.99},
-                ),
-                UpsertItem(
-                    alternate_key={KEY_COLUMN.lower(): "EXT-004"},
-                    record={"new_productname": "Widget D", "new_price": 39.99},
-                ),
-            ],
-        )
-        print("   Upserted EXT-003, EXT-004 (bulk)")
-    except Exception as ex:  # noqa: BLE001
-        print(f"   UpsertMultiple FAILED: {ex}")
-        if hasattr(ex, "status_code"):
-            print(f"   Status: {ex.status_code}")
-        if hasattr(ex, "service_error_code"):
-            print(f"   Service error code: {ex.service_error_code}")
-        print("   (single upsert worked, bulk did not - known issue under investigation)")
+    client.records.upsert(
+        TABLE_NAME,
+        [
+            UpsertItem(
+                alternate_key={KEY_COLUMN.lower(): "EXT-003"},
+                record={"new_productname": "Widget C", "new_price": 29.99},
+            ),
+            UpsertItem(
+                alternate_key={KEY_COLUMN.lower(): "EXT-004"},
+                record={"new_productname": "Widget D", "new_price": 39.99},
+            ),
+        ],
+    )
+    print("   Upserted EXT-003, EXT-004 (bulk)")
 
     # ------------------------------------------------------------------
     # Step 5: Upsert again (updates existing via single PATCH)
