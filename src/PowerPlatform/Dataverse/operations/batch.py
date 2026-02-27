@@ -252,9 +252,9 @@ class BatchRecordOperations:
         """
         Add an upsert operation to the batch.
 
-        Mirrors :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.upsert`
-        exactly: a single item becomes a PATCH request using the alternate key; multiple
-        items become one ``UpsertMultiple`` POST.
+        Mirrors :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.upsert`:
+        a single item becomes a PATCH request using the alternate key; multiple items
+        become one ``UpsertMultiple`` POST.
 
         Each item must be a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
         or a plain ``dict`` with ``"alternate_key"`` and ``"record"`` keys (both dicts).
@@ -262,6 +262,10 @@ class BatchRecordOperations:
         :param table: Table schema name (e.g. ``"account"``).
         :param items: Non-empty list of :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
             instances or equivalent dicts.
+
+        :raises TypeError: If ``items`` is not a non-empty list, or if any element is
+            neither a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem` nor a
+            dict with ``"alternate_key"`` and ``"record"`` keys.
 
         Example::
 
@@ -279,7 +283,7 @@ class BatchRecordOperations:
             ])
         """
         if not isinstance(items, list) or not items:
-            raise ValidationError("items must be a non-empty list", subcode="VALIDATION_UPSERT_EMPTY")
+            raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []
         for i in items:
             if isinstance(i, UpsertItem):
@@ -287,10 +291,7 @@ class BatchRecordOperations:
             elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
                 normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
             else:
-                raise ValidationError(
-                    "Each upsert item must be a UpsertItem or a dict with 'alternate_key' and 'record' keys.",
-                    subcode="VALIDATION_UPSERT_ITEM",
-                )
+                raise TypeError("Each item must be an UpsertItem or a dict with 'alternate_key' and 'record' keys")
         self._batch._items.append(_RecordUpsert(table=table, items=normalized))
 
 
