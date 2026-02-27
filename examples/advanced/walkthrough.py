@@ -11,6 +11,7 @@ This example shows:
 - Expand (navigation properties) with QueryBuilder
 - Picklist label-to-value conversion
 - Column management
+- Batch operations (create, read, update, changeset, delete in one HTTP request)
 - Cleanup
 
 Prerequisites:
@@ -479,10 +480,86 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 13. CLEANUP
+    # 13. BATCH OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("13. Cleanup")
+    print("13. Batch Operations")
+    print("=" * 80)
+
+    # Batch create: send 2 creates in a single POST $batch
+    log_call("client.batch.new() + batch.records.create(...) x2 + batch.execute()")
+    batch = client.batch.new()
+    batch.records.create(
+        table_name,
+        {
+            "new_Title": "Batch task alpha",
+            "new_Quantity": 1,
+            "new_Amount": 25.0,
+            "new_Completed": False,
+            "new_Priority": Priority.LOW,
+        },
+    )
+    batch.records.create(
+        table_name,
+        {
+            "new_Title": "Batch task beta",
+            "new_Quantity": 2,
+            "new_Amount": 50.0,
+            "new_Completed": False,
+            "new_Priority": Priority.MEDIUM,
+        },
+    )
+    result = batch.execute()
+    batch_ids = list(result.entity_ids)
+    print(f"[OK] Batch create: {len(result.succeeded)} operations in one HTTP request, {len(batch_ids)} records created")
+
+    # Batch get: read both records in a single request
+    log_call("client.batch.new() + batch.records.get(...) x2 + batch.execute()")
+    batch = client.batch.new()
+    for bid in batch_ids:
+        batch.records.get(table_name, bid, select=["new_title", "new_quantity"])
+    result = batch.execute()
+    print(f"[OK] Batch get: {len(result.succeeded)} reads in one HTTP request")
+    for resp in result.succeeded:
+        if resp.data:
+            print(f"  new_title='{resp.data.get('new_title')}', new_quantity={resp.data.get('new_quantity')}")
+
+    # Changeset: create + update atomically (all-or-nothing)
+    log_call("with batch.changeset() as cs: cs.records.create(...); cs.records.update(cs_ref, ...)")
+    batch = client.batch.new()
+    with batch.changeset() as cs:
+        cs_ref = cs.records.create(
+            table_name,
+            {
+                "new_Title": "Changeset task",
+                "new_Quantity": 5,
+                "new_Amount": 100.0,
+                "new_Completed": False,
+                "new_Priority": Priority.HIGH,
+            },
+        )
+        cs.records.update(table_name, cs_ref, {"new_Completed": True})
+    result = batch.execute()
+    if not result.has_errors:
+        batch_ids.extend(result.entity_ids)
+        print(f"[OK] Changeset: {len(result.succeeded)} operations committed atomically")
+    else:
+        for item in result.failed:
+            print(f"[WARN] Changeset error {item.status_code}: {item.error_message}")
+
+    # Batch delete: clean up all batch-created records in one request
+    log_call(f"client.batch.new() + batch.records.delete(...) x{len(batch_ids)} + batch.execute()")
+    batch = client.batch.new()
+    for bid in batch_ids:
+        batch.records.delete(table_name, bid)
+    result = batch.execute(continue_on_error=True)
+    print(f"[OK] Batch delete: {len(result.succeeded)} records deleted in one HTTP request")
+
+    # ============================================================================
+    # 14. CLEANUP
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("14. Cleanup")
     print("=" * 80)
 
     log_call(f"client.tables.delete('{table_name}')")
@@ -519,6 +596,7 @@ def _run_walkthrough(client):
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
     print("  [OK] Single and bulk delete operations")
+    print("  [OK] Batch operations (create, read, changeset, delete)")
     print("  [OK] Table cleanup")
     print("=" * 80)
 
