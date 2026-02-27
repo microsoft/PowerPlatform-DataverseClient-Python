@@ -548,10 +548,70 @@ def create_telemetry_manager(
     return TelemetryManager(config)
 
 
+# ============================================================================
+# Telemetry Capture  --  ad-hoc request inspection
+# ============================================================================
+
+
+@dataclass
+class CapturedRequest:
+    """A single captured HTTP request with its response details.
+
+    Instances are created by :class:`TelemetryCapture` and stored in
+    its :attr:`~TelemetryCapture.requests` list.
+    """
+
+    operation: str
+    method: str
+    url: str
+    table_name: Optional[str]
+    client_request_id: str
+    correlation_id: str
+    status_code: int
+    duration_ms: float
+    service_request_id: Optional[str]
+
+
+class TelemetryCapture(TelemetryHook):
+    """Lightweight telemetry collector for ad-hoc debugging.
+
+    Used with :meth:`~PowerPlatform.Dataverse.client.DataverseClient.capture_telemetry`
+    to inspect HTTP request details without setting up full telemetry hooks.
+
+    Example::
+
+        with client.capture_telemetry() as t:
+            record_id = client.records.create("account", {"name": "Contoso"})
+
+        print(t.requests[-1].service_request_id)
+        print(t.requests[-1].duration_ms)
+    """
+
+    def __init__(self) -> None:
+        self.requests: List[CapturedRequest] = []
+
+    def on_request_end(self, request: RequestContext, response: ResponseContext) -> None:
+        self.requests.append(
+            CapturedRequest(
+                operation=request.operation,
+                method=request.method,
+                url=request.url,
+                table_name=request.table_name,
+                client_request_id=request.client_request_id,
+                correlation_id=request.correlation_id,
+                status_code=response.status_code,
+                duration_ms=response.duration_ms,
+                service_request_id=response.service_request_id,
+            )
+        )
+
+
 __all__ = [
     "TelemetryConfig",
     "TelemetryHook",
     "RequestContext",
     "ResponseContext",
+    "TelemetryCapture",
+    "CapturedRequest",
     "create_telemetry_manager",
 ]

@@ -158,11 +158,28 @@ def main():
         print(f"  Logical: {info.get('table_logical_name')}")
         print(f"  Entity Set: {info.get('entity_set_name')}")
 
+    # ---- Operation 4: Ad-hoc telemetry capture (no hooks needed) ----
+    print("\n" + "-" * 60)
+    print("OPERATION 4: Ad-hoc capture_telemetry()")
+    print("-" * 60)
+
+    # Create a second client WITHOUT any telemetry config
+    plain_client = DataverseClient(ORG_URL, credential)
+
+    with plain_client.capture_telemetry() as t:
+        plain_client.tables.get("account")
+
+    print(f"\nCaptured {len(t.requests)} request(s) (no hooks configured!):")
+    for req in t.requests:
+        print(f"  {req.operation} [{req.method}] {req.status_code} in {req.duration_ms:.0f}ms")
+        print(f"    service_request_id: {req.service_request_id}")
+
     print("\n" + "=" * 60)
     print("DEMO COMPLETE")
     print("=" * 60)
     print("\nCheck the console output above for:")
     print("  - Hook output (>>> / <<< lines)")
+    print("  - capture_telemetry() output (no hooks needed)")
     if OTEL_CONFIGURED:
         print("  - Span traces (name, attributes, duration)")
         print("  - Metrics (request counts, durations)")

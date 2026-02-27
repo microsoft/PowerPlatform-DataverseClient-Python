@@ -414,6 +414,20 @@ config = DataverseConfig(
 )
 ```
 
+### Ad-hoc telemetry capture
+
+Inspect HTTP request details for any SDK call without configuring telemetry upfront:
+
+```python
+# Works on any client -- no TelemetryConfig needed
+with client.capture_telemetry() as t:
+    record_id = client.records.create("account", {"name": "Contoso"})
+
+for req in t.requests:
+    print(f"{req.operation} {req.status_code} {req.duration_ms:.0f}ms")
+    print(f"  service_request_id: {req.service_request_id}")
+```
+
 ## Next steps
 
 ### More sample code

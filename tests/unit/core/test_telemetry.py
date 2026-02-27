@@ -607,5 +607,152 @@ class TestRequestIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
 
 
+# ============================================================================
+# I. capture_telemetry() context manager tests
+# ============================================================================
+
+
+class TestCaptureTelemetry(unittest.TestCase):
+    """Tests for client.capture_telemetry() ad-hoc debugging."""
+
+    def _make_client(self, telemetry_config=None):
+        from PowerPlatform.Dataverse.client import DataverseClient
+
+        mock_credential = MagicMock(spec=TokenCredential)
+        config = DataverseConfig(telemetry=telemetry_config)
+        client = DataverseClient("https://org.example.com", mock_credential, config=config)
+        client._odata = MagicMock()
+        # Restore real telemetry manager (MagicMock replaces it)
+        from PowerPlatform.Dataverse.data._odata import _ODataClient
+
+        real_odata = _ODataClient.__new__(_ODataClient)
+        real_odata.config = config
+        real_odata._telemetry = create_telemetry_manager(telemetry_config)
+        real_odata._http = MagicMock()
+        real_odata.auth = client.auth
+        real_odata.base_url = "https://org.example.com"
+        real_odata.api = "https://org.example.com/api/data/v9.2"
+        real_odata._logical_to_entityset_cache = {}
+        real_odata._logical_primaryid_cache = {}
+        real_odata._picklist_label_cache = {}
+        real_odata._picklist_cache_ttl_seconds = 3600
+        client._odata = real_odata
+        return client
+
+    def test_captures_successful_request(self):
+        client = self._make_client()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"x-ms-service-request-id": "srv-123"}
+        client._odata._http._request.return_value = mock_resp
+
+        with client.capture_telemetry() as t:
+            from PowerPlatform.Dataverse.data._odata import _operation_scope
+
+            with _operation_scope("records.get", "account"):
+                client._odata._request("GET", "https://org.example.com/api/data/v9.2/accounts")
+
+        self.assertEqual(len(t.requests), 1)
+        self.assertEqual(t.requests[0].operation, "records.get")
+        self.assertEqual(t.requests[0].table_name, "account")
+        self.assertEqual(t.requests[0].status_code, 200)
+        self.assertEqual(t.requests[0].service_request_id, "srv-123")
+        self.assertGreater(t.requests[0].duration_ms, 0)
+
+    def test_works_without_telemetry_config(self):
+        """capture_telemetry() should work even when no TelemetryConfig is set."""
+        client = self._make_client(None)
+        self.assertIsInstance(client._odata._telemetry, NoOpTelemetryManager)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+        mock_resp.headers = {"x-ms-service-request-id": "srv-456"}
+        client._odata._http._request.return_value = mock_resp
+
+        with client.capture_telemetry() as t:
+            from PowerPlatform.Dataverse.data._odata import _operation_scope
+
+            with _operation_scope("records.create", "account"):
+                client._odata._request(
+                    "POST", "https://org.example.com/api/data/v9.2/accounts", json={"name": "Test"}
+                )
+
+        self.assertEqual(len(t.requests), 1)
+        self.assertEqual(t.requests[0].status_code, 201)
+        self.assertEqual(t.requests[0].service_request_id, "srv-456")
+
+    def test_restores_noop_after_capture(self):
+        """After capture_telemetry exits, NoOp manager should be restored."""
+        client = self._make_client(None)
+        self.assertIsInstance(client._odata._telemetry, NoOpTelemetryManager)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        client._odata._http._request.return_value = mock_resp
+
+        with client.capture_telemetry() as t:
+            self.assertIsInstance(client._odata._telemetry, TelemetryManager)
+
+        self.assertIsInstance(client._odata._telemetry, NoOpTelemetryManager)
+
+    def test_captures_multiple_requests(self):
+        client = self._make_client()
+        mock_resp1 = MagicMock()
+        mock_resp1.status_code = 200
+        mock_resp1.headers = {"x-ms-service-request-id": "srv-1"}
+        mock_resp2 = MagicMock()
+        mock_resp2.status_code = 204
+        mock_resp2.headers = {"x-ms-service-request-id": "srv-2"}
+        client._odata._http._request.side_effect = [mock_resp1, mock_resp2]
+
+        with client.capture_telemetry() as t:
+            from PowerPlatform.Dataverse.data._odata import _operation_scope
+
+            with _operation_scope("records.get", "account"):
+                client._odata._request("GET", "https://org.example.com/api/data/v9.2/accounts")
+            with _operation_scope("records.delete", "account"):
+                client._odata._request("DELETE", "https://org.example.com/api/data/v9.2/accounts(id)")
+
+        self.assertEqual(len(t.requests), 2)
+        self.assertEqual(t.requests[0].operation, "records.get")
+        self.assertEqual(t.requests[0].status_code, 200)
+        self.assertEqual(t.requests[1].operation, "records.delete")
+        self.assertEqual(t.requests[1].status_code, 204)
+
+    def test_empty_when_no_calls_made(self):
+        client = self._make_client()
+        with client.capture_telemetry() as t:
+            pass
+        self.assertEqual(len(t.requests), 0)
+
+    def test_hook_removed_after_capture_with_existing_telemetry(self):
+        """When telemetry is already configured, capture hook should be removed after."""
+        hook = MagicMock(spec=TelemetryHook)
+        cfg = TelemetryConfig(hooks=[hook])
+        client = self._make_client(cfg)
+        hooks_before = len(client._odata._telemetry._hooks)
+
+        with client.capture_telemetry() as t:
+            self.assertEqual(len(client._odata._telemetry._hooks), hooks_before + 1)
+
+        self.assertEqual(len(client._odata._telemetry._hooks), hooks_before)
+
+    def test_restores_on_exception(self):
+        """capture_telemetry should clean up even if an exception occurs."""
+        client = self._make_client(None)
+
+        try:
+            with client.capture_telemetry() as t:
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+
+        self.assertIsInstance(client._odata._telemetry, NoOpTelemetryManager)
+
+
+from azure.core.credentials import TokenCredential
+
+
 if __name__ == "__main__":
     unittest.main()
