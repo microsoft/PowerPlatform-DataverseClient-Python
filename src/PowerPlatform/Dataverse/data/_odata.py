@@ -1704,6 +1704,60 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
         return self._build_update_multiple_from_records(entity_set, table, records)
 
+    def _build_upsert(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_key: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> _RawRequest:
+        """Build a single-record PATCH upsert request without sending it.
+
+        Unlike :meth:`_build_update`, no ``If-Match: *`` header is added so the
+        server creates the record when it does not yet exist.
+        """
+        body = self._lowercase_keys(record)
+        body = self._convert_labels_to_ints(table, body)
+        key_str = self._build_alternate_key_str(alternate_key)
+        url = f"{self.api}/{entity_set}({key_str})"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+        )
+
+    def _build_upsert_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_keys: List[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build an UpsertMultiple POST request without sending it."""
+        if len(alternate_keys) != len(records):
+            raise ValidationError(
+                f"alternate_keys and records must have the same length "
+                f"({len(alternate_keys)} != {len(records)})",
+                subcode="upsert_length_mismatch",
+            )
+        logical_name = table.lower()
+        targets: List[Dict[str, Any]] = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = self._convert_labels_to_ints(table, record_processed)
+            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
+            if "@odata.type" not in combined:
+                combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            key_str = self._build_alternate_key_str(alt_key)
+            combined["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(combined)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
+            body=json.dumps({"Targets": targets}, ensure_ascii=False),
+        )
+
     def _build_delete(
         self,
         table: str,

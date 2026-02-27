@@ -14,6 +14,7 @@ from PowerPlatform.Dataverse.data._batch import (
     _RecordCreate,
     _RecordDelete,
     _RecordGet,
+    _RecordUpsert,
     _TableGet,
     _TableList,
     _QuerySql,
@@ -23,6 +24,7 @@ from PowerPlatform.Dataverse.data._batch import (
     _parse_http_response_part,
     _CRLF,
 )
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
 
@@ -335,6 +337,125 @@ class TestChangeSetInternal(unittest.TestCase):
         self.assertEqual(len(cs.operations), 2)
         self.assertIsInstance(cs.operations[0], _RecordCreate)
         self.assertIsInstance(cs.operations[1], _RecordDelete)
+
+
+class TestResolveBatchUpsert(unittest.TestCase):
+    """Tests that _BatchClient._resolve_record_upsert calls the correct _build_* methods."""
+
+    def _client_and_od(self):
+        od = _make_od()
+        od._entity_set_from_schema_name.return_value = "accounts"
+        client = _BatchClient(od)
+        return client, od
+
+    def test_resolve_single_item_calls_build_upsert(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_upsert.return_value = mock_req
+
+        item = UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso"})
+        op = _RecordUpsert(table="account", items=[item])
+        result = client._resolve_record_upsert(op)
+
+        od._build_upsert.assert_called_once_with(
+            "accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"}
+        )
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_multiple_items_calls_build_upsert_multiple(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_upsert_multiple.return_value = mock_req
+
+        items = [
+            UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso"}),
+            UpsertItem(alternate_key={"accountnumber": "ACC-002"}, record={"name": "Fabrikam"}),
+        ]
+        op = _RecordUpsert(table="account", items=items)
+        result = client._resolve_record_upsert(op)
+
+        od._build_upsert_multiple.assert_called_once_with(
+            "accounts",
+            "account",
+            [{"accountnumber": "ACC-001"}, {"accountnumber": "ACC-002"}],
+            [{"name": "Contoso"}, {"name": "Fabrikam"}],
+        )
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_item_dispatch_routes_to_upsert(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_upsert.return_value = mock_req
+
+        item = UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso"})
+        op = _RecordUpsert(table="account", items=[item])
+        result = client._resolve_item(op)
+
+        self.assertEqual(result, [mock_req])
+
+
+class TestBatchRecordOperationsUpsert(unittest.TestCase):
+    """Tests for BatchRecordOperations.upsert (operations/batch.py)."""
+
+    def _make_batch(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+
+        batch = MagicMock()
+        batch._items = []
+        return BatchRecordOperations(batch), batch
+
+    def test_upsert_single_upsert_item_appended(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+
+        rec_ops, batch = self._make_batch()
+        item = UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso"})
+        rec_ops.upsert("account", [item])
+
+        self.assertEqual(len(batch._items), 1)
+        intent = batch._items[0]
+        self.assertIsInstance(intent, _RecordUpsert)
+        self.assertEqual(intent.table, "account")
+        self.assertEqual(len(intent.items), 1)
+        self.assertEqual(intent.items[0].alternate_key, {"accountnumber": "ACC-001"})
+
+    def test_upsert_plain_dict_normalised_to_upsert_item(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+
+        rec_ops, batch = self._make_batch()
+        rec_ops.upsert("account", [{"alternate_key": {"accountnumber": "X"}, "record": {"name": "Y"}}])
+
+        intent = batch._items[0]
+        self.assertIsInstance(intent.items[0], UpsertItem)
+        self.assertEqual(intent.items[0].record, {"name": "Y"})
+
+    def test_upsert_empty_list_raises(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        rec_ops, _ = self._make_batch()
+        with self.assertRaises(ValidationError):
+            rec_ops.upsert("account", [])
+
+    def test_upsert_invalid_item_raises(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        rec_ops, _ = self._make_batch()
+        with self.assertRaises(ValidationError):
+            rec_ops.upsert("account", ["not_a_valid_item"])
+
+    def test_upsert_multiple_items_all_normalised(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+
+        rec_ops, batch = self._make_batch()
+        rec_ops.upsert("account", [
+            UpsertItem(alternate_key={"accountnumber": "A"}, record={"name": "Alpha"}),
+            UpsertItem(alternate_key={"accountnumber": "B"}, record={"name": "Beta"}),
+        ])
+
+        intent = batch._items[0]
+        self.assertEqual(len(intent.items), 2)
+        self.assertEqual(intent.items[1].alternate_key, {"accountnumber": "B"})
 
 
 if __name__ == "__main__":

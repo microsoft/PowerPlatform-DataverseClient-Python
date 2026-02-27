@@ -21,6 +21,7 @@ from ..models.relationship import (
     CascadeConfiguration,
 )
 from ..models.labels import Label, LocalizedLabel
+from ..models.upsert import UpsertItem
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ._raw_request import _RawRequest
 
@@ -69,6 +70,12 @@ class _RecordGet:
     table: str
     record_id: str
     select: Optional[List[str]] = None
+
+
+@dataclass
+class _RecordUpsert:
+    table: str
+    items: List[UpsertItem]  # always non-empty; normalised by BatchRecordOperations
 
 
 # --- Table intent types ---
@@ -287,6 +294,8 @@ class _BatchClient:
             return self._resolve_record_delete(item)
         if isinstance(item, _RecordGet):
             return self._resolve_record_get(item)
+        if isinstance(item, _RecordUpsert):
+            return self._resolve_record_upsert(item)
         if isinstance(item, _TableCreate):
             return self._resolve_table_create(item)
         if isinstance(item, _TableDelete):
@@ -360,6 +369,15 @@ class _BatchClient:
 
     def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:
         return [self._od._build_get(op.table, op.record_id, select=op.select)]
+
+    def _resolve_record_upsert(self, op: _RecordUpsert) -> List[_RawRequest]:
+        entity_set = self._od._entity_set_from_schema_name(op.table)
+        if len(op.items) == 1:
+            item = op.items[0]
+            return [self._od._build_upsert(entity_set, op.table, item.alternate_key, item.record)]
+        alternate_keys = [i.alternate_key for i in op.items]
+        records = [i.record for i in op.items]
+        return [self._od._build_upsert_multiple(entity_set, op.table, alternate_keys, records)]
 
     # ------------------------------------------------------------------
     # Table resolvers — delegate to _ODataClient._build_* methods
