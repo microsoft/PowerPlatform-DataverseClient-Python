@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CHECKING
 
+from ..models.upsert import UpsertItem
+
 if TYPE_CHECKING:
     from ..client import DataverseClient
 
@@ -431,3 +433,102 @@ class RecordOperations:
                 )
 
         return _paged()
+
+    # ------------------------------------------------------------------ upsert
+
+    def upsert(self, table: str, items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
+        """Upsert one or more records identified by alternate keys.
+
+        When ``items`` contains a single entry, performs a single upsert via PATCH
+        using the alternate key in the URL. When ``items`` contains multiple entries,
+        uses the ``UpsertMultiple`` bulk action.
+
+        Each item must be either a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
+        or a plain ``dict`` with ``"alternate_key"`` and ``"record"`` keys (both dicts).
+
+        :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
+        :type table: str
+        :param items: Non-empty list of :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
+            instances or dicts with ``"alternate_key"`` and ``"record"`` keys.
+        :type items: list[UpsertItem | dict]
+
+        :return: ``None``
+        :rtype: None
+
+        :raises TypeError: If ``items`` is not a non-empty list, or if any element is
+            neither a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem` nor a
+            dict with ``"alternate_key"`` and ``"record"`` keys.
+
+        Example:
+            Upsert a single record using ``UpsertItem``::
+
+                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+                client.records.upsert("account", [
+                    UpsertItem(
+                        alternate_key={"accountnumber": "ACC-001"},
+                        record={"name": "Contoso Ltd", "description": "Primary account"},
+                    )
+                ])
+
+            Upsert a single record using a plain dict::
+
+                client.records.upsert("account", [
+                    {
+                        "alternate_key": {"accountnumber": "ACC-001"},
+                        "record": {"name": "Contoso Ltd", "description": "Primary account"},
+                    },
+                ])
+
+            Upsert multiple records using ``UpsertItem``::
+
+                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+                client.records.upsert("account", [
+                    UpsertItem(
+                        alternate_key={"accountnumber": "ACC-001"},
+                        record={"name": "Contoso Ltd", "description": "Primary account"},
+                    ),
+                    UpsertItem(
+                        alternate_key={"accountnumber": "ACC-002"},
+                        record={"name": "Fabrikam Inc", "description": "Partner account"},
+                    ),
+                ])
+
+            Upsert multiple records using plain dicts::
+
+                client.records.upsert("account", [
+                    {
+                        "alternate_key": {"accountnumber": "ACC-001"},
+                        "record": {"name": "Contoso Ltd", "description": "Primary account"},
+                    },
+                    {
+                        "alternate_key": {"accountnumber": "ACC-002"},
+                        "record": {"name": "Fabrikam Inc", "description": "Partner account"},
+                    },
+                ])
+
+            The ``alternate_key`` dict may contain multiple columns when the configured
+            alternate key is composite, e.g.
+            ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
+        """
+        if not isinstance(items, list) or not items:
+            raise TypeError("items must be a non-empty list of UpsertItem or dicts")
+        normalized: List[UpsertItem] = []
+        for i in items:
+            if isinstance(i, UpsertItem):
+                normalized.append(i)
+            elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
+                normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
+            else:
+                raise TypeError("Each item must be a UpsertItem or a dict with 'alternate_key' and 'record' keys")
+        with self._client._scoped_odata() as od:
+            entity_set = od._entity_set_from_schema_name(table)
+            if len(normalized) == 1:
+                item = normalized[0]
+                od._upsert(entity_set, table, item.alternate_key, item.record)
+            else:
+                alternate_keys = [i.alternate_key for i in normalized]
+                records = [i.record for i in normalized]
+                od._upsert_multiple(entity_set, table, alternate_keys, records)
+        return None

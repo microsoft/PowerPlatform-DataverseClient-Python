@@ -21,6 +21,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.records` -- CRUD and OData queries
 - `client.query` -- query and search operations
 - `client.tables` -- table metadata, columns, and relationships
+- `client.files` -- file upload operations
 - `client.batch` -- batch multiple operations into a single HTTP request
 
 ### Bulk Operations
@@ -106,6 +107,40 @@ client.records.update("account", account_id, {"telephone1": "555-0200"})
 
 # Bulk update (broadcast same change to multiple records)
 client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
+```
+
+#### Upsert Records
+Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+> **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
+```python
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+# Single upsert
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd", "telephone1": "555-0100"},
+    )
+])
+
+# Bulk upsert (uses UpsertMultiple API automatically)
+client.records.upsert("account", [
+    UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso Ltd"}),
+    UpsertItem(alternate_key={"accountnumber": "ACC-002"}, record={"name": "Fabrikam Inc"}),
+])
+
+# Composite alternate key
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+        record={"name": "Contoso Ltd"},
+    )
+])
+
+# Plain dict syntax (no import needed)
+client.records.upsert("account", [
+    {"alternate_key": {"accountnumber": "ACC-001"}, "record": {"name": "Contoso Ltd"}}
+])
 ```
 
 #### Delete Records
@@ -198,7 +233,7 @@ client.tables.delete("new_Product")
 
 #### Create One-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     Label,
@@ -230,7 +265,7 @@ print(f"Created lookup field: {result['lookup_schema_name']}")
 
 #### Create Many-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.metadata import ManyToManyRelationshipMetadata
+from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
 
 relationship = ManyToManyRelationshipMetadata(
     schema_name="new_employee_project",
@@ -268,11 +303,11 @@ client.tables.delete_relationship(result["relationship_id"])
 
 ```python
 # Upload file to a file column
-client.upload_file(
-    table_schema_name="account",
+client.files.upload(
+    table="account",
     record_id=account_id,
-    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
-    path="/path/to/document.pdf"
+    file_column="new_Document",  # If the file column doesn't exist, it will be created automatically
+    path="/path/to/document.pdf",
 )
 ```
 

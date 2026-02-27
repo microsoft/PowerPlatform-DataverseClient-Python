@@ -345,6 +345,124 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             return out
         return []
 
+    def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
+        """Build an OData alternate key segment from a mapping of key names to values.
+
+        String values are single-quoted and escaped; all other values are rendered as-is.
+
+        :param alternate_key: Mapping of alternate key attribute names to their values.
+            Must be a non-empty dict with string keys.
+        :type alternate_key: ``dict[str, Any]``
+
+        :return: Comma-separated key=value pairs suitable for use in a URL segment.
+        :rtype: ``str``
+
+        :raises ValueError: If ``alternate_key`` is empty.
+        :raises TypeError: If any key in ``alternate_key`` is not a string.
+        """
+        if not alternate_key:
+            raise ValueError("alternate_key must be a non-empty dict")
+        bad_keys = [k for k in alternate_key if not isinstance(k, str)]
+        if bad_keys:
+            raise TypeError(f"alternate_key keys must be strings; got: {bad_keys!r}")
+        parts = []
+        for k, v in alternate_key.items():
+            k_lower = k.lower() if isinstance(k, str) else k
+            if isinstance(v, str):
+                v_escaped = self._escape_odata_quotes(v)
+                parts.append(f"{k_lower}='{v_escaped}'")
+            else:
+                parts.append(f"{k_lower}={v}")
+        return ",".join(parts)
+
+    def _upsert(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        alternate_key: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> None:
+        """Upsert a single record using an alternate key.
+
+        Issues a PATCH request to ``{entity_set}({key_pairs})`` where ``key_pairs``
+        is the OData alternate key segment built from ``alternate_key``. Creates the
+        record if it does not exist; updates it if it does.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param alternate_key: Mapping of alternate key attribute names to their values
+            used to identify the target record in the URL.
+        :type alternate_key: ``dict[str, Any]``
+        :param record: Attribute payload to set on the record.
+        :type record: ``dict[str, Any]``
+
+        :return: ``None``
+        :rtype: ``None``
+        """
+        record = self._lowercase_keys(record)
+        record = self._convert_labels_to_ints(table_schema_name, record)
+        key_str = self._build_alternate_key_str(alternate_key)
+        url = f"{self.api}/{entity_set}({key_str})"
+        self._request("patch", url, json=record, expected=(200, 201, 204))
+
+    def _upsert_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        alternate_keys: List[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+    ) -> None:
+        """Upsert multiple records using the collection-bound ``UpsertMultiple`` action.
+
+        Each target is formed by merging the corresponding alternate key fields and record
+        fields. The ``@odata.type`` annotation is injected automatically if absent.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param alternate_keys: List of alternate key dictionaries, one per record.
+            Order is significant: ``alternate_keys[i]`` must correspond to ``records[i]``.
+            Python ``list`` preserves insertion order, so the correspondence is guaranteed
+            as long as both lists are built from the same source in the same order.
+        :type alternate_keys: ``list[dict[str, Any]]``
+        :param records: List of record payload dictionaries, one per record.
+            Must be the same length as ``alternate_keys``.
+        :type records: ``list[dict[str, Any]]``
+
+        :return: ``None``
+        :rtype: ``None``
+
+        :raises ValueError: If ``alternate_keys`` and ``records`` differ in length, or if
+            any record payload contains an alternate key field with a conflicting value.
+        """
+        if len(alternate_keys) != len(records):
+            raise ValueError(
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
+            )
+        logical_name = table_schema_name.lower()
+        targets: List[Dict[str, Any]] = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = self._convert_labels_to_ints(table_schema_name, record_processed)
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
+            if conflicting:
+                raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
+            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
+            if "@odata.type" not in combined:
+                combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            key_str = self._build_alternate_key_str(alt_key)
+            combined["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(combined)
+        payload = {"Targets": targets}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
+        self._request("post", url, json=payload, expected=(200, 201, 204))
+
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
         """Return primary key attribute using metadata; error if unavailable."""
@@ -1215,15 +1333,46 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "columns_created": [],
         }
 
-    def _list_tables(self) -> List[Dict[str, Any]]:
+    def _list_tables(
+        self,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables (``IsPrivate eq false``).
+
+        :param filter: Optional additional OData ``$filter`` expression that is
+            combined with the default ``IsPrivate eq false`` clause using
+            ``and``.  For example, ``"SchemaName eq 'Account'"`` becomes
+            ``"IsPrivate eq false and (SchemaName eq 'Account')"``.
+            When ``None`` (the default), only the ``IsPrivate eq false`` filter
+            is applied.
+        :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase) because
+            ``EntityDefinitions`` uses PascalCase property names.
+            When ``None`` (the default) or an empty list, no ``$select`` is
+            applied and all properties are returned.  Passing a bare string
+            raises ``TypeError``.
+        :type select: ``list[str]`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
         :rtype: ``list[dict[str, Any]]``
 
         :raises HttpError: If the metadata request fails.
         """
-        return self._execute_raw(self._build_list_entities()).json().get("value", [])
+        url = f"{self.api}/EntityDefinitions"
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and ({filter})"
+        else:
+            combined_filter = base_filter
+        params: Dict[str, str] = {"$filter": combined_filter}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
+        r = self._request("get", url, params=params)
+        return r.json().get("value", [])
 
     def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name.

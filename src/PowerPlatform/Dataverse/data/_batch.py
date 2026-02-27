@@ -14,14 +14,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from ..core.errors import MetadataError, ValidationError
 from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
 from ..models.batch import BatchItemResponse, BatchResult
-from ..models.metadata import (
+from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
     CascadeConfiguration,
 )
+from ..models.labels import Label, LocalizedLabel
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ._raw_request import _RawRequest
 

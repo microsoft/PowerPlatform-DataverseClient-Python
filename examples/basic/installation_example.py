@@ -63,6 +63,7 @@ from datetime import datetime
 from PowerPlatform.Dataverse.operations.records import RecordOperations
 from PowerPlatform.Dataverse.operations.query import QueryOperations
 from PowerPlatform.Dataverse.operations.tables import TableOperations
+from PowerPlatform.Dataverse.operations.files import FileOperations
 
 
 def validate_imports():
@@ -123,17 +124,31 @@ def validate_client_methods(DataverseClient):
     print("\nValidating Client Methods...")
     print("-" * 50)
 
-    # Validate namespace API: client.records, client.query, client.tables
+    # Validate namespace API: client.records, client.query, client.tables, client.files
     expected_namespaces = {
-        "records": ["create", "get", "update", "delete"],
-        "query": ["get", "sql"],
-        "tables": ["create", "get", "list", "delete", "add_columns", "remove_columns"],
+        "records": ["create", "get", "update", "delete", "upsert"],
+        "query": ["sql"],
+        "tables": [
+            "create",
+            "get",
+            "list",
+            "delete",
+            "add_columns",
+            "remove_columns",
+            "create_one_to_many_relationship",
+            "create_many_to_many_relationship",
+            "delete_relationship",
+            "get_relationship",
+            "create_lookup_field",
+        ],
+        "files": ["upload"],
     }
 
     ns_classes = {
         "records": RecordOperations,
         "query": QueryOperations,
         "tables": TableOperations,
+        "files": FileOperations,
     }
 
     missing_methods = []
@@ -250,6 +265,13 @@ print(f"Table: {info['table_schema_name']}")
 # List all tables
 tables = client.tables.list()
 print(f"Found {len(tables)} tables")
+
+# List with filter and select
+custom_tables = client.tables.list(
+    filter="IsCustomEntity eq true",
+    select=["LogicalName", "SchemaName", "DisplayName"],
+)
+print(f"Found {len(custom_tables)} custom tables")
 ```
 """)
 
@@ -289,9 +311,14 @@ def interactive_test():
 
         print("  Testing connection...")
         tables = client.tables.list()
-
         print(f"  [OK] Connection successful!")
         print(f"  Found {len(tables)} tables in environment")
+
+        custom_tables = client.tables.list(
+            filter="IsCustomEntity eq true",
+            select=["LogicalName", "SchemaName"],
+        )
+        print(f"  Found {len(custom_tables)} custom tables (filter + select)")
         print(f"  Connected to: {org_url}")
 
         print("\n  Your SDK is ready for use!")

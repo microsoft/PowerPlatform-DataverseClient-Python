@@ -23,6 +23,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Quick start](#quick-start)
   - [Basic CRUD operations](#basic-crud-operations)
   - [Bulk operations](#bulk-operations)
+  - [Upsert operations](#upsert-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
@@ -35,7 +36,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 ## Key features
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
-- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
+- **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, `UpsertMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
@@ -113,8 +114,8 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 | Concept | Description |
 |---------|-------------|
-| **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `batch` namespaces |
-| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), `client.tables` (metadata), and `client.batch` (batch requests) |
+| **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, `files`, and `batch` namespaces |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), `client.tables` (metadata), `client.files` (file uploads), and `client.batch` (batch requests) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -178,6 +179,57 @@ client.records.update("account", ids, {"industry": "Technology"})
 
 # Bulk delete
 client.records.delete("account", ids, use_bulk_delete=True)
+```
+
+### Upsert operations
+
+Use `client.records.upsert()` to create or update records identified by alternate keys. When the
+key matches an existing record it is updated; otherwise the record is created. A single item uses
+a PATCH request; multiple items use the `UpsertMultiple` bulk action.
+
+> **Prerequisite**: The table must have an **alternate key** configured in Dataverse for the
+> columns used in `alternate_key`. Alternate keys are defined in the table's metadata (Power Apps
+> maker portal → Table → Keys, or via the Dataverse API). Without a configured alternate key,
+> upsert requests will be rejected by Dataverse with a 400 error.
+
+```python
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+# Upsert a single record
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd", "telephone1": "555-0100"},
+    )
+])
+
+# Upsert multiple records (uses UpsertMultiple bulk action)
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd"},
+    ),
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-002"},
+        record={"name": "Fabrikam Inc"},
+    ),
+])
+
+# Composite alternate key (multiple columns identify the record)
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+        record={"name": "Contoso Ltd"},
+    )
+])
+
+# Plain dict syntax (no import needed)
+client.records.upsert("account", [
+    {
+        "alternate_key": {"accountnumber": "ACC-001"},
+        "record": {"name": "Contoso Ltd"},
+    }
+])
 ```
 
 ### Query data
@@ -267,13 +319,12 @@ client.tables.delete("new_Product")
 Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
 
 ```python
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
 )
+from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 # Create a one-to-many relationship: Department (1) -> Employee (N)
 # This adds a "Department" lookup field to the Employee table
@@ -328,11 +379,11 @@ result = client.tables.create_lookup_field(
 
 ```python
 # Upload a file to a record
-client.upload_file(
-    table_schema_name="account",
-    record_id=account_id,
-    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
-    path="/path/to/document.pdf"
+client.files.upload(
+    "account",
+    account_id,
+    "new_Document",  # If the file column doesn't exist, it will be created automatically
+    "/path/to/document.pdf",
 )
 ```
 

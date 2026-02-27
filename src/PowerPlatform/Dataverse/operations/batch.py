@@ -29,7 +29,7 @@ from ..data._batch import (
     _QuerySql,
 )
 from ..models.batch import BatchResult
-from ..models.metadata import (
+from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,

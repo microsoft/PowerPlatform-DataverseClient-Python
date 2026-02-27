@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
 
@@ -100,8 +101,78 @@ class TestTableOperations(unittest.TestCase):
 
         result = self.client.tables.list()
 
-        self.client._odata._list_tables.assert_called_once()
+        self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
         self.assertIsInstance(result, list)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_filter(self):
+        """list(filter=...) should pass the filter expression to _list_tables."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(filter="SchemaName eq 'Account'")
+
+        self.client._odata._list_tables.assert_called_once_with(filter="SchemaName eq 'Account'", select=None)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_filter_none_explicit(self):
+        """list(filter=None) should behave identically to list() with no args."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(filter=None)
+
+        self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_select(self):
+        """list(select=...) should pass the select list to _list_tables."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(select=["LogicalName", "SchemaName", "EntitySetName"])
+
+        self.client._odata._list_tables.assert_called_once_with(
+            filter=None,
+            select=["LogicalName", "SchemaName", "EntitySetName"],
+        )
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_select_none_explicit(self):
+        """list(select=None) should behave identically to list() with no args."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(select=None)
+
+        self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
+        self.assertEqual(result, expected_tables)
+
+    def test_list_with_filter_and_select(self):
+        """list(filter=..., select=...) should pass both params to _list_tables."""
+        expected_tables = [
+            {"LogicalName": "account", "SchemaName": "Account"},
+        ]
+        self.client._odata._list_tables.return_value = expected_tables
+
+        result = self.client.tables.list(
+            filter="SchemaName eq 'Account'",
+            select=["LogicalName", "SchemaName"],
+        )
+
+        self.client._odata._list_tables.assert_called_once_with(
+            filter="SchemaName eq 'Account'",
+            select=["LogicalName", "SchemaName"],
+        )
         self.assertEqual(result, expected_tables)
 
     # ------------------------------------------------------------ add_columns
@@ -139,40 +210,51 @@ class TestTableOperations(unittest.TestCase):
     # ---------------------------------------------------- create_one_to_many
 
     def test_create_one_to_many(self):
-        """create_one_to_many() should call _create_one_to_many_relationship."""
-        expected = {
+        """create_one_to_many() should return RelationshipInfo."""
+        raw = {
             "relationship_id": "rel-guid-1",
             "relationship_schema_name": "new_Dept_Emp",
             "lookup_schema_name": "new_DeptId",
             "referenced_entity": "new_department",
             "referencing_entity": "new_employee",
         }
-        self.client._odata._create_one_to_many_relationship.return_value = expected
+        self.client._odata._create_one_to_many_relationship.return_value = raw
 
         lookup = MagicMock()
         relationship = MagicMock()
         result = self.client.tables.create_one_to_many_relationship(lookup, relationship, solution="MySolution")
 
         self.client._odata._create_one_to_many_relationship.assert_called_once_with(lookup, relationship, "MySolution")
-        self.assertEqual(result, expected)
+        self.assertIsInstance(result, RelationshipInfo)
+        self.assertEqual(result.relationship_id, "rel-guid-1")
+        self.assertEqual(result.relationship_schema_name, "new_Dept_Emp")
+        self.assertEqual(result.lookup_schema_name, "new_DeptId")
+        self.assertEqual(result.referenced_entity, "new_department")
+        self.assertEqual(result.referencing_entity, "new_employee")
+        self.assertEqual(result.relationship_type, "one_to_many")
 
     # --------------------------------------------------- create_many_to_many
 
     def test_create_many_to_many(self):
-        """create_many_to_many() should call _create_many_to_many_relationship."""
-        expected = {
+        """create_many_to_many() should return RelationshipInfo."""
+        raw = {
             "relationship_id": "rel-guid-2",
             "relationship_schema_name": "new_emp_proj",
             "entity1_logical_name": "new_employee",
             "entity2_logical_name": "new_project",
         }
-        self.client._odata._create_many_to_many_relationship.return_value = expected
+        self.client._odata._create_many_to_many_relationship.return_value = raw
 
         relationship = MagicMock()
         result = self.client.tables.create_many_to_many_relationship(relationship, solution="MySolution")
 
         self.client._odata._create_many_to_many_relationship.assert_called_once_with(relationship, "MySolution")
-        self.assertEqual(result, expected)
+        self.assertIsInstance(result, RelationshipInfo)
+        self.assertEqual(result.relationship_id, "rel-guid-2")
+        self.assertEqual(result.relationship_schema_name, "new_emp_proj")
+        self.assertEqual(result.entity1_logical_name, "new_employee")
+        self.assertEqual(result.entity2_logical_name, "new_project")
+        self.assertEqual(result.relationship_type, "many_to_many")
 
     # ----------------------------------------------------- delete_relationship
 
@@ -185,14 +267,24 @@ class TestTableOperations(unittest.TestCase):
     # ------------------------------------------------------- get_relationship
 
     def test_get_relationship(self):
-        """get_relationship() should call _get_relationship and return the dict."""
-        expected = {"SchemaName": "new_Dept_Emp", "MetadataId": "rel-guid-1"}
-        self.client._odata._get_relationship.return_value = expected
+        """get_relationship() should return RelationshipInfo from API response."""
+        raw = {
+            "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            "SchemaName": "new_Dept_Emp",
+            "MetadataId": "rel-guid-1",
+            "ReferencedEntity": "new_department",
+            "ReferencingEntity": "new_employee",
+            "ReferencingEntityNavigationPropertyName": "new_DeptId",
+        }
+        self.client._odata._get_relationship.return_value = raw
 
         result = self.client.tables.get_relationship("new_Dept_Emp")
 
         self.client._odata._get_relationship.assert_called_once_with("new_Dept_Emp")
-        self.assertEqual(result, expected)
+        self.assertIsInstance(result, RelationshipInfo)
+        self.assertEqual(result.relationship_schema_name, "new_Dept_Emp")
+        self.assertEqual(result.relationship_id, "rel-guid-1")
+        self.assertEqual(result.relationship_type, "one_to_many")
 
     def test_get_relationship_returns_none(self):
         """get_relationship() should return None when not found."""
