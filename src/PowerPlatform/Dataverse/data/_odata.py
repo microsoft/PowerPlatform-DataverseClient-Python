@@ -921,12 +921,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             )
 
         if page_size is not None:
-            if not isinstance(page_size, (int, float)):
+            if not isinstance(page_size, int):
                 raise ValidationError(
                     "page_size must be an integer",
                     subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
                 )
-            ps = int(page_size)
+            ps = page_size
             if ps <= 0:
                 raise ValidationError(
                     "page_size must be a positive integer",
@@ -982,7 +982,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                         subcode=VALIDATION_FETCHXML_MALFORMED,
                     )
             if page_size is not None and root.get("count") is None:
-                root.set("count", str(int(page_size)))
+                root.set("count", str(page_size))
             if root.get("page") is None:
                 root.set("page", "1")
 

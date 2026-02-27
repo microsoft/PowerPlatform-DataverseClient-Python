@@ -315,6 +315,16 @@ class TestQueryFetchxml(unittest.TestCase):
         self.assertIn("integer", str(ctx.exception).lower())
         self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_INVALID_PAGE_SIZE)
 
+    def test_query_fetchxml_fractional_page_size_raises(self):
+        """Raise ValidationError for fractional page_size (e.g. from config/CLI parsing)."""
+        self._setup_entity_set()
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml, page_size=1.9))
+        self.assertIn("page_size", str(ctx.exception).lower())
+        self.assertIn("integer", str(ctx.exception).lower())
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_INVALID_PAGE_SIZE)
+
     def test_query_fetchxml_top_no_paging(self):
         """FetchXML with top returns single page, no page/count attributes injected."""
         self._setup_entity_set()
