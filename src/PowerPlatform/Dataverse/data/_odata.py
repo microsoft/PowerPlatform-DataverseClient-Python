@@ -1745,12 +1745,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             alt_key_lower = self._lowercase_keys(alt_key)
             record_processed = self._lowercase_keys(record)
             record_processed = self._convert_labels_to_ints(table, record_processed)
-            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
-            if "@odata.type" not in combined:
-                combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
+            if conflicting:
+                raise ValidationError(
+                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}",
+                    subcode="upsert_key_conflict",
+                )
+            if "@odata.type" not in record_processed:
+                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
             key_str = self._build_alternate_key_str(alt_key)
-            combined["@odata.id"] = f"{entity_set}({key_str})"
-            targets.append(combined)
+            record_processed["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(record_processed)
         return _RawRequest(
             method="POST",
             url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
