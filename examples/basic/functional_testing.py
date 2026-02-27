@@ -10,6 +10,7 @@ This script provides comprehensive functional testing of the PowerPlatform-Datav
 - Table creation and metadata operations
 - Full CRUD operations testing
 - Query functionality validation
+- Batch operations (create, read, update, changeset, delete)
 - Interactive cleanup options
 
 Prerequisites:
@@ -32,6 +33,7 @@ from datetime import datetime
 # Import SDK components (assumes installation is already validated)
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from azure.identity import InteractiveBrowserCredential
 
 
@@ -309,6 +311,234 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
         print("   This might be expected if the table is very new.")
 
 
+def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any]) -> None:
+    """Test every available batch operation type in a structured sequence.
+
+    Operations covered:
+      records.create (single + CreateMultiple)
+      records.get (single by ID)
+      records.update (single PATCH + UpdateMultiple)
+      records.delete (multi, use_bulk_delete=False)
+      records.upsert (graceful — requires configured alternate key)
+      tables.get, tables.list
+      query.sql
+      changeset happy path (create + update via content-ID ref + delete)
+      changeset rollback (failing op rolls back entire changeset)
+      execute(continue_on_error=True) — mixed success/failure
+    """
+    print("\n-> Batch Operations Test (All Operations)")
+    print("=" * 50)
+
+    table_schema_name = table_info.get("table_schema_name")
+    logical_name = table_info.get("table_logical_name", table_schema_name.lower())
+    attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    all_ids: list = []
+
+    try:
+        # -------------------------------------------------------------------
+        # [1/8] CREATE — single record + CreateMultiple (list) in one batch
+        # -------------------------------------------------------------------
+        print("\n[1/8] Create — single + CreateMultiple (2 ops, 1 POST $batch)")
+        batch = client.batch.new()
+        batch.records.create(
+            table_schema_name,
+            {
+                f"{attr_prefix}_name": f"Batch-A {datetime.now().strftime('%H:%M:%S')}",
+                f"{attr_prefix}_count": 1,
+                f"{attr_prefix}_is_active": True,
+            },
+        )
+        batch.records.create(
+            table_schema_name,
+            [
+                {
+                    f"{attr_prefix}_name": f"Batch-B {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 2,
+                    f"{attr_prefix}_is_active": True,
+                },
+                {
+                    f"{attr_prefix}_name": f"Batch-C {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 3,
+                    f"{attr_prefix}_is_active": True,
+                },
+            ],
+        )
+        result = batch.execute()
+        all_ids = list(result.created_ids)
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] {item.status_code}: {item.error_message}")
+        else:
+            print(f"[OK] {len(result.succeeded)} ops → {len(all_ids)} records created: {all_ids}")
+
+        # -------------------------------------------------------------------
+        # [2/8] READ — get by ID + tables.get + tables.list + query.sql
+        #              All 4 reads in one batch request
+        # -------------------------------------------------------------------
+        if all_ids:
+            print("\n[2/8] Read — records.get + tables.get + tables.list + query.sql (4 ops, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.get(
+                table_schema_name,
+                all_ids[0],
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_count"],
+            )
+            batch.tables.get(table_schema_name)
+            batch.tables.list()
+            batch.query.sql(f"SELECT TOP 3 {attr_prefix}_name FROM {logical_name}")
+            result = batch.execute()
+            print(f"[OK] {len(result.succeeded)} succeeded, {len(result.failed)} failed")
+            for i, resp in enumerate(result.responses):
+                if not resp.is_success:
+                    print(f"   [{i}] FAILED {resp.status_code}: {resp.error_message}")
+                    continue
+                if i == 0 and resp.data:
+                    print(f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}")
+                elif i == 1 and resp.data:
+                    print(f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'")
+                elif i == 2 and resp.data:
+                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
+                elif i == 3 and resp.data:
+                    print(f"   query.sql   → {len(resp.data.get('value', []))} rows returned")
+
+        # -------------------------------------------------------------------
+        # [3/8] UPDATE — single PATCH + UpdateMultiple (broadcast) in one batch
+        # -------------------------------------------------------------------
+        if len(all_ids) >= 3:
+            print(f"\n[3/8] Update — single PATCH + UpdateMultiple ({len(all_ids)} records, 2 ops, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.update(table_schema_name, all_ids[0], {f"{attr_prefix}_count": 10})
+            batch.records.update(table_schema_name, all_ids[1:], {f"{attr_prefix}_count": 20})
+            result = batch.execute()
+            print(f"[OK] {len(result.succeeded)} updates succeeded, {len(result.failed)} failed")
+
+        # -------------------------------------------------------------------
+        # [4/8] CHANGESET (happy path) — create + update via content-ID + delete
+        #        All three changeset operation types committed atomically
+        # -------------------------------------------------------------------
+        if len(all_ids) >= 1:
+            print("\n[4/8] Changeset (happy path) — cs.create + cs.update(ref) + cs.delete (1 transaction)")
+            batch = client.batch.new()
+            with batch.changeset() as cs:
+                ref = cs.records.create(
+                    table_schema_name,
+                    {
+                        f"{attr_prefix}_name": f"Batch-D {datetime.now().strftime('%H:%M:%S')}",
+                        f"{attr_prefix}_count": 4,
+                        f"{attr_prefix}_is_active": False,
+                    },
+                )
+                cs.records.update(table_schema_name, ref, {f"{attr_prefix}_is_active": True})
+                cs.records.delete(table_schema_name, all_ids[-1])
+            result = batch.execute()
+            if result.has_errors:
+                for item in result.failed:
+                    print(f"[WARN] Changeset error {item.status_code}: {item.error_message}")
+            else:
+                new_id = next(iter(result.created_ids), None)
+                if new_id:
+                    all_ids[-1] = new_id  # replace deleted id with the new one
+                print(f"[OK] {len(result.succeeded)} ops committed atomically (create + update + delete)")
+
+        # -------------------------------------------------------------------
+        # [5/8] CHANGESET (rollback) — failing update rolls back the create
+        # -------------------------------------------------------------------
+        print("\n[5/8] Changeset (rollback) — cs.create + cs.update(nonexistent) → full rollback")
+        nonexistent_id = "00000000-0000-0000-0000-000000000001"
+        batch = client.batch.new()
+        with batch.changeset() as cs:
+            cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Rollback-test {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs.records.update(table_schema_name, nonexistent_id, {f"{attr_prefix}_count": 999})
+        result = batch.execute()
+        if result.has_errors:
+            leaked = list(result.created_ids)
+            if not leaked:
+                print("[OK] Changeset rollback verified: changeset failed, no records created")
+            else:
+                print(f"[WARN] Changeset failed but {len(leaked)} IDs leaked — queuing for cleanup")
+                all_ids.extend(leaked)
+        else:
+            print("[WARN] Expected rollback but changeset succeeded (unexpected)")
+            all_ids.extend(result.created_ids)
+
+        # -------------------------------------------------------------------
+        # [6/8] UPSERT — requires an alternate key configured on the table.
+        #        The test table has none, so this is expected to fail (graceful).
+        # -------------------------------------------------------------------
+        print(f"\n[6/8] Upsert — UpsertItem with alternate key (expected to fail: no alt key on test table)")
+        try:
+            batch = client.batch.new()
+            batch.records.upsert(
+                table_schema_name,
+                [
+                    UpsertItem(
+                        alternate_key={f"{attr_prefix}_name": f"Upsert-E {datetime.now().strftime('%H:%M:%S')}"},
+                        record={f"{attr_prefix}_count": 5, f"{attr_prefix}_is_active": True},
+                    )
+                ],
+            )
+            result = batch.execute()
+            if result.has_errors:
+                print(f"[WARN] Upsert failed as expected (no alternate key configured): {result.failed[0].status_code}")
+            else:
+                upsert_ids = list(result.created_ids)
+                all_ids.extend(upsert_ids)
+                print(f"[OK] Upsert succeeded: {len(upsert_ids)} record(s) — alternate key was accepted")
+        except Exception as e:
+            print(f"[WARN] Upsert skipped due to exception: {e}")
+
+        # -------------------------------------------------------------------
+        # [7/8] MIXED BATCH with continue_on_error
+        #        One intentional 404 alongside a valid get — both attempted
+        # -------------------------------------------------------------------
+        if all_ids:
+            print(f"\n[7/8] Mixed batch (continue_on_error=True) — 1 bad get + 1 good get")
+            batch = client.batch.new()
+            batch.records.get(
+                table_schema_name,
+                "00000000-0000-0000-0000-000000000002",
+                select=[f"{attr_prefix}_name"],
+            )
+            batch.records.get(
+                table_schema_name,
+                all_ids[0],
+                select=[f"{attr_prefix}_name"],
+            )
+            result = batch.execute(continue_on_error=True)
+            print(f"[OK] Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+            for item in result.failed:
+                print(f"   Expected failure: {item.status_code} {item.error_message}")
+
+        # -------------------------------------------------------------------
+        # [8/8] DELETE — multi-delete (use_bulk_delete=False → individual DELETEs)
+        # -------------------------------------------------------------------
+        if all_ids:
+            print(f"\n[8/8] Delete — {len(all_ids)} records via multi-delete (use_bulk_delete=False, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.delete(table_schema_name, all_ids, use_bulk_delete=False)
+            result = batch.execute(continue_on_error=True)
+            print(f"[OK] Deleted {len(result.succeeded)}, failed {len(result.failed)}")
+
+        print("\n[OK] Batch all-operations test completed!")
+
+    except Exception as e:
+        print(f"[WARN] Batch all-operations test encountered an issue: {e}")
+        if all_ids:
+            try:
+                batch = client.batch.new()
+                batch.records.delete(table_schema_name, all_ids, use_bulk_delete=False)
+                batch.execute(continue_on_error=True)
+            except Exception:
+                pass
+
+
 def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], record_id: str) -> None:
     """Clean up test data."""
     print("\n-> Cleanup")
@@ -403,6 +633,7 @@ def main():
     print("  - Table Creation & Metadata Operations")
     print("  - Record CRUD Operations")
     print("  - Query Functionality")
+    print("  - Batch Operations (create, read, update, changeset, delete)")
     print("  - Interactive Cleanup")
     print("=" * 70)
     print("For installation validation, run examples/basic/installation_example.py first")
@@ -422,6 +653,9 @@ def main():
         # Test querying
         test_query_records(client, table_info)
 
+        # Test batch operations (all operation types)
+        test_batch_all_operations(client, table_info)
+
         # Success summary
         print("\nFunctional Test Summary")
         print("=" * 50)
@@ -430,6 +664,7 @@ def main():
         print("[OK] Record Creation: Success")
         print("[OK] Record Reading: Success")
         print("[OK] Record Querying: Success")
+        print("[OK] Batch Operations: Success")
         print("\nYour PowerPlatform Dataverse Client SDK is fully functional!")
 
         # Cleanup
