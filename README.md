@@ -41,6 +41,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
+- **📡 Telemetry & Observability**: Opt-in telemetry hooks, OpenTelemetry tracing/metrics, and Python logging integration
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
 
 ## Getting started
@@ -383,6 +384,31 @@ client.files.upload(
     account_id,
     "new_Document",  # If the file column doesn't exist, it will be created automatically
     "/path/to/document.pdf",
+)
+```
+
+### Telemetry & observability
+
+```python
+from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
+from PowerPlatform.Dataverse.core.config import DataverseConfig
+
+# Custom hook -- receives events for every HTTP request
+class MyHook(TelemetryHook):
+    def on_request_end(self, request, response):
+        print(f"{request.operation} -> {response.status_code} in {response.duration_ms:.0f}ms")
+        print(f"  service_request_id: {response.service_request_id}")
+
+config = DataverseConfig(telemetry=TelemetryConfig(hooks=[MyHook()]))
+client = DataverseClient(url, credential, config=config)
+
+# OpenTelemetry integration (pip install PowerPlatform-Dataverse-Client[telemetry])
+config = DataverseConfig(
+    telemetry=TelemetryConfig(
+        enable_tracing=True,   # OTel spans with semantic conventions
+        enable_metrics=True,   # duration/count/error counters
+        enable_logging=True,   # Python logging integration
+    )
 )
 ```
 

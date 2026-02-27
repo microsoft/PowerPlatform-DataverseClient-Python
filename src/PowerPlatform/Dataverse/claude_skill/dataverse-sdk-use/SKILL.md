@@ -310,6 +310,37 @@ client.files.upload(
 )
 ```
 
+### Telemetry & Observability
+
+The SDK supports opt-in telemetry via hooks, OpenTelemetry, and Python logging:
+
+```python
+from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
+from PowerPlatform.Dataverse.core.config import DataverseConfig
+
+# Custom hook -- receives on_request_start, on_request_end, on_request_error
+class MyHook(TelemetryHook):
+    def on_request_end(self, request, response):
+        print(f"{request.operation} -> {response.status_code} in {response.duration_ms:.0f}ms")
+
+config = DataverseConfig(telemetry=TelemetryConfig(hooks=[MyHook()]))
+client = DataverseClient(url, credential, config=config)
+
+# OpenTelemetry (pip install PowerPlatform-Dataverse-Client[telemetry])
+config = DataverseConfig(
+    telemetry=TelemetryConfig(enable_tracing=True, enable_metrics=True)
+)
+
+# Python logging
+config = DataverseConfig(
+    telemetry=TelemetryConfig(enable_logging=True, log_level="DEBUG")
+)
+```
+
+Hook data available per request: `operation`, `table_name`, `method`, `url`, `status_code`, `duration_ms`, `service_request_id`, `client_request_id`, `correlation_id`.
+
+Zero overhead when `TelemetryConfig` is not set.
+
 ## Error Handling
 
 The SDK provides structured exceptions with detailed error information:
