@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ..core.errors import MetadataError, ValidationError
+from ..core.errors import HttpError, MetadataError, ValidationError
 from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
 from ..models.batch import BatchItemResponse, BatchResult
 from ..models.relationship import (
@@ -545,7 +545,12 @@ class _BatchClient:
         content_type = response.headers.get("Content-Type", "")
         boundary = _extract_boundary(content_type)
         if not boundary:
-            return BatchResult()
+            # Non-multipart response: the batch request itself was rejected by Dataverse
+            # (common for top-level 4xx, e.g. malformed body, missing OData headers).
+            # Returning an empty BatchResult() here would silently hide the error and
+            # make has_errors=False, which is actively misleading. Raise instead.
+            _raise_top_level_batch_error(response)
+            return BatchResult()  # unreachable; satisfies type checkers
         parts = _split_multipart(response.text or "", boundary)
         responses: List[BatchItemResponse] = []
         for part_headers, part_body in parts:
@@ -567,6 +572,31 @@ class _BatchClient:
 # ---------------------------------------------------------------------------
 # Multipart parsing helpers
 # ---------------------------------------------------------------------------
+
+
+def _raise_top_level_batch_error(response: Any) -> None:
+    """Parse a non-multipart batch response and raise HttpError with the service message.
+
+    Dataverse returns ``application/json`` with an ``{"error": {...}}`` payload when
+    it rejects the batch request at the HTTP level (e.g. malformed multipart body,
+    missing OData headers). This helper surfaces that detail instead of silently
+    returning an empty ``BatchResult``.
+    """
+    status_code: int = getattr(response, "status_code", 0)
+    service_error_code: Optional[str] = None
+    try:
+        payload = response.json()
+        error = payload.get("error", {})
+        service_error_code = error.get("code") or None
+        message: str = error.get("message") or response.text or "Unexpected non-multipart response from $batch"
+    except Exception:
+        message = (getattr(response, "text", None) or "") or "Unexpected non-multipart response from $batch"
+    raise HttpError(
+        message=f"Batch request rejected by Dataverse: {message}",
+        status_code=status_code,
+        subcode="4xx" if 400 <= status_code < 500 else ("5xx" if status_code >= 500 else None),
+        service_error_code=service_error_code,
+    )
 
 
 def _extract_boundary(content_type: str) -> Optional[str]:

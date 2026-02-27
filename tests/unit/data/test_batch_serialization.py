@@ -19,11 +19,13 @@ from PowerPlatform.Dataverse.data._batch import (
     _TableList,
     _QuerySql,
     _extract_boundary,
+    _raise_top_level_batch_error,
     _split_multipart,
     _parse_mime_part,
     _parse_http_response_part,
     _CRLF,
 )
+from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
@@ -430,18 +432,16 @@ class TestBatchRecordOperationsUpsert(unittest.TestCase):
 
     def test_upsert_empty_list_raises(self):
         from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
-        from PowerPlatform.Dataverse.core.errors import ValidationError
 
         rec_ops, _ = self._make_batch()
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(TypeError):
             rec_ops.upsert("account", [])
 
     def test_upsert_invalid_item_raises(self):
         from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
-        from PowerPlatform.Dataverse.core.errors import ValidationError
 
         rec_ops, _ = self._make_batch()
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(TypeError):
             rec_ops.upsert("account", ["not_a_valid_item"])
 
     def test_upsert_multiple_items_all_normalised(self):
@@ -459,6 +459,66 @@ class TestBatchRecordOperationsUpsert(unittest.TestCase):
         intent = batch._items[0]
         self.assertEqual(len(intent.items), 2)
         self.assertEqual(intent.items[1].alternate_key, {"accountnumber": "B"})
+
+
+class TestRaiseTopLevelBatchError(unittest.TestCase):
+    """_raise_top_level_batch_error surfaces Dataverse error details as HttpError."""
+
+    def _make_response(self, status_code, json_body=None, text=None):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.text = text or ""
+        if json_body is not None:
+            resp.json.return_value = json_body
+        else:
+            resp.json.side_effect = ValueError("no JSON")
+        return resp
+
+    def test_raises_http_error(self):
+        """Always raises HttpError, never returns."""
+        resp = self._make_response(400, json_body={"error": {"code": "0x0", "message": "Bad batch"}})
+        with self.assertRaises(HttpError):
+            _raise_top_level_batch_error(resp)
+
+    def test_status_code_preserved(self):
+        """HttpError.status_code matches the response status code."""
+        resp = self._make_response(400, json_body={"error": {"code": "0x0", "message": "Bad batch"}})
+        with self.assertRaises(HttpError) as ctx:
+            _raise_top_level_batch_error(resp)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_service_message_in_exception(self):
+        """The Dataverse error message is included in the raised exception."""
+        resp = self._make_response(400, json_body={"error": {"code": "BadRequest", "message": "Malformed OData batch"}})
+        with self.assertRaises(HttpError) as ctx:
+            _raise_top_level_batch_error(resp)
+        self.assertIn("Malformed OData batch", str(ctx.exception))
+
+    def test_service_error_code_preserved(self):
+        """The Dataverse error code is forwarded into HttpError.details."""
+        resp = self._make_response(400, json_body={"error": {"code": "0x80040216", "message": "..."}})
+        with self.assertRaises(HttpError) as ctx:
+            _raise_top_level_batch_error(resp)
+        self.assertEqual(ctx.exception.details.get("service_error_code"), "0x80040216")
+
+    def test_falls_back_to_response_text_when_no_json(self):
+        """Falls back to response.text when the body is not valid JSON."""
+        resp = self._make_response(400, text="plain text error body")
+        with self.assertRaises(HttpError) as ctx:
+            _raise_top_level_batch_error(resp)
+        self.assertIn("plain text error body", str(ctx.exception))
+
+    def test_parse_batch_response_raises_on_missing_boundary(self):
+        """_BatchClient._parse_batch_response raises HttpError for non-multipart responses."""
+        od = _make_od()
+        client = _BatchClient(od)
+        resp = MagicMock()
+        resp.headers = {"Content-Type": "application/json"}
+        resp.status_code = 400
+        resp.text = ""
+        resp.json.return_value = {"error": {"code": "0x0", "message": "Invalid batch"}}
+        with self.assertRaises(HttpError):
+            client._parse_batch_response(resp)
 
 
 if __name__ == "__main__":

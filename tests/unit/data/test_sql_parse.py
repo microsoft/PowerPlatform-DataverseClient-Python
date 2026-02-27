@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 

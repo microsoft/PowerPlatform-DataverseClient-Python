@@ -521,7 +521,7 @@ class RecordOperations:
             elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
                 normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
             else:
-                raise TypeError("Each item must be a UpsertItem or a dict with 'alternate_key' and 'record' keys")
+                raise TypeError("Each item must be an UpsertItem or a dict with 'alternate_key' and 'record' keys")
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if len(normalized) == 1:
