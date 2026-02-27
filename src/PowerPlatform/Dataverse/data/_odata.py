@@ -453,12 +453,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
             if conflicting:
                 raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
-            combined: Dict[str, Any] = {**alt_key_lower, **record_processed}
-            if "@odata.type" not in combined:
-                combined["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            if "@odata.type" not in record_processed:
+                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
             key_str = self._build_alternate_key_str(alt_key)
-            combined["@odata.id"] = f"{entity_set}({key_str})"
-            targets.append(combined)
+            record_processed["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(record_processed)
         payload = {"Targets": targets}
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
         self._request("post", url, json=payload, expected=(200, 201, 204))
