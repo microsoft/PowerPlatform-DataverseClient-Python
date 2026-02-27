@@ -1735,8 +1735,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """Build an UpsertMultiple POST request without sending it."""
         if len(alternate_keys) != len(records):
             raise ValidationError(
-                f"alternate_keys and records must have the same length "
-                f"({len(alternate_keys)} != {len(records)})",
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})",
                 subcode="upsert_length_mismatch",
             )
         logical_name = table.lower()

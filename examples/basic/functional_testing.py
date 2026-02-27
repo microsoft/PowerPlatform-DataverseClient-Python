@@ -393,9 +393,13 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                     print(f"   [{i}] FAILED {resp.status_code}: {resp.error_message}")
                     continue
                 if i == 0 and resp.data:
-                    print(f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}")
+                    print(
+                        f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}"
+                    )
                 elif i == 1 and resp.data:
-                    print(f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'")
+                    print(
+                        f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'"
+                    )
                 elif i == 2 and resp.data:
                     print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
                 elif i == 3 and resp.data:

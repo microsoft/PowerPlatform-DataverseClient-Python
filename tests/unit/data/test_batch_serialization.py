@@ -448,10 +448,13 @@ class TestBatchRecordOperationsUpsert(unittest.TestCase):
         from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
 
         rec_ops, batch = self._make_batch()
-        rec_ops.upsert("account", [
-            UpsertItem(alternate_key={"accountnumber": "A"}, record={"name": "Alpha"}),
-            UpsertItem(alternate_key={"accountnumber": "B"}, record={"name": "Beta"}),
-        ])
+        rec_ops.upsert(
+            "account",
+            [
+                UpsertItem(alternate_key={"accountnumber": "A"}, record={"name": "Alpha"}),
+                UpsertItem(alternate_key={"accountnumber": "B"}, record={"name": "Beta"}),
+            ],
+        )
 
         intent = batch._items[0]
         self.assertEqual(len(intent.items), 2)

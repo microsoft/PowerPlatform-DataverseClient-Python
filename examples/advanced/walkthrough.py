@@ -355,7 +355,9 @@ def main():
     )
     result = batch.execute()
     batch_ids = list(result.created_ids)
-    print(f"[OK] Batch create: {len(result.succeeded)} operations in one HTTP request, {len(batch_ids)} records created")
+    print(
+        f"[OK] Batch create: {len(result.succeeded)} operations in one HTTP request, {len(batch_ids)} records created"
+    )
 
     # Batch get: read both records in a single request
     log_call("client.batch.new() + batch.records.get(...) x2 + batch.execute()")

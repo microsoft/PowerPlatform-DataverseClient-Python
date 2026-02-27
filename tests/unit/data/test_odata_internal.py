@@ -410,9 +410,7 @@ class TestBuildUpsertMultiple(unittest.TestCase):
     def test_mismatched_lengths_raises(self):
         """Raises when alternate_keys and records lengths differ."""
         with self.assertRaises(Exception):
-            self.od._build_upsert_multiple(
-                "accounts", "account", [{"accountnumber": "ACC-001"}], []
-            )
+            self.od._build_upsert_multiple("accounts", "account", [{"accountnumber": "ACC-001"}], [])
 
     def test_url_contains_upsert_multiple_action(self):
         """POST URL targets the UpsertMultiple bound action."""
