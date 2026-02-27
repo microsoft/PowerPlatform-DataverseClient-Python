@@ -25,6 +25,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Bulk operations](#bulk-operations)
   - [Upsert operations](#upsert-operations)
   - [Query data](#query-data)
+  - [FetchXML queries](#fetchxml-queries)
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
   - [File operations](#file-operations)
@@ -36,7 +37,8 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, `UpsertMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
-- **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
+- **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter
+- **📋 FetchXML Queries**: Execute FetchXML queries with automatic paging cookie handling via `client.query.fetchxml()`
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
@@ -267,6 +269,48 @@ for page in client.records.get(
 > - **`filter`**: Column names must use exact lowercase logical names (e.g., `"statecode eq 0"`, not `"StateCode eq 0"`)
 > - **`expand`**: Navigation property names are case-sensitive and must match the exact server names
 > - **`select`** and **`orderby`**: Case-insensitive; automatically converted to lowercase
+
+### FetchXML queries
+
+```python
+# Basic FetchXML query
+fetchxml = """
+<fetch top='5'>
+  <entity name='account'>
+    <attribute name='name' />
+  </entity>
+</fetch>
+"""
+for page in client.query.fetchxml(fetchxml):
+    for record in page:
+        print(record["name"])
+
+# FetchXML with filter and paging
+fetchxml = """
+<fetch>
+  <entity name='contact'>
+    <attribute name='fullname' />
+    <attribute name='jobtitle' />
+    <order attribute='fullname' descending='true' />
+    <filter type='and'>
+      <condition attribute='statecode' operator='eq' value='0' />
+    </filter>
+  </entity>
+</fetch>
+"""
+for page in client.query.fetchxml(fetchxml, page_size=50):
+    for record in page:
+        print(record["fullname"])
+```
+
+> **FetchXML limitations:**
+> - FetchXML queries are sent as URL-encoded GET parameters. Very large FetchXML strings may exceed the 32KB URL limit.
+> - Do not use the `top` attribute with paging (`count`/`page`) — they are incompatible.
+> - Aggregate queries (`aggregate='true'`) return a single result set and do not support paging. Aggregates are limited to 50,000 records.
+> - Maximum of 15 `link-entity` (join) elements per query.
+> - Maximum of 500 total `condition` and `link-entity` elements combined.
+> - For consistent paging results, include an `<order>` element with a unique column (e.g., primary key).
+> - Queries with `distinct='true'` require at least one `<order>` element.
 
 ### Table management
 

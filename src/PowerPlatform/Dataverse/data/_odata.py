@@ -13,10 +13,12 @@ import time
 import re
 import json
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
 from contextvars import ContextVar
+from urllib.parse import quote as _url_encode, unquote as _url_decode
 
 from ..core._http import _HttpClient
 from ._upload import _FileUploadMixin
@@ -27,6 +29,11 @@ from ..core._error_codes import (
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_FETCHXML_NOT_STRING,
+    VALIDATION_FETCHXML_EMPTY,
+    VALIDATION_FETCHXML_MALFORMED,
+    VALIDATION_FETCHXML_TOO_LONG,
+    VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -41,6 +48,8 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+_MAX_FETCHXML_LENGTH = 16_000  # ~16 KB raw; caps input size to mitigate XML entity expansion attacks; after URL-encoding stays under 32 KB GET URL limit
+_MAX_FETCHXML_PAGES = 10_000
 
 
 @dataclass
@@ -851,6 +860,198 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not m:
             raise ValueError("Unable to determine table logical name from SQL (expected 'FROM <name>').")
         return m.group(1).lower()
+
+    # ---------------------- FetchXML -------------------------
+    @staticmethod
+    def _extract_entity_from_fetchxml_element(root: ET.Element) -> str:
+        """Extract entity logical name from <entity name='...'> in a parsed FetchXML root element."""
+        local_tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
+        if local_tag != "fetch":
+            raise ValidationError(
+                "Invalid FetchXML: root element must be <fetch>",
+                subcode=VALIDATION_FETCHXML_MALFORMED,
+            )
+        entity_elem = None
+        for child in root:
+            child_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if child_local == "entity":
+                entity_elem = child
+                break
+        if entity_elem is None:
+            raise ValidationError(
+                "Invalid FetchXML: missing <entity> element",
+                subcode=VALIDATION_FETCHXML_MALFORMED,
+            )
+        name = entity_elem.get("name")
+        if not name or not str(name).strip():
+            raise ValidationError(
+                "Invalid FetchXML: <entity> must have a name attribute",
+                subcode=VALIDATION_FETCHXML_MALFORMED,
+            )
+        return str(name).strip().lower()
+
+    @staticmethod
+    def _extract_entity_from_fetchxml(fetchxml: str) -> str:
+        """Extract entity logical name from <entity name='...'> in FetchXML."""
+        try:
+            root = ET.fromstring(fetchxml.strip())
+        except ET.ParseError as e:
+            raise ValidationError(
+                f"Invalid FetchXML: malformed XML ({e})",
+                subcode=VALIDATION_FETCHXML_MALFORMED,
+            ) from e
+        return _ODataClient._extract_entity_from_fetchxml_element(root)
+
+    def _query_fetchxml(
+        self,
+        fetchxml: str,
+        *,
+        page_size: Optional[int] = None,
+    ) -> Iterable[List[Dict[str, Any]]]:
+        """Execute a FetchXML query with automatic paging cookie handling."""
+        if not isinstance(fetchxml, str):
+            raise ValidationError(
+                "fetchxml must be a string",
+                subcode=VALIDATION_FETCHXML_NOT_STRING,
+            )
+        if not fetchxml.strip():
+            raise ValidationError(
+                "fetchxml must be a non-empty string",
+                subcode=VALIDATION_FETCHXML_EMPTY,
+            )
+
+        if page_size is not None:
+            if not isinstance(page_size, (int, float)):
+                raise ValidationError(
+                    "page_size must be an integer",
+                    subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+                )
+            ps = int(page_size)
+            if ps <= 0:
+                raise ValidationError(
+                    "page_size must be a positive integer",
+                    subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+                )
+
+        if len(fetchxml) > _MAX_FETCHXML_LENGTH:
+            raise ValidationError(
+                f"FetchXML string exceeds maximum supported length ({_MAX_FETCHXML_LENGTH} characters)",
+                subcode=VALIDATION_FETCHXML_TOO_LONG,
+            )
+
+        try:
+            root = ET.fromstring(fetchxml.strip())
+        except ET.ParseError as e:
+            raise ValidationError(
+                f"Invalid FetchXML: malformed XML ({e})",
+                subcode=VALIDATION_FETCHXML_MALFORMED,
+            ) from e
+
+        entity_name = self._extract_entity_from_fetchxml_element(root)
+        entity_set = self._entity_set_from_schema_name(entity_name)
+
+        has_top = root.get("top") is not None
+        is_aggregate = (root.get("aggregate") or "").lower() == "true"
+
+        if has_top and page_size is not None:
+            raise ValidationError(
+                "Cannot use page_size with FetchXML that has a 'top' attribute. "
+                "The 'top' and paging (count/page) attributes are incompatible.",
+                subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+            )
+
+        if is_aggregate and page_size is not None:
+            raise ValidationError(
+                "Cannot use page_size with aggregate FetchXML queries. "
+                "Aggregate queries return a single result set and do not support paging.",
+                subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+            )
+
+        if not is_aggregate and not has_top:
+            is_distinct = (root.get("distinct") or "").lower() == "true"
+            if is_distinct:
+                has_order = any(
+                    (child.tag.split("}")[-1] if "}" in child.tag else child.tag) == "order"
+                    for entity_elem in root
+                    if (entity_elem.tag.split("}")[-1] if "}" in entity_elem.tag else entity_elem.tag) == "entity"
+                    for child in entity_elem
+                )
+                if not has_order:
+                    raise ValidationError(
+                        "FetchXML with distinct='true' requires at least one <order> element for consistent paging results",
+                        subcode=VALIDATION_FETCHXML_MALFORMED,
+                    )
+            if page_size is not None and root.get("count") is None:
+                root.set("count", str(int(page_size)))
+            if root.get("page") is None:
+                root.set("page", "1")
+
+        headers = {
+            "Prefer": 'odata.include-annotations="Microsoft.Dynamics.CRM.fetchxmlpagingcookie,Microsoft.Dynamics.CRM.morerecords"'
+        }
+
+        def _do_request(url: str) -> Dict[str, Any]:
+            r = self._request("get", url, headers=headers)
+            try:
+                return r.json()
+            except ValueError:
+                return {}
+
+        page_count = 0
+        while True:
+            page_count += 1
+            if page_count > _MAX_FETCHXML_PAGES:
+                raise ValidationError(
+                    f"FetchXML paging exceeded maximum page limit ({_MAX_FETCHXML_PAGES}). "
+                    "This may indicate a query returning too many results or a paging loop.",
+                    subcode=VALIDATION_FETCHXML_MALFORMED,
+                )
+            fetchxml_str = ET.tostring(root, encoding="unicode")
+            encoded = _url_encode(fetchxml_str, safe="")
+            url = f"{self.api}/{entity_set}?fetchXml={encoded}"
+            data = _do_request(url)
+
+            items = data.get("value") if isinstance(data, dict) else None
+            if isinstance(items, list) and items:
+                yield [x for x in items if isinstance(x, dict)]
+
+            if has_top or is_aggregate:
+                break
+
+            more_records = False
+            paging_cookie_raw = None
+
+            if isinstance(data, dict):
+                more_records_raw = data.get("@Microsoft.Dynamics.CRM.morerecords")
+                more_records = more_records_raw is True or (
+                    isinstance(more_records_raw, str) and more_records_raw.lower() == "true"
+                )
+                paging_cookie_raw = data.get("@Microsoft.Dynamics.CRM.fetchxmlpagingcookie")
+
+            if not more_records:
+                break
+
+            if paging_cookie_raw:
+                try:
+                    cookie_elem = ET.fromstring(paging_cookie_raw)
+                except ET.ParseError as e:
+                    raise ValidationError(
+                        f"Failed to parse FetchXML paging cookie from server response: {e}",
+                        subcode=VALIDATION_FETCHXML_MALFORMED,
+                    ) from e
+
+                pagingcookie_value = cookie_elem.get("pagingcookie")
+                if not pagingcookie_value:
+                    raise ValidationError(
+                        "Paging cookie returned by server is missing 'pagingcookie' attribute",
+                        subcode=VALIDATION_FETCHXML_MALFORMED,
+                    )
+
+                decoded = _url_decode(_url_decode(pagingcookie_value))
+                root.set("paging-cookie", decoded)
+
+            current_page = int(root.get("page", "1"))
+            root.set("page", str(current_page + 1))
 
     # ---------------------- Entity set resolution -----------------------
     def _entity_set_from_schema_name(self, table_schema_name: str) -> str:

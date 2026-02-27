@@ -163,6 +163,41 @@ for record in results:
     print(record["name"])
 ```
 
+### FetchXML Queries
+
+Execute FetchXML queries with automatic paging cookie handling. FetchXML must contain `<fetch><entity name='...'>`. Returns an iterable of pages.
+
+```python
+# Basic FetchXML query
+fetchxml = """
+<fetch top='5'>
+  <entity name='account'>
+    <attribute name='name' />
+  </entity>
+</fetch>
+"""
+for page in client.query.fetchxml(fetchxml):
+    for record in page:
+        print(record["name"])
+
+# FetchXML with filter and paging
+fetchxml = """
+<fetch>
+  <entity name='contact'>
+    <attribute name='fullname' />
+    <attribute name='jobtitle' />
+    <order attribute='fullname' descending='true' />
+    <filter type='and'>
+      <condition attribute='statecode' operator='eq' value='0' />
+    </filter>
+  </entity>
+</fetch>
+"""
+for page in client.query.fetchxml(fetchxml, page_size=50):
+    for record in page:
+        print(record["fullname"])
+```
+
 ### Table Management
 
 #### Create Custom Tables

@@ -51,6 +51,49 @@ class TestQueryOperations(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertEqual(result, [])
 
+    # -------------------------------------------------------------- fetchxml
+
+    def test_fetchxml_basic(self):
+        """fetchxml() should call _query_fetchxml and return results."""
+        expected_pages = [
+            [{"accountid": "1", "name": "Contoso"}, {"accountid": "2", "name": "Fabrikam"}],
+        ]
+        self.client._odata._query_fetchxml.return_value = iter(expected_pages)
+
+        fetchxml = "<fetch><entity name='account'><attribute name='name' /></entity></fetch>"
+        result = list(self.client.query.fetchxml(fetchxml))
+
+        self.client._odata._query_fetchxml.assert_called_once_with(fetchxml, page_size=None)
+        self.assertEqual(result, expected_pages)
+
+    def test_fetchxml_with_page_size(self):
+        """fetchxml() should pass page_size through to _query_fetchxml."""
+        self.client._odata._query_fetchxml.return_value = iter([])
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        list(self.client.query.fetchxml(fetchxml, page_size=50))
+
+        self.client._odata._query_fetchxml.assert_called_once_with(fetchxml, page_size=50)
+
+    def test_fetchxml_empty_result(self):
+        """fetchxml() should return empty generator when no results."""
+        self.client._odata._query_fetchxml.return_value = iter([])
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        result = list(self.client.query.fetchxml(fetchxml))
+
+        self.assertEqual(result, [])
+
+    def test_fetchxml_returns_iterable(self):
+        """fetchxml() should return an iterable (generator)."""
+        self.client._odata._query_fetchxml.return_value = iter([[{"name": "A"}]])
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        result = self.client.query.fetchxml(fetchxml)
+
+        self.assertIsNotNone(iter(result))
+        self.assertEqual(list(result), [[{"name": "A"}]])
+
 
 if __name__ == "__main__":
     unittest.main()
