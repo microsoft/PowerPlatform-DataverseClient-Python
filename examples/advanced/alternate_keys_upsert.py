@@ -175,9 +175,9 @@ def main():
     print("   Upserted EXT-003, EXT-004 (bulk)")
 
     # ------------------------------------------------------------------
-    # Step 5: Upsert again (updates existing via single PATCH)
+    # Step 5a: Upsert single update (PATCH, record exists)
     # ------------------------------------------------------------------
-    print("\n5. Upserting record (update existing via PATCH)...")
+    print("\n5a. Upsert single record (update existing via PATCH)...")
     client.records.upsert(
         TABLE_NAME,
         [
@@ -187,7 +187,26 @@ def main():
             ),
         ],
     )
-    print("   Updated EXT-001")
+    print("   Updated EXT-001 (single)")
+
+    # ------------------------------------------------------------------
+    # Step 5b: Upsert multiple update (UpsertMultiple, records exist)
+    # ------------------------------------------------------------------
+    print("\n5b. Upsert multiple records (update existing via UpsertMultiple)...")
+    client.records.upsert(
+        TABLE_NAME,
+        [
+            UpsertItem(
+                alternate_key={KEY_COLUMN.lower(): "EXT-003"},
+                record={"new_productname": "Widget C v2", "new_price": 31.99},
+            ),
+            UpsertItem(
+                alternate_key={KEY_COLUMN.lower(): "EXT-004"},
+                record={"new_productname": "Widget D v2", "new_price": 41.99},
+            ),
+        ],
+    )
+    print("   Updated EXT-003, EXT-004 (bulk)")
 
     # ------------------------------------------------------------------
     # Step 6: Verify
