@@ -222,14 +222,16 @@ class TestClientDeprecations(unittest.TestCase):
         """client.list_tables() emits a DeprecationWarning and delegates to
         tables.list.
         """
-        expected = [{"LogicalName": "account"}, {"LogicalName": "contact"}]
-        self.client._odata._list_tables.return_value = expected
+        raw = [{"LogicalName": "account"}, {"LogicalName": "contact"}]
+        self.client._odata._list_tables.return_value = raw
 
         with self.assertWarns(DeprecationWarning):
             result = self.client.list_tables()
 
         self.client._odata._list_tables.assert_called_once()
-        self.assertEqual(result, expected)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["LogicalName"], "account")
+        self.assertEqual(result[1]["LogicalName"], "contact")
 
     # ------------------------------------------------------- create_columns
 

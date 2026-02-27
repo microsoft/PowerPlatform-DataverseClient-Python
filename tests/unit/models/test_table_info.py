@@ -117,6 +117,74 @@ class TestTableInfoFromApiResponse(unittest.TestCase):
         self.assertIsNone(info.display_name)
         self.assertIsNone(info.description)
 
+    def test_from_api_response_stores_raw(self):
+        raw = {
+            "SchemaName": "Account",
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "MetadataId": "guid",
+            "IsCustomEntity": True,
+            "IsManaged": False,
+            "OwnershipType": "UserOwned",
+        }
+        info = TableInfo.from_api_response(raw)
+        self.assertIs(info._raw, raw)
+
+
+class TestTableInfoRawFallback(unittest.TestCase):
+    """TableInfo should fall back to _raw for keys not in the model."""
+
+    def setUp(self):
+        self.raw = {
+            "SchemaName": "Account",
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "MetadataId": "guid",
+            "IsCustomEntity": True,
+            "IsManaged": False,
+            "OwnershipType": "UserOwned",
+            "IsActivity": False,
+        }
+        self.info = TableInfo.from_api_response(self.raw)
+
+    def test_pascal_case_getitem(self):
+        self.assertTrue(self.info["IsCustomEntity"])
+        self.assertFalse(self.info["IsManaged"])
+        self.assertEqual(self.info["OwnershipType"], "UserOwned")
+
+    def test_pascal_case_contains(self):
+        self.assertIn("IsCustomEntity", self.info)
+        self.assertIn("IsManaged", self.info)
+        self.assertNotIn("NonexistentField", self.info)
+
+    def test_pascal_case_get(self):
+        self.assertTrue(self.info.get("IsCustomEntity"))
+        self.assertIsNone(self.info.get("NonexistentField"))
+        self.assertEqual(self.info.get("NonexistentField", "default"), "default")
+
+    def test_typed_attributes_still_work(self):
+        self.assertEqual(self.info.schema_name, "Account")
+        self.assertEqual(self.info.logical_name, "account")
+        self.assertEqual(self.info.entity_set_name, "accounts")
+
+    def test_legacy_keys_still_work(self):
+        self.assertEqual(self.info["table_schema_name"], "Account")
+        self.assertEqual(self.info["table_logical_name"], "account")
+
+    def test_missing_key_still_raises(self):
+        with self.assertRaises(KeyError):
+            _ = self.info["CompletelyFakeKey"]
+
+    def test_no_raw_missing_key_raises(self):
+        """TableInfo without _raw should still raise KeyError for unknown keys."""
+        info = TableInfo(schema_name="test")
+        with self.assertRaises(KeyError):
+            _ = info["IsCustomEntity"]
+
+    def test_no_raw_contains_false(self):
+        info = TableInfo(schema_name="test")
+        self.assertNotIn("IsCustomEntity", info)
+
 
 class TestColumnInfoFromApiResponse(unittest.TestCase):
     """Tests for ColumnInfo.from_api_response factory."""

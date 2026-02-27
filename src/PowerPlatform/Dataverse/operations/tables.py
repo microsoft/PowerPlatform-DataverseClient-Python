@@ -192,13 +192,19 @@ class TableOperations:
         *,
         filter: Optional[str] = None,
         select: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[TableInfo]:
         """List all non-private tables in the Dataverse environment.
 
         By default returns every table where ``IsPrivate eq false``.  Supply
         an optional OData ``$filter`` expression to further narrow the results.
         The expression is combined with the default ``IsPrivate eq false``
         clause using ``and``.
+
+        Each returned :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
+        provides typed attribute access for common fields (``schema_name``,
+        ``logical_name``, etc.) and also supports dict-style access for any
+        PascalCase key from the raw ``EntityDefinition`` payload (e.g.
+        ``table["IsCustomEntity"]``).
 
         :param filter: Optional OData ``$filter`` expression to further narrow
             the list of returned tables (e.g.
@@ -215,28 +221,30 @@ class TableOperations:
             returned.
         :type select: :class:`list` of :class:`str` or None
 
-        :return: List of EntityDefinition metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :return: List of table metadata objects.
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
 
         Example::
 
             # List all non-private tables
             tables = client.tables.list()
             for table in tables:
-                print(table["LogicalName"])
+                print(table.schema_name)          # typed attribute
+                print(table["LogicalName"])        # raw PascalCase key
 
             # List only tables whose schema name starts with "new_"
             custom_tables = client.tables.list(
                 filter="startswith(SchemaName, 'new_')"
             )
 
-            # List tables with only specific properties
-            tables = client.tables.list(
-                select=["LogicalName", "SchemaName", "EntitySetName"]
-            )
+            # Access raw EntityDefinition fields
+            for table in client.tables.list():
+                if table["IsCustomEntity"]:
+                    print(f"{table.schema_name} is custom")
         """
         with self._client._scoped_odata() as od:
-            return od._list_tables(filter=filter, select=select)
+            raw_list = od._list_tables(filter=filter, select=select)
+            return [TableInfo.from_api_response(raw) for raw in raw_list]
 
     # ------------------------------------------------------------- add_columns
 

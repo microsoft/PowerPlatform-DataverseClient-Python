@@ -98,50 +98,57 @@ class TestTableOperations(unittest.TestCase):
     # ------------------------------------------------------------------- list
 
     def test_list(self):
-        """list() should call _list_tables and return the list of metadata dicts."""
-        expected_tables = [
-            {"LogicalName": "account", "SchemaName": "Account"},
-            {"LogicalName": "contact", "SchemaName": "Contact"},
+        """list() should return TableInfo objects wrapping raw API dicts."""
+        raw_tables = [
+            {"LogicalName": "account", "SchemaName": "Account", "IsCustomEntity": False},
+            {"LogicalName": "contact", "SchemaName": "Contact", "IsCustomEntity": False},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list()
 
         self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
         self.assertIsInstance(result, list)
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], TableInfo)
+        self.assertEqual(result[0].schema_name, "Account")
+        self.assertEqual(result[0]["LogicalName"], "account")
+        self.assertFalse(result[0]["IsCustomEntity"])
 
     def test_list_with_filter(self):
         """list(filter=...) should pass the filter expression to _list_tables."""
-        expected_tables = [
+        raw_tables = [
             {"LogicalName": "account", "SchemaName": "Account"},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list(filter="SchemaName eq 'Account'")
 
         self.client._odata._list_tables.assert_called_once_with(filter="SchemaName eq 'Account'", select=None)
         self.assertIsInstance(result, list)
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TableInfo)
+        self.assertEqual(result[0].schema_name, "Account")
 
     def test_list_with_filter_none_explicit(self):
         """list(filter=None) should behave identically to list() with no args."""
-        expected_tables = [
+        raw_tables = [
             {"LogicalName": "account", "SchemaName": "Account"},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list(filter=None)
 
         self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TableInfo)
 
     def test_list_with_select(self):
         """list(select=...) should pass the select list to _list_tables."""
-        expected_tables = [
+        raw_tables = [
             {"LogicalName": "account", "SchemaName": "Account"},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list(select=["LogicalName", "SchemaName", "EntitySetName"])
 
@@ -149,26 +156,28 @@ class TestTableOperations(unittest.TestCase):
             filter=None,
             select=["LogicalName", "SchemaName", "EntitySetName"],
         )
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TableInfo)
 
     def test_list_with_select_none_explicit(self):
         """list(select=None) should behave identically to list() with no args."""
-        expected_tables = [
+        raw_tables = [
             {"LogicalName": "account", "SchemaName": "Account"},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list(select=None)
 
         self.client._odata._list_tables.assert_called_once_with(filter=None, select=None)
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TableInfo)
 
     def test_list_with_filter_and_select(self):
         """list(filter=..., select=...) should pass both params to _list_tables."""
-        expected_tables = [
+        raw_tables = [
             {"LogicalName": "account", "SchemaName": "Account"},
         ]
-        self.client._odata._list_tables.return_value = expected_tables
+        self.client._odata._list_tables.return_value = raw_tables
 
         result = self.client.tables.list(
             filter="SchemaName eq 'Account'",
@@ -179,7 +188,16 @@ class TestTableOperations(unittest.TestCase):
             filter="SchemaName eq 'Account'",
             select=["LogicalName", "SchemaName"],
         )
-        self.assertEqual(result, expected_tables)
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], TableInfo)
+
+    def test_list_empty(self):
+        """list() with no results should return empty list."""
+        self.client._odata._list_tables.return_value = []
+
+        result = self.client.tables.list()
+
+        self.assertEqual(result, [])
 
     # ------------------------------------------------------------ add_columns
 

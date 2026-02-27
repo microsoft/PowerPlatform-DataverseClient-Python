@@ -116,6 +116,7 @@ class TableInfo:
     description: Optional[str] = None
     columns: Optional[List[ColumnInfo]] = field(default=None, repr=False)
     columns_created: Optional[List[str]] = field(default=None, repr=False)
+    _raw: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
     # Maps legacy dict keys (used by existing code) to attribute names.
     _LEGACY_KEY_MAP: ClassVar[Dict[str, str]] = {
@@ -136,13 +137,17 @@ class TableInfo:
         attr = self._resolve_key(key)
         if hasattr(self, attr):
             return getattr(self, attr)
+        if self._raw is not None and key in self._raw:
+            return self._raw[key]
         raise KeyError(key)
 
     def __contains__(self, key: object) -> bool:
         if not isinstance(key, str):
             return False
         attr = self._resolve_key(key)
-        return hasattr(self, attr)
+        if hasattr(self, attr):
+            return True
+        return self._raw is not None and key in self._raw
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._LEGACY_KEY_MAP)
@@ -215,6 +220,7 @@ class TableInfo:
             metadata_id=response_data.get("MetadataId", ""),
             display_name=display_name,
             description=description,
+            _raw=response_data,
         )
 
     # -------------------------------------------------------------- conversion
