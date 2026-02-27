@@ -640,6 +640,7 @@ class TableOperations:
                 metadata_id=raw["metadata_id"],
                 schema_name=raw["schema_name"],
                 key_attributes=raw["key_attributes"],
+                status="Pending",
             )
 
     # --------------------------------------------------- get_alternate_keys
