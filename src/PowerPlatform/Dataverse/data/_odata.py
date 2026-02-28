@@ -921,7 +921,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             )
 
         if page_size is not None:
-            if not isinstance(page_size, int):
+            if isinstance(page_size, bool) or not isinstance(page_size, int):
                 raise ValidationError(
                     "page_size must be an integer",
                     subcode=VALIDATION_FETCHXML_INVALID_PAGE_SIZE,

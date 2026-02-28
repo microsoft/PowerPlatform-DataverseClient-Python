@@ -4,8 +4,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from PowerPlatform.Dataverse.core.errors import ValidationError
+from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
 from PowerPlatform.Dataverse.core._error_codes import (
+    METADATA_ENTITYSET_NOT_FOUND,
     VALIDATION_FETCHXML_NOT_STRING,
     VALIDATION_FETCHXML_EMPTY,
     VALIDATION_FETCHXML_MALFORMED,
@@ -92,6 +93,44 @@ class TestQueryFetchxml(unittest.TestCase):
         with self.assertRaises(ValidationError) as ctx:
             list(self.od._query_fetchxml("   \n\t  "))
         self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_EMPTY)
+
+    def test_query_fetchxml_wrong_entity_case_raises_http_error(self):
+        """Wrong entity case (PascalCase) in FetchXML causes API 400; HttpError propagates."""
+        self._setup_entity_set()
+        self.od._request.side_effect = HttpError(
+            "The entity with a name = 'Contact' was not found",
+            status_code=400,
+        )
+        fetchxml = "<fetch top='1'><entity name='Contact'><attribute name='contactid' /></entity></fetch>"
+        with self.assertRaises(HttpError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_query_fetchxml_wrong_entity_name_raises_metadata_error(self):
+        """Non-existent entity name raises MetadataError from entity set resolution."""
+        self.od._entity_set_from_schema_name = MagicMock(
+            side_effect=MetadataError(
+                "Unable to resolve entity set for table schema name 'NonexistentEntity123'.",
+                subcode=METADATA_ENTITYSET_NOT_FOUND,
+            )
+        )
+        fetchxml = "<fetch top='1'><entity name='NonexistentEntity123'><attribute name='id' /></entity></fetch>"
+        with self.assertRaises(MetadataError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.subcode, METADATA_ENTITYSET_NOT_FOUND)
+        self.assertIn("NonexistentEntity123", str(ctx.exception))
+
+    def test_query_fetchxml_wrong_attribute_name_raises_http_error(self):
+        """Invalid attribute name in FetchXML causes API 400; HttpError propagates."""
+        self._setup_entity_set()
+        self.od._request.side_effect = HttpError(
+            "Invalid attribute 'InvalidColumnName123'",
+            status_code=400,
+        )
+        fetchxml = "<fetch top='1'><entity name='account'><attribute name='InvalidColumnName123' /></entity></fetch>"
+        with self.assertRaises(HttpError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.status_code, 400)
 
     def test_query_fetchxml_single_page(self):
         """Mock HTTP response with no more records, verify single page yielded."""
@@ -303,6 +342,22 @@ class TestQueryFetchxml(unittest.TestCase):
             list(self.od._query_fetchxml(fetchxml, page_size=0))
         self.assertIn("page_size", str(ctx.exception).lower())
         self.assertIn("positive", str(ctx.exception).lower())
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_INVALID_PAGE_SIZE)
+
+    def test_query_fetchxml_boolean_true_page_size_raises(self):
+        """Raise ValidationError for boolean page_size (bool is int subclass)."""
+        self._setup_entity_set()
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml, page_size=True))
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_INVALID_PAGE_SIZE)
+
+    def test_query_fetchxml_boolean_false_page_size_raises(self):
+        """Raise ValidationError for False page_size (bool is int subclass)."""
+        self._setup_entity_set()
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml, page_size=False))
         self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_INVALID_PAGE_SIZE)
 
     def test_query_fetchxml_non_numeric_page_size_raises(self):
