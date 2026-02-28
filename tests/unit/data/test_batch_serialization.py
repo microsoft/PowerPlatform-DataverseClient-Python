@@ -330,7 +330,7 @@ class TestChangeSetInternal(unittest.TestCase):
         cs = _ChangeSet()
         cs.add_create("account", {"name": "A"})
         cs.add_update("account", "guid-1", {"name": "B"})
-        self.assertEqual(cs._next_content_id, 3)
+        self.assertEqual(cs._counter[0], 3)
 
     def test_operations_in_order(self):
         cs = _ChangeSet()
@@ -339,6 +339,31 @@ class TestChangeSetInternal(unittest.TestCase):
         self.assertEqual(len(cs.operations), 2)
         self.assertIsInstance(cs.operations[0], _RecordCreate)
         self.assertIsInstance(cs.operations[1], _RecordDelete)
+
+    def test_two_changesets_shared_counter_produce_unique_content_ids(self):
+        """Two _ChangeSets sharing a counter must emit batch-wide unique Content-IDs."""
+        shared = [1]
+        cs1 = _ChangeSet(_counter=shared)
+        cs2 = _ChangeSet(_counter=shared)
+
+        cs1.add_create("account", {"name": "A"})  # cid=1
+        cs1.add_update("account", "guid-1", {"name": "B"})  # cid=2
+        cs2.add_create("contact", {"firstname": "C"})  # cid=3
+        cs2.add_update("contact", "guid-2", {"firstname": "D"})  # cid=4
+
+        ids_cs1 = [op.content_id for op in cs1.operations]
+        ids_cs2 = [op.content_id for op in cs2.operations]
+        self.assertEqual(ids_cs1, [1, 2])
+        self.assertEqual(ids_cs2, [3, 4])
+        # No overlap
+        self.assertEqual(len(set(ids_cs1) & set(ids_cs2)), 0)
+
+    def test_standalone_changeset_still_starts_at_one(self):
+        """A _ChangeSet created without a shared counter gets its own [1] counter."""
+        cs = _ChangeSet()
+        ref = cs.add_create("account", {"name": "X"})
+        self.assertEqual(ref, "$1")
+        self.assertEqual(cs._counter[0], 2)
 
 
 class TestResolveBatchUpsert(unittest.TestCase):
