@@ -38,6 +38,8 @@ from ..common.constants import (
     ODATA_TYPE_BOOLEAN_ATTRIBUTE,
     ODATA_TYPE_MULTISELECT_PICKLIST_ATTRIBUTE,
     ODATA_TYPE_PICKLIST_ATTRIBUTE,
+    ODATA_TYPE_STATE_ATTRIBUTE,
+    ODATA_TYPE_STATUS_ATTRIBUTE,
 )
 
 from .. import __version__ as _SDK_VERSION
@@ -1659,6 +1661,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             ODATA_TYPE_PICKLIST_ATTRIBUTE,
             ODATA_TYPE_BOOLEAN_ATTRIBUTE,
             ODATA_TYPE_MULTISELECT_PICKLIST_ATTRIBUTE,
+            ODATA_TYPE_STATUS_ATTRIBUTE,
+            ODATA_TYPE_STATE_ATTRIBUTE,
         ]:
             url = f"{base}/{cast_type}"
             try:
