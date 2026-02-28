@@ -341,5 +341,85 @@ class TestUpsert(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestBuildUpsertMultiple(unittest.TestCase):
+    """Unit tests for _ODataClient._build_upsert_multiple (batch deferred build)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+
+    def _targets(self, alt_keys, records):
+        import json
+
+        req = self.od._build_upsert_multiple("accounts", "account", alt_keys, records)
+        return json.loads(req.body)["Targets"]
+
+    def test_payload_excludes_alternate_key_fields(self):
+        """Alternate key fields must NOT appear in the request body (only in @odata.id)."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"name": "Contoso"}],
+        )
+        self.assertEqual(len(targets), 1)
+        target = targets[0]
+        self.assertNotIn("accountnumber", target)
+        self.assertIn("name", target)
+        self.assertIn("@odata.id", target)
+        self.assertIn("accountnumber", target["@odata.id"])
+
+    def test_payload_allows_matching_key_field_in_record(self):
+        """If user passes matching key field in record with same value, it passes through to body."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"accountnumber": "ACC-001", "name": "Contoso"}],
+        )
+        target = targets[0]
+        self.assertIn("name", target)
+        self.assertIn("@odata.id", target)
+        self.assertIn("accountnumber", target["@odata.id"])
+
+    def test_odata_type_added_when_absent(self):
+        """@odata.type is injected when not provided by caller."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"name": "Contoso"}],
+        )
+        self.assertIn("@odata.type", targets[0])
+        self.assertEqual(targets[0]["@odata.type"], "Microsoft.Dynamics.CRM.account")
+
+    def test_multiple_targets_all_have_odata_id(self):
+        """Each target in a multi-item call gets its own @odata.id."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}, {"accountnumber": "ACC-002"}],
+            [{"name": "Contoso"}, {"name": "Fabrikam"}],
+        )
+        self.assertEqual(len(targets), 2)
+        self.assertIn("ACC-001", targets[0]["@odata.id"])
+        self.assertIn("ACC-002", targets[1]["@odata.id"])
+
+    def test_conflicting_key_field_raises(self):
+        """Raises when a record field contradicts its alternate key value."""
+        with self.assertRaises(Exception) as ctx:
+            self.od._build_upsert_multiple(
+                "accounts",
+                "account",
+                [{"accountnumber": "ACC-001"}],
+                [{"accountnumber": "ACC-WRONG", "name": "Contoso"}],
+            )
+        self.assertIn("accountnumber", str(ctx.exception))
+
+    def test_mismatched_lengths_raises(self):
+        """Raises when alternate_keys and records lengths differ."""
+        with self.assertRaises(Exception):
+            self.od._build_upsert_multiple("accounts", "account", [{"accountnumber": "ACC-001"}], [])
+
+    def test_url_contains_upsert_multiple_action(self):
+        """POST URL targets the UpsertMultiple bound action."""
+        req = self.od._build_upsert_multiple(
+            "accounts", "account", [{"accountnumber": "ACC-001"}], [{"name": "Contoso"}]
+        )
+        self.assertIn("UpsertMultiple", req.url)
+        self.assertEqual(req.method, "POST")
+
+
 if __name__ == "__main__":
     unittest.main()

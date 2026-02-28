@@ -16,6 +16,7 @@ from .operations.records import RecordOperations
 from .operations.query import QueryOperations
 from .operations.files import FileOperations
 from .operations.tables import TableOperations
+from .operations.batch import BatchOperations
 
 
 class DataverseClient:
@@ -58,6 +59,7 @@ class DataverseClient:
     - ``client.query`` -- query and search operations
     - ``client.tables`` -- table and column metadata management
     - ``client.files`` -- file upload operations
+    - ``client.batch`` -- batch multiple operations into a single HTTP request
 
     Example:
         Create a client and perform basic operations::
@@ -104,6 +106,7 @@ class DataverseClient:
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
         self.files = FileOperations(self)
+        self.batch = BatchOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """

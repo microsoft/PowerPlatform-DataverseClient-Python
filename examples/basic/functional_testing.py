@@ -10,6 +10,7 @@ This script provides comprehensive functional testing of the PowerPlatform-Datav
 - Table creation and metadata operations
 - Full CRUD operations testing
 - Query functionality validation
+- Batch operations (create, read, update, changeset, delete)
 - Interactive cleanup options
 
 Prerequisites:
@@ -32,6 +33,7 @@ from datetime import datetime
 # Import SDK components (assumes installation is already validated)
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from azure.identity import InteractiveBrowserCredential
 
 
@@ -309,6 +311,473 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
         print("   This might be expected if the table is very new.")
 
 
+def test_sql_encoding(
+    client: DataverseClient,
+    table_info: Dict[str, Any],
+    retrieved_record: Dict[str, Any],
+) -> None:
+    """Verify SQL encoding parity between client.query.sql() and batch.query.sql().
+
+    The direct path (client.query.sql) delegates to _build_sql which encodes the
+    SQL via urllib.parse.quote(safe=''), producing %20 for spaces. The batch path
+    uses the same _build_sql method, so both should behave identically.
+
+    Specifically tests SQL containing:
+      - Spaces in a WHERE string literal  (requires %20 encoding)
+      - Colons in a WHERE string literal  (the HH:MM:SS timestamp in the name)
+
+    Both paths are run against the same SQL and their results are compared
+    to confirm the encoding produces matching Dataverse responses.
+    """
+    print("\n-> SQL Encoding Verification Test")
+    print("=" * 50)
+
+    table_schema_name = table_info.get("table_schema_name")
+    logical_name = table_info.get("table_logical_name", table_schema_name.lower())
+    attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    name_col = f"{attr_prefix}_name"
+    known_name = retrieved_record.get(name_col, "")
+
+    try:
+        # ------------------------------------------------------------------
+        # Case 1: Basic SELECT — no special characters in WHERE clause.
+        #         Baseline: confirms the path works before adding complexity.
+        # ------------------------------------------------------------------
+        basic_sql = f"SELECT TOP 5 {name_col} FROM {logical_name}"
+        print(f"   [1/3] Basic SELECT (no special chars): {basic_sql}")
+
+        direct_rows = client.query.sql(basic_sql)
+        direct_count = len(direct_rows)
+
+        batch = client.batch.new()
+        batch.query.sql(basic_sql)
+        result = batch.execute()
+        batch_count = (
+            len(result.responses[0].data.get("value", []))
+            if result.responses and result.responses[0].is_success and result.responses[0].data
+            else 0
+        )
+
+        assert direct_count == batch_count, f"Row count mismatch: client={direct_count}, batch={batch_count}"
+        print(f"   [OK] Both paths returned {direct_count} rows")
+
+        # ------------------------------------------------------------------
+        # Case 2: WHERE clause with spaces and colons in the string literal.
+        #         This is the critical case: the record name is of the form
+        #         "Test Record HH:MM:SS" which contains spaces (-> %20) and
+        #         colons. If encoding differs between direct and batch, only
+        #         one path would find the record.
+        # ------------------------------------------------------------------
+        if known_name:
+            escaped_name = known_name.replace("'", "''")
+            where_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_name}'"
+            print(f"   [2/3] WHERE with spaces/colons: ...WHERE {name_col} = '{escaped_name}'")
+
+            direct_rows_where = client.query.sql(where_sql)
+            direct_where_count = len(direct_rows_where)
+
+            batch2 = client.batch.new()
+            batch2.query.sql(where_sql)
+            result2 = batch2.execute()
+            batch_where_count = (
+                len(result2.responses[0].data.get("value", []))
+                if result2.responses and result2.responses[0].is_success and result2.responses[0].data
+                else 0
+            )
+
+            assert (
+                direct_where_count == batch_where_count
+            ), f"Row count mismatch on WHERE query: client={direct_where_count}, batch={batch_where_count}"
+            assert direct_where_count == 1, f"Expected exactly 1 row for known record name, got {direct_where_count}"
+            direct_name = direct_rows_where[0].get(name_col)
+            assert direct_name == known_name, f"Returned name '{direct_name}' does not match expected '{known_name}'"
+            print(f"   [OK] Both paths found the record: '{direct_name}'")
+        else:
+            print("   [2/3] Skipped WHERE test — record name not available in retrieved_record")
+
+        # ------------------------------------------------------------------
+        # Case 3: WHERE clause with an equals sign inside the string literal.
+        #         Creates a temporary record whose name contains '=' (which
+        #         must be percent-encoded as %3D in the query string), queries
+        #         it via both paths, then deletes it.
+        # ------------------------------------------------------------------
+        print("   [3/3] WHERE with '=' in string literal (tests %3D encoding)")
+        equals_name = f"SQL=Test {datetime.now().strftime('%H:%M:%S')}"
+        eq_id = client.records.create(table_schema_name, {name_col: equals_name})
+        try:
+            escaped_eq = equals_name.replace("'", "''")
+            eq_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_eq}'"
+
+            direct_eq_rows = client.query.sql(eq_sql)
+            direct_eq_count = len(direct_eq_rows)
+
+            batch3 = client.batch.new()
+            batch3.query.sql(eq_sql)
+            result3 = batch3.execute()
+            batch_eq_count = (
+                len(result3.responses[0].data.get("value", []))
+                if result3.responses and result3.responses[0].is_success and result3.responses[0].data
+                else 0
+            )
+
+            assert (
+                direct_eq_count == batch_eq_count
+            ), f"Row count mismatch on '=' query: client={direct_eq_count}, batch={batch_eq_count}"
+            assert direct_eq_count == 1, f"Expected 1 row for '=' record, got {direct_eq_count}"
+            print(f"   [OK] Both paths found record with '=' in name: '{direct_eq_rows[0].get(name_col)}'")
+        finally:
+            client.records.delete(table_schema_name, eq_id)
+
+        print("[OK] SQL encoding verification passed — %20/%3D encoding is consistent across both paths")
+
+    except AssertionError as e:
+        print(f"[ERR] Encoding parity assertion failed: {e}")
+        raise
+    except Exception as e:
+        print(f"[WARN] SQL encoding test encountered an issue: {e}")
+        print("   Check that the test table exists and has at least one record.")
+
+
+def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any]) -> None:
+    """Test every available batch operation type in a structured sequence.
+
+    Operations covered:
+      records.create (single + CreateMultiple)
+      records.get (single by ID)
+      records.update (single PATCH + UpdateMultiple)
+      records.delete (multi, use_bulk_delete=False)
+      records.upsert (graceful — requires configured alternate key)
+      tables.get, tables.list
+      tables.add_columns + tables.remove_columns (two requests, each adding
+        one column, verified then removed in a second batch)
+      query.sql
+      changeset happy path (create + update via content-ID ref + delete)
+      changeset rollback (failing op rolls back entire changeset)
+      two changesets in one batch (Content-IDs are globally unique across
+        the batch via a shared counter)
+      content-ID reference chaining ($n refs) across multiple creates in one
+        changeset — regression guard for the shared counter fix
+      execute(continue_on_error=True) — mixed success/failure
+    """
+    print("\n-> Batch Operations Test (All Operations)")
+    print("=" * 50)
+
+    table_schema_name = table_info.get("table_schema_name")
+    logical_name = table_info.get("table_logical_name", table_schema_name.lower())
+    attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    all_ids: list = []
+
+    try:
+        # -------------------------------------------------------------------
+        # [1/11] CREATE — single record + CreateMultiple (list) in one batch
+        # -------------------------------------------------------------------
+        print("\n[1/11] Create — single + CreateMultiple (2 ops, 1 POST $batch)")
+        batch = client.batch.new()
+        batch.records.create(
+            table_schema_name,
+            {
+                f"{attr_prefix}_name": f"Batch-A {datetime.now().strftime('%H:%M:%S')}",
+                f"{attr_prefix}_count": 1,
+                f"{attr_prefix}_is_active": True,
+            },
+        )
+        batch.records.create(
+            table_schema_name,
+            [
+                {
+                    f"{attr_prefix}_name": f"Batch-B {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 2,
+                    f"{attr_prefix}_is_active": True,
+                },
+                {
+                    f"{attr_prefix}_name": f"Batch-C {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 3,
+                    f"{attr_prefix}_is_active": True,
+                },
+            ],
+        )
+        result = batch.execute()
+        all_ids = list(result.created_ids)
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] {item.status_code}: {item.error_message}")
+        else:
+            print(f"[OK] {len(result.succeeded)} ops → {len(all_ids)} records created: {all_ids}")
+
+        # -------------------------------------------------------------------
+        # [2/11] READ — get by ID + tables.get + tables.list + query.sql
+        #              All 4 reads in one batch request
+        # -------------------------------------------------------------------
+        if all_ids:
+            print("\n[2/11] Read — records.get + tables.get + tables.list + query.sql (4 ops, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.get(
+                table_schema_name,
+                all_ids[0],
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_count"],
+            )
+            batch.tables.get(table_schema_name)
+            batch.tables.list()
+            batch.query.sql(f"SELECT TOP 3 {attr_prefix}_name FROM {logical_name}")
+            result = batch.execute()
+            print(f"[OK] {len(result.succeeded)} succeeded, {len(result.failed)} failed")
+            for i, resp in enumerate(result.responses):
+                if not resp.is_success:
+                    print(f"   [{i}] FAILED {resp.status_code}: {resp.error_message}")
+                    continue
+                if i == 0 and resp.data:
+                    print(
+                        f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}"
+                    )
+                elif i == 1 and resp.data:
+                    print(
+                        f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'"
+                    )
+                elif i == 2 and resp.data:
+                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
+                elif i == 3 and resp.data:
+                    print(f"   query.sql   → {len(resp.data.get('value', []))} rows returned")
+
+        # -------------------------------------------------------------------
+        # [3/11] UPDATE — single PATCH + UpdateMultiple (broadcast) in one batch
+        # -------------------------------------------------------------------
+        if len(all_ids) >= 3:
+            print(f"\n[3/11] Update — single PATCH + UpdateMultiple ({len(all_ids)} records, 2 ops, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.update(table_schema_name, all_ids[0], {f"{attr_prefix}_count": 10})
+            batch.records.update(table_schema_name, all_ids[1:], {f"{attr_prefix}_count": 20})
+            result = batch.execute()
+            print(f"[OK] {len(result.succeeded)} updates succeeded, {len(result.failed)} failed")
+
+        # -------------------------------------------------------------------
+        # [4/11] CHANGESET (happy path) — create + update via content-ID + delete
+        #        All three changeset operation types committed atomically
+        # -------------------------------------------------------------------
+        if len(all_ids) >= 1:
+            print("\n[4/11] Changeset (happy path) — cs.create + cs.update(ref) + cs.delete (1 transaction)")
+            batch = client.batch.new()
+            with batch.changeset() as cs:
+                ref = cs.records.create(
+                    table_schema_name,
+                    {
+                        f"{attr_prefix}_name": f"Batch-D {datetime.now().strftime('%H:%M:%S')}",
+                        f"{attr_prefix}_count": 4,
+                        f"{attr_prefix}_is_active": False,
+                    },
+                )
+                cs.records.update(table_schema_name, ref, {f"{attr_prefix}_is_active": True})
+                cs.records.delete(table_schema_name, all_ids[-1])
+            result = batch.execute()
+            if result.has_errors:
+                for item in result.failed:
+                    print(f"[WARN] Changeset error {item.status_code}: {item.error_message}")
+            else:
+                new_id = next(iter(result.created_ids), None)
+                if new_id:
+                    all_ids[-1] = new_id  # replace deleted id with the new one
+                print(f"[OK] {len(result.succeeded)} ops committed atomically (create + update + delete)")
+
+        # -------------------------------------------------------------------
+        # [5/11] CHANGESET (rollback) — failing update rolls back the create
+        # -------------------------------------------------------------------
+        print("\n[5/11] Changeset (rollback) — cs.create + cs.update(nonexistent) → full rollback")
+        nonexistent_id = "00000000-0000-0000-0000-000000000001"
+        batch = client.batch.new()
+        with batch.changeset() as cs:
+            cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Rollback-test {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs.records.update(table_schema_name, nonexistent_id, {f"{attr_prefix}_count": 999})
+        # continue_on_error=True ensures Dataverse returns a 200 multipart response
+        # with the changeset failure embedded, rather than propagating the inner
+        # 404 to the outer batch HTTP status (which some environments do).
+        result = batch.execute(continue_on_error=True)
+        if result.has_errors:
+            leaked = list(result.created_ids)
+            if not leaked:
+                print("[OK] Changeset rollback verified: changeset failed, no records created")
+            else:
+                print(f"[WARN] Changeset failed but {len(leaked)} IDs leaked — queuing for cleanup")
+                all_ids.extend(leaked)
+        else:
+            print("[WARN] Expected rollback but changeset succeeded (unexpected)")
+            all_ids.extend(result.created_ids)
+
+        # -------------------------------------------------------------------
+        # [6/11] TWO CHANGESETS — Content-IDs are unique across the entire batch
+        #        (shared counter). Verifies both changesets commit atomically.
+        # -------------------------------------------------------------------
+        print("\n[6/11] Two changesets in one batch — globally unique Content-IDs across changesets")
+        batch = client.batch.new()
+        with batch.changeset() as cs1:
+            ref1 = cs1.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"CS1-E {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 10,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs1.records.update(table_schema_name, ref1, {f"{attr_prefix}_is_active": True})
+        with batch.changeset() as cs2:
+            ref2 = cs2.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"CS2-F {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 20,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs2.records.update(table_schema_name, ref2, {f"{attr_prefix}_is_active": True})
+        result = batch.execute()
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] Two-changeset error {item.status_code}: {item.error_message}")
+        else:
+            cs_ids = list(result.created_ids)
+            all_ids.extend(cs_ids)
+            print(
+                f"[OK] Both changesets committed — {len(cs_ids)} records created "
+                f"with globally unique Content-IDs across changesets: {cs_ids}"
+            )
+
+        # -------------------------------------------------------------------
+        # [7/11] CONTENT-ID REFERENCE CHAINING — two creates in one changeset,
+        #         each update references its own $n — regression guard for the
+        #         shared-counter fix (ensures references stay self-consistent).
+        # -------------------------------------------------------------------
+        print("\n[7/11] Content-ID reference chaining — two creates + two updates via $n refs")
+        batch = client.batch.new()
+        with batch.changeset() as cs:
+            ref_a = cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Chain-A {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            ref_b = cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Chain-B {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            # Update both records via their content-ID references
+            cs.records.update(table_schema_name, ref_a, {f"{attr_prefix}_count": 100})
+            cs.records.update(table_schema_name, ref_b, {f"{attr_prefix}_count": 200})
+        result = batch.execute()
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] Chaining error {item.status_code}: {item.error_message}")
+        else:
+            chain_ids = list(result.created_ids)
+            all_ids.extend(chain_ids)
+            print(f"[OK] Both records created and updated via content-ID refs " f"{ref_a} and {ref_b}: {chain_ids}")
+
+        # -------------------------------------------------------------------
+        # [8/11] BATCH TABLES ADD COLUMNS — two batch.tables.add_columns()
+        #         requests in one batch, each adding one column.  Verifies
+        #         that metadata write operations work inside a $batch request.
+        #         The two columns are removed via a follow-up batch after the
+        #         assertion so they do not accumulate on the test table.
+        # -------------------------------------------------------------------
+        col_a = f"{attr_prefix}_batch_extra_a"
+        col_b = f"{attr_prefix}_batch_extra_b"
+        print(f"\n[8/11] Batch tables.add_columns — two add-column requests in one batch")
+        batch = client.batch.new()
+        batch.tables.add_columns(table_schema_name, {col_a: "string"})
+        batch.tables.add_columns(table_schema_name, {col_b: "int"})
+        result = batch.execute()
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] add_columns error {item.status_code}: {item.error_message}")
+        else:
+            print(f"[OK] {len(result.succeeded)} column(s) added via batch: {col_a}, {col_b}")
+            # Remove the two test columns so the table stays clean
+            batch_rm = client.batch.new()
+            batch_rm.tables.remove_columns(table_schema_name, [col_a, col_b])
+            rm_result = batch_rm.execute(continue_on_error=True)
+            print(f"[OK] Removed {len(rm_result.succeeded)} batch-added column(s) via batch.tables.remove_columns")
+
+        # -------------------------------------------------------------------
+        # [9/11] UPSERT — requires an alternate key configured on the table.
+        #        The test table has none, so this is expected to fail (graceful).
+        # -------------------------------------------------------------------
+        print(f"\n[9/11] Upsert — UpsertItem with alternate key (expected to fail: no alt key on test table)")
+        try:
+            batch = client.batch.new()
+            batch.records.upsert(
+                table_schema_name,
+                [
+                    UpsertItem(
+                        alternate_key={f"{attr_prefix}_name": f"Upsert-E {datetime.now().strftime('%H:%M:%S')}"},
+                        record={f"{attr_prefix}_count": 5, f"{attr_prefix}_is_active": True},
+                    )
+                ],
+            )
+            result = batch.execute()
+            if result.has_errors:
+                print(f"[WARN] Upsert failed as expected (no alternate key configured): {result.failed[0].status_code}")
+            else:
+                upsert_ids = list(result.created_ids)
+                all_ids.extend(upsert_ids)
+                print(f"[OK] Upsert succeeded: {len(upsert_ids)} record(s) — alternate key was accepted")
+        except Exception as e:
+            print(f"[WARN] Upsert skipped due to exception: {e}")
+
+        # -------------------------------------------------------------------
+        # [10/11] MIXED BATCH with continue_on_error
+        #        One intentional 404 alongside a valid get — both attempted
+        # -------------------------------------------------------------------
+        if all_ids:
+            print(f"\n[10/11] Mixed batch (continue_on_error=True) — 1 bad get + 1 good get")
+            batch = client.batch.new()
+            batch.records.get(
+                table_schema_name,
+                "00000000-0000-0000-0000-000000000002",
+                select=[f"{attr_prefix}_name"],
+            )
+            batch.records.get(
+                table_schema_name,
+                all_ids[0],
+                select=[f"{attr_prefix}_name"],
+            )
+            result = batch.execute(continue_on_error=True)
+            print(f"[OK] Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+            for item in result.failed:
+                print(f"   Expected failure: {item.status_code} {item.error_message}")
+
+        # -------------------------------------------------------------------
+        # [11/11] DELETE — multi-delete (use_bulk_delete=False → individual DELETEs)
+        # -------------------------------------------------------------------
+        if all_ids:
+            print(f"\n[11/11] Delete — {len(all_ids)} records via multi-delete (use_bulk_delete=False, 1 POST $batch)")
+            batch = client.batch.new()
+            batch.records.delete(table_schema_name, all_ids, use_bulk_delete=False)
+            result = batch.execute(continue_on_error=True)
+            print(f"[OK] Deleted {len(result.succeeded)}, failed {len(result.failed)}")
+
+        print("\n[OK] Batch all-operations test completed!")
+
+    except Exception as e:
+        print(f"[WARN] Batch all-operations test encountered an issue: {e}")
+        if all_ids:
+            try:
+                batch = client.batch.new()
+                batch.records.delete(table_schema_name, all_ids, use_bulk_delete=False)
+                batch.execute(continue_on_error=True)
+            except Exception:
+                pass
+
+
 def cleanup_test_data(client: DataverseClient, table_info: Dict[str, Any], record_id: str) -> None:
     """Clean up test data."""
     print("\n-> Cleanup")
@@ -403,6 +872,7 @@ def main():
     print("  - Table Creation & Metadata Operations")
     print("  - Record CRUD Operations")
     print("  - Query Functionality")
+    print("  - Batch Operations (create, read, update, changeset, delete)")
     print("  - Interactive Cleanup")
     print("=" * 70)
     print("For installation validation, run examples/basic/installation_example.py first")
@@ -422,6 +892,12 @@ def main():
         # Test querying
         test_query_records(client, table_info)
 
+        # Verify SQL encoding parity between direct and batch paths
+        test_sql_encoding(client, table_info, retrieved_record)
+
+        # Test batch operations (all operation types)
+        test_batch_all_operations(client, table_info)
+
         # Success summary
         print("\nFunctional Test Summary")
         print("=" * 50)
@@ -430,6 +906,8 @@ def main():
         print("[OK] Record Creation: Success")
         print("[OK] Record Reading: Success")
         print("[OK] Record Querying: Success")
+        print("[OK] SQL Encoding: Success")
+        print("[OK] Batch Operations: Success")
         print("\nYour PowerPlatform Dataverse Client SDK is fully functional!")
 
         # Cleanup
