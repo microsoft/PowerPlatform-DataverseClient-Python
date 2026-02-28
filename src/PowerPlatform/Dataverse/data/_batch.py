@@ -167,28 +167,38 @@ class _QuerySql:
 
 @dataclass
 class _ChangeSet:
-    """Ordered group of single-record write operations that execute atomically."""
+    """Ordered group of single-record write operations that execute atomically.
+
+    Content-IDs are allocated from ``_counter``, a single-element ``List[int]``
+    that is shared across all changesets in the same batch.  Passing the same
+    list object to every ``_ChangeSet`` created by a :class:`BatchRequest`
+    ensures Content-ID values are unique within the entire batch request, not
+    just within an individual changeset, as required by the OData spec.
+
+    When constructed in isolation (e.g. in unit tests), ``_counter`` defaults
+    to a fresh ``[1]`` so the class remains self-contained.
+    """
 
     operations: List[Union[_RecordCreate, _RecordUpdate, _RecordDelete]] = field(default_factory=list)
-    _next_content_id: int = field(default=1, init=False, repr=False)
+    _counter: List[int] = field(default_factory=lambda: [1], repr=False)
 
     def add_create(self, table: str, data: Dict[str, Any]) -> str:
         """Add a single-record create; return its content-ID reference string."""
-        cid = self._next_content_id
-        self._next_content_id += 1
+        cid = self._counter[0]
+        self._counter[0] += 1
         self.operations.append(_RecordCreate(table=table, data=data, content_id=cid))
         return f"${cid}"
 
     def add_update(self, table: str, record_id: str, changes: Dict[str, Any]) -> None:
         """Add a single-record update (record_id may be a '$n' reference)."""
-        cid = self._next_content_id
-        self._next_content_id += 1
+        cid = self._counter[0]
+        self._counter[0] += 1
         self.operations.append(_RecordUpdate(table=table, ids=record_id, changes=changes, content_id=cid))
 
     def add_delete(self, table: str, record_id: str) -> None:
         """Add a single-record delete (record_id may be a '$n' reference)."""
-        cid = self._next_content_id
-        self._next_content_id += 1
+        cid = self._counter[0]
+        self._counter[0] += 1
         self.operations.append(_RecordDelete(table=table, ids=record_id, content_id=cid))
 
 
