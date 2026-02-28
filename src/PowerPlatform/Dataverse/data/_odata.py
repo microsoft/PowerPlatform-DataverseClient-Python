@@ -42,7 +42,7 @@ from ..core._error_codes import (
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
 
-from ..__version__ import __version__ as _SDK_VERSION
+from .. import __version__ as _SDK_VERSION
 
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
