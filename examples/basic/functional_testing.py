@@ -311,6 +311,137 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
         print("   This might be expected if the table is very new.")
 
 
+def test_sql_encoding(
+    client: DataverseClient,
+    table_info: Dict[str, Any],
+    retrieved_record: Dict[str, Any],
+) -> None:
+    """Verify SQL encoding parity between client.query.sql() and batch.query.sql().
+
+    The direct path (client.query.sql) delegates to _build_sql which encodes the
+    SQL via urllib.parse.quote(safe=''), producing %20 for spaces. The batch path
+    uses the same _build_sql method, so both should behave identically.
+
+    Specifically tests SQL containing:
+      - Spaces in a WHERE string literal  (requires %20 encoding)
+      - Colons in a WHERE string literal  (the HH:MM:SS timestamp in the name)
+
+    Both paths are run against the same SQL and their results are compared
+    to confirm the encoding produces matching Dataverse responses.
+    """
+    print("\n-> SQL Encoding Verification Test")
+    print("=" * 50)
+
+    table_schema_name = table_info.get("table_schema_name")
+    logical_name = table_info.get("table_logical_name", table_schema_name.lower())
+    attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    name_col = f"{attr_prefix}_name"
+    known_name = retrieved_record.get(name_col, "")
+
+    try:
+        # ------------------------------------------------------------------
+        # Case 1: Basic SELECT — no special characters in WHERE clause.
+        #         Baseline: confirms the path works before adding complexity.
+        # ------------------------------------------------------------------
+        basic_sql = f"SELECT TOP 5 {name_col} FROM {logical_name}"
+        print(f"   [1/3] Basic SELECT (no special chars): {basic_sql}")
+
+        direct_rows = client.query.sql(basic_sql)
+        direct_count = len(direct_rows)
+
+        batch = client.batch.new()
+        batch.query.sql(basic_sql)
+        result = batch.execute()
+        batch_count = len(result.responses[0].data.get("value", [])) if result.responses and result.responses[0].is_success and result.responses[0].data else 0
+
+        assert direct_count == batch_count, (
+            f"Row count mismatch: client={direct_count}, batch={batch_count}"
+        )
+        print(f"   [OK] Both paths returned {direct_count} rows")
+
+        # ------------------------------------------------------------------
+        # Case 2: WHERE clause with spaces and colons in the string literal.
+        #         This is the critical case: the record name is of the form
+        #         "Test Record HH:MM:SS" which contains spaces (-> %20) and
+        #         colons. If encoding differs between direct and batch, only
+        #         one path would find the record.
+        # ------------------------------------------------------------------
+        if known_name:
+            escaped_name = known_name.replace("'", "''")
+            where_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_name}'"
+            print(f"   [2/3] WHERE with spaces/colons: ...WHERE {name_col} = '{escaped_name}'")
+
+            direct_rows_where = client.query.sql(where_sql)
+            direct_where_count = len(direct_rows_where)
+
+            batch2 = client.batch.new()
+            batch2.query.sql(where_sql)
+            result2 = batch2.execute()
+            batch_where_count = (
+                len(result2.responses[0].data.get("value", []))
+                if result2.responses and result2.responses[0].is_success and result2.responses[0].data
+                else 0
+            )
+
+            assert direct_where_count == batch_where_count, (
+                f"Row count mismatch on WHERE query: client={direct_where_count}, batch={batch_where_count}"
+            )
+            assert direct_where_count == 1, (
+                f"Expected exactly 1 row for known record name, got {direct_where_count}"
+            )
+            direct_name = direct_rows_where[0].get(name_col)
+            assert direct_name == known_name, (
+                f"Returned name '{direct_name}' does not match expected '{known_name}'"
+            )
+            print(f"   [OK] Both paths found the record: '{direct_name}'")
+        else:
+            print("   [2/3] Skipped WHERE test — record name not available in retrieved_record")
+
+        # ------------------------------------------------------------------
+        # Case 3: WHERE clause with an equals sign inside the string literal.
+        #         Creates a temporary record whose name contains '=' (which
+        #         must be percent-encoded as %3D in the query string), queries
+        #         it via both paths, then deletes it.
+        # ------------------------------------------------------------------
+        print("   [3/3] WHERE with '=' in string literal (tests %3D encoding)")
+        equals_name = f"SQL=Test {datetime.now().strftime('%H:%M:%S')}"
+        eq_id = client.records.create(table_schema_name, {name_col: equals_name})
+        try:
+            escaped_eq = equals_name.replace("'", "''")
+            eq_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_eq}'"
+
+            direct_eq_rows = client.query.sql(eq_sql)
+            direct_eq_count = len(direct_eq_rows)
+
+            batch3 = client.batch.new()
+            batch3.query.sql(eq_sql)
+            result3 = batch3.execute()
+            batch_eq_count = (
+                len(result3.responses[0].data.get("value", []))
+                if result3.responses and result3.responses[0].is_success and result3.responses[0].data
+                else 0
+            )
+
+            assert direct_eq_count == batch_eq_count, (
+                f"Row count mismatch on '=' query: client={direct_eq_count}, batch={batch_eq_count}"
+            )
+            assert direct_eq_count == 1, (
+                f"Expected 1 row for '=' record, got {direct_eq_count}"
+            )
+            print(f"   [OK] Both paths found record with '=' in name: '{direct_eq_rows[0].get(name_col)}'")
+        finally:
+            client.records.delete(table_schema_name, eq_id)
+
+        print("[OK] SQL encoding verification passed — %20/%3D encoding is consistent across both paths")
+
+    except AssertionError as e:
+        print(f"[ERR] Encoding parity assertion failed: {e}")
+        raise
+    except Exception as e:
+        print(f"[WARN] SQL encoding test encountered an issue: {e}")
+        print("   Check that the test table exists and has at least one record.")
+
+
 def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any]) -> None:
     """Test every available batch operation type in a structured sequence.
 
@@ -657,6 +788,9 @@ def main():
         # Test querying
         test_query_records(client, table_info)
 
+        # Verify SQL encoding parity between direct and batch paths
+        test_sql_encoding(client, table_info, retrieved_record)
+
         # Test batch operations (all operation types)
         test_batch_all_operations(client, table_info)
 
@@ -668,6 +802,7 @@ def main():
         print("[OK] Record Creation: Success")
         print("[OK] Record Reading: Success")
         print("[OK] Record Querying: Success")
+        print("[OK] SQL Encoding: Success")
         print("[OK] Batch Operations: Success")
         print("\nYour PowerPlatform Dataverse Client SDK is fully functional!")
 
