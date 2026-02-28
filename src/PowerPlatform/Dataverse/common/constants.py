@@ -29,3 +29,30 @@ CASCADE_BEHAVIOR_REMOVE_LINK = "RemoveLink"
 
 CASCADE_BEHAVIOR_RESTRICT = "Restrict"
 """Prevent the referenced table record from being deleted when referencing table records exist."""
+
+# AttributeMetadata derived type OData identifiers
+# Used when casting Attributes collection to a specific derived type in Web API URLs
+ODATA_TYPE_PICKLIST_ATTRIBUTE = "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+ODATA_TYPE_BOOLEAN_ATTRIBUTE = "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
+ODATA_TYPE_MULTISELECT_PICKLIST_ATTRIBUTE = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+ODATA_TYPE_STRING_ATTRIBUTE = "Microsoft.Dynamics.CRM.StringAttributeMetadata"
+ODATA_TYPE_INTEGER_ATTRIBUTE = "Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
+ODATA_TYPE_DECIMAL_ATTRIBUTE = "Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
+ODATA_TYPE_DOUBLE_ATTRIBUTE = "Microsoft.Dynamics.CRM.DoubleAttributeMetadata"
+ODATA_TYPE_MONEY_ATTRIBUTE = "Microsoft.Dynamics.CRM.MoneyAttributeMetadata"
+ODATA_TYPE_DATETIME_ATTRIBUTE = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+ODATA_TYPE_MEMO_ATTRIBUTE = "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
+ODATA_TYPE_FILE_ATTRIBUTE = "Microsoft.Dynamics.CRM.FileAttributeMetadata"
+
+# Attribute type code values returned in the AttributeType property of attribute metadata
+ATTRIBUTE_TYPE_PICKLIST = "Picklist"
+ATTRIBUTE_TYPE_BOOLEAN = "Boolean"
+ATTRIBUTE_TYPE_STRING = "String"
+ATTRIBUTE_TYPE_INTEGER = "Integer"
+ATTRIBUTE_TYPE_DECIMAL = "Decimal"
+ATTRIBUTE_TYPE_DOUBLE = "Double"
+ATTRIBUTE_TYPE_MONEY = "Money"
+ATTRIBUTE_TYPE_DATETIME = "DateTime"
+ATTRIBUTE_TYPE_MEMO = "Memo"
+ATTRIBUTE_TYPE_LOOKUP = "Lookup"
+ATTRIBUTE_TYPE_UNIQUEIDENTIFIER = "Uniqueidentifier"

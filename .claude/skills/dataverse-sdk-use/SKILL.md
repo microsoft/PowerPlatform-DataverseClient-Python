@@ -223,6 +223,63 @@ for table in tables:
     print(table)
 ```
 
+#### Get Extended Table Metadata
+```python
+# Get table with column metadata
+info = client.tables.get("account", include_columns=True)
+for col in info["columns"]:
+    print(f"{col.logical_name} ({col.attribute_type})")
+
+# Get table with relationship metadata
+info = client.tables.get("account", include_relationships=True)
+
+# Get specific entity properties
+info = client.tables.get("account", select=["DisplayName", "Description"])
+```
+
+#### List Columns
+```python
+from PowerPlatform.Dataverse.models.metadata import ColumnMetadata
+
+columns = client.tables.get_columns("account")
+for col in columns:
+    print(f"{col.schema_name}: {col.attribute_type} (required: {col.required_level})")
+
+# Filter to specific column types (OData syntax, fully-qualified enum)
+picklists = client.tables.get_columns(
+    "account",
+    filter="AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Picklist'",
+)
+```
+
+#### Get Single Column
+```python
+col = client.tables.get_column("account", "emailaddress1")
+if col:
+    print(f"Type: {col.attribute_type}, Required: {col.required_level}")
+```
+
+#### Get Column Options (Picklist/Choice Values)
+```python
+from PowerPlatform.Dataverse.models.metadata import OptionSetInfo
+
+options = client.tables.get_column_options("account", "accountcategorycode")
+if options:
+    for opt in options.options:
+        print(f"  Value={opt.value}, Label={opt.label}")
+```
+
+#### List Table Relationships
+```python
+# All relationships
+rels = client.tables.list_relationships("account")
+
+# Specific type: "one_to_many" / "1:N", "many_to_one" / "N:1", "many_to_many" / "N:N"
+rels = client.tables.list_relationships("account", relationship_type="one_to_many")
+for rel in rels:
+    print(f"{rel['SchemaName']}: {rel.get('ReferencingEntity')}")
+```
+
 #### Delete Tables
 ```python
 client.tables.delete("new_Product")

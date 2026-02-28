@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.metadata import ColumnMetadata, OptionSetInfo
 from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
@@ -88,6 +89,261 @@ class TestTableOperations(unittest.TestCase):
 
         self.client._odata._get_table_info.assert_called_once_with("nonexistent_Table")
         self.assertIsNone(result)
+
+    def test_get_basic_unchanged(self):
+        """get() with no extra args should use _get_table_info (backward compatibility)."""
+        expected_info = {
+            "table_schema_name": "account",
+            "table_logical_name": "account",
+            "entity_set_name": "accounts",
+            "metadata_id": "meta-guid-1",
+        }
+        self.client._odata._get_table_info.return_value = expected_info
+
+        result = self.client.tables.get("account")
+
+        self.client._odata._get_table_info.assert_called_once_with("account")
+        self.client._odata._get_table_metadata.assert_not_called()
+        self.assertEqual(result, expected_info)
+
+    def test_get_with_include_columns(self):
+        """get(include_columns=True) should call _get_table_metadata and return columns."""
+        raw = {
+            "SchemaName": "Account",
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "MetadataId": "meta-guid",
+            "Attributes": [
+                {"LogicalName": "name", "SchemaName": "Name", "AttributeType": "String"},
+            ],
+        }
+        self.client._odata._get_table_metadata.return_value = raw
+
+        result = self.client.tables.get("account", include_columns=True)
+
+        self.client._odata._get_table_metadata.assert_called_once_with(
+            "account",
+            select=None,
+            include_attributes=True,
+            include_one_to_many=False,
+            include_many_to_one=False,
+            include_many_to_many=False,
+        )
+        self.assertIn("columns", result)
+        self.assertEqual(len(result["columns"]), 1)
+        self.assertIsInstance(result["columns"][0], ColumnMetadata)
+        self.assertEqual(result["columns"][0].logical_name, "name")
+        self.assertEqual(result["columns"][0].attribute_type, "String")
+
+    def test_get_with_include_relationships(self):
+        """get(include_relationships=True) should return relationship arrays."""
+        raw = {
+            "SchemaName": "Account",
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "MetadataId": "meta-guid",
+            "OneToManyRelationships": [{"SchemaName": "account_tasks", "ReferencingEntity": "task"}],
+            "ManyToOneRelationships": [],
+            "ManyToManyRelationships": [],
+        }
+        self.client._odata._get_table_metadata.return_value = raw
+
+        result = self.client.tables.get("account", include_relationships=True)
+
+        self.client._odata._get_table_metadata.assert_called_once_with(
+            "account",
+            select=None,
+            include_attributes=False,
+            include_one_to_many=True,
+            include_many_to_one=True,
+            include_many_to_many=True,
+        )
+        self.assertIn("one_to_many_relationships", result)
+        self.assertEqual(len(result["one_to_many_relationships"]), 1)
+        self.assertEqual(result["one_to_many_relationships"][0]["SchemaName"], "account_tasks")
+        self.assertIn("many_to_one_relationships", result)
+        self.assertIn("many_to_many_relationships", result)
+
+    def test_get_with_select(self):
+        """get(select=[...]) should pass select and include extra properties in result."""
+        raw = {
+            "SchemaName": "Account",
+            "LogicalName": "account",
+            "EntitySetName": "accounts",
+            "MetadataId": "meta-guid",
+            "DisplayName": {"UserLocalizedLabel": {"Label": "Account"}},
+            "Description": {"UserLocalizedLabel": {"Label": "Business account"}},
+        }
+        self.client._odata._get_table_metadata.return_value = raw
+
+        result = self.client.tables.get("account", select=["DisplayName", "Description"])
+
+        self.client._odata._get_table_metadata.assert_called_once_with(
+            "account",
+            select=["DisplayName", "Description"],
+            include_attributes=False,
+            include_one_to_many=False,
+            include_many_to_one=False,
+            include_many_to_many=False,
+        )
+        self.assertIn("DisplayName", result)
+        self.assertIn("Description", result)
+
+    def test_get_extended_returns_none(self):
+        """get(include_columns=True) should return None when table not found."""
+        self.client._odata._get_table_metadata.return_value = None
+
+        result = self.client.tables.get("nonexistent", include_columns=True)
+
+        self.assertIsNone(result)
+
+    def test_get_columns(self):
+        """get_columns() should return list of ColumnMetadata."""
+        raw_list = [
+            {"LogicalName": "name", "SchemaName": "Name", "AttributeType": "String"},
+            {"LogicalName": "emailaddress1", "SchemaName": "EMailAddress1", "AttributeType": "String"},
+        ]
+        self.client._odata._get_table_columns.return_value = raw_list
+
+        result = self.client.tables.get_columns("account")
+
+        self.client._odata._get_table_columns.assert_called_once_with(
+            "account",
+            select=None,
+            filter=None,
+        )
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], ColumnMetadata)
+        self.assertIsInstance(result[1], ColumnMetadata)
+        self.assertEqual(result[0].logical_name, "name")
+        self.assertEqual(result[1].logical_name, "emailaddress1")
+
+    def test_get_columns_with_filter(self):
+        """get_columns(filter=...) should pass filter to _get_table_columns."""
+        filter_expr = "AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Picklist'"
+        self.client._odata._get_table_columns.return_value = []
+
+        self.client.tables.get_columns("account", filter=filter_expr)
+
+        self.client._odata._get_table_columns.assert_called_once_with(
+            "account",
+            select=None,
+            filter=filter_expr,
+        )
+
+    def test_get_column_found(self):
+        """get_column() should return ColumnMetadata when column exists."""
+        raw = {"LogicalName": "emailaddress1", "SchemaName": "EMailAddress1", "AttributeType": "String"}
+        self.client._odata._get_table_column.return_value = raw
+
+        result = self.client.tables.get_column("account", "emailaddress1")
+
+        self.client._odata._get_table_column.assert_called_once_with(
+            "account",
+            "emailaddress1",
+            select=None,
+        )
+        self.assertIsInstance(result, ColumnMetadata)
+        self.assertEqual(result.logical_name, "emailaddress1")
+
+    def test_get_column_not_found(self):
+        """get_column() should return None when column not found."""
+        self.client._odata._get_table_column.return_value = None
+
+        result = self.client.tables.get_column("account", "nonexistent_col")
+
+        self.assertIsNone(result)
+
+    def test_get_column_options_picklist(self):
+        """get_column_options() should return OptionSetInfo for picklist column."""
+        raw_optionset = {
+            "Name": "account_accountcategorycode",
+            "OptionSetType": "Picklist",
+            "Options": [
+                {"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Preferred Customer"}}},
+                {"Value": 2, "Label": {"UserLocalizedLabel": {"Label": "Standard"}}},
+            ],
+        }
+        self.client._odata._get_column_optionset.return_value = raw_optionset
+
+        result = self.client.tables.get_column_options("account", "accountcategorycode")
+
+        self.client._odata._get_column_optionset.assert_called_once_with("account", "accountcategorycode")
+        self.assertIsInstance(result, OptionSetInfo)
+        self.assertEqual(len(result.options), 2)
+        self.assertEqual(result.options[0].value, 1)
+        self.assertEqual(result.options[0].label, "Preferred Customer")
+
+    def test_get_column_options_not_picklist(self):
+        """get_column_options() should return None for non-choice column."""
+        self.client._odata._get_column_optionset.return_value = None
+
+        result = self.client.tables.get_column_options("account", "name")
+
+        self.assertIsNone(result)
+
+    def test_list_relationships_all(self):
+        """list_relationships() with no type should return all relationship types."""
+        expected = [
+            {"SchemaName": "account_tasks", "_relationship_type": "OneToMany"},
+            {"SchemaName": "account_primarycontact", "_relationship_type": "ManyToOne"},
+        ]
+        self.client._odata._list_table_relationships.return_value = expected
+
+        result = self.client.tables.list_relationships("account")
+
+        self.client._odata._list_table_relationships.assert_called_once_with(
+            "account",
+            relationship_type=None,
+            select=None,
+        )
+        self.assertEqual(result, expected)
+
+    def test_list_relationships_filtered(self):
+        """list_relationships(relationship_type=...) should pass type filter."""
+        expected = [{"SchemaName": "account_tasks", "_relationship_type": "OneToMany"}]
+        self.client._odata._list_table_relationships.return_value = expected
+
+        result = self.client.tables.list_relationships("account", relationship_type="one_to_many")
+
+        self.client._odata._list_table_relationships.assert_called_once_with(
+            "account",
+            relationship_type="one_to_many",
+            select=None,
+        )
+        self.assertEqual(result, expected)
+
+    def test_get_select_bare_string_raises(self):
+        """get() with select as bare string should raise TypeError."""
+        self.client._odata._get_table_metadata.side_effect = TypeError(
+            "select must be a list of property names, not a bare string"
+        )
+        with self.assertRaises(TypeError):
+            self.client.tables.get("account", select="DisplayName")
+
+    def test_get_columns_select_bare_string_raises(self):
+        """get_columns() with select as bare string should raise TypeError."""
+        self.client._odata._get_table_columns.side_effect = TypeError(
+            "select must be a list of property names, not a bare string"
+        )
+        with self.assertRaises(TypeError):
+            self.client.tables.get_columns("account", select="LogicalName")
+
+    def test_get_column_select_bare_string_raises(self):
+        """get_column() with select as bare string should raise TypeError."""
+        self.client._odata._get_table_column.side_effect = TypeError(
+            "select must be a list of property names, not a bare string"
+        )
+        with self.assertRaises(TypeError):
+            self.client.tables.get_column("account", "name", select="LogicalName")
+
+    def test_list_relationships_select_bare_string_raises(self):
+        """list_relationships() should raise TypeError on bare string select."""
+        self.client._odata._list_table_relationships.side_effect = TypeError(
+            "select must be a list of property names, not a bare string"
+        )
+        with self.assertRaises(TypeError):
+            self.client.tables.list_relationships("account", select="SchemaName")
 
     # ------------------------------------------------------------------- list
 
