@@ -360,12 +360,14 @@ class TableOperations:
         table: str,
         column: str,
     ) -> Optional[OptionSetInfo]:
-        """Get option set values for a Picklist, MultiSelect, or Boolean column.
+        """Get option set values for a Picklist, MultiSelect, Boolean, Status,
+        or State column.
 
         This method retrieves the available choices for a column that uses an
         option set. For Picklist and MultiSelect columns, the options are the
         defined choice values. For Boolean columns, the result contains the
-        True and False option labels.
+        True and False option labels. For Status and State columns, the options
+        are the defined status/state values.
 
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
@@ -374,7 +376,8 @@ class TableOperations:
         :type column: :class:`str`
 
         :return: Option set information with available choices, or ``None`` if
-            the column is not a choice/boolean type.
+            the column is not a Picklist, MultiSelect, Boolean, Status, or
+            State type.
         :rtype: :class:`~PowerPlatform.Dataverse.models.metadata.OptionSetInfo`
             or None
 
