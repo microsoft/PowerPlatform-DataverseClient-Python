@@ -208,6 +208,11 @@ class TableOperations:
             # Extended with relationships
             info = client.tables.get("account", include_relationships=True)
         """
+        # Normalize empty list to None so callers passing select=[] get the
+        # lightweight path instead of an expensive full-entity-definition fetch.
+        if select is not None and len(select) == 0:
+            select = None
+
         # When no extra parameters are passed, use the original lightweight lookup.
         # This ensures backward compatibility -- existing callers get identical behavior.
         if not include_columns and not include_relationships and select is None:

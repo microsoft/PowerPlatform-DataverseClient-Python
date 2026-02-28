@@ -1519,10 +1519,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         params: Dict[str, str] = {}
         if select is not None and isinstance(select, str):
             raise TypeError("select must be a list of property names, not a bare string")
+        base_fields = {"MetadataId", "LogicalName", "SchemaName", "EntitySetName"}
         if select:
-            base_fields = {"MetadataId", "LogicalName", "SchemaName", "EntitySetName"}
             merged = list(base_fields | set(select))
-            params["$select"] = ",".join(merged)
+        else:
+            merged = list(base_fields)
+        params["$select"] = ",".join(merged)
         expand_parts: List[str] = []
         if include_attributes:
             expand_parts.append("Attributes")
