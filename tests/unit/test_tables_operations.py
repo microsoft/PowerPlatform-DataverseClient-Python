@@ -130,6 +130,7 @@ class TestTableOperations(unittest.TestCase):
             include_many_to_many=False,
         )
         self.assertIn("columns", result)
+        self.assertNotIn("columns_created", result)
         self.assertEqual(len(result["columns"]), 1)
         self.assertIsInstance(result["columns"][0], ColumnMetadata)
         self.assertEqual(result["columns"][0].logical_name, "name")

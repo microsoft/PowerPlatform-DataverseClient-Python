@@ -233,7 +233,6 @@ class TableOperations:
             "table_logical_name": raw.get("LogicalName"),
             "entity_set_name": raw.get("EntitySetName"),
             "metadata_id": raw.get("MetadataId"),
-            "columns_created": [],
         }
 
         # Include any extra selected entity properties
@@ -248,12 +247,13 @@ class TableOperations:
 
         # Include expanded relationship collections as raw dicts
         if include_relationships:
-            if "OneToManyRelationships" in raw:
-                result["one_to_many_relationships"] = raw["OneToManyRelationships"]
-            if "ManyToOneRelationships" in raw:
-                result["many_to_one_relationships"] = raw["ManyToOneRelationships"]
-            if "ManyToManyRelationships" in raw:
-                result["many_to_many_relationships"] = raw["ManyToManyRelationships"]
+            for raw_key, result_key in (
+                ("OneToManyRelationships", "one_to_many_relationships"),
+                ("ManyToOneRelationships", "many_to_one_relationships"),
+                ("ManyToManyRelationships", "many_to_many_relationships"),
+            ):
+                if raw_key in raw:
+                    result[result_key] = raw[raw_key]
 
         return result
 
