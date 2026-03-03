@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from ..models.metadata import (
+from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
     CascadeConfiguration,
+    RelationshipInfo,
 )
+from ..models.labels import Label, LocalizedLabel
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
@@ -304,22 +304,24 @@ class TableOperations:
         relationship: OneToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a one-to-many relationship between tables.
 
         This operation creates both the relationship and the lookup attribute
         on the referencing table.
 
         :param lookup: Metadata defining the lookup attribute.
-        :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
+        :type lookup: ~PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata
         :param relationship: Metadata defining the relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -327,7 +329,7 @@ class TableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     LookupAttributeMetadata,
                     OneToManyRelationshipMetadata,
                     Label,
@@ -358,13 +360,20 @@ class TableOperations:
                 )
 
                 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-                print(f"Created lookup field: {result['lookup_schema_name']}")
+                print(f"Created lookup field: {result.lookup_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_one_to_many_relationship(
+            raw = od._create_one_to_many_relationship(
                 lookup,
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_one_to_many(
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                lookup_schema_name=raw["lookup_schema_name"],
+                referenced_entity=raw["referenced_entity"],
+                referencing_entity=raw["referencing_entity"],
             )
 
     # ----------------------------------------------------- create_many_to_many
@@ -374,20 +383,21 @@ class TableOperations:
         relationship: ManyToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a many-to-many relationship between tables.
 
         This operation creates a many-to-many relationship and an intersect
         table to manage the relationship.
 
         :param relationship: Metadata defining the many-to-many relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``,
-            ``relationship_schema_name``, and entity names.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``entity1_logical_name``, and ``entity2_logical_name``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -395,7 +405,7 @@ class TableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     ManyToManyRelationshipMetadata,
                 )
 
@@ -406,12 +416,18 @@ class TableOperations:
                 )
 
                 result = client.tables.create_many_to_many_relationship(relationship)
-                print(f"Created: {result['relationship_schema_name']}")
+                print(f"Created: {result.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_many_to_many_relationship(
+            raw = od._create_many_to_many_relationship(
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_many_to_many(
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                entity1_logical_name=raw["entity1_logical_name"],
+                entity2_logical_name=raw["entity2_logical_name"],
             )
 
     # ------------------------------------------------------- delete_relationship
@@ -440,14 +456,15 @@ class TableOperations:
 
     # -------------------------------------------------------- get_relationship
 
-    def get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:
+    def get_relationship(self, schema_name: str) -> Optional[RelationshipInfo]:
         """Retrieve relationship metadata by schema name.
 
         :param schema_name: The schema name of the relationship.
         :type schema_name: :class:`str`
 
-        :return: Relationship metadata dictionary, or None if not found.
-        :rtype: :class:`dict` or None
+        :return: Relationship metadata, or ``None`` if not found.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
+            or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -456,10 +473,13 @@ class TableOperations:
 
             rel = client.tables.get_relationship("new_Department_Employee")
             if rel:
-                print(f"Found: {rel['SchemaName']}")
+                print(f"Found: {rel.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._get_relationship(schema_name)
+            raw = od._get_relationship(schema_name)
+            if raw is None:
+                return None
+            return RelationshipInfo.from_api_response(raw)
 
     # ------------------------------------------------------- create_lookup_field
 
@@ -475,7 +495,7 @@ class TableOperations:
         cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
         solution: Optional[str] = None,
         language_code: int = 1033,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a simple lookup field relationship.
 
         This is a convenience method that wraps :meth:`create_one_to_many_relationship`
@@ -507,9 +527,11 @@ class TableOperations:
             (English).
         :type language_code: :class:`int`
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
