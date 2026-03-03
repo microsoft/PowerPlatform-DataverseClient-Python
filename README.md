@@ -317,13 +317,12 @@ client.tables.delete("new_Product")
 Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
 
 ```python
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
 )
+from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 # Create a one-to-many relationship: Department (1) -> Employee (N)
 # This adds a "Department" lookup field to the Employee table

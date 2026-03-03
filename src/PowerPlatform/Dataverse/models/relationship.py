@@ -1,121 +1,23 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""
-Metadata entity types for Microsoft Dataverse.
-
-These classes represent the metadata entity types used in the Dataverse Web API
-for defining and managing table definitions, attributes, and relationships.
-
-See: https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/reference/metadataentitytypes
-"""
+"""Relationship models for Dataverse (input and output)."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from ..common.constants import (
-    ODATA_TYPE_LOCALIZED_LABEL,
-    ODATA_TYPE_LABEL,
-    ODATA_TYPE_LOOKUP_ATTRIBUTE,
-    ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
-    ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
     CASCADE_BEHAVIOR_CASCADE,
     CASCADE_BEHAVIOR_NO_CASCADE,
     CASCADE_BEHAVIOR_REMOVE_LINK,
     CASCADE_BEHAVIOR_RESTRICT,
+    ODATA_TYPE_LOOKUP_ATTRIBUTE,
+    ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP,
+    ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP,
 )
-
-
-@dataclass
-class LocalizedLabel:
-    """
-    Represents a localized label with a language code.
-
-    :param label: The text of the label.
-    :type label: str
-    :param language_code: The language code (LCID), e.g., 1033 for English.
-    :type language_code: int
-    :param additional_properties: Optional dict of additional properties to include
-        in the Web API payload. These are merged last and can override default values.
-    :type additional_properties: Optional[Dict[str, Any]]
-    """
-
-    label: str
-    language_code: int
-    additional_properties: Optional[Dict[str, Any]] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert to Web API JSON format.
-
-        Example::
-
-            >>> label = LocalizedLabel(label="Account", language_code=1033)
-            >>> label.to_dict()
-            {
-                '@odata.type': 'Microsoft.Dynamics.CRM.LocalizedLabel',
-                'Label': 'Account',
-                'LanguageCode': 1033
-            }
-        """
-        result = {
-            "@odata.type": ODATA_TYPE_LOCALIZED_LABEL,
-            "Label": self.label,
-            "LanguageCode": self.language_code,
-        }
-        if self.additional_properties:
-            result.update(self.additional_properties)
-        return result
-
-
-@dataclass
-class Label:
-    """
-    Represents a label that can have multiple localized versions.
-
-    :param localized_labels: List of LocalizedLabel instances.
-    :type localized_labels: List[LocalizedLabel]
-    :param user_localized_label: Optional user-specific localized label.
-    :type user_localized_label: Optional[LocalizedLabel]
-    :param additional_properties: Optional dict of additional properties to include
-        in the Web API payload. These are merged last and can override default values.
-    :type additional_properties: Optional[Dict[str, Any]]
-    """
-
-    localized_labels: List[LocalizedLabel]
-    user_localized_label: Optional[LocalizedLabel] = None
-    additional_properties: Optional[Dict[str, Any]] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert to Web API JSON format.
-
-        Example::
-
-            >>> label = Label(localized_labels=[LocalizedLabel("Account", 1033)])
-            >>> label.to_dict()
-            {
-                '@odata.type': 'Microsoft.Dynamics.CRM.Label',
-                'LocalizedLabels': [
-                    {'@odata.type': '...', 'Label': 'Account', 'LanguageCode': 1033}
-                ],
-                'UserLocalizedLabel': {'@odata.type': '...', 'Label': 'Account', ...}
-            }
-        """
-        result = {
-            "@odata.type": ODATA_TYPE_LABEL,
-            "LocalizedLabels": [ll.to_dict() for ll in self.localized_labels],
-        }
-        # Use explicit user_localized_label, or default to first localized label
-        if self.user_localized_label:
-            result["UserLocalizedLabel"] = self.user_localized_label.to_dict()
-        elif self.localized_labels:
-            result["UserLocalizedLabel"] = self.localized_labels[0].to_dict()
-        if self.additional_properties:
-            result.update(self.additional_properties)
-        return result
+from .labels import Label
 
 
 @dataclass
@@ -386,9 +288,157 @@ class ManyToManyRelationshipMetadata:
         return result
 
 
+@dataclass
+class RelationshipInfo:
+    """Typed return model for relationship metadata.
+
+    Returned by :meth:`~PowerPlatform.Dataverse.operations.tables.TableOperations.create_one_to_many_relationship`,
+    :meth:`~PowerPlatform.Dataverse.operations.tables.TableOperations.create_many_to_many_relationship`,
+    :meth:`~PowerPlatform.Dataverse.operations.tables.TableOperations.get_relationship`, and
+    :meth:`~PowerPlatform.Dataverse.operations.tables.TableOperations.create_lookup_field`.
+
+    :param relationship_id: Relationship metadata GUID.
+    :type relationship_id: :class:`str` or None
+    :param relationship_schema_name: Relationship schema name.
+    :type relationship_schema_name: :class:`str`
+    :param relationship_type: Either ``"one_to_many"`` or ``"many_to_many"``.
+    :type relationship_type: :class:`str`
+    :param lookup_schema_name: Lookup field schema name (one-to-many only).
+    :type lookup_schema_name: :class:`str` or None
+    :param referenced_entity: Parent entity logical name (one-to-many only).
+    :type referenced_entity: :class:`str` or None
+    :param referencing_entity: Child entity logical name (one-to-many only).
+    :type referencing_entity: :class:`str` or None
+    :param entity1_logical_name: First entity logical name (many-to-many only).
+    :type entity1_logical_name: :class:`str` or None
+    :param entity2_logical_name: Second entity logical name (many-to-many only).
+    :type entity2_logical_name: :class:`str` or None
+
+    Example::
+
+        result = client.tables.create_one_to_many_relationship(lookup, relationship)
+        print(result.relationship_schema_name)
+        print(result.lookup_schema_name)
+    """
+
+    relationship_id: Optional[str] = None
+    relationship_schema_name: str = ""
+    relationship_type: str = ""
+
+    # One-to-many specific
+    lookup_schema_name: Optional[str] = None
+    referenced_entity: Optional[str] = None
+    referencing_entity: Optional[str] = None
+
+    # Many-to-many specific
+    entity1_logical_name: Optional[str] = None
+    entity2_logical_name: Optional[str] = None
+
+    @classmethod
+    def from_one_to_many(
+        cls,
+        *,
+        relationship_id: Optional[str],
+        relationship_schema_name: str,
+        lookup_schema_name: str,
+        referenced_entity: str,
+        referencing_entity: str,
+    ) -> RelationshipInfo:
+        """Create from a one-to-many relationship result.
+
+        :param relationship_id: Relationship metadata GUID.
+        :type relationship_id: :class:`str` or None
+        :param relationship_schema_name: Relationship schema name.
+        :type relationship_schema_name: :class:`str`
+        :param lookup_schema_name: Lookup field schema name.
+        :type lookup_schema_name: :class:`str`
+        :param referenced_entity: Parent entity logical name.
+        :type referenced_entity: :class:`str`
+        :param referencing_entity: Child entity logical name.
+        :type referencing_entity: :class:`str`
+        :rtype: :class:`RelationshipInfo`
+        """
+        return cls(
+            relationship_id=relationship_id,
+            relationship_schema_name=relationship_schema_name,
+            relationship_type="one_to_many",
+            lookup_schema_name=lookup_schema_name,
+            referenced_entity=referenced_entity,
+            referencing_entity=referencing_entity,
+        )
+
+    @classmethod
+    def from_many_to_many(
+        cls,
+        *,
+        relationship_id: Optional[str],
+        relationship_schema_name: str,
+        entity1_logical_name: str,
+        entity2_logical_name: str,
+    ) -> RelationshipInfo:
+        """Create from a many-to-many relationship result.
+
+        :param relationship_id: Relationship metadata GUID.
+        :type relationship_id: :class:`str` or None
+        :param relationship_schema_name: Relationship schema name.
+        :type relationship_schema_name: :class:`str`
+        :param entity1_logical_name: First entity logical name.
+        :type entity1_logical_name: :class:`str`
+        :param entity2_logical_name: Second entity logical name.
+        :type entity2_logical_name: :class:`str`
+        :rtype: :class:`RelationshipInfo`
+        """
+        return cls(
+            relationship_id=relationship_id,
+            relationship_schema_name=relationship_schema_name,
+            relationship_type="many_to_many",
+            entity1_logical_name=entity1_logical_name,
+            entity2_logical_name=entity2_logical_name,
+        )
+
+    @classmethod
+    def from_api_response(cls, response_data: Dict[str, Any]) -> RelationshipInfo:
+        """Create from a raw Dataverse Web API response.
+
+        Detects one-to-many vs many-to-many from the ``@odata.type`` field
+        in the response and maps PascalCase keys to snake_case attributes.
+        Dataverse only supports these two relationship types; an unrecognized
+        ``@odata.type`` raises :class:`ValueError`.
+
+        :param response_data: Raw relationship metadata from the Web API.
+        :type response_data: :class:`dict`
+        :rtype: :class:`RelationshipInfo`
+        :raises ValueError: If the ``@odata.type`` is not a recognized
+            relationship type.
+        """
+        odata_type = response_data.get("@odata.type", "")
+        rel_id = response_data.get("MetadataId")
+        schema_name = response_data.get("SchemaName", "")
+
+        if ODATA_TYPE_ONE_TO_MANY_RELATIONSHIP in odata_type:
+            return cls.from_one_to_many(
+                relationship_id=rel_id,
+                relationship_schema_name=schema_name,
+                referenced_entity=response_data["ReferencedEntity"],
+                referencing_entity=response_data["ReferencingEntity"],
+                lookup_schema_name=response_data.get(
+                    "ReferencingEntityNavigationPropertyName", ""
+                ),  # nav property may be absent
+            )
+
+        if ODATA_TYPE_MANY_TO_MANY_RELATIONSHIP in odata_type:
+            return cls.from_many_to_many(
+                relationship_id=rel_id,
+                relationship_schema_name=schema_name,
+                entity1_logical_name=response_data["Entity1LogicalName"],
+                entity2_logical_name=response_data["Entity2LogicalName"],
+            )
+
+        raise ValueError(f"Unrecognized relationship @odata.type: {odata_type!r}")
+
+
 __all__ = [
-    "LocalizedLabel",
-    "Label",
+    "RelationshipInfo",
     "CascadeConfiguration",
     "LookupAttributeMetadata",
     "OneToManyRelationshipMetadata",

@@ -1,92 +1,151 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Tests for metadata entity types."""
+import unittest
 
-from PowerPlatform.Dataverse.models.metadata import (
-    LocalizedLabel,
-    Label,
+from PowerPlatform.Dataverse.models.relationship import (
+    RelationshipInfo,
     CascadeConfiguration,
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
 )
+from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 
-class TestLocalizedLabel:
-    """Tests for LocalizedLabel."""
+class TestRelationshipInfoFromOneToMany(unittest.TestCase):
+    """Tests for RelationshipInfo.from_one_to_many factory."""
 
-    def test_to_dict_basic(self):
-        """Test basic serialization."""
-        label = LocalizedLabel(label="Test", language_code=1033)
-        result = label.to_dict()
-
-        assert result["@odata.type"] == "Microsoft.Dynamics.CRM.LocalizedLabel"
-        assert result["Label"] == "Test"
-        assert result["LanguageCode"] == 1033
-
-    def test_to_dict_with_additional_properties(self):
-        """Test that additional_properties are merged."""
-        label = LocalizedLabel(
-            label="Test",
-            language_code=1033,
-            additional_properties={"IsManaged": True, "MetadataId": "abc-123"},
+    def test_sets_fields(self):
+        """from_one_to_many should populate all 1:N fields."""
+        info = RelationshipInfo.from_one_to_many(
+            relationship_id="rel-guid-1",
+            relationship_schema_name="new_Dept_Emp",
+            lookup_schema_name="new_DeptId",
+            referenced_entity="new_department",
+            referencing_entity="new_employee",
         )
-        result = label.to_dict()
+        self.assertEqual(info.relationship_id, "rel-guid-1")
+        self.assertEqual(info.relationship_schema_name, "new_Dept_Emp")
+        self.assertEqual(info.lookup_schema_name, "new_DeptId")
+        self.assertEqual(info.referenced_entity, "new_department")
+        self.assertEqual(info.referencing_entity, "new_employee")
 
-        assert result["Label"] == "Test"
-        assert result["IsManaged"] is True
-        assert result["MetadataId"] == "abc-123"
-
-    def test_additional_properties_can_override(self):
-        """Test that additional_properties can override default values."""
-        label = LocalizedLabel(
-            label="Original",
-            language_code=1033,
-            additional_properties={"Label": "Overridden"},
+    def test_relationship_type(self):
+        """from_one_to_many should set relationship_type to 'one_to_many'."""
+        info = RelationshipInfo.from_one_to_many(
+            relationship_id=None,
+            relationship_schema_name="rel",
+            lookup_schema_name="lk",
+            referenced_entity="a",
+            referencing_entity="b",
         )
-        result = label.to_dict()
+        self.assertEqual(info.relationship_type, "one_to_many")
 
-        assert result["Label"] == "Overridden"
-
-
-class TestLabel:
-    """Tests for Label."""
-
-    def test_to_dict_basic(self):
-        """Test basic serialization with auto UserLocalizedLabel."""
-        label = Label(localized_labels=[LocalizedLabel(label="Test", language_code=1033)])
-        result = label.to_dict()
-
-        assert result["@odata.type"] == "Microsoft.Dynamics.CRM.Label"
-        assert len(result["LocalizedLabels"]) == 1
-        assert result["LocalizedLabels"][0]["Label"] == "Test"
-        # UserLocalizedLabel should default to first localized label
-        assert result["UserLocalizedLabel"]["Label"] == "Test"
-
-    def test_to_dict_with_explicit_user_label(self):
-        """Test that explicit user_localized_label is used."""
-        label = Label(
-            localized_labels=[
-                LocalizedLabel(label="English", language_code=1033),
-                LocalizedLabel(label="French", language_code=1036),
-            ],
-            user_localized_label=LocalizedLabel(label="French", language_code=1036),
+    def test_nn_fields_are_none(self):
+        """N:N-specific fields should be None on a 1:N instance."""
+        info = RelationshipInfo.from_one_to_many(
+            relationship_id=None,
+            relationship_schema_name="rel",
+            lookup_schema_name="lk",
+            referenced_entity="a",
+            referencing_entity="b",
         )
-        result = label.to_dict()
+        self.assertIsNone(info.entity1_logical_name)
+        self.assertIsNone(info.entity2_logical_name)
 
-        assert result["UserLocalizedLabel"]["Label"] == "French"
-        assert result["UserLocalizedLabel"]["LanguageCode"] == 1036
 
-    def test_to_dict_with_additional_properties(self):
-        """Test that additional_properties are merged."""
-        label = Label(
-            localized_labels=[LocalizedLabel(label="Test", language_code=1033)],
-            additional_properties={"CustomProperty": "value"},
+class TestRelationshipInfoFromManyToMany(unittest.TestCase):
+    """Tests for RelationshipInfo.from_many_to_many factory."""
+
+    def test_sets_fields(self):
+        """from_many_to_many should populate all N:N fields."""
+        info = RelationshipInfo.from_many_to_many(
+            relationship_id="rel-guid-2",
+            relationship_schema_name="new_emp_proj",
+            entity1_logical_name="new_employee",
+            entity2_logical_name="new_project",
         )
-        result = label.to_dict()
+        self.assertEqual(info.relationship_id, "rel-guid-2")
+        self.assertEqual(info.relationship_schema_name, "new_emp_proj")
+        self.assertEqual(info.entity1_logical_name, "new_employee")
+        self.assertEqual(info.entity2_logical_name, "new_project")
 
-        assert result["CustomProperty"] == "value"
+    def test_relationship_type(self):
+        """from_many_to_many should set relationship_type to 'many_to_many'."""
+        info = RelationshipInfo.from_many_to_many(
+            relationship_id=None,
+            relationship_schema_name="rel",
+            entity1_logical_name="a",
+            entity2_logical_name="b",
+        )
+        self.assertEqual(info.relationship_type, "many_to_many")
+
+    def test_otm_fields_are_none(self):
+        """1:N-specific fields should be None on a N:N instance."""
+        info = RelationshipInfo.from_many_to_many(
+            relationship_id=None,
+            relationship_schema_name="rel",
+            entity1_logical_name="a",
+            entity2_logical_name="b",
+        )
+        self.assertIsNone(info.lookup_schema_name)
+        self.assertIsNone(info.referenced_entity)
+        self.assertIsNone(info.referencing_entity)
+
+
+class TestRelationshipInfoFromApiResponse(unittest.TestCase):
+    """Tests for RelationshipInfo.from_api_response factory."""
+
+    def test_one_to_many_detection(self):
+        """Should detect 1:N from @odata.type and map PascalCase fields."""
+        raw = {
+            "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            "MetadataId": "rel-guid-1",
+            "SchemaName": "new_Dept_Emp",
+            "ReferencedEntity": "new_department",
+            "ReferencingEntity": "new_employee",
+            "ReferencingEntityNavigationPropertyName": "new_DeptId",
+        }
+        info = RelationshipInfo.from_api_response(raw)
+        self.assertEqual(info.relationship_type, "one_to_many")
+        self.assertEqual(info.relationship_id, "rel-guid-1")
+        self.assertEqual(info.relationship_schema_name, "new_Dept_Emp")
+        self.assertEqual(info.referenced_entity, "new_department")
+        self.assertEqual(info.referencing_entity, "new_employee")
+        self.assertEqual(info.lookup_schema_name, "new_DeptId")
+
+    def test_many_to_many_detection(self):
+        """Should detect N:N from @odata.type and map PascalCase fields."""
+        raw = {
+            "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+            "MetadataId": "rel-guid-2",
+            "SchemaName": "new_emp_proj",
+            "Entity1LogicalName": "new_employee",
+            "Entity2LogicalName": "new_project",
+        }
+        info = RelationshipInfo.from_api_response(raw)
+        self.assertEqual(info.relationship_type, "many_to_many")
+        self.assertEqual(info.relationship_id, "rel-guid-2")
+        self.assertEqual(info.relationship_schema_name, "new_emp_proj")
+        self.assertEqual(info.entity1_logical_name, "new_employee")
+        self.assertEqual(info.entity2_logical_name, "new_project")
+
+    def test_unknown_type_raises(self):
+        """Should raise ValueError for unrecognized @odata.type."""
+        raw = {"MetadataId": "guid", "SchemaName": "unknown_rel"}
+        with self.assertRaises(ValueError) as ctx:
+            RelationshipInfo.from_api_response(raw)
+        self.assertIn("Unrecognized relationship", str(ctx.exception))
+
+    def test_missing_required_fields_raises(self):
+        """Should raise KeyError when required API fields are missing."""
+        raw = {
+            "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+            "SchemaName": "minimal",
+        }
+        with self.assertRaises(KeyError):
+            RelationshipInfo.from_api_response(raw)
 
 
 class TestCascadeConfiguration:
@@ -305,3 +364,7 @@ class TestManyToManyRelationshipMetadata:
         assert result["Entity1NavigationPropertyName"] == "new_contacts"
         assert result["Entity2NavigationPropertyName"] == "new_accounts"
         assert result["IsCustomizable"]["Value"] is True
+
+
+if __name__ == "__main__":
+    unittest.main()

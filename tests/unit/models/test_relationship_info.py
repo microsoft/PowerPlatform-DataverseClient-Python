@@ -3,7 +3,7 @@
 
 import unittest
 
-from PowerPlatform.Dataverse.models.relationship_info import RelationshipInfo
+from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
 
 
 class TestRelationshipInfoFromOneToMany(unittest.TestCase):
@@ -124,24 +124,24 @@ class TestRelationshipInfoFromApiResponse(unittest.TestCase):
         self.assertEqual(info.entity1_logical_name, "new_employee")
         self.assertEqual(info.entity2_logical_name, "new_project")
 
-    def test_unknown_type_fallback(self):
-        """Should handle unknown @odata.type gracefully."""
+    def test_unknown_type_raises(self):
+        """Should raise ValueError for unknown @odata.type."""
         raw = {"MetadataId": "guid", "SchemaName": "unknown_rel"}
-        info = RelationshipInfo.from_api_response(raw)
-        self.assertEqual(info.relationship_id, "guid")
-        self.assertEqual(info.relationship_schema_name, "unknown_rel")
-        self.assertEqual(info.relationship_type, "")
+        with self.assertRaises(ValueError):
+            RelationshipInfo.from_api_response(raw)
 
-    def test_missing_fields(self):
+    def test_missing_optional_fields(self):
         """Should handle missing optional fields without error."""
         raw = {
             "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
             "SchemaName": "minimal",
+            "ReferencedEntity": "new_department",
+            "ReferencingEntity": "new_employee",
         }
         info = RelationshipInfo.from_api_response(raw)
         self.assertEqual(info.relationship_type, "one_to_many")
         self.assertIsNone(info.relationship_id)
-        self.assertIsNone(info.referenced_entity)
+        self.assertEqual(info.lookup_schema_name, "")
 
 
 if __name__ == "__main__":

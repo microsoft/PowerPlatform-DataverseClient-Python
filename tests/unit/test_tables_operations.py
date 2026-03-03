@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.models.relationship_info import RelationshipInfo
+from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
 from PowerPlatform.Dataverse.models.table_info import TableInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
