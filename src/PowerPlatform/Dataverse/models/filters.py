@@ -36,7 +36,6 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Sequence
 
-
 __all__ = [
     "FilterExpression",
     "eq",
@@ -160,7 +159,7 @@ class _FunctionFilter(FilterExpression):
 
     __slots__ = ("func_name", "column", "value")
 
-    def __init__(self, func_name: str, column: str, value: str) -> None:
+    def __init__(self, func_name: str, column: str, value: Any) -> None:
         self.func_name = func_name
         self.column = column.lower()
         self.value = value

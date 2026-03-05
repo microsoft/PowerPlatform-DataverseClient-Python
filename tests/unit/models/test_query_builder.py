@@ -191,11 +191,7 @@ class TestFilterBetween(unittest.TestCase):
         self.assertIs(qb.filter_between("revenue", 100, 500), qb)
 
     def test_filter_between_combined_with_other_filters(self):
-        qb = (
-            QueryBuilder("account")
-            .filter_eq("statecode", 0)
-            .filter_between("revenue", 100000, 500000)
-        )
+        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_between("revenue", 100000, 500000)
         self.assertEqual(
             qb.build()["filter"],
             "statecode eq 0 and (revenue ge 100000 and revenue le 500000)",
@@ -249,12 +245,7 @@ class TestWhere(unittest.TestCase):
         """Interleaved filter_*() and where() should preserve call order."""
         from PowerPlatform.Dataverse.models.filters import eq, gt
 
-        qb = (
-            QueryBuilder("account")
-            .where(eq("a", 1))
-            .filter_eq("b", 2)
-            .where(gt("c", 3))
-        )
+        qb = QueryBuilder("account").where(eq("a", 1)).filter_eq("b", 2).where(gt("c", 3))
         self.assertEqual(qb.build()["filter"], "a eq 1 and b eq 2 and c gt 3")
 
     def test_where_returns_self(self):
@@ -436,9 +427,9 @@ class TestExecute(unittest.TestCase):
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.select("name", "revenue").filter_eq("statecode", 0).order_by(
-            "revenue", descending=True
-        ).top(100).page_size(50).expand("primarycontactid")
+        qb.select("name", "revenue").filter_eq("statecode", 0).order_by("revenue", descending=True).top(100).page_size(
+            50
+        ).expand("primarycontactid")
 
         result = list(qb.execute())
 
@@ -459,9 +450,7 @@ class TestExecute(unittest.TestCase):
         mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
         mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
 
-        mock_odata._get_multiple.return_value = iter(
-            [[{"name": "A"}, {"name": "B"}], [{"name": "C"}]]
-        )
+        mock_odata._get_multiple.return_value = iter([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops

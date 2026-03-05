@@ -264,14 +264,16 @@ def _run_walkthrough(client):
     # Basic fluent query: active records sorted by amount (flat iteration)
     log_call("client.query.builder(...).select().filter_eq().order_by().execute()")
     print("Querying incomplete records ordered by amount (fluent builder)...")
-    qb_records = list(backoff(
-        lambda: client.query.builder(table_name)
-        .select("new_Title", "new_Amount", "new_Priority")
-        .filter_eq("new_Completed", False)
-        .order_by("new_Amount", descending=True)
-        .top(10)
-        .execute()
-    ))
+    qb_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount", "new_Priority")
+            .filter_eq("new_Completed", False)
+            .order_by("new_Amount", descending=True)
+            .top(10)
+            .execute()
+        )
+    )
     print(f"[OK] QueryBuilder found {len(qb_records)} incomplete records:")
     for rec in qb_records[:5]:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
@@ -279,12 +281,14 @@ def _run_walkthrough(client):
     # filter_in: records with specific priorities
     log_call("client.query.builder(...).filter_in('new_Priority', [HIGH, LOW]).execute()")
     print("Querying records with HIGH or LOW priority (filter_in)...")
-    priority_records = list(backoff(
-        lambda: client.query.builder(table_name)
-        .select("new_Title", "new_Priority")
-        .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
-        .execute()
-    ))
+    priority_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Priority")
+            .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
+            .execute()
+        )
+    )
     print(f"[OK] Found {len(priority_records)} records with HIGH or LOW priority")
     for rec in priority_records[:5]:
         print(f"  - '{rec.get('new_title')}' Priority={rec.get('new_priority')}")
@@ -292,12 +296,14 @@ def _run_walkthrough(client):
     # filter_between: amount in a range
     log_call("client.query.builder(...).filter_between('new_Amount', 500, 1500).execute()")
     print("Querying records with amount between 500 and 1500 (filter_between)...")
-    range_records = list(backoff(
-        lambda: client.query.builder(table_name)
-        .select("new_Title", "new_Amount")
-        .filter_between("new_Amount", 500, 1500)
-        .execute()
-    ))
+    range_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount")
+            .filter_between("new_Amount", 500, 1500)
+            .execute()
+        )
+    )
     print(f"[OK] Found {len(range_records)} records with amount in [500, 1500]")
     for rec in range_records:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
@@ -305,21 +311,19 @@ def _run_walkthrough(client):
     # Composable expression tree with where()
     log_call("client.query.builder(...).where((eq(...) | eq(...)) & gt(...)).execute()")
     print("Querying with composable expression tree (where)...")
-    expr_records = list(backoff(
-        lambda: client.query.builder(table_name)
-        .select("new_Title", "new_Amount", "new_Quantity")
-        .where(
-            (eq("new_Completed", False) & gt("new_Amount", 100))
+    expr_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount", "new_Quantity")
+            .where((eq("new_Completed", False) & gt("new_Amount", 100)))
+            .order_by("new_Amount", descending=True)
+            .top(5)
+            .execute()
         )
-        .order_by("new_Amount", descending=True)
-        .top(5)
-        .execute()
-    ))
+    )
     print(f"[OK] Expression tree query found {len(expr_records)} records:")
     for rec in expr_records:
-        print(
-            f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')} Qty={rec.get('new_quantity')}"
-        )
+        print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')} Qty={rec.get('new_quantity')}")
 
     # Combined: fluent filters + expression tree + paging (by_page=True)
     log_call("client.query.builder(...).filter_eq().where(between()).page_size().execute(by_page=True)")
@@ -339,9 +343,7 @@ def _run_walkthrough(client):
         combined_record_count += len(page)
         titles = [r.get("new_title", "?") for r in page]
         print(f"  Page {combined_page_count}: {len(page)} records - {titles}")
-    print(
-        f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)"
-    )
+    print(f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)")
 
     # ============================================================================
     # 8. SQL QUERY
