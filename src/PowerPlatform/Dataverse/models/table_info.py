@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, Iterator, KeysView, List, Optional
 
-__all__ = ["TableInfo", "ColumnInfo"]
+__all__ = ["TableInfo", "ColumnInfo", "AlternateKeyInfo"]
 
 
 @dataclass
@@ -222,3 +222,38 @@ class TableInfo:
     def to_dict(self) -> Dict[str, Any]:
         """Return a dict with legacy keys for backward compatibility."""
         return {k: getattr(self, attr) for k, attr in self._LEGACY_KEY_MAP.items()}
+
+
+@dataclass
+class AlternateKeyInfo:
+    """Alternate key metadata for a Dataverse table.
+
+    :param metadata_id: Key metadata GUID.
+    :type metadata_id: :class:`str`
+    :param schema_name: Key schema name.
+    :type schema_name: :class:`str`
+    :param key_attributes: List of column logical names that compose the key.
+    :type key_attributes: :class:`list` of :class:`str`
+    :param status: Index creation status (``"Active"``, ``"Pending"``, ``"InProgress"``, ``"Failed"``).
+    :type status: :class:`str`
+    """
+
+    metadata_id: str = ""
+    schema_name: str = ""
+    key_attributes: List[str] = field(default_factory=list)
+    status: str = ""
+
+    @classmethod
+    def from_api_response(cls, response_data: Dict[str, Any]) -> AlternateKeyInfo:
+        """Create from raw EntityKeyMetadata API response.
+
+        :param response_data: Raw key metadata dictionary from the Web API.
+        :type response_data: :class:`dict`
+        :rtype: :class:`AlternateKeyInfo`
+        """
+        return cls(
+            metadata_id=response_data.get("MetadataId", ""),
+            schema_name=response_data.get("SchemaName", ""),
+            key_attributes=response_data.get("KeyAttributes", []),
+            status=response_data.get("EntityKeyIndexStatus", ""),
+        )
