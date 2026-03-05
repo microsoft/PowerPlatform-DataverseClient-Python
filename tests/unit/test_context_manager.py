@@ -224,6 +224,11 @@ class TestClosedStateGuard(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.client.flush_cache("picklist")
 
+    def test_enter_raises_after_close(self):
+        """__enter__ should raise RuntimeError on a closed client."""
+        with self.assertRaises(RuntimeError):
+            self.client.__enter__()
+
     def test_error_message_is_clear(self):
         """The RuntimeError message should clearly state the client is closed."""
         with self.assertRaises(RuntimeError) as ctx:

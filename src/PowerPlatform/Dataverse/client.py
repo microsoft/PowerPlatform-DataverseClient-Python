@@ -145,7 +145,10 @@ class DataverseClient:
 
         :return: The client instance.
         :rtype: DataverseClient
+
+        :raises RuntimeError: If the client has been closed.
         """
+        self._check_closed()
         if self._session is None:
             self._session = requests.Session()
         return self
