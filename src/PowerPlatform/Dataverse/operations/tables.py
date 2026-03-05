@@ -7,14 +7,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from ..models.metadata import (
+from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
     CascadeConfiguration,
+    RelationshipInfo,
 )
+from ..models.table_info import AlternateKeyInfo
+from ..models.labels import Label, LocalizedLabel
+from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
@@ -72,7 +74,7 @@ class TableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> TableInfo:
         """Create a custom table with the specified columns.
 
         :param table: Schema name of the table with customization prefix
@@ -94,10 +96,11 @@ class TableOperations:
             defaults to ``"{prefix}_Name"``.
         :type primary_column: :class:`str` or None
 
-        :return: Dictionary containing table metadata including
-            ``table_schema_name``, ``entity_set_name``, ``table_logical_name``,
-            ``metadata_id``, and ``columns_created``.
-        :rtype: :class:`dict`
+        :return: Table metadata with ``schema_name``, ``entity_set_name``,
+            ``logical_name``, ``metadata_id``, and ``columns_created``.
+            Supports dict-like access with legacy keys for backward
+            compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
@@ -124,12 +127,13 @@ class TableOperations:
                 print(f"Created: {result['table_schema_name']}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_table(
+            raw = od._create_table(
                 table,
                 columns,
                 solution,
                 primary_column,
             )
+            return TableInfo.from_dict(raw)
 
     # ----------------------------------------------------------------- delete
 
@@ -155,17 +159,18 @@ class TableOperations:
 
     # -------------------------------------------------------------------- get
 
-    def get(self, table: str) -> Optional[Dict[str, Any]]:
+    def get(self, table: str) -> Optional[TableInfo]:
         """Get basic metadata for a table if it exists.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
             or ``"account"``).
         :type table: :class:`str`
 
-        :return: Dictionary containing ``table_schema_name``,
-            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
-            Returns None if the table is not found.
-        :rtype: :class:`dict` or None
+        :return: Table metadata, or ``None`` if the table is not found.
+            Supports dict-like access with legacy keys for backward
+            compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
+            or None
 
         Example::
 
@@ -175,7 +180,10 @@ class TableOperations:
                 print(f"Entity set: {info['entity_set_name']}")
         """
         with self._client._scoped_odata() as od:
-            return od._get_table_info(table)
+            raw = od._get_table_info(table)
+            if raw is None:
+                return None
+            return TableInfo.from_dict(raw)
 
     # ------------------------------------------------------------------- list
 
@@ -304,22 +312,24 @@ class TableOperations:
         relationship: OneToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a one-to-many relationship between tables.
 
         This operation creates both the relationship and the lookup attribute
         on the referencing table.
 
         :param lookup: Metadata defining the lookup attribute.
-        :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
+        :type lookup: ~PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata
         :param relationship: Metadata defining the relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -327,7 +337,7 @@ class TableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     LookupAttributeMetadata,
                     OneToManyRelationshipMetadata,
                     Label,
@@ -358,13 +368,20 @@ class TableOperations:
                 )
 
                 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-                print(f"Created lookup field: {result['lookup_schema_name']}")
+                print(f"Created lookup field: {result.lookup_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_one_to_many_relationship(
+            raw = od._create_one_to_many_relationship(
                 lookup,
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_one_to_many(
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                lookup_schema_name=raw["lookup_schema_name"],
+                referenced_entity=raw["referenced_entity"],
+                referencing_entity=raw["referencing_entity"],
             )
 
     # ----------------------------------------------------- create_many_to_many
@@ -374,20 +391,21 @@ class TableOperations:
         relationship: ManyToManyRelationshipMetadata,
         *,
         solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a many-to-many relationship between tables.
 
         This operation creates a many-to-many relationship and an intersect
         table to manage the relationship.
 
         :param relationship: Metadata defining the many-to-many relationship.
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata
         :param solution: Optional solution unique name to add relationship to.
         :type solution: :class:`str` or None
 
-        :return: Dictionary with ``relationship_id``,
-            ``relationship_schema_name``, and entity names.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``entity1_logical_name``, and ``entity2_logical_name``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -395,7 +413,7 @@ class TableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models.metadata import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     ManyToManyRelationshipMetadata,
                 )
 
@@ -406,12 +424,18 @@ class TableOperations:
                 )
 
                 result = client.tables.create_many_to_many_relationship(relationship)
-                print(f"Created: {result['relationship_schema_name']}")
+                print(f"Created: {result.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_many_to_many_relationship(
+            raw = od._create_many_to_many_relationship(
                 relationship,
                 solution,
+            )
+            return RelationshipInfo.from_many_to_many(
+                relationship_id=raw["relationship_id"],
+                relationship_schema_name=raw["relationship_schema_name"],
+                entity1_logical_name=raw["entity1_logical_name"],
+                entity2_logical_name=raw["entity2_logical_name"],
             )
 
     # ------------------------------------------------------- delete_relationship
@@ -440,14 +464,15 @@ class TableOperations:
 
     # -------------------------------------------------------- get_relationship
 
-    def get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:
+    def get_relationship(self, schema_name: str) -> Optional[RelationshipInfo]:
         """Retrieve relationship metadata by schema name.
 
         :param schema_name: The schema name of the relationship.
         :type schema_name: :class:`str`
 
-        :return: Relationship metadata dictionary, or None if not found.
-        :rtype: :class:`dict` or None
+        :return: Relationship metadata, or ``None`` if not found.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
+            or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -456,10 +481,13 @@ class TableOperations:
 
             rel = client.tables.get_relationship("new_Department_Employee")
             if rel:
-                print(f"Found: {rel['SchemaName']}")
+                print(f"Found: {rel.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            return od._get_relationship(schema_name)
+            raw = od._get_relationship(schema_name)
+            if raw is None:
+                return None
+            return RelationshipInfo.from_api_response(raw)
 
     # ------------------------------------------------------- create_lookup_field
 
@@ -475,7 +503,7 @@ class TableOperations:
         cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
         solution: Optional[str] = None,
         language_code: int = 1033,
-    ) -> Dict[str, Any]:
+    ) -> RelationshipInfo:
         """Create a simple lookup field relationship.
 
         This is a convenience method that wraps :meth:`create_one_to_many_relationship`
@@ -507,9 +535,11 @@ class TableOperations:
             (English).
         :type language_code: :class:`int`
 
-        :return: Dictionary with ``relationship_id``, ``lookup_schema_name``,
-            and related metadata.
-        :rtype: :class:`dict`
+        :return: Relationship metadata with ``relationship_id``,
+            ``relationship_schema_name``, ``relationship_type``,
+            ``lookup_schema_name``, ``referenced_entity``, and
+            ``referencing_entity``.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.relationship.RelationshipInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -556,3 +586,123 @@ class TableOperations:
         )
 
         return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
+
+    # ------------------------------------------------- create_alternate_key
+
+    def create_alternate_key(
+        self,
+        table: str,
+        key_name: str,
+        columns: List[str],
+        *,
+        display_name: Optional[str] = None,
+        language_code: int = 1033,
+    ) -> AlternateKeyInfo:
+        """Create an alternate key on a table.
+
+        Alternate keys allow upsert operations to identify records by one or
+        more columns instead of the primary GUID. After creation the key is
+        queued for index building; its :attr:`~AlternateKeyInfo.status` will
+        transition from ``"Pending"`` to ``"Active"`` once the index is ready.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_name: Schema name for the new alternate key
+            (e.g. ``"new_product_code_key"``).
+        :type key_name: :class:`str`
+        :param columns: List of column logical names that compose the key
+            (e.g. ``["new_productcode"]``).
+        :type columns: :class:`list` of :class:`str`
+        :param display_name: Display name for the key. Defaults to
+            ``key_name`` if not provided.
+        :type display_name: :class:`str` or None
+        :param language_code: Language code for labels. Defaults to 1033
+            (English).
+        :type language_code: :class:`int`
+
+        :return: Metadata for the newly created alternate key.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            Create a single-column alternate key for upsert::
+
+                key = client.tables.create_alternate_key(
+                    "new_Product",
+                    "new_product_code_key",
+                    ["new_productcode"],
+                    display_name="Product Code",
+                )
+                print(f"Key ID: {key.metadata_id}")
+                print(f"Columns: {key.key_attributes}")
+        """
+        label = Label(localized_labels=[LocalizedLabel(label=display_name or key_name, language_code=language_code)])
+        with self._client._scoped_odata() as od:
+            raw = od._create_alternate_key(table, key_name, columns, label)
+            return AlternateKeyInfo(
+                metadata_id=raw["metadata_id"],
+                schema_name=raw["schema_name"],
+                key_attributes=raw["key_attributes"],
+                status="Pending",
+            )
+
+    # --------------------------------------------------- get_alternate_keys
+
+    def get_alternate_keys(self, table: str) -> List[AlternateKeyInfo]:
+        """List all alternate keys defined on a table.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+
+        :return: List of alternate key metadata objects. May be empty if no
+            alternate keys are defined.
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            List alternate keys and print their status::
+
+                keys = client.tables.get_alternate_keys("new_Product")
+                for key in keys:
+                    print(f"{key.schema_name}: {key.status}")
+        """
+        with self._client._scoped_odata() as od:
+            raw_list = od._get_alternate_keys(table)
+            return [AlternateKeyInfo.from_api_response(item) for item in raw_list]
+
+    # ------------------------------------------------ delete_alternate_key
+
+    def delete_alternate_key(self, table: str, key_id: str) -> None:
+        """Delete an alternate key by its metadata ID.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_id: Metadata GUID of the alternate key to delete.
+        :type key_id: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        .. warning::
+            Deleting an alternate key that is in use by upsert operations will
+            cause those operations to fail. This operation is irreversible.
+
+        Example::
+
+            client.tables.delete_alternate_key(
+                "new_Product",
+                "12345678-1234-1234-1234-123456789abc",
+            )
+        """
+        with self._client._scoped_odata() as od:
+            od._delete_alternate_key(table, key_id)

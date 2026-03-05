@@ -114,6 +114,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | Concept | Description |
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
+| **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
 | **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), and `client.files` (file uploads) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
@@ -132,17 +133,18 @@ from PowerPlatform.Dataverse.client import DataverseClient
 
 # Connect to Dataverse
 credential = InteractiveBrowserCredential()
-client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
-# Create a contact
-contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Create a contact
+    contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
-# Read the contact back
-contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
-print(f"Created: {contact['firstname']} {contact['lastname']}")
+    # Read the contact back
+    contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
+    print(f"Created: {contact['firstname']} {contact['lastname']}")
 
-# Clean up
-client.records.delete("contact", contact_id)
+    # Clean up
+    client.records.delete("contact", contact_id)
+# Session closed, caches cleared automatically
 ```
 
 ### Basic CRUD operations
@@ -359,13 +361,12 @@ client.tables.delete("new_Product")
 Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
 
 ```python
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
 )
+from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 # Create a one-to-many relationship: Department (1) -> Employee (N)
 # This adds a "Department" lookup field to the Employee table

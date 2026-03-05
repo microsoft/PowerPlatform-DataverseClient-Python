@@ -7,13 +7,12 @@ import unittest
 from unittest.mock import MagicMock, Mock
 
 from PowerPlatform.Dataverse.data._relationships import _RelationshipOperationsMixin
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    Label,
-    LocalizedLabel,
 )
+from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 
 class TestExtractIdFromHeader(unittest.TestCase):
