@@ -32,14 +32,13 @@ class QueryOperations:
         client = DataverseClient(base_url, credential)
 
         # Fluent query builder (recommended)
-        for page in (client.query.builder("account")
-                     .select("name", "revenue")
-                     .filter_eq("statecode", 0)
-                     .order_by("revenue", descending=True)
-                     .top(100)
-                     .execute()):
-            for record in page:
-                print(record["name"])
+        for record in (client.query.builder("account")
+                       .select("name", "revenue")
+                       .filter_eq("statecode", 0)
+                       .order_by("revenue", descending=True)
+                       .top(100)
+                       .execute()):
+            print(record["name"])
 
         # SQL query
         rows = client.query.sql("SELECT TOP 10 name FROM account ORDER BY name")
@@ -67,27 +66,25 @@ class QueryOperations:
         Example:
             Build and execute a query fluently::
 
-                for page in (client.query.builder("account")
-                             .select("name", "revenue")
-                             .filter_eq("statecode", 0)
-                             .filter_gt("revenue", 1000000)
-                             .order_by("revenue", descending=True)
-                             .top(100)
-                             .page_size(50)
-                             .execute()):
-                    for record in page:
-                        print(record["name"])
+                for record in (client.query.builder("account")
+                               .select("name", "revenue")
+                               .filter_eq("statecode", 0)
+                               .filter_gt("revenue", 1000000)
+                               .order_by("revenue", descending=True)
+                               .top(100)
+                               .page_size(50)
+                               .execute()):
+                    print(record["name"])
 
             With composable expression tree::
 
                 from PowerPlatform.Dataverse.models.filters import eq, gt
 
-                for page in (client.query.builder("account")
-                             .where((eq("statecode", 0) | eq("statecode", 1))
-                                    & gt("revenue", 100000))
-                             .execute()):
-                    for record in page:
-                        print(record["name"])
+                for record in (client.query.builder("account")
+                               .where((eq("statecode", 0) | eq("statecode", 1))
+                                      & gt("revenue", 100000))
+                               .execute()):
+                    print(record["name"])
         """
         qb = QueryBuilder(table)
         qb._query_ops = self

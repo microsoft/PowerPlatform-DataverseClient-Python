@@ -277,16 +277,15 @@ The **QueryBuilder** is the recommended way to query records. It provides a flue
 
 ```python
 # Fluent query builder (recommended)
-for page in (client.query.builder("account")
-             .select("name", "revenue")
-             .filter_eq("statecode", 0)
-             .filter_gt("revenue", 1000000)
-             .order_by("revenue", descending=True)
-             .top(100)
-             .page_size(50)
-             .execute()):
-    for record in page:
-        print(f"{record['name']}: {record['revenue']}")
+for record in (client.query.builder("account")
+               .select("name", "revenue")
+               .filter_eq("statecode", 0)
+               .filter_gt("revenue", 1000000)
+               .order_by("revenue", descending=True)
+               .top(100)
+               .page_size(50)
+               .execute()):
+    print(f"{record['name']}: {record['revenue']}")
 ```
 
 The QueryBuilder handles value formatting, column name casing, and OData syntax automatically. All filter methods are discoverable via IDE autocomplete:
@@ -309,21 +308,19 @@ For complex logic (OR, NOT, grouping), use the composable expression tree with `
 from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in, between
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
-for page in (client.query.builder("account")
-             .select("name", "revenue")
-             .where((eq("statecode", 0) | eq("statecode", 1))
-                    & gt("revenue", 100000))
-             .execute()):
-    for record in page:
-        print(record["name"])
+for record in (client.query.builder("account")
+               .select("name", "revenue")
+               .where((eq("statecode", 0) | eq("statecode", 1))
+                      & gt("revenue", 100000))
+               .execute()):
+    print(record["name"])
 
 # NOT, between, and in operators
-for page in (client.query.builder("account")
-             .where(~eq("statecode", 2))                  # NOT inactive
-             .where(between("revenue", 100000, 500000))    # revenue in range
-             .execute()):
-    for record in page:
-        print(record["name"])
+for record in (client.query.builder("account")
+               .where(~eq("statecode", 2))                  # NOT inactive
+               .where(between("revenue", 100000, 500000))    # revenue in range
+               .execute()):
+    print(record["name"])
 ```
 
 **SQL queries** provide an alternative read-only query syntax:
