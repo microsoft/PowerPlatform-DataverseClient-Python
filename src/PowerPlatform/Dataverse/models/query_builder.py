@@ -43,7 +43,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 from .filters import FilterExpression, _format_value
 
-
 __all__ = ["QueryBuilder"]
 
 
@@ -249,9 +248,7 @@ class QueryBuilder:
             # Produces: (revenue ge 100000 and revenue le 500000)
         """
         col = column.lower()
-        self._filter_parts.append(
-            f"({col} ge {_format_value(low)} and {col} le {_format_value(high)})"
-        )
+        self._filter_parts.append(f"({col} ge {_format_value(low)} and {col} le {_format_value(high)})")
         return self
 
     def filter_raw(self, filter_string: str) -> QueryBuilder:
@@ -298,9 +295,7 @@ class QueryBuilder:
                             & gt("revenue", 100000)))
         """
         if not isinstance(expression, FilterExpression):
-            raise TypeError(
-                f"where() requires a FilterExpression, got {type(expression).__name__}"
-            )
+            raise TypeError(f"where() requires a FilterExpression, got {type(expression).__name__}")
         self._filter_parts.append(expression)
         return self
 

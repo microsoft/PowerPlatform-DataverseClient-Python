@@ -69,17 +69,9 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_flat_default(self):
         """builder().execute() should return flat records by default."""
-        self.client._odata._get_multiple.return_value = iter(
-            [[{"accountid": "1", "name": "Test"}]]
-        )
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1", "name": "Test"}]])
 
-        records = list(
-            self.client.query.builder("account")
-            .select("name")
-            .filter_eq("statecode", 0)
-            .top(10)
-            .execute()
-        )
+        records = list(self.client.query.builder("account").select("name").filter_eq("statecode", 0).top(10).execute())
 
         self.client._odata._get_multiple.assert_called_once_with(
             "account",
@@ -95,9 +87,7 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_flat_multiple_pages(self):
         """execute() should flatten records from multiple pages."""
-        self.client._odata._get_multiple.return_value = iter(
-            [[{"accountid": "1"}], [{"accountid": "2"}]]
-        )
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}], [{"accountid": "2"}]])
 
         records = list(self.client.query.builder("account").execute())
 
@@ -111,9 +101,7 @@ class TestQueryOperations(unittest.TestCase):
         page2 = [{"accountid": "2"}]
         self.client._odata._get_multiple.return_value = iter([page1, page2])
 
-        pages = list(
-            self.client.query.builder("account").execute(by_page=True)
-        )
+        pages = list(self.client.query.builder("account").execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
         self.assertEqual(pages[0], page1)
