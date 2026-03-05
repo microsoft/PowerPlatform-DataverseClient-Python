@@ -323,6 +323,7 @@ class TestTableOperations(unittest.TestCase):
         self.assertEqual(result.metadata_id, "key-guid-1")
         self.assertEqual(result.schema_name, "new_product_code_key")
         self.assertEqual(result.key_attributes, ["new_productcode"])
+        self.assertEqual(result.status, "Pending")
 
     def test_create_alternate_key_multi_column(self):
         """create_alternate_key() should handle multi-column keys."""
