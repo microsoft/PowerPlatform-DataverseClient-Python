@@ -103,7 +103,8 @@ class TestClientDeprecations(unittest.TestCase):
             result = self.client.get("account", record_id="guid-1")
 
         self.client._odata._get.assert_called_once_with("account", "guid-1", select=None)
-        self.assertEqual(result, expected)
+        self.assertEqual(result["accountid"], "guid-1")
+        self.assertEqual(result["name"], "Contoso")
 
     def test_get_multiple_warns(self):
         """client.get() without record_id emits a DeprecationWarning and delegates
@@ -117,7 +118,9 @@ class TestClientDeprecations(unittest.TestCase):
 
         # The result is a generator; consume it.
         pages = list(result)
-        self.assertEqual(pages, [page])
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0][0]["name"], "A")
+        self.assertEqual(pages[0][1]["name"], "B")
 
         self.client._odata._get_multiple.assert_called_once_with(
             "account",
@@ -142,7 +145,9 @@ class TestClientDeprecations(unittest.TestCase):
             result = self.client.query_sql("SELECT name FROM account")
 
         self.client._odata._query_sql.assert_called_once_with("SELECT name FROM account")
-        self.assertEqual(result, expected_rows)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["name"], "Contoso")
+        self.assertEqual(result[1]["name"], "Fabrikam")
 
     # -------------------------------------------------------- get_table_info
 
@@ -162,7 +167,8 @@ class TestClientDeprecations(unittest.TestCase):
             result = self.client.get_table_info("new_MyTable")
 
         self.client._odata._get_table_info.assert_called_once_with("new_MyTable")
-        self.assertEqual(result, expected_info)
+        self.assertEqual(result["table_schema_name"], "new_MyTable")
+        self.assertEqual(result["entity_set_name"], "new_mytables")
 
     # --------------------------------------------------------- create_table
 
@@ -196,7 +202,8 @@ class TestClientDeprecations(unittest.TestCase):
             "MySolution",
             "new_ProductName",
         )
-        self.assertEqual(result, expected)
+        self.assertEqual(result["table_schema_name"], "new_Product")
+        self.assertEqual(result["columns_created"], ["new_Price"])
 
     # --------------------------------------------------------- delete_table
 

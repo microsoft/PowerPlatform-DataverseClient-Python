@@ -15,6 +15,7 @@ from ..models.relationship import (
     RelationshipInfo,
 )
 from ..models.labels import Label, LocalizedLabel
+from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
@@ -72,7 +73,7 @@ class TableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> TableInfo:
         """Create a custom table with the specified columns.
 
         :param table: Schema name of the table with customization prefix
@@ -94,10 +95,11 @@ class TableOperations:
             defaults to ``"{prefix}_Name"``.
         :type primary_column: :class:`str` or None
 
-        :return: Dictionary containing table metadata including
-            ``table_schema_name``, ``entity_set_name``, ``table_logical_name``,
-            ``metadata_id``, and ``columns_created``.
-        :rtype: :class:`dict`
+        :return: Table metadata with ``schema_name``, ``entity_set_name``,
+            ``logical_name``, ``metadata_id``, and ``columns_created``.
+            Supports dict-like access with legacy keys for backward
+            compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
@@ -124,12 +126,13 @@ class TableOperations:
                 print(f"Created: {result['table_schema_name']}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_table(
+            raw = od._create_table(
                 table,
                 columns,
                 solution,
                 primary_column,
             )
+            return TableInfo.from_dict(raw)
 
     # ----------------------------------------------------------------- delete
 
@@ -155,17 +158,18 @@ class TableOperations:
 
     # -------------------------------------------------------------------- get
 
-    def get(self, table: str) -> Optional[Dict[str, Any]]:
+    def get(self, table: str) -> Optional[TableInfo]:
         """Get basic metadata for a table if it exists.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
             or ``"account"``).
         :type table: :class:`str`
 
-        :return: Dictionary containing ``table_schema_name``,
-            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
-            Returns None if the table is not found.
-        :rtype: :class:`dict` or None
+        :return: Table metadata, or ``None`` if the table is not found.
+            Supports dict-like access with legacy keys for backward
+            compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
+            or None
 
         Example::
 
@@ -175,7 +179,10 @@ class TableOperations:
                 print(f"Entity set: {info['entity_set_name']}")
         """
         with self._client._scoped_odata() as od:
-            return od._get_table_info(table)
+            raw = od._get_table_info(table)
+            if raw is None:
+                return None
+            return TableInfo.from_dict(raw)
 
     # ------------------------------------------------------------------- list
 

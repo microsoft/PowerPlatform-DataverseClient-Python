@@ -8,6 +8,7 @@ from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
+from PowerPlatform.Dataverse.models.table_info import TableInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
 
@@ -29,15 +30,15 @@ class TestTableOperations(unittest.TestCase):
     # ------------------------------------------------------------------ create
 
     def test_create(self):
-        """create() should call _create_table with correct positional args including renamed kwargs."""
-        expected_result = {
+        """create() should return TableInfo with dict-like backward compat."""
+        raw = {
             "table_schema_name": "new_Product",
             "entity_set_name": "new_products",
             "table_logical_name": "new_product",
             "metadata_id": "meta-guid-1",
             "columns_created": ["new_Price", "new_InStock"],
         }
-        self.client._odata._create_table.return_value = expected_result
+        self.client._odata._create_table.return_value = raw
 
         columns = {"new_Price": "decimal", "new_InStock": "bool"}
         result = self.client.tables.create(
@@ -53,7 +54,10 @@ class TestTableOperations(unittest.TestCase):
             "MySolution",
             "new_ProductName",
         )
-        self.assertEqual(result, expected_result)
+        self.assertIsInstance(result, TableInfo)
+        self.assertEqual(result.schema_name, "new_Product")
+        self.assertEqual(result["table_schema_name"], "new_Product")
+        self.assertEqual(result["entity_set_name"], "new_products")
 
     # ------------------------------------------------------------------ delete
 
@@ -66,19 +70,21 @@ class TestTableOperations(unittest.TestCase):
     # --------------------------------------------------------------------- get
 
     def test_get(self):
-        """get() should call _get_table_info and return the metadata dict."""
-        expected_info = {
+        """get() should return TableInfo with dict-like backward compat."""
+        raw = {
             "table_schema_name": "new_Product",
             "table_logical_name": "new_product",
             "entity_set_name": "new_products",
             "metadata_id": "meta-guid-1",
         }
-        self.client._odata._get_table_info.return_value = expected_info
+        self.client._odata._get_table_info.return_value = raw
 
         result = self.client.tables.get("new_Product")
 
         self.client._odata._get_table_info.assert_called_once_with("new_Product")
-        self.assertEqual(result, expected_info)
+        self.assertIsInstance(result, TableInfo)
+        self.assertEqual(result.schema_name, "new_Product")
+        self.assertEqual(result["table_schema_name"], "new_Product")
 
     def test_get_returns_none(self):
         """get() should return None when _get_table_info returns None (table not found)."""

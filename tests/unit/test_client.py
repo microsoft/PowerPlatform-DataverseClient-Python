@@ -103,7 +103,8 @@ class TestDataverseClient(unittest.TestCase):
         result = self.client.get("account", "00000000-0000-0000-0000-000000000000")
 
         self.client._odata._get.assert_called_once_with("account", "00000000-0000-0000-0000-000000000000", select=None)
-        self.assertEqual(result, expected_record)
+        self.assertEqual(result["accountid"], "00000000-0000-0000-0000-000000000000")
+        self.assertEqual(result["name"], "Contoso")
 
     def test_get_multiple(self):
         """Test get method for querying multiple records."""
@@ -126,7 +127,10 @@ class TestDataverseClient(unittest.TestCase):
             expand=None,
             page_size=None,
         )
-        self.assertEqual(results, [expected_batch])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results[0]), 2)
+        self.assertEqual(results[0][0]["name"], "A")
+        self.assertEqual(results[0][1]["name"], "B")
 
 
 class TestCreateLookupField(unittest.TestCase):
