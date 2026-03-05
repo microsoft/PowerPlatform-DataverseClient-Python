@@ -8,7 +8,7 @@ from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
-from PowerPlatform.Dataverse.models.table_info import TableInfo
+from PowerPlatform.Dataverse.models.table_info import AlternateKeyInfo, TableInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 
 
@@ -299,6 +299,104 @@ class TestTableOperations(unittest.TestCase):
         result = self.client.tables.get_relationship("nonexistent")
 
         self.assertIsNone(result)
+
+    # ------------------------------------------------ create_alternate_key
+
+    def test_create_alternate_key(self):
+        """create_alternate_key() should call OData layer and return AlternateKeyInfo."""
+        raw = {
+            "metadata_id": "key-guid-1",
+            "schema_name": "new_product_code_key",
+            "key_attributes": ["new_productcode"],
+        }
+        self.client._odata._create_alternate_key.return_value = raw
+
+        result = self.client.tables.create_alternate_key(
+            "new_Product",
+            "new_product_code_key",
+            ["new_productcode"],
+        )
+
+        self.client._odata._create_alternate_key.assert_called_once()
+        call_args = self.client._odata._create_alternate_key.call_args
+        self.assertEqual(call_args[0][0], "new_Product")
+        self.assertEqual(call_args[0][1], "new_product_code_key")
+        self.assertEqual(call_args[0][2], ["new_productcode"])
+        # 4th arg is a Label object for the display name
+        self.assertIsNotNone(call_args[0][3])
+        self.assertIsInstance(result, AlternateKeyInfo)
+        self.assertEqual(result.metadata_id, "key-guid-1")
+        self.assertEqual(result.schema_name, "new_product_code_key")
+        self.assertEqual(result.key_attributes, ["new_productcode"])
+        self.assertEqual(result.status, "Pending")
+
+    def test_create_alternate_key_multi_column(self):
+        """create_alternate_key() should handle multi-column keys."""
+        raw = {
+            "metadata_id": "key-guid-2",
+            "schema_name": "new_composite_key",
+            "key_attributes": ["new_col1", "new_col2"],
+        }
+        self.client._odata._create_alternate_key.return_value = raw
+
+        result = self.client.tables.create_alternate_key(
+            "new_Product",
+            "new_composite_key",
+            ["new_col1", "new_col2"],
+        )
+
+        self.assertIsInstance(result, AlternateKeyInfo)
+        self.assertEqual(result.key_attributes, ["new_col1", "new_col2"])
+
+    # -------------------------------------------------- get_alternate_keys
+
+    def test_get_alternate_keys(self):
+        """get_alternate_keys() should return list of AlternateKeyInfo."""
+        raw_list = [
+            {
+                "MetadataId": "key-guid-1",
+                "SchemaName": "new_product_code_key",
+                "KeyAttributes": ["new_productcode"],
+                "EntityKeyIndexStatus": "Active",
+            },
+            {
+                "MetadataId": "key-guid-2",
+                "SchemaName": "new_composite_key",
+                "KeyAttributes": ["new_col1", "new_col2"],
+                "EntityKeyIndexStatus": "Pending",
+            },
+        ]
+        self.client._odata._get_alternate_keys.return_value = raw_list
+
+        result = self.client.tables.get_alternate_keys("new_Product")
+
+        self.client._odata._get_alternate_keys.assert_called_once_with("new_Product")
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], AlternateKeyInfo)
+        self.assertEqual(result[0].metadata_id, "key-guid-1")
+        self.assertEqual(result[0].schema_name, "new_product_code_key")
+        self.assertEqual(result[0].key_attributes, ["new_productcode"])
+        self.assertEqual(result[0].status, "Active")
+        self.assertIsInstance(result[1], AlternateKeyInfo)
+        self.assertEqual(result[1].metadata_id, "key-guid-2")
+        self.assertEqual(result[1].status, "Pending")
+
+    def test_get_alternate_keys_empty(self):
+        """get_alternate_keys() should return empty list when no keys exist."""
+        self.client._odata._get_alternate_keys.return_value = []
+
+        result = self.client.tables.get_alternate_keys("new_Product")
+
+        self.assertEqual(result, [])
+
+    # ------------------------------------------------- delete_alternate_key
+
+    def test_delete_alternate_key(self):
+        """delete_alternate_key() should call OData layer with correct args."""
+        self.client.tables.delete_alternate_key("new_Product", "key-guid-1")
+
+        self.client._odata._delete_alternate_key.assert_called_once_with("new_Product", "key-guid-1")
 
 
 if __name__ == "__main__":
