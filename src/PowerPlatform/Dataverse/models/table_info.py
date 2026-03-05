@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Dict, Iterator, List, Optional
+from typing import Any, ClassVar, Dict, Iterator, KeysView, List, Optional
 
 __all__ = ["TableInfo", "ColumnInfo"]
 
@@ -157,15 +157,15 @@ class TableInfo:
         except KeyError:
             return default
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return legacy dict keys."""
         return self._LEGACY_KEY_MAP.keys()
 
-    def values(self):
+    def values(self) -> List[Any]:
         """Return values corresponding to legacy dict keys."""
         return [getattr(self, attr) for attr in self._LEGACY_KEY_MAP.values()]
 
-    def items(self):
+    def items(self) -> List[tuple]:
         """Return (legacy_key, value) pairs."""
         return [(k, getattr(self, attr)) for k, attr in self._LEGACY_KEY_MAP.items()]
 

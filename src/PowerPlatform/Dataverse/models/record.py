@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, KeysView, Optional, ValuesView, ItemsView
 
 __all__ = ["Record"]
 
@@ -67,15 +67,15 @@ class Record:
         """Return value for *key*, or *default* if not present."""
         return self.data.get(key, default)
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return data keys."""
         return self.data.keys()
 
-    def values(self):
+    def values(self) -> ValuesView[Any]:
         """Return data values."""
         return self.data.values()
 
-    def items(self):
+    def items(self) -> ItemsView[str, Any]:
         """Return data items."""
         return self.data.items()
 
