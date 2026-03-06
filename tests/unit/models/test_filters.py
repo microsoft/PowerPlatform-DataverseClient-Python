@@ -98,6 +98,11 @@ class TestFormatValue(unittest.TestCase):
         dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         self.assertEqual(_format_value(dt), "2024-01-15T10:30:00Z")
 
+    def test_datetime_with_microseconds(self):
+        """Microseconds should be preserved when non-zero."""
+        dt = datetime(2024, 1, 15, 10, 30, 0, 123456)
+        self.assertEqual(_format_value(dt), "2024-01-15T10:30:00.123456Z")
+
     def test_datetime_non_utc_converted(self):
         """Timezone-aware non-UTC datetimes should be converted to UTC."""
         eastern = timezone(timedelta(hours=-5))

@@ -91,6 +91,8 @@ def _format_value(value: Any) -> str:
         # Convert timezone-aware datetimes to UTC; assume naive datetimes are UTC
         if value.tzinfo is not None:
             value = value.astimezone(timezone.utc)
+        if value.microsecond:
+            return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         return value.strftime("%Y-%m-%dT%H:%M:%SZ")
     if isinstance(value, date):
         return value.strftime("%Y-%m-%d")
