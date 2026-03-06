@@ -235,10 +235,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         operation = _OPERATION_NAME.get() or "http.request"
         table_name = _OPERATION_TABLE.get()
 
-        # Merge any hook-provided headers
+        # Merge hook-provided headers without overwriting SDK-managed headers
         hook_headers = self._telemetry.get_additional_headers()
         if hook_headers:
-            request_context.headers.update(hook_headers)
+            for name, value in hook_headers.items():
+                if name not in request_context.headers:
+                    request_context.headers[name] = value
             request_context.kwargs["headers"] = request_context.headers
 
         with self._telemetry.trace_request(
