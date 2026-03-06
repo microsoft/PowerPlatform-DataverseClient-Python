@@ -77,14 +77,16 @@ print("-" * 60)
 # Dataverse SDK Setup
 # =============================================================================
 
+import os
+
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
 from azure.identity import InteractiveBrowserCredential
 
-# Org details
-ORG_URL = "https://aurorabapenvcc726.crmtest.dynamics.com"
-TENANT_ID = "91bee3d9-0c15-4f17-8624-c92bb8b36ead"
+# Org details -- set via environment variables
+ORG_URL = os.environ.get("DATAVERSE_URL", "https://YOUR_ORG.crm.dynamics.com")
+TENANT_ID = os.environ.get("AZURE_TENANT_ID", "")
 
 
 class DemoTelemetryHook(TelemetryHook):

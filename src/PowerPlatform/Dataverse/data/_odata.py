@@ -245,8 +245,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             operation=operation,
             method=method.upper(),
             url=url,
-            client_request_id=request_context.headers.get("x-ms-client-request-id", ""),
-            correlation_id=request_context.headers.get("x-ms-correlation-id", ""),
+            client_request_id=request_context.headers.get("x-ms-client-request-id") or "",
+            correlation_id=request_context.headers.get("x-ms-correlation-id") or "",
             table_name=table_name,
         ) as tracked:
             try:

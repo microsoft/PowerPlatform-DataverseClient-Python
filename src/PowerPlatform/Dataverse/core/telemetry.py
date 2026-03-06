@@ -413,7 +413,7 @@ class TelemetryManager:
                 self._request_duration.record(duration_ms, attrs)
                 self._request_count.add(1, attrs)
 
-                if status_code >= 400:
+                if status_code >= 400 or error is not None:
                     self._error_count.add(1, attrs)
 
                 if retry_count > 0:
@@ -442,6 +442,8 @@ class TelemetryManager:
                 pass
 
         # 4. Hook dispatch (already per-hook exception safe)
+        if error is not None:
+            self._dispatch_request_error(ctx, error)
         self._dispatch_request_end(ctx, response)
 
     # ------------------------------------------------------------------

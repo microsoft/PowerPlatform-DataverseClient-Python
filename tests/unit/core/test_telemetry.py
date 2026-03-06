@@ -4,9 +4,8 @@
 """Unit tests for the telemetry infrastructure."""
 
 import logging
-import time
 import unittest
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 from PowerPlatform.Dataverse.core.telemetry import (

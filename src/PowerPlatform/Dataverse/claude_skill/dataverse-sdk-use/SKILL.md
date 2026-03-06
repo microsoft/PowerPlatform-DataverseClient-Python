@@ -324,7 +324,7 @@ The SDK supports opt-in telemetry via hooks, OpenTelemetry, and Python logging:
 from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 
-# Custom hook -- receives on_request_start, on_request_end, on_request_error
+# Custom hook -- receives on_request_start, on_request_end, and on_request_error
 class MyHook(TelemetryHook):
     def on_request_end(self, request, response):
         print(f"{request.operation} -> {response.status_code} in {response.duration_ms:.0f}ms")

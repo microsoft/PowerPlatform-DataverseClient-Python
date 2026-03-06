@@ -434,17 +434,23 @@ class RecordOperations:
 
         def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
-                with _operation_scope("records.get_multiple", table):
-                    for page in od._get_multiple(
-                        table,
-                        select=select,
-                        filter=filter,
-                        orderby=orderby,
-                        top=top,
-                        expand=expand,
-                        page_size=page_size,
-                    ):
-                        yield [Record.from_api_response(table, row) for row in page]
+                pages = od._get_multiple(
+                    table,
+                    select=select,
+                    filter=filter,
+                    orderby=orderby,
+                    top=top,
+                    expand=expand,
+                    page_size=page_size,
+                )
+                while True:
+                    with _operation_scope("records.get_multiple", table):
+                        try:
+                            page = next(pages)
+                        except StopIteration:
+                            return
+                        records_page = [Record.from_api_response(table, row) for row in page]
+                    yield records_page
 
         return _paged()
 
