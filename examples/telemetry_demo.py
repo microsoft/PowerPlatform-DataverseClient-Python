@@ -11,7 +11,6 @@ To run with hooks only (no OTel dependency):
 
 To run with full OTel:
     pip install "PowerPlatform-Dataverse-Client[telemetry]"
-    pip install opentelemetry-sdk
     python examples/telemetry_demo.py
 
 To run Jaeger locally:
