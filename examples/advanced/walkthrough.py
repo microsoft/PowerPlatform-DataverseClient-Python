@@ -7,7 +7,7 @@ Walkthrough demonstrating core Dataverse SDK operations.
 This example shows:
 - Table creation with various column types including enums
 - Single and multiple record CRUD operations
-- Querying with filtering, paging, and SQL
+- Querying with filtering, paging, QueryBuilder, and SQL
 - Picklist label-to-value conversion
 - Column management
 - Cleanup
@@ -24,6 +24,7 @@ from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
+from PowerPlatform.Dataverse.models.filters import eq, gt, between
 import requests
 
 
@@ -254,10 +255,101 @@ def _run_walkthrough(client):
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
     # ============================================================================
-    # 7. SQL QUERY
+    # 7. QUERYBUILDER - FLUENT QUERIES
     # ============================================================================
     print("\n" + "=" * 80)
-    print("7. SQL Query")
+    print("7. QueryBuilder - Fluent Queries")
+    print("=" * 80)
+
+    # Basic fluent query: active records sorted by amount (flat iteration)
+    log_call("client.query.builder(...).select().filter_eq().order_by().execute()")
+    print("Querying incomplete records ordered by amount (fluent builder)...")
+    qb_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount", "new_Priority")
+            .filter_eq("new_Completed", False)
+            .order_by("new_Amount", descending=True)
+            .top(10)
+            .execute()
+        )
+    )
+    print(f"[OK] QueryBuilder found {len(qb_records)} incomplete records:")
+    for rec in qb_records[:5]:
+        print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
+
+    # filter_in: records with specific priorities
+    log_call("client.query.builder(...).filter_in('new_Priority', [HIGH, LOW]).execute()")
+    print("Querying records with HIGH or LOW priority (filter_in)...")
+    priority_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Priority")
+            .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
+            .execute()
+        )
+    )
+    print(f"[OK] Found {len(priority_records)} records with HIGH or LOW priority")
+    for rec in priority_records[:5]:
+        print(f"  - '{rec.get('new_title')}' Priority={rec.get('new_priority')}")
+
+    # filter_between: amount in a range
+    log_call("client.query.builder(...).filter_between('new_Amount', 500, 1500).execute()")
+    print("Querying records with amount between 500 and 1500 (filter_between)...")
+    range_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount")
+            .filter_between("new_Amount", 500, 1500)
+            .execute()
+        )
+    )
+    print(f"[OK] Found {len(range_records)} records with amount in [500, 1500]")
+    for rec in range_records:
+        print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
+
+    # Composable expression tree with where()
+    log_call("client.query.builder(...).where((eq(...) | eq(...)) & gt(...)).execute()")
+    print("Querying with composable expression tree (where)...")
+    expr_records = list(
+        backoff(
+            lambda: client.query.builder(table_name)
+            .select("new_Title", "new_Amount", "new_Quantity")
+            .where((eq("new_Completed", False) & gt("new_Amount", 100)))
+            .order_by("new_Amount", descending=True)
+            .top(5)
+            .execute()
+        )
+    )
+    print(f"[OK] Expression tree query found {len(expr_records)} records:")
+    for rec in expr_records:
+        print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')} Qty={rec.get('new_quantity')}")
+
+    # Combined: fluent filters + expression tree + paging (by_page=True)
+    log_call("client.query.builder(...).filter_eq().where(between()).page_size().execute(by_page=True)")
+    print("Querying with combined fluent + expression filters and paging...")
+    combined_page_count = 0
+    combined_record_count = 0
+    for page in backoff(
+        lambda: client.query.builder(table_name)
+        .select("new_Title", "new_Quantity")
+        .filter_eq("new_Completed", False)
+        .where(between("new_Quantity", 1, 15))
+        .order_by("new_Quantity")
+        .page_size(3)
+        .execute(by_page=True)
+    ):
+        combined_page_count += 1
+        combined_record_count += len(page)
+        titles = [r.get("new_title", "?") for r in page]
+        print(f"  Page {combined_page_count}: {len(page)} records - {titles}")
+    print(f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)")
+
+    # ============================================================================
+    # 8. SQL QUERY
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("8. SQL Query")
     print("=" * 80)
 
     log_call(f"client.query.sql('SELECT new_title, new_quantity FROM {table_name} WHERE new_completed = 1')")
@@ -271,10 +363,10 @@ def _run_walkthrough(client):
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
     # ============================================================================
-    # 8. PICKLIST LABEL CONVERSION
+    # 9. PICKLIST LABEL CONVERSION
     # ============================================================================
     print("\n" + "=" * 80)
-    print("8. Picklist Label Conversion")
+    print("9. Picklist Label Conversion")
     print("=" * 80)
 
     log_call(f"client.records.create('{table_name}', {{'new_Priority': 'High'}})")
@@ -292,10 +384,10 @@ def _run_walkthrough(client):
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
 
     # ============================================================================
-    # 9. COLUMN MANAGEMENT
+    # 10. COLUMN MANAGEMENT
     # ============================================================================
     print("\n" + "=" * 80)
-    print("9. Column Management")
+    print("10. Column Management")
     print("=" * 80)
 
     log_call(f"client.tables.add_columns('{table_name}', {{'new_Notes': 'string'}})")
@@ -308,10 +400,10 @@ def _run_walkthrough(client):
     print(f"[OK] Deleted column: new_Notes")
 
     # ============================================================================
-    # 10. DELETE OPERATIONS
+    # 11. DELETE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("10. Delete Operations")
+    print("11. Delete Operations")
     print("=" * 80)
 
     # Single delete
@@ -326,10 +418,10 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 11. CLEANUP
+    # 12. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("11. Cleanup")
+    print("12. Cleanup")
     print("=" * 80)
 
     log_call(f"client.tables.delete('{table_name}')")
@@ -355,6 +447,7 @@ def _run_walkthrough(client):
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
+    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where)")
     print("  [OK] SQL queries")
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
