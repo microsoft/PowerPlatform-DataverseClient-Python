@@ -378,7 +378,7 @@ class TableOperations:
                 print(f"Created lookup field: {result.lookup_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            with _operation_scope("tables.create_one_to_many_relationship"):
+            with _operation_scope("tables.create_one_to_many_relationship", relationship.referencing_entity):
                 raw = od._create_one_to_many_relationship(
                     lookup,
                     relationship,
@@ -435,7 +435,7 @@ class TableOperations:
                 print(f"Created: {result.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            with _operation_scope("tables.create_many_to_many_relationship"):
+            with _operation_scope("tables.create_many_to_many_relationship", relationship.entity1_logical_name):
                 raw = od._create_many_to_many_relationship(
                     relationship,
                     solution,
