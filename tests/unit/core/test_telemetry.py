@@ -569,14 +569,6 @@ class TestRequestIntegration(unittest.TestCase):
         client._request("GET", "https://org.example.com/api/data/v9.2/accounts")
 
         # Verify the custom header was included
-        call_kwargs = client._http._request.call_args
-        sent_headers = (
-            call_kwargs[1].get("headers", {})
-            if call_kwargs[1]
-            else call_kwargs[0][2] if len(call_kwargs[0]) > 2 else {}
-        )
-        # The headers should contain our custom header
-        # Check via the actual kwargs passed to _http._request
         actual_kwargs = client._http._request.call_args
         actual_headers = actual_kwargs.kwargs.get(
             "headers", actual_kwargs.args[2] if len(actual_kwargs.args) > 2 else {}
