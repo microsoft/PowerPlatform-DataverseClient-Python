@@ -12,7 +12,10 @@ convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseCon
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .telemetry import TelemetryConfig
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,9 @@ class DataverseConfig:
     :type http_backoff: :class:`float` or None
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
     :type http_timeout: :class:`float` or None
+    :param telemetry: Optional telemetry configuration for tracing, metrics, logging, and custom hooks.
+        When ``None`` (the default) telemetry is disabled with zero overhead.
+    :type telemetry: ~PowerPlatform.Dataverse.core.telemetry.TelemetryConfig or None
     """
 
     language_code: int = 1033
@@ -36,6 +42,9 @@ class DataverseConfig:
     http_retries: Optional[int] = None
     http_backoff: Optional[float] = None
     http_timeout: Optional[float] = None
+
+    # Telemetry configuration (opt-in; None = disabled)
+    telemetry: Optional[TelemetryConfig] = None
 
     @classmethod
     def from_env(cls) -> "DataverseConfig":

@@ -9,6 +9,8 @@ from typing import List, TYPE_CHECKING
 
 from ..models.record import Record
 
+from ..data._odata import _operation_scope
+
 if TYPE_CHECKING:
     from ..client import DataverseClient
 
@@ -75,5 +77,6 @@ class QueryOperations:
                 )
         """
         with self._client._scoped_odata() as od:
-            rows = od._query_sql(sql)
-            return [Record.from_api_response("", row) for row in rows]
+            with _operation_scope("query.sql"):
+                rows = od._query_sql(sql)
+                return [Record.from_api_response("", row) for row in rows]
