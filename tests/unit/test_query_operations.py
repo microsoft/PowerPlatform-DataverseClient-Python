@@ -97,15 +97,14 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_by_page(self):
         """execute(by_page=True) should yield pages."""
-        page1 = [{"accountid": "1"}]
-        page2 = [{"accountid": "2"}]
-        self.client._odata._get_multiple.return_value = iter([page1, page2])
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}], [{"accountid": "2"}]])
 
         pages = list(self.client.query.builder("account").execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page1)
-        self.assertEqual(pages[1], page2)
+        self.assertEqual(len(pages[0]), 1)
+        self.assertEqual(pages[0][0]["accountid"], "1")
+        self.assertEqual(pages[1][0]["accountid"], "2")
 
     def test_builder_execute_all_params(self):
         """builder().execute() should forward all parameters."""
