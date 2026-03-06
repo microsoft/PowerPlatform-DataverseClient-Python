@@ -334,11 +334,7 @@ class TelemetryManager:
                     OTEL_ATTR_HTTP_URL: url,
                     OTEL_ATTR_DATAVERSE_REQUEST_ID: client_request_id,
                     OTEL_ATTR_DATAVERSE_CORRELATION_ID: correlation_id,
-                    **(
-                        {OTEL_ATTR_DATAVERSE_TABLE: table_name}
-                        if table_name
-                        else {}
-                    ),
+                    **({OTEL_ATTR_DATAVERSE_TABLE: table_name} if table_name else {}),
                 },
             )
 
@@ -395,9 +391,7 @@ class TelemetryManager:
                         service_request_id,
                     )
                 if error is not None or status_code >= 400:
-                    span.set_status(
-                        Status(StatusCode.ERROR, str(error) if error else f"HTTP {status_code}")
-                    )
+                    span.set_status(Status(StatusCode.ERROR, str(error) if error else f"HTTP {status_code}"))
                     if error is not None:
                         span.record_exception(error)
                 else:
@@ -462,9 +456,7 @@ class TelemetryManager:
                 except Exception:
                     pass
 
-    def _dispatch_request_end(
-        self, request: RequestContext, response: ResponseContext
-    ) -> None:
+    def _dispatch_request_end(self, request: RequestContext, response: ResponseContext) -> None:
         for hook in self._hooks:
             if hasattr(hook, "on_request_end"):
                 try:
@@ -472,9 +464,7 @@ class TelemetryManager:
                 except Exception:
                     pass
 
-    def _dispatch_request_error(
-        self, request: RequestContext, error: Exception
-    ) -> None:
+    def _dispatch_request_error(self, request: RequestContext, error: Exception) -> None:
         for hook in self._hooks:
             if hasattr(hook, "on_request_error"):
                 try:
@@ -543,12 +533,7 @@ def create_telemetry_manager(
     if config is None:
         return NoOpTelemetryManager()
 
-    has_any = (
-        config.enable_tracing
-        or config.enable_metrics
-        or config.enable_logging
-        or config.hooks
-    )
+    has_any = config.enable_tracing or config.enable_metrics or config.enable_logging or config.hooks
     if not has_any:
         return NoOpTelemetryManager()
 
