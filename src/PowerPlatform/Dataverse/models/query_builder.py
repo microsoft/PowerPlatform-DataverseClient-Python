@@ -39,7 +39,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from .filters import FilterExpression, _format_value
 
@@ -70,7 +70,8 @@ class QueryBuilder:
     """
 
     def __init__(self, table: str) -> None:
-        if not table or not table.strip():
+        table = table.strip() if table else ""
+        if not table:
             raise ValueError("table name is required")
         self.table = table
         self._select: List[str] = []
@@ -215,7 +216,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------- filter: special
 
-    def filter_in(self, column: str, values: list) -> QueryBuilder:
+    def filter_in(self, column: str, values: Sequence[Any]) -> QueryBuilder:
         """Add an ``in`` filter: ``column in (val1, val2, ...)``.
 
         :param column: Column name (will be lowercased).
@@ -437,23 +438,21 @@ class QueryBuilder:
         params = self.build()
         client = self._query_ops._client
 
-        def _paged() -> Iterable[List[Dict[str, Any]]]:
-            with client._scoped_odata() as od:
-                yield from od._get_multiple(
-                    params["table"],
-                    select=params.get("select"),
-                    filter=params.get("filter"),
-                    orderby=params.get("orderby"),
-                    top=params.get("top"),
-                    expand=params.get("expand"),
-                    page_size=params.get("page_size"),
-                )
+        pages = client.records.get(
+            params["table"],
+            select=params.get("select"),
+            filter=params.get("filter"),
+            orderby=params.get("orderby"),
+            top=params.get("top"),
+            expand=params.get("expand"),
+            page_size=params.get("page_size"),
+        )
 
         if by_page:
-            return _paged()
+            return pages
 
         def _flat() -> Iterable[Dict[str, Any]]:
-            for page in _paged():
+            for page in pages:
                 yield from page
 
         return _flat()

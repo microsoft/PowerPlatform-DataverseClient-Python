@@ -416,14 +416,11 @@ class TestExecute(unittest.TestCase):
             qb.execute()
         self.assertIn("client.query.builder()", str(ctx.exception))
 
-    def test_execute_calls_get_multiple(self):
-        """execute() should call _get_multiple via the client with built params."""
+    def test_execute_calls_records_get(self):
+        """execute() should delegate to client.records.get() with built params."""
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
-        mock_odata = MagicMock()
-        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
-        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
-        mock_odata._get_multiple.return_value = iter([[{"name": "Test"}]])
+        mock_client.records.get.return_value = iter([[{"name": "Test"}]])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
@@ -431,9 +428,9 @@ class TestExecute(unittest.TestCase):
             50
         ).expand("primarycontactid")
 
-        result = list(qb.execute())
+        list(qb.execute())
 
-        mock_odata._get_multiple.assert_called_once_with(
+        mock_client.records.get.assert_called_once_with(
             "account",
             select=["name", "revenue"],
             filter="statecode eq 0",
@@ -446,11 +443,7 @@ class TestExecute(unittest.TestCase):
     def test_execute_returns_flat_records_by_default(self):
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
-        mock_odata = MagicMock()
-        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
-        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
-
-        mock_odata._get_multiple.return_value = iter([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
+        mock_client.records.get.return_value = iter([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
@@ -464,13 +457,10 @@ class TestExecute(unittest.TestCase):
     def test_execute_by_page_returns_pages(self):
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
-        mock_odata = MagicMock()
-        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
-        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
 
         page1 = [{"name": "A"}, {"name": "B"}]
         page2 = [{"name": "C"}]
-        mock_odata._get_multiple.return_value = iter([page1, page2])
+        mock_client.records.get.return_value = iter([page1, page2])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
@@ -483,16 +473,13 @@ class TestExecute(unittest.TestCase):
     def test_execute_passes_none_for_empty_options(self):
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
-        mock_odata = MagicMock()
-        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
-        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
-        mock_odata._get_multiple.return_value = iter([])
+        mock_client.records.get.return_value = iter([])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         list(qb.execute())
 
-        mock_odata._get_multiple.assert_called_once_with(
+        mock_client.records.get.assert_called_once_with(
             "account",
             select=None,
             filter=None,
@@ -507,17 +494,14 @@ class TestExecute(unittest.TestCase):
 
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
-        mock_odata = MagicMock()
-        mock_client._scoped_odata.return_value.__enter__ = MagicMock(return_value=mock_odata)
-        mock_client._scoped_odata.return_value.__exit__ = MagicMock(return_value=False)
-        mock_odata._get_multiple.return_value = iter([])
+        mock_client.records.get.return_value = iter([])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.where((eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000))
         list(qb.execute())
 
-        call_args = mock_odata._get_multiple.call_args
+        call_args = mock_client.records.get.call_args
         self.assertEqual(
             call_args.kwargs["filter"],
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
