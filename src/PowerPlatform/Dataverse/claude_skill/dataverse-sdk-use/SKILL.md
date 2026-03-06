@@ -343,7 +343,8 @@ config = DataverseConfig(
 )
 ```
 
-Hook data available per request: `operation`, `table_name`, `method`, `url`, `status_code`, `duration_ms`, `service_request_id`, `client_request_id`, `correlation_id`.
+Hook data available on the **request** object: `operation`, `table_name`, `method`, `url`, `client_request_id`, `correlation_id`.
+Hook data available on the **response** object: `status_code`, `duration_ms`, `service_request_id`.
 
 Zero overhead when `TelemetryConfig` is not set.
 

@@ -191,7 +191,12 @@ class TelemetryHook:
         """Called after each HTTP request completes (success or failure)."""
 
     def on_request_error(self, request: RequestContext, error: Exception) -> None:
-        """Called when an unhandled network-level exception occurs."""
+        """Called when an error occurs during an HTTP request.
+
+        This includes both network/transport exceptions and HTTP-level
+        failures (e.g. 4xx/5xx responses surfaced as ``HttpError``).
+        Always fired before ``on_request_end``.
+        """
 
     def get_additional_headers(self) -> Dict[str, str]:
         """Return additional headers to include in outbound requests."""

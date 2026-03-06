@@ -16,6 +16,7 @@ from PowerPlatform.Dataverse.core.telemetry import (
     TelemetryHook,
     TelemetryManager,
     _TrackedRequest,
+    _OTEL_AVAILABLE,
     create_telemetry_manager,
 )
 from PowerPlatform.Dataverse.data._odata import (
@@ -332,6 +333,7 @@ class TestTraceRequestAndRecordResponse(unittest.TestCase):
             ) as tracked:
                 self.assertIsNone(tracked._span)
 
+    @unittest.skipUnless(_OTEL_AVAILABLE, "requires opentelemetry")
     def test_span_end_called_in_finally(self):
         mock_tracer = MagicMock()
         mock_span = MagicMock()
@@ -347,6 +349,7 @@ class TestTraceRequestAndRecordResponse(unittest.TestCase):
 
         mock_span.end.assert_called_once()
 
+    @unittest.skipUnless(_OTEL_AVAILABLE, "requires opentelemetry")
     def test_record_response_sets_span_status_ok(self):
         from opentelemetry.trace import StatusCode
 
@@ -364,6 +367,7 @@ class TestTraceRequestAndRecordResponse(unittest.TestCase):
         status_arg = mock_span.set_status.call_args[0][0]
         self.assertEqual(status_arg.status_code, StatusCode.OK)
 
+    @unittest.skipUnless(_OTEL_AVAILABLE, "requires opentelemetry")
     def test_record_response_sets_span_status_error(self):
         mock_span = MagicMock()
         ctx = RequestContext(
