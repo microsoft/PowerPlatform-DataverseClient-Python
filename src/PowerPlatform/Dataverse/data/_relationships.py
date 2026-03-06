@@ -35,9 +35,9 @@ class _RelationshipOperationsMixin:
         Posts to /RelationshipDefinitions with OneToManyRelationshipMetadata.
 
         :param lookup: Lookup attribute metadata (LookupAttributeMetadata instance).
-        :type lookup: ~PowerPlatform.Dataverse.models.metadata.LookupAttributeMetadata
+        :type lookup: ~PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata
         :param relationship: Relationship metadata (OneToManyRelationshipMetadata instance).
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.OneToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata
         :param solution: Optional solution unique name to add the relationship to.
         :type solution: ``str`` | ``None``
 
@@ -80,7 +80,7 @@ class _RelationshipOperationsMixin:
         Posts to /RelationshipDefinitions with ManyToManyRelationshipMetadata.
 
         :param relationship: Relationship metadata (ManyToManyRelationshipMetadata instance).
-        :type relationship: ~PowerPlatform.Dataverse.models.metadata.ManyToManyRelationshipMetadata
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata
         :param solution: Optional solution unique name to add the relationship to.
         :type solution: ``str`` | ``None``
 

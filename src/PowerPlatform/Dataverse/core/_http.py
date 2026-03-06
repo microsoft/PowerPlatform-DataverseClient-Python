@@ -30,6 +30,10 @@ class _HttpClient:
     :type backoff: :class:`float` | None
     :param timeout: Default request timeout in seconds. If None, uses per-method defaults.
     :type timeout: :class:`float` | None
+    :param session: Optional ``requests.Session`` for HTTP connection pooling.
+        When provided, all requests use this session (enabling TCP/TLS reuse).
+        When ``None``, each request uses ``requests.request()`` directly.
+    :type session: :class:`requests.Session` | None
     """
 
     def __init__(
@@ -37,10 +41,12 @@ class _HttpClient:
         retries: Optional[int] = None,
         backoff: Optional[float] = None,
         timeout: Optional[float] = None,
+        session: Optional[requests.Session] = None,
     ) -> None:
         self.max_attempts = retries if retries is not None else 5
         self.base_delay = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
+        self._session = session
 
     def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """
@@ -68,12 +74,22 @@ class _HttpClient:
                 kwargs["timeout"] = 120 if m in ("post", "delete") else 10
 
         # Small backoff retry on network errors only
+        requester = self._session.request if self._session is not None else requests.request
         for attempt in range(self.max_attempts):
             try:
-                return requests.request(method, url, **kwargs)
+                return requester(method, url, **kwargs)
             except requests.exceptions.RequestException:
                 if attempt == self.max_attempts - 1:
                     raise
                 delay = self.base_delay * (2**attempt)
                 time.sleep(delay)
                 continue
+
+    def close(self) -> None:
+        """Close the HTTP client and release resources.
+
+        If a session was provided, closes it. Safe to call multiple times.
+        """
+        if self._session is not None:
+            self._session.close()
+            self._session = None

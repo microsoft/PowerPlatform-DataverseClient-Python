@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CHECKING
 
 from ..data._odata import _operation_scope
+from ..models.record import Record
 from ..models.upsert import UpsertItem
 
 if TYPE_CHECKING:
@@ -238,7 +239,7 @@ class RecordOperations:
         record_id: str,
         *,
         select: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Record:
         """Fetch a single record by its GUID.
 
         :param table: Schema name of the table (e.g. ``"account"``).
@@ -249,8 +250,8 @@ class RecordOperations:
             response.
         :type select: :class:`list` of :class:`str` or None
 
-        :return: Record dictionary with the requested attributes.
-        :rtype: :class:`dict`
+        :return: Typed record with dict-like access for backward compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         :raises TypeError: If ``record_id`` is not a string.
 
@@ -260,7 +261,8 @@ class RecordOperations:
                 record = client.records.get(
                     "account", account_id, select=["name", "telephone1"]
                 )
-                print(record["name"])
+                print(record["name"])       # dict-like access
+                print(record.id)            # structured access
         """
         ...
 
@@ -275,10 +277,11 @@ class RecordOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
+    ) -> Iterable[List[Record]]:
         """Fetch multiple records from a Dataverse table with pagination.
 
-        Returns a generator that yields one page (list of record dicts) at a
+        Returns a generator that yields one page (list of
+        :class:`~PowerPlatform.Dataverse.models.record.Record` objects) at a
         time. Automatically follows ``@odata.nextLink`` for server-side paging.
 
         :param table: Schema name of the table (e.g. ``"account"`` or
@@ -305,10 +308,10 @@ class RecordOperations:
             ``Prefer: odata.maxpagesize``.
         :type page_size: :class:`int` or None
 
-        :return: Generator yielding pages, where each page is a list of record
-            dictionaries.
+        :return: Generator yielding pages, where each page is a list of
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
         :rtype: :class:`collections.abc.Iterable` of :class:`list` of
-            :class:`dict`
+            :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         Example:
             Fetch with filtering and pagination::
@@ -335,7 +338,7 @@ class RecordOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
+    ) -> Union[Record, Iterable[List[Record]]]:
         """Fetch a single record by ID, or fetch multiple records with pagination.
 
         This method has two usage patterns:
@@ -426,12 +429,13 @@ class RecordOperations:
                 )
             with self._client._scoped_odata() as od:
                 with _operation_scope("records.get", table):
-                    return od._get(table, record_id, select=select)
+                    raw = od._get(table, record_id, select=select)
+                    return Record.from_api_response(table, raw, record_id=record_id)
 
-        def _paged() -> Iterable[List[Dict[str, Any]]]:
+        def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
                 with _operation_scope("records.get_multiple", table):
-                    yield from od._get_multiple(
+                    for page in od._get_multiple(
                         table,
                         select=select,
                         filter=filter,
@@ -439,7 +443,8 @@ class RecordOperations:
                         top=top,
                         expand=expand,
                         page_size=page_size,
-                    )
+                    ):
+                        yield [Record.from_api_response(table, row) for row in page]
 
         return _paged()
 

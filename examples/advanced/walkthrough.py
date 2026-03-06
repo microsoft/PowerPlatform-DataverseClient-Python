@@ -87,9 +87,12 @@ def main():
     credential = InteractiveBrowserCredential()
 
     log_call(f"DataverseClient(base_url='{base_url}', credential=...)")
-    client = DataverseClient(base_url=base_url, credential=credential)
-    print(f"[OK] Connected to: {base_url}")
+    with DataverseClient(base_url=base_url, credential=credential) as client:
+        print(f"[OK] Connected to: {base_url}")
+        _run_walkthrough(client)
 
+
+def _run_walkthrough(client):
     # ============================================================================
     # 2. TABLE CREATION (METADATA)
     # ============================================================================

@@ -53,7 +53,13 @@ credential = AzureCliCredential()
 credential = ClientSecretCredential(tenant_id, client_id, client_secret)
 credential = CertificateCredential(tenant_id, client_id, cert_path)
 
-# Create client (no trailing slash on URL!)
+# Create client with context manager (recommended -- enables HTTP connection pooling)
+# No trailing slash on URL!
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+# Session closed, caches cleared automatically
+
+# Or without context manager:
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
@@ -232,7 +238,7 @@ client.tables.delete("new_Product")
 
 #### Create One-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.metadata import (
+from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     Label,
@@ -264,7 +270,7 @@ print(f"Created lookup field: {result['lookup_schema_name']}")
 
 #### Create Many-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.metadata import ManyToManyRelationshipMetadata
+from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
 
 relationship = ManyToManyRelationshipMetadata(
     schema_name="new_employee_project",

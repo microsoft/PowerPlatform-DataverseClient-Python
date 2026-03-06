@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
+
+from ..models.record import Record
 
 from ..data._odata import _operation_scope
 
@@ -39,7 +41,7 @@ class QueryOperations:
 
     # -------------------------------------------------------------------- sql
 
-    def sql(self, sql: str) -> List[Dict[str, Any]]:
+    def sql(self, sql: str) -> List[Record]:
         """Execute a read-only SQL query using the Dataverse Web API.
 
         The SQL query must follow the supported subset: a single SELECT
@@ -49,9 +51,10 @@ class QueryOperations:
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
 
-        :return: List of result row dictionaries. Returns an empty list when no
-            rows match.
-        :rtype: :class:`list` of :class:`dict`
+        :return: List of :class:`~PowerPlatform.Dataverse.models.record.Record`
+            objects. Returns an empty list when no rows match.
+        :rtype: :class:`list` of
+            :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``sql`` is not a string or is empty.
@@ -75,4 +78,5 @@ class QueryOperations:
         """
         with self._client._scoped_odata() as od:
             with _operation_scope("query.sql"):
-                return od._query_sql(sql)
+                rows = od._query_sql(sql)
+                return [Record.from_api_response("", row) for row in rows]
