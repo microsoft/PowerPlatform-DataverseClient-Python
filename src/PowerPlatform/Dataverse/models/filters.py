@@ -32,6 +32,7 @@ Example::
 
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Sequence
@@ -76,6 +77,9 @@ def _format_value(value: Any) -> str:
     # bool MUST be checked before int (bool is a subclass of int)
     if isinstance(value, bool):
         return "true" if value else "false"
+    # Enum/IntEnum MUST be checked before int (IntEnum is a subclass of int)
+    if isinstance(value, enum.Enum):
+        return _format_value(value.value)
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):

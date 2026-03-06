@@ -115,7 +115,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
 | **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
-| **Namespaces** | Operations are organized into `client.records` (CRUD), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), and `client.files` (file uploads) |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), and `client.files` (file uploads) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
