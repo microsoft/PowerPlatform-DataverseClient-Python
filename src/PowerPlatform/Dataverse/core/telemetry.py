@@ -219,6 +219,7 @@ class TelemetryManager:
         self._tracer: Any = None
         self._meter: Any = None
         self._logger: Optional[logging.Logger] = None
+        self._log_level: int = logging.WARNING
         self._hooks = list(config.hooks)
 
         # Metric instruments (populated in _initialize)
@@ -261,8 +262,7 @@ class TelemetryManager:
 
         if self._config.enable_logging:
             self._logger = logging.getLogger(self._config.logger_name)
-            level = getattr(logging, self._config.log_level.upper(), logging.WARNING)
-            self._logger.setLevel(level)
+            self._log_level = getattr(logging, self._config.log_level.upper(), logging.WARNING)
 
     def _setup_metrics(self) -> None:
         if not self._meter:
@@ -426,23 +426,24 @@ class TelemetryManager:
             except Exception:
                 pass
 
-        # 3. Logging
+        # 3. Logging (use _log_level as internal filter to avoid mutating global logger state)
         if self._logger:
             try:
                 level = logging.WARNING if (status_code >= 400 or error) else logging.DEBUG
-                self._logger.log(
-                    level,
-                    "%s %s %s %.1fms",
-                    ctx.operation,
-                    ctx.method,
-                    status_code,
-                    duration_ms,
-                    extra={
-                        "client_request_id": ctx.client_request_id,
-                        "correlation_id": ctx.correlation_id,
-                        "service_request_id": service_request_id,
-                    },
-                )
+                if level >= self._log_level:
+                    self._logger.log(
+                        level,
+                        "%s %s %s %.1fms",
+                        ctx.operation,
+                        ctx.method,
+                        status_code,
+                        duration_ms,
+                        extra={
+                            "client_request_id": ctx.client_request_id,
+                            "correlation_id": ctx.correlation_id,
+                            "service_request_id": service_request_id,
+                        },
+                    )
             except Exception:
                 pass
 

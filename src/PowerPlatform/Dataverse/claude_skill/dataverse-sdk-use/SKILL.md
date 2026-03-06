@@ -321,6 +321,7 @@ client.files.upload(
 The SDK supports opt-in telemetry via hooks, OpenTelemetry, and Python logging:
 
 ```python
+from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 

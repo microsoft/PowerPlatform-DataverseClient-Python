@@ -193,7 +193,7 @@ class TestTelemetryManagerInit(unittest.TestCase):
     def test_invalid_log_level_falls_back_to_warning(self):
         mgr = TelemetryManager(TelemetryConfig(enable_logging=True, log_level="VERBOSE"))
         self.assertIsNotNone(mgr._logger)
-        self.assertEqual(mgr._logger.level, logging.WARNING)
+        self.assertEqual(mgr._log_level, logging.WARNING)
 
     def test_factory_with_hooks_only_returns_real_manager(self):
         hook = TelemetryHook()

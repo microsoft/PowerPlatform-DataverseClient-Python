@@ -391,6 +391,7 @@ client.files.upload(
 ### Telemetry & observability
 
 ```python
+from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 
