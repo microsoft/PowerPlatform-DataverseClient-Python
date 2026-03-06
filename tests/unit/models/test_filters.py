@@ -59,6 +59,24 @@ class TestFormatValue(unittest.TestCase):
     def test_float_integer_value(self):
         self.assertEqual(_format_value(1000000.0), "1000000.0")
 
+    def test_int_enum(self):
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 2
+
+        self.assertEqual(_format_value(Priority.HIGH), "2")
+        self.assertEqual(_format_value(Priority.LOW), "1")
+
+    def test_str_enum(self):
+        from enum import Enum
+
+        class Color(Enum):
+            RED = "red"
+
+        self.assertEqual(_format_value(Color.RED), "'red'")
+
     def test_string(self):
         self.assertEqual(_format_value("hello"), "'hello'")
 
