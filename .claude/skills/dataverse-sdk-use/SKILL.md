@@ -53,7 +53,13 @@ credential = AzureCliCredential()
 credential = ClientSecretCredential(tenant_id, client_id, client_secret)
 credential = CertificateCredential(tenant_id, client_id, cert_path)
 
-# Create client (no trailing slash on URL!)
+# Create client with context manager (recommended -- enables HTTP connection pooling)
+# No trailing slash on URL!
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+# Session closed, caches cleared automatically
+
+# Or without context manager:
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 

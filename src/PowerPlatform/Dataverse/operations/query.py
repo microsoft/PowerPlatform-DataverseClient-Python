@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, TYPE_CHECKING
+from typing import Iterable, List, Optional, TYPE_CHECKING
+
+from ..models.record import Record
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -37,7 +39,7 @@ class QueryOperations:
 
     # -------------------------------------------------------------------- sql
 
-    def sql(self, sql: str) -> List[Dict[str, Any]]:
+    def sql(self, sql: str) -> List[Record]:
         """Execute a read-only SQL query using the Dataverse Web API.
 
         The SQL query must follow the supported subset: a single SELECT
@@ -47,9 +49,10 @@ class QueryOperations:
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
 
-        :return: List of result row dictionaries. Returns an empty list when no
-            rows match.
-        :rtype: :class:`list` of :class:`dict`
+        :return: List of :class:`~PowerPlatform.Dataverse.models.record.Record`
+            objects. Returns an empty list when no rows match.
+        :rtype: :class:`list` of
+            :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``sql`` is not a string or is empty.
@@ -72,7 +75,8 @@ class QueryOperations:
                 )
         """
         with self._client._scoped_odata() as od:
-            return od._query_sql(sql)
+            rows = od._query_sql(sql)
+            return [Record.from_api_response("", row) for row in rows]
 
     # -------------------------------------------------------------------- fetchxml
 
@@ -81,7 +85,7 @@ class QueryOperations:
         fetchxml: str,
         *,
         page_size: Optional[int] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
+    ) -> Iterable[List[Record]]:
         """Execute a FetchXML query with automatic paging cookie handling.
 
         Executes a FetchXML query against Dataverse via the Web API. The FetchXML
@@ -135,7 +139,7 @@ class QueryOperations:
                         print(record["fullname"])
         """
 
-        def _paged() -> Iterable[List[Dict[str, Any]]]:
+        def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
                 yield from od._query_fetchxml(fetchxml, page_size=page_size)
 
