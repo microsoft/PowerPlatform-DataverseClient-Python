@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.models.metadata import ColumnMetadata, OptionSetInfo
+from PowerPlatform.Dataverse.models.table_info import AlternateKeyInfo, ColumnInfo, OptionSetInfo, TableInfo
 from PowerPlatform.Dataverse.models.relationship import RelationshipInfo
 from PowerPlatform.Dataverse.operations.tables import TableOperations
 from tests.fixtures.test_data import (
@@ -42,15 +42,15 @@ class TestTableOperations(unittest.TestCase):
     # ------------------------------------------------------------------ create
 
     def test_create(self):
-        """create() should call _create_table with correct positional args including renamed kwargs."""
-        expected_result = {
+        """create() should return TableInfo with dict-like backward compat."""
+        raw = {
             "table_schema_name": "new_Product",
             "entity_set_name": "new_products",
             "table_logical_name": "new_product",
             "metadata_id": "meta-guid-1",
             "columns_created": ["new_Price", "new_InStock"],
         }
-        self.client._odata._create_table.return_value = expected_result
+        self.client._odata._create_table.return_value = raw
 
         columns = {"new_Price": "decimal", "new_InStock": "bool"}
         result = self.client.tables.create(
@@ -66,7 +66,10 @@ class TestTableOperations(unittest.TestCase):
             "MySolution",
             "new_ProductName",
         )
-        self.assertEqual(result, expected_result)
+        self.assertIsInstance(result, TableInfo)
+        self.assertEqual(result.schema_name, "new_Product")
+        self.assertEqual(result["table_schema_name"], "new_Product")
+        self.assertEqual(result["entity_set_name"], "new_products")
 
     # ------------------------------------------------------------------ delete
 
@@ -79,19 +82,21 @@ class TestTableOperations(unittest.TestCase):
     # --------------------------------------------------------------------- get
 
     def test_get(self):
-        """get() should call _get_table_info and return the metadata dict."""
-        expected_info = {
+        """get() should return TableInfo with dict-like backward compat."""
+        raw = {
             "table_schema_name": "new_Product",
             "table_logical_name": "new_product",
             "entity_set_name": "new_products",
             "metadata_id": "meta-guid-1",
         }
-        self.client._odata._get_table_info.return_value = expected_info
+        self.client._odata._get_table_info.return_value = raw
 
         result = self.client.tables.get("new_Product")
 
         self.client._odata._get_table_info.assert_called_once_with("new_Product")
-        self.assertEqual(result, expected_info)
+        self.assertIsInstance(result, TableInfo)
+        self.assertEqual(result.schema_name, "new_Product")
+        self.assertEqual(result["table_schema_name"], "new_Product")
 
     def test_get_returns_none(self):
         """get() should return None when _get_table_info returns None (table not found)."""
@@ -116,7 +121,10 @@ class TestTableOperations(unittest.TestCase):
 
         self.client._odata._get_table_info.assert_called_once_with("account")
         self.client._odata._get_table_metadata.assert_not_called()
-        self.assertEqual(result, expected_info)
+        self.assertIsInstance(result, TableInfo)
+        self.assertEqual(result.schema_name, "account")
+        self.assertEqual(result["table_schema_name"], "account")
+        self.assertEqual(result["entity_set_name"], "accounts")
 
     def test_get_with_include_columns(self):
         """get(include_columns=True) should call _get_table_metadata and return columns."""
@@ -143,7 +151,7 @@ class TestTableOperations(unittest.TestCase):
         self.assertNotIn("columns_created", result)
         self.assertEqual(len(result["columns"]), 1)
         col = result["columns"][0]
-        self.assertIsInstance(col, ColumnMetadata)
+        self.assertIsInstance(col, ColumnInfo)
         self.assertEqual(col.logical_name, "name")
         self.assertEqual(col.schema_name, "Name")
         self.assertEqual(col.attribute_type, "String")
@@ -212,7 +220,7 @@ class TestTableOperations(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_get_columns(self):
-        """get_columns() should return list of ColumnMetadata."""
+        """get_columns() should return list of ColumnInfo."""
         raw_list = [ACCOUNT_NAME_COLUMN, EMAILADDRESS1_COLUMN]
         self.client._odata._get_table_columns.return_value = raw_list
 
@@ -224,8 +232,8 @@ class TestTableOperations(unittest.TestCase):
             filter=None,
         )
         self.assertEqual(len(result), 2)
-        self.assertIsInstance(result[0], ColumnMetadata)
-        self.assertIsInstance(result[1], ColumnMetadata)
+        self.assertIsInstance(result[0], ColumnInfo)
+        self.assertIsInstance(result[1], ColumnInfo)
         self.assertEqual(result[0].logical_name, "name")
         self.assertEqual(result[0].display_name, "Account Name")
         self.assertEqual(result[0].required_level, "ApplicationRequired")
@@ -248,7 +256,7 @@ class TestTableOperations(unittest.TestCase):
         )
 
     def test_get_column_found(self):
-        """get_column() should return ColumnMetadata when column exists."""
+        """get_column() should return ColumnInfo when column exists."""
         self.client._odata._get_table_column.return_value = EMAILADDRESS1_COLUMN
 
         result = self.client.tables.get_column("account", "emailaddress1")
@@ -258,7 +266,7 @@ class TestTableOperations(unittest.TestCase):
             "emailaddress1",
             select=None,
         )
-        self.assertIsInstance(result, ColumnMetadata)
+        self.assertIsInstance(result, ColumnInfo)
         self.assertEqual(result.logical_name, "emailaddress1")
         self.assertEqual(result.schema_name, "EMailAddress1")
         self.assertEqual(result.display_name, "Email")
@@ -650,6 +658,104 @@ class TestTableOperations(unittest.TestCase):
         result = self.client.tables.get_relationship("nonexistent")
 
         self.assertIsNone(result)
+
+    # ------------------------------------------------ create_alternate_key
+
+    def test_create_alternate_key(self):
+        """create_alternate_key() should call OData layer and return AlternateKeyInfo."""
+        raw = {
+            "metadata_id": "key-guid-1",
+            "schema_name": "new_product_code_key",
+            "key_attributes": ["new_productcode"],
+        }
+        self.client._odata._create_alternate_key.return_value = raw
+
+        result = self.client.tables.create_alternate_key(
+            "new_Product",
+            "new_product_code_key",
+            ["new_productcode"],
+        )
+
+        self.client._odata._create_alternate_key.assert_called_once()
+        call_args = self.client._odata._create_alternate_key.call_args
+        self.assertEqual(call_args[0][0], "new_Product")
+        self.assertEqual(call_args[0][1], "new_product_code_key")
+        self.assertEqual(call_args[0][2], ["new_productcode"])
+        # 4th arg is a Label object for the display name
+        self.assertIsNotNone(call_args[0][3])
+        self.assertIsInstance(result, AlternateKeyInfo)
+        self.assertEqual(result.metadata_id, "key-guid-1")
+        self.assertEqual(result.schema_name, "new_product_code_key")
+        self.assertEqual(result.key_attributes, ["new_productcode"])
+        self.assertEqual(result.status, "Pending")
+
+    def test_create_alternate_key_multi_column(self):
+        """create_alternate_key() should handle multi-column keys."""
+        raw = {
+            "metadata_id": "key-guid-2",
+            "schema_name": "new_composite_key",
+            "key_attributes": ["new_col1", "new_col2"],
+        }
+        self.client._odata._create_alternate_key.return_value = raw
+
+        result = self.client.tables.create_alternate_key(
+            "new_Product",
+            "new_composite_key",
+            ["new_col1", "new_col2"],
+        )
+
+        self.assertIsInstance(result, AlternateKeyInfo)
+        self.assertEqual(result.key_attributes, ["new_col1", "new_col2"])
+
+    # -------------------------------------------------- get_alternate_keys
+
+    def test_get_alternate_keys(self):
+        """get_alternate_keys() should return list of AlternateKeyInfo."""
+        raw_list = [
+            {
+                "MetadataId": "key-guid-1",
+                "SchemaName": "new_product_code_key",
+                "KeyAttributes": ["new_productcode"],
+                "EntityKeyIndexStatus": "Active",
+            },
+            {
+                "MetadataId": "key-guid-2",
+                "SchemaName": "new_composite_key",
+                "KeyAttributes": ["new_col1", "new_col2"],
+                "EntityKeyIndexStatus": "Pending",
+            },
+        ]
+        self.client._odata._get_alternate_keys.return_value = raw_list
+
+        result = self.client.tables.get_alternate_keys("new_Product")
+
+        self.client._odata._get_alternate_keys.assert_called_once_with("new_Product")
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], AlternateKeyInfo)
+        self.assertEqual(result[0].metadata_id, "key-guid-1")
+        self.assertEqual(result[0].schema_name, "new_product_code_key")
+        self.assertEqual(result[0].key_attributes, ["new_productcode"])
+        self.assertEqual(result[0].status, "Active")
+        self.assertIsInstance(result[1], AlternateKeyInfo)
+        self.assertEqual(result[1].metadata_id, "key-guid-2")
+        self.assertEqual(result[1].status, "Pending")
+
+    def test_get_alternate_keys_empty(self):
+        """get_alternate_keys() should return empty list when no keys exist."""
+        self.client._odata._get_alternate_keys.return_value = []
+
+        result = self.client.tables.get_alternate_keys("new_Product")
+
+        self.assertEqual(result, [])
+
+    # ------------------------------------------------- delete_alternate_key
+
+    def test_delete_alternate_key(self):
+        """delete_alternate_key() should call OData layer with correct args."""
+        self.client.tables.delete_alternate_key("new_Product", "key-guid-1")
+
+        self.client._odata._delete_alternate_key.assert_called_once_with("new_Product", "key-guid-1")
 
 
 if __name__ == "__main__":

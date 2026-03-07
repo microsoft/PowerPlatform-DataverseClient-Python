@@ -14,8 +14,8 @@ from ..models.relationship import (
     CascadeConfiguration,
     RelationshipInfo,
 )
+from ..models.table_info import AlternateKeyInfo, ColumnInfo, OptionSetInfo, TableInfo
 from ..models.labels import Label, LocalizedLabel
-from ..models.metadata import ColumnMetadata, OptionSetInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class TableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> TableInfo:
         """Create a custom table with the specified columns.
 
         :param table: Schema name of the table with customization prefix
@@ -95,10 +95,11 @@ class TableOperations:
             defaults to ``"{prefix}_Name"``.
         :type primary_column: :class:`str` or None
 
-        :return: Dictionary containing table metadata including
-            ``table_schema_name``, ``entity_set_name``, ``table_logical_name``,
-            ``metadata_id``, and ``columns_created``.
-        :rtype: :class:`dict`
+        :return: Table metadata with ``schema_name``, ``entity_set_name``,
+            ``logical_name``, ``metadata_id``, and ``columns_created``.
+            Supports dict-like access with legacy keys for backward
+            compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
@@ -125,12 +126,13 @@ class TableOperations:
                 print(f"Created: {result['table_schema_name']}")
         """
         with self._client._scoped_odata() as od:
-            return od._create_table(
+            raw = od._create_table(
                 table,
                 columns,
                 solution,
                 primary_column,
             )
+            return TableInfo.from_dict(raw)
 
     # ----------------------------------------------------------------- delete
 
@@ -163,7 +165,7 @@ class TableOperations:
         select: Optional[List[str]] = None,
         include_columns: bool = False,
         include_relationships: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[TableInfo]:
         """Get basic or extended metadata for a table if it exists.
 
         When no extra parameters are passed, returns the same lightweight
@@ -177,7 +179,7 @@ class TableOperations:
             names to include (e.g. ``["DisplayName", "Description"]``).
         :type select: :class:`list` of :class:`str` or None
         :param include_columns: If ``True``, expands and returns all column
-            metadata as :class:`~PowerPlatform.Dataverse.models.metadata.ColumnMetadata`
+            metadata as :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
             instances in the ``columns`` key.
         :type include_columns: :class:`bool`
         :param include_relationships: If ``True``, expands and returns
@@ -187,9 +189,6 @@ class TableOperations:
 
         :return: Dictionary containing ``table_schema_name``,
             ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
-            When extended params are used, may also include ``columns``,
-            ``one_to_many_relationships``, ``many_to_one_relationships``,
-            ``many_to_many_relationships``, and any extra selected properties.
             Returns None if the table is not found.
         :rtype: :class:`dict` or None
 
@@ -217,7 +216,8 @@ class TableOperations:
         # This ensures backward compatibility -- existing callers get identical behavior.
         if not include_columns and not include_relationships and select is None:
             with self._client._scoped_odata() as od:
-                return od._get_table_info(table)
+                raw = od._get_table_info(table)
+                return TableInfo.from_dict(raw) if raw else None
 
         # Extended metadata retrieval when any extra parameter is used
         with self._client._scoped_odata() as od:
@@ -246,9 +246,9 @@ class TableOperations:
                 if prop not in ("SchemaName", "LogicalName", "EntitySetName", "MetadataId"):
                     result[prop] = raw.get(prop)
 
-        # Convert expanded Attributes into ColumnMetadata instances
+        # Convert expanded Attributes into ColumnInfo instances
         if include_columns and "Attributes" in raw:
-            result["columns"] = [ColumnMetadata.from_api_response(a) for a in raw["Attributes"]]
+            result["columns"] = [ColumnInfo.from_api_response(a) for a in raw["Attributes"]]
 
         # Include expanded relationship collections as raw dicts
         if include_relationships:
@@ -270,10 +270,10 @@ class TableOperations:
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
-    ) -> List[ColumnMetadata]:
+    ) -> List[ColumnInfo]:
         """Get column (attribute) metadata for a table.
 
-        Returns a list of :class:`~PowerPlatform.Dataverse.models.metadata.ColumnMetadata`
+        Returns a list of :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
         instances representing each column in the table.
 
         :param table: Schema name of the table (e.g. ``"account"``
@@ -298,7 +298,7 @@ class TableOperations:
         :type filter: :class:`str` or None
 
         :return: List of column metadata.
-        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.metadata.ColumnMetadata`
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -318,7 +318,7 @@ class TableOperations:
         """
         with self._client._scoped_odata() as od:
             raw_list = od._get_table_columns(table, select=select, filter=filter)
-        return [ColumnMetadata.from_api_response(item) for item in raw_list]
+        return [ColumnInfo.from_api_response(item) for item in raw_list]
 
     # --------------------------------------------------------------- get_column
 
@@ -328,7 +328,7 @@ class TableOperations:
         column: str,
         *,
         select: Optional[List[str]] = None,
-    ) -> Optional[ColumnMetadata]:
+    ) -> Optional[ColumnInfo]:
         """Get metadata for a single column by logical name.
 
         :param table: Schema name of the table (e.g. ``"account"``).
@@ -340,7 +340,7 @@ class TableOperations:
         :type select: :class:`list` of :class:`str` or None
 
         :return: Column metadata, or ``None`` if the column is not found.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.metadata.ColumnMetadata`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
             or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
@@ -356,7 +356,7 @@ class TableOperations:
             raw = od._get_table_column(table, column, select=select)
         if raw is None:
             return None
-        return ColumnMetadata.from_api_response(raw)
+        return ColumnInfo.from_api_response(raw)
 
     # -------------------------------------------------------- get_column_options
 
@@ -383,7 +383,7 @@ class TableOperations:
         :return: Option set information with available choices, or ``None`` if
             the column is not a Picklist, MultiSelect, Boolean, Status, or
             State type.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.metadata.OptionSetInfo`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.OptionSetInfo`
             or None
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
@@ -857,3 +857,123 @@ class TableOperations:
         )
 
         return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
+
+    # ------------------------------------------------- create_alternate_key
+
+    def create_alternate_key(
+        self,
+        table: str,
+        key_name: str,
+        columns: List[str],
+        *,
+        display_name: Optional[str] = None,
+        language_code: int = 1033,
+    ) -> AlternateKeyInfo:
+        """Create an alternate key on a table.
+
+        Alternate keys allow upsert operations to identify records by one or
+        more columns instead of the primary GUID. After creation the key is
+        queued for index building; its :attr:`~AlternateKeyInfo.status` will
+        transition from ``"Pending"`` to ``"Active"`` once the index is ready.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_name: Schema name for the new alternate key
+            (e.g. ``"new_product_code_key"``).
+        :type key_name: :class:`str`
+        :param columns: List of column logical names that compose the key
+            (e.g. ``["new_productcode"]``).
+        :type columns: :class:`list` of :class:`str`
+        :param display_name: Display name for the key. Defaults to
+            ``key_name`` if not provided.
+        :type display_name: :class:`str` or None
+        :param language_code: Language code for labels. Defaults to 1033
+            (English).
+        :type language_code: :class:`int`
+
+        :return: Metadata for the newly created alternate key.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            Create a single-column alternate key for upsert::
+
+                key = client.tables.create_alternate_key(
+                    "new_Product",
+                    "new_product_code_key",
+                    ["new_productcode"],
+                    display_name="Product Code",
+                )
+                print(f"Key ID: {key.metadata_id}")
+                print(f"Columns: {key.key_attributes}")
+        """
+        label = Label(localized_labels=[LocalizedLabel(label=display_name or key_name, language_code=language_code)])
+        with self._client._scoped_odata() as od:
+            raw = od._create_alternate_key(table, key_name, columns, label)
+            return AlternateKeyInfo(
+                metadata_id=raw["metadata_id"],
+                schema_name=raw["schema_name"],
+                key_attributes=raw["key_attributes"],
+                status="Pending",
+            )
+
+    # --------------------------------------------------- get_alternate_keys
+
+    def get_alternate_keys(self, table: str) -> List[AlternateKeyInfo]:
+        """List all alternate keys defined on a table.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+
+        :return: List of alternate key metadata objects. May be empty if no
+            alternate keys are defined.
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example:
+            List alternate keys and print their status::
+
+                keys = client.tables.get_alternate_keys("new_Product")
+                for key in keys:
+                    print(f"{key.schema_name}: {key.status}")
+        """
+        with self._client._scoped_odata() as od:
+            raw_list = od._get_alternate_keys(table)
+            return [AlternateKeyInfo.from_api_response(item) for item in raw_list]
+
+    # ------------------------------------------------ delete_alternate_key
+
+    def delete_alternate_key(self, table: str, key_id: str) -> None:
+        """Delete an alternate key by its metadata ID.
+
+        :param table: Schema name of the table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
+        :param key_id: Metadata GUID of the alternate key to delete.
+        :type key_id: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table does not exist.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        .. warning::
+            Deleting an alternate key that is in use by upsert operations will
+            cause those operations to fail. This operation is irreversible.
+
+        Example::
+
+            client.tables.delete_alternate_key(
+                "new_Product",
+                "12345678-1234-1234-1234-123456789abc",
+            )
+        """
+        with self._client._scoped_odata() as od:
+            od._delete_alternate_key(table, key_id)

@@ -113,6 +113,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | Concept | Description |
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
+| **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
 | **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), `client.tables` (metadata), and `client.files` (file uploads) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
@@ -131,17 +132,18 @@ from PowerPlatform.Dataverse.client import DataverseClient
 
 # Connect to Dataverse
 credential = InteractiveBrowserCredential()
-client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
-# Create a contact
-contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    # Create a contact
+    contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
-# Read the contact back
-contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
-print(f"Created: {contact['firstname']} {contact['lastname']}")
+    # Read the contact back
+    contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
+    print(f"Created: {contact['firstname']} {contact['lastname']}")
 
-# Clean up
-client.records.delete("contact", contact_id)
+    # Clean up
+    client.records.delete("contact", contact_id)
+# Session closed, caches cleared automatically
 ```
 
 ### Basic CRUD operations
@@ -514,7 +516,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 When contributing new features to this SDK, please follow these guidelines:
 
-1. **Public methods in operation namespaces** - New public methods go in the appropriate namespace module under [operations/](src/PowerPlatform/Dataverse/operations/). Public types and constants live in their own modules (e.g., `models/metadata.py`, `common/constants.py`)
+1. **Public methods in operation namespaces** - New public methods go in the appropriate namespace module under [operations/](src/PowerPlatform/Dataverse/operations/). Public types and constants live in their own modules (e.g., `models/table_info.py`, `common/constants.py`)
 2. **Add README example for public methods** - Add usage examples to this README for public API methods
 3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
 4. **Update documentation** when adding features - Keep README and SKILL files (note that each skill has 2 copies) in sync

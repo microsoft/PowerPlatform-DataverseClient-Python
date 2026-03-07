@@ -3,8 +3,8 @@
 
 """Tests for metadata models."""
 
-from PowerPlatform.Dataverse.models.metadata import (
-    ColumnMetadata,
+from PowerPlatform.Dataverse.models.table_info import (
+    ColumnInfo,
     OptionItem,
     OptionSetInfo,
 )
@@ -22,12 +22,12 @@ from tests.fixtures.test_data import (
 )
 
 
-class TestColumnMetadata:
-    """Tests for ColumnMetadata."""
+class TestColumnInfo:
+    """Tests for ColumnInfo."""
 
     def test_from_api_response_full(self):
         """Test full API response maps all 13 fields correctly."""
-        col = ColumnMetadata.from_api_response(EMAILADDRESS1_COLUMN)
+        col = ColumnInfo.from_api_response(EMAILADDRESS1_COLUMN)
         assert col.logical_name == "emailaddress1"
         assert col.schema_name == "EMailAddress1"
         assert col.display_name == "Email"
@@ -45,7 +45,7 @@ class TestColumnMetadata:
     def test_from_api_response_minimal(self):
         """Test minimal dict with only LogicalName and SchemaName uses defaults."""
         data = {"LogicalName": "name", "SchemaName": "Name"}
-        col = ColumnMetadata.from_api_response(data)
+        col = ColumnInfo.from_api_response(data)
         assert col.logical_name == "name"
         assert col.schema_name == "Name"
         assert col.display_name is None
@@ -67,18 +67,18 @@ class TestColumnMetadata:
             "SchemaName": "Col",
             "DisplayName": {"UserLocalizedLabel": None},
         }
-        col = ColumnMetadata.from_api_response(data)
+        col = ColumnInfo.from_api_response(data)
         assert col.display_name is None
 
     def test_display_name_missing_entirely(self):
         """Test dict without DisplayName key."""
         data = {"LogicalName": "col", "SchemaName": "Col"}
-        col = ColumnMetadata.from_api_response(data)
+        col = ColumnInfo.from_api_response(data)
         assert col.display_name is None
 
     def test_from_api_response_primary_name_column(self):
         """Test primary name column (account.name) with ApplicationRequired level."""
-        col = ColumnMetadata.from_api_response(ACCOUNT_NAME_COLUMN)
+        col = ColumnInfo.from_api_response(ACCOUNT_NAME_COLUMN)
         assert col.logical_name == "name"
         assert col.schema_name == "Name"
         assert col.display_name == "Account Name"
@@ -88,7 +88,7 @@ class TestColumnMetadata:
 
     def test_from_api_response_picklist_column(self):
         """Test picklist column (account.accountcategorycode) maps correctly."""
-        col = ColumnMetadata.from_api_response(PICKLIST_COLUMN)
+        col = ColumnInfo.from_api_response(PICKLIST_COLUMN)
         assert col.logical_name == "accountcategorycode"
         assert col.schema_name == "AccountCategoryCode"
         assert col.attribute_type == "Picklist"
@@ -98,7 +98,7 @@ class TestColumnMetadata:
 
     def test_from_api_response_status_column(self):
         """Test status column (account.statuscode) maps correctly."""
-        col = ColumnMetadata.from_api_response(STATUS_COLUMN)
+        col = ColumnInfo.from_api_response(STATUS_COLUMN)
         assert col.logical_name == "statuscode"
         assert col.schema_name == "StatusCode"
         assert col.attribute_type == "Status"
@@ -107,7 +107,7 @@ class TestColumnMetadata:
 
     def test_from_api_response_state_column(self):
         """Test state column (contact.statecode) maps correctly."""
-        col = ColumnMetadata.from_api_response(STATE_COLUMN)
+        col = ColumnInfo.from_api_response(STATE_COLUMN)
         assert col.logical_name == "statecode"
         assert col.schema_name == "StateCode"
         assert col.attribute_type == "State"
@@ -119,7 +119,7 @@ class TestColumnMetadata:
 
     def test_from_api_response_uniqueidentifier_column(self):
         """Test primary ID column (account.accountid) maps correctly."""
-        col = ColumnMetadata.from_api_response(UNIQUEID_COLUMN)
+        col = ColumnInfo.from_api_response(UNIQUEID_COLUMN)
         assert col.logical_name == "accountid"
         assert col.is_primary_id is True
         assert col.is_primary_name is False
@@ -134,7 +134,7 @@ class TestColumnMetadata:
             "SchemaName": "Col",
             "RequiredLevel": {"Value": "ApplicationRequired"},
         }
-        col = ColumnMetadata.from_api_response(data)
+        col = ColumnInfo.from_api_response(data)
         assert col.required_level == "ApplicationRequired"
 
 

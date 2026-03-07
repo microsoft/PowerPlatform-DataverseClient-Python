@@ -132,6 +132,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         auth,
         base_url: str,
         config=None,
+        session=None,
     ) -> None:
         """Initialize the OData client.
 
@@ -143,6 +144,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
+        :param session: Optional ``requests.Session`` for HTTP connection pooling.
+        :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -160,6 +163,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
+            session=session,
         )
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -178,6 +182,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             yield shared_id
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+    def close(self) -> None:
+        """Close the OData client and release resources.
+
+        Clears all internal caches and closes the underlying HTTP client.
+        Safe to call multiple times.
+        """
+        self._logical_to_entityset_cache.clear()
+        self._logical_primaryid_cache.clear()
+        self._picklist_label_cache.clear()
+        if self._http is not None:
+            self._http.close()
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -1761,6 +1777,112 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
+
+    # ------------------- Alternate key metadata helpers -------------------
+
+    def _create_alternate_key(
+        self,
+        table_schema_name: str,
+        key_name: str,
+        columns: List[str],
+        display_name_label=None,
+    ) -> Dict[str, Any]:
+        """Create an alternate key on a table.
+
+        Issues ``POST EntityDefinitions(LogicalName='{logical_name}')/Keys``
+        with ``EntityKeyMetadata`` payload.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_name: Schema name for the new alternate key.
+        :type key_name: ``str``
+        :param columns: List of column logical names that compose the key.
+        :type columns: ``list[str]``
+        :param display_name_label: Label for the key display name.
+        :type display_name_label: ``Label`` or ``None``
+
+        :return: Dictionary with ``metadata_id``, ``schema_name``, and ``key_attributes``.
+        :rtype: ``dict[str, Any]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        payload: Dict[str, Any] = {
+            "SchemaName": key_name,
+            "KeyAttributes": columns,
+        }
+        if display_name_label is not None:
+            payload["DisplayName"] = display_name_label.to_dict()
+        r = self._request("post", url, json=payload)
+        metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
+
+        return {
+            "metadata_id": metadata_id,
+            "schema_name": key_name,
+            "key_attributes": columns,
+        }
+
+    def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
+        """List all alternate keys on a table.
+
+        Issues ``GET EntityDefinitions(LogicalName='{logical_name}')/Keys``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+
+        :return: List of raw ``EntityKeyMetadata`` dictionaries.
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        r = self._request("get", url)
+        return r.json().get("value", [])
+
+    def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
+        """Delete an alternate key by metadata ID.
+
+        Issues ``DELETE EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_id: Metadata GUID of the alternate key.
+        :type key_id: ``str``
+
+        :return: ``None``
+        :rtype: ``None``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})"
+        self._request("delete", url)
 
     def _create_table(
         self,
