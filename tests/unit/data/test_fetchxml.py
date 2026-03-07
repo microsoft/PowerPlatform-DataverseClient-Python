@@ -193,7 +193,7 @@ class TestQueryFetchxml(unittest.TestCase):
     def test_query_fetchxml_paging_cookie_decode(self):
         """Verify double URL-decode of paging cookie and injection into fetch element."""
         self._setup_entity_set()
-        from urllib.parse import quote, unquote
+        from urllib.parse import quote
 
         # Cookie value is double-encoded
         inner = "<cookie pagenumber='2' />"
@@ -263,6 +263,31 @@ class TestQueryFetchxml(unittest.TestCase):
         call_url = self.od._request.call_args[0][1]
         self.assertIn("page", call_url)
         self.assertIn("3", call_url)
+
+    def test_query_fetchxml_page_non_integer_raises(self):
+        """Raise ValidationError when page attribute is not an integer."""
+        self._setup_entity_set()
+        fetchxml = "<fetch page='abc'><entity name='account'><attribute name='name' /></entity></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_MALFORMED)
+        self.assertIn("page", str(ctx.exception).lower())
+
+    def test_query_fetchxml_page_zero_raises(self):
+        """Raise ValidationError when page attribute is zero."""
+        self._setup_entity_set()
+        fetchxml = "<fetch page='0'><entity name='account'><attribute name='name' /></entity></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_MALFORMED)
+
+    def test_query_fetchxml_page_negative_raises(self):
+        """Raise ValidationError when page attribute is negative."""
+        self._setup_entity_set()
+        fetchxml = "<fetch page='-1'><entity name='account'><attribute name='name' /></entity></fetch>"
+        with self.assertRaises(ValidationError) as ctx:
+            list(self.od._query_fetchxml(fetchxml))
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_MALFORMED)
 
     def test_query_fetchxml_morerecords_string_true(self):
         """When morerecords is string 'true' (not boolean), paging continues."""

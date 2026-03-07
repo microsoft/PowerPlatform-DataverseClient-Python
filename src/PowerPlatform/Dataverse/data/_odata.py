@@ -48,7 +48,9 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
-_MAX_FETCHXML_LENGTH = 16_000  # ~16 KB raw; caps input size to mitigate XML entity expansion attacks; after URL-encoding stays under 32 KB GET URL limit
+_MAX_FETCHXML_LENGTH = (
+    16_000  # ~16 KB raw; caps input size to mitigate XML entity expansion attacks and reduce URL length after encoding
+)
 _MAX_FETCHXML_PAGES = 10_000
 
 
@@ -999,7 +1001,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                     )
             if page_size is not None and root.get("count") is None:
                 root.set("count", str(page_size))
-            if root.get("page") is None:
+            page_attr = root.get("page")
+            if page_attr is not None:
+                try:
+                    page_number = int(page_attr)
+                except ValueError:
+                    page_number = -1
+                if page_number <= 0:
+                    raise ValidationError(
+                        f"FetchXML 'page' attribute must be a positive integer, got '{page_attr}'",
+                        subcode=VALIDATION_FETCHXML_MALFORMED,
+                    )
+            else:
                 root.set("page", "1")
 
         headers = {

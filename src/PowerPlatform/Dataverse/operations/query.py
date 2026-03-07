@@ -90,7 +90,8 @@ class QueryOperations:
 
         Executes a FetchXML query against Dataverse via the Web API. The FetchXML
         string must contain a root ``<fetch>`` element with a child ``<entity name='...'>``
-        element. Results are yielded as pages (lists of record dicts).
+        element. Results are yielded as pages (lists of
+        :class:`~PowerPlatform.Dataverse.models.record.Record` objects).
 
         :param fetchxml: Raw FetchXML string (e.g. ``<fetch><entity name='account'>...</entity></fetch>``).
         :type fetchxml: :class:`str`
@@ -102,8 +103,10 @@ class QueryOperations:
             If the FetchXML already contains a ``count`` attribute, the ``page_size`` parameter
             is ignored. The ``count`` in FetchXML takes precedence.
 
-        :return: Generator yielding pages, where each page is a list of record dicts.
-        :rtype: :class:`~typing.Iterable` of :class:`list` of :class:`dict`
+        :return: Generator yielding pages, where each page is a list of
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
+        :rtype: :class:`~typing.Iterable` of :class:`list` of
+            :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``fetchxml`` is not a string, is empty, or has invalid structure.
@@ -141,6 +144,10 @@ class QueryOperations:
 
         def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
-                yield from od._query_fetchxml(fetchxml, page_size=page_size)
+                entity_name = ""
+                for page in od._query_fetchxml(fetchxml, page_size=page_size):
+                    if not entity_name:
+                        entity_name = od._extract_entity_from_fetchxml(fetchxml)
+                    yield [Record.from_api_response(entity_name, row) for row in page]
 
         return _paged()
