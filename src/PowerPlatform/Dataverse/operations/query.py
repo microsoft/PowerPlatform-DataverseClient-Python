@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import List, TYPE_CHECKING
+from typing import Iterable, List, Optional, TYPE_CHECKING
 
 from ..models.record import Record
 
@@ -77,3 +77,77 @@ class QueryOperations:
         with self._client._scoped_odata() as od:
             rows = od._query_sql(sql)
             return [Record.from_api_response("", row) for row in rows]
+
+    # -------------------------------------------------------------------- fetchxml
+
+    def fetchxml(
+        self,
+        fetchxml: str,
+        *,
+        page_size: Optional[int] = None,
+    ) -> Iterable[List[Record]]:
+        """Execute a FetchXML query with automatic paging cookie handling.
+
+        Executes a FetchXML query against Dataverse via the Web API. The FetchXML
+        string must contain a root ``<fetch>`` element with a child ``<entity name='...'>``
+        element. Results are yielded as pages (lists of
+        :class:`~PowerPlatform.Dataverse.models.record.Record` objects).
+
+        :param fetchxml: Raw FetchXML string (e.g. ``<fetch><entity name='account'>...</entity></fetch>``).
+        :type fetchxml: :class:`str`
+        :param page_size: Optional page size override. Sets the ``count`` attribute on
+            ``<fetch>`` if not already present.
+        :type page_size: :class:`int` | ``None``
+
+        .. note::
+            If the FetchXML already contains a ``count`` attribute, the ``page_size`` parameter
+            is ignored. The ``count`` in FetchXML takes precedence.
+
+        :return: Generator yielding pages, where each page is a list of
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
+        :rtype: :class:`~typing.Iterable` of :class:`list` of
+            :class:`~PowerPlatform.Dataverse.models.record.Record`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
+            If ``fetchxml`` is not a string, is empty, or has invalid structure.
+
+        Example:
+            Basic FetchXML query::
+
+                fetchxml = '''
+                <fetch top='5'>
+                  <entity name='account'>
+                    <attribute name='name' />
+                  </entity>
+                </fetch>
+                '''
+                for page in client.query.fetchxml(fetchxml):
+                    for record in page:
+                        print(record["name"])
+
+            Paginated query with page size::
+
+                fetchxml = '''
+                <fetch>
+                  <entity name='contact'>
+                    <attribute name='fullname' />
+                    <filter type='and'>
+                      <condition attribute='statecode' operator='eq' value='0' />
+                    </filter>
+                  </entity>
+                </fetch>
+                '''
+                for page in client.query.fetchxml(fetchxml, page_size=50):
+                    for record in page:
+                        print(record["fullname"])
+        """
+
+        def _paged() -> Iterable[List[Record]]:
+            with self._client._scoped_odata() as od:
+                entity_name = ""
+                for page in od._query_fetchxml(fetchxml, page_size=page_size):
+                    if not entity_name:
+                        entity_name = od._extract_entity_from_fetchxml(fetchxml)
+                    yield [Record.from_api_response(entity_name, row) for row in page]
+
+        return _paged()
