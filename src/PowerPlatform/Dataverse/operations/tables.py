@@ -14,9 +14,8 @@ from ..models.relationship import (
     CascadeConfiguration,
     RelationshipInfo,
 )
-from ..models.table_info import AlternateKeyInfo
+from ..models.table_info import AlternateKeyInfo, ColumnInfo, OptionSetInfo, TableInfo
 from ..models.labels import Label, LocalizedLabel
-from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
@@ -159,31 +158,303 @@ class TableOperations:
 
     # -------------------------------------------------------------------- get
 
-    def get(self, table: str) -> Optional[TableInfo]:
-        """Get basic metadata for a table if it exists.
+    def get(
+        self,
+        table: str,
+        *,
+        select: Optional[List[str]] = None,
+        include_columns: bool = False,
+        include_relationships: bool = False,
+    ) -> Optional[TableInfo]:
+        """Get basic or extended metadata for a table if it exists.
+
+        When no extra parameters are passed, returns the same lightweight
+        result as before (backward compatible). Use optional parameters to
+        request richer metadata including columns and relationships.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
             or ``"account"``).
         :type table: :class:`str`
+        :param select: Optional list of PascalCase EntityDefinition property
+            names to include (e.g. ``["DisplayName", "Description"]``).
+        :type select: :class:`list` of :class:`str` or None
+        :param include_columns: If ``True``, expands and returns all column
+            metadata as :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
+            instances in the ``columns`` key.
+        :type include_columns: :class:`bool`
+        :param include_relationships: If ``True``, expands and returns
+            ``one_to_many_relationships``, ``many_to_one_relationships``, and
+            ``many_to_many_relationships``.
+        :type include_relationships: :class:`bool`
 
-        :return: Table metadata, or ``None`` if the table is not found.
-            Supports dict-like access with legacy keys for backward
-            compatibility.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
-            or None
+        :return: Dictionary containing ``table_schema_name``,
+            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
+            Returns None if the table is not found.
+        :rtype: :class:`dict` or None
 
         Example::
 
+            # Basic usage (unchanged)
             info = client.tables.get("new_MyTestTable")
             if info:
                 print(f"Logical name: {info['table_logical_name']}")
-                print(f"Entity set: {info['entity_set_name']}")
+
+            # Extended with columns
+            info = client.tables.get("account", include_columns=True)
+            for col in info.get("columns", []):
+                print(f"{col.logical_name} ({col.attribute_type})")
+
+            # Extended with relationships
+            info = client.tables.get("account", include_relationships=True)
+        """
+        # Normalize empty list to None so callers passing select=[] get the
+        # lightweight path instead of an expensive full-entity-definition fetch.
+        if select is not None and len(select) == 0:
+            select = None
+
+        # When no extra parameters are passed, use the original lightweight lookup.
+        # This ensures backward compatibility -- existing callers get identical behavior.
+        if not include_columns and not include_relationships and select is None:
+            with self._client._scoped_odata() as od:
+                raw = od._get_table_info(table)
+                return TableInfo.from_dict(raw) if raw else None
+
+        # Extended metadata retrieval when any extra parameter is used
+        with self._client._scoped_odata() as od:
+            raw = od._get_table_metadata(
+                table,
+                select=select,
+                include_attributes=include_columns,
+                include_one_to_many=include_relationships,
+                include_many_to_one=include_relationships,
+                include_many_to_many=include_relationships,
+            )
+        if raw is None:
+            return None
+
+        # Build result dict starting with the standard 4 fields
+        result: Dict[str, Any] = {
+            "table_schema_name": raw.get("SchemaName", table),
+            "table_logical_name": raw.get("LogicalName"),
+            "entity_set_name": raw.get("EntitySetName"),
+            "metadata_id": raw.get("MetadataId"),
+        }
+
+        # Include any extra selected entity properties
+        if select:
+            for prop in select:
+                if prop not in ("SchemaName", "LogicalName", "EntitySetName", "MetadataId"):
+                    result[prop] = raw.get(prop)
+
+        # Convert expanded Attributes into ColumnInfo instances
+        if include_columns and "Attributes" in raw:
+            result["columns"] = [ColumnInfo.from_api_response(a) for a in raw["Attributes"]]
+
+        # Include expanded relationship collections as raw dicts
+        if include_relationships:
+            for raw_key, result_key in (
+                ("OneToManyRelationships", "one_to_many_relationships"),
+                ("ManyToOneRelationships", "many_to_one_relationships"),
+                ("ManyToManyRelationships", "many_to_many_relationships"),
+            ):
+                if raw_key in raw:
+                    result[result_key] = raw[raw_key]
+
+        return result
+
+    # -------------------------------------------------------------- get_columns
+
+    def get_columns(
+        self,
+        table: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[ColumnInfo]:
+        """Get column (attribute) metadata for a table.
+
+        Returns a list of :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
+        instances representing each column in the table.
+
+        :param table: Schema name of the table (e.g. ``"account"``
+            or ``"new_MyTestTable"``).
+        :type table: :class:`str`
+        :param select: Optional list of attribute metadata property names to
+            include (PascalCase, e.g. ``["LogicalName", "AttributeType"]``).
+            When ``None``, returns a default set of useful properties.
+        :type select: :class:`list` of :class:`str` or None
+        :param filter: Optional OData ``$filter`` expression. Column names in
+            filter expressions must use PascalCase metadata property names.
+
+            .. note::
+                Enum values in filters must use fully-qualified type names,
+                e.g. ``"AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Picklist'"``.
+
+            .. note::
+                The ``filter`` expression is passed directly to the Web API.
+                If constructing filters from external input, ensure values are
+                properly escaped (single quotes doubled) to avoid malformed queries.
+
+        :type filter: :class:`str` or None
+
+        :return: List of column metadata.
+        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example::
+
+            # Get all columns
+            columns = client.tables.get_columns("account")
+            for col in columns:
+                print(f"{col.logical_name}: {col.attribute_type}")
+
+            # Filter to only picklist columns
+            picklists = client.tables.get_columns(
+                "account",
+                filter="AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Picklist'",
+            )
         """
         with self._client._scoped_odata() as od:
-            raw = od._get_table_info(table)
-            if raw is None:
-                return None
-            return TableInfo.from_dict(raw)
+            raw_list = od._get_table_columns(table, select=select, filter=filter)
+        return [ColumnInfo.from_api_response(item) for item in raw_list]
+
+    # --------------------------------------------------------------- get_column
+
+    def get_column(
+        self,
+        table: str,
+        column: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> Optional[ColumnInfo]:
+        """Get metadata for a single column by logical name.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param column: Logical name of the column (e.g. ``"emailaddress1"``).
+        :type column: :class:`str`
+        :param select: Optional list of attribute metadata property names to
+            include (PascalCase). When ``None``, returns all properties.
+        :type select: :class:`list` of :class:`str` or None
+
+        :return: Column metadata, or ``None`` if the column is not found.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
+            or None
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails (other than 404).
+
+        Example::
+
+            col = client.tables.get_column("account", "emailaddress1")
+            if col:
+                print(f"Type: {col.attribute_type}, Required: {col.required_level}")
+        """
+        with self._client._scoped_odata() as od:
+            raw = od._get_table_column(table, column, select=select)
+        if raw is None:
+            return None
+        return ColumnInfo.from_api_response(raw)
+
+    # -------------------------------------------------------- get_column_options
+
+    def get_column_options(
+        self,
+        table: str,
+        column: str,
+    ) -> Optional[OptionSetInfo]:
+        """Get option set values for a Picklist, MultiSelect, Boolean, Status,
+        or State column.
+
+        This method retrieves the available choices for a column that uses an
+        option set. For Picklist and MultiSelect columns, the options are the
+        defined choice values. For Boolean columns, the result contains the
+        True and False option labels. For Status and State columns, the options
+        are the defined status/state values.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param column: Logical name of the column (e.g.
+            ``"accountcategorycode"``).
+        :type column: :class:`str`
+
+        :return: Option set information with available choices, or ``None`` if
+            the column is not a Picklist, MultiSelect, Boolean, Status, or
+            State type.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.OptionSetInfo`
+            or None
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails (other than expected type mismatches).
+
+        Example::
+
+            options = client.tables.get_column_options("account", "accountcategorycode")
+            if options:
+                for opt in options.options:
+                    print(f"  {opt.value}: {opt.label}")
+        """
+        with self._client._scoped_odata() as od:
+            raw = od._get_column_optionset(table, column)
+        if raw is None:
+            return None
+        return OptionSetInfo.from_api_response(raw)
+
+    # -------------------------------------------------------- list_relationships
+
+    def list_relationships(
+        self,
+        table: str,
+        *,
+        relationship_type: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List relationship metadata for a table.
+
+        Returns relationship definitions from the Web API. Each dict in the
+        result has a ``_relationship_type`` key added by the SDK with value
+        ``"OneToMany"``, ``"ManyToOne"``, or ``"ManyToMany"`` to identify the
+        relationship category.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param relationship_type: Filter by relationship type. Valid values:
+            ``"one_to_many"`` (or ``"1:N"``), ``"many_to_one"``
+            (or ``"N:1"``), ``"many_to_many"`` (or ``"N:N"``), or
+            ``None`` (default) to return all types.
+        :type relationship_type: :class:`str` or None
+        :param select: Optional list of relationship property names to include
+            (PascalCase, e.g. ``["SchemaName", "ReferencedEntity"]``).
+        :type select: :class:`list` of :class:`str` or None
+
+        :return: List of relationship metadata dictionaries from the Web API.
+        :rtype: :class:`list` of :class:`dict`
+
+        :raises ValueError: If ``relationship_type`` is not a valid value.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example::
+
+            # All relationships
+            rels = client.tables.list_relationships("account")
+
+            # Only one-to-many
+            rels = client.tables.list_relationships(
+                "account",
+                relationship_type="one_to_many",
+            )
+            for rel in rels:
+                print(f"{rel['SchemaName']}: {rel.get('ReferencingEntity')}")
+        """
+        with self._client._scoped_odata() as od:
+            return od._list_table_relationships(
+                table,
+                relationship_type=relationship_type,
+                select=select,
+            )
 
     # ------------------------------------------------------------------- list
 

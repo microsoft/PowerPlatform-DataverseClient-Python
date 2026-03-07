@@ -311,6 +311,40 @@ client.tables.remove_columns("new_Product", ["new_Category"])
 client.tables.delete("new_Product")
 ```
 
+```python
+# Get extended table metadata with columns
+info = client.tables.get("account", include_columns=True)
+for col in info["columns"]:
+    print(f"{col.logical_name} ({col.attribute_type})")
+
+# Get extended table metadata with relationships
+info = client.tables.get("account", include_relationships=True)
+for rel in info.get("one_to_many_relationships", []):
+    print(rel["SchemaName"])
+
+# Get specific entity properties
+info = client.tables.get("account", select=["DisplayName", "Description"])
+
+# List all columns of a table
+columns = client.tables.get_columns("account")
+for col in columns:
+    print(f"{col.schema_name}: {col.attribute_type} (required: {col.required_level})")
+
+# Get a specific column's metadata
+col = client.tables.get_column("account", "emailaddress1")
+if col:
+    print(f"Type: {col.attribute_type}, Required: {col.required_level}")
+
+# Get picklist/choice column options
+options = client.tables.get_column_options("account", "accountcategorycode")
+if options:
+    for opt in options.options:
+        print(f"  {opt.value}: {opt.label}")
+
+# List relationships for a table
+rels = client.tables.list_relationships("account", relationship_type="one_to_many")
+```
+
 > **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`).
 > This ensures explicit, predictable naming and aligns with Dataverse metadata requirements.
 
@@ -482,7 +516,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 When contributing new features to this SDK, please follow these guidelines:
 
-1. **Public methods in operation namespaces** - New public methods go in the appropriate namespace module under [operations/](src/PowerPlatform/Dataverse/operations/). Public types and constants live in their own modules (e.g., `models/metadata.py`, `common/constants.py`)
+1. **Public methods in operation namespaces** - New public methods go in the appropriate namespace module under [operations/](src/PowerPlatform/Dataverse/operations/). Public types and constants live in their own modules (e.g., `models/table_info.py`, `common/constants.py`)
 2. **Add README example for public methods** - Add usage examples to this README for public API methods
 3. **Document public APIs** - Include Sphinx-style docstrings with parameter descriptions and examples for all public methods
 4. **Update documentation** when adding features - Keep README and SKILL files (note that each skill has 2 copies) in sync
