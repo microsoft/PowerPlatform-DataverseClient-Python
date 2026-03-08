@@ -11,7 +11,9 @@ from PowerPlatform.Dataverse.core._error_codes import (
     VALIDATION_FETCHXML_EMPTY,
     VALIDATION_FETCHXML_MALFORMED,
     VALIDATION_FETCHXML_TOO_LONG,
+    VALIDATION_FETCHXML_URL_TOO_LONG,
     VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+    VALIDATION_FETCHXML_MAX_PAGES_EXCEEDED,
 )
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
@@ -498,6 +500,49 @@ class TestQueryFetchxml(unittest.TestCase):
         self.assertIn(str(_MAX_FETCHXML_LENGTH), str(ctx.exception))
         self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_TOO_LONG)
 
+    def test_query_fetchxml_url_too_long_raises(self):
+        """Raise ValidationError when encoded URL exceeds _MAX_URL_LENGTH."""
+        self._setup_entity_set()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"value": []}
+        self.od._request.return_value = mock_response
+
+        # Build a FetchXML that is under _MAX_FETCHXML_LENGTH but produces a URL > _MAX_URL_LENGTH
+        # Use many attributes to inflate the XML size after encoding
+        attrs = "".join(f"<attribute name='col{i}' />" for i in range(500))
+        fetchxml = f"<fetch top='1'><entity name='account'>{attrs}</entity></fetch>"
+        assert len(fetchxml) <= 16_000, "Test setup: FetchXML must be under raw limit"
+
+        with patch("PowerPlatform.Dataverse.data._odata._MAX_URL_LENGTH", 500):
+            with self.assertRaises(ValidationError) as ctx:
+                list(self.od._query_fetchxml(fetchxml))
+        self.assertIn("url", str(ctx.exception).lower())
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_URL_TOO_LONG)
+
+    def test_query_fetchxml_url_too_long_on_subsequent_page(self):
+        """Raise ValidationError when paging cookie inflates URL beyond limit."""
+        self._setup_entity_set()
+        from urllib.parse import quote
+
+        # Large paging cookie to push URL over the limit on page 2
+        large_cookie_value = "x" * 300
+        cookie_inner = quote(quote(f"<cookie pagenumber='2' data='{large_cookie_value}' />"))
+        resp1 = MagicMock()
+        resp1.json.return_value = {
+            "value": [{"accountid": "1"}],
+            "@Microsoft.Dynamics.CRM.morerecords": True,
+            "@Microsoft.Dynamics.CRM.fetchxmlpagingcookie": f'<cookie pagenumber="2" pagingcookie="{cookie_inner}" istracking="False" />',
+        }
+        self.od._request.return_value = resp1
+
+        fetchxml = "<fetch count='1'><entity name='account' /></fetch>"
+        # Set a small URL limit so the paging cookie pushes it over on page 2
+        with patch("PowerPlatform.Dataverse.data._odata._MAX_URL_LENGTH", 500):
+            with self.assertRaises(ValidationError) as ctx:
+                list(self.od._query_fetchxml(fetchxml))
+        self.assertIn("url", str(ctx.exception).lower())
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_URL_TOO_LONG)
+
     def test_query_fetchxml_aggregate_with_page_size_raises(self):
         """Raise ValidationError when page_size is used with aggregate FetchXML."""
         self._setup_entity_set()
@@ -542,7 +587,7 @@ class TestQueryFetchxml(unittest.TestCase):
                 list(self.od._query_fetchxml(fetchxml))
         self.assertIn("maximum page limit", str(ctx.exception).lower())
         self.assertIn("3", str(ctx.exception))
-        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_MALFORMED)
+        self.assertEqual(ctx.exception.subcode, VALIDATION_FETCHXML_MAX_PAGES_EXCEEDED)
         self.assertEqual(self.od._request.call_count, 3)
 
 

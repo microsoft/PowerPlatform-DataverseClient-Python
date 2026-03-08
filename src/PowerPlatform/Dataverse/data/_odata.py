@@ -33,7 +33,9 @@ from ..core._error_codes import (
     VALIDATION_FETCHXML_EMPTY,
     VALIDATION_FETCHXML_MALFORMED,
     VALIDATION_FETCHXML_TOO_LONG,
+    VALIDATION_FETCHXML_URL_TOO_LONG,
     VALIDATION_FETCHXML_INVALID_PAGE_SIZE,
+    VALIDATION_FETCHXML_MAX_PAGES_EXCEEDED,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -48,9 +50,8 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
-_MAX_FETCHXML_LENGTH = (
-    16_000  # ~16 KB raw; caps input size to mitigate XML entity expansion attacks and reduce URL length after encoding
-)
+_MAX_FETCHXML_LENGTH = 16_000  # Security cap on raw input before XML parsing to mitigate entity expansion attacks
+_MAX_URL_LENGTH = 32_768  # 32 KB hard limit on the final request URL (server-side constraint)
 _MAX_FETCHXML_PAGES = 10_000
 
 
@@ -953,7 +954,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         if len(fetchxml) > _MAX_FETCHXML_LENGTH:
             raise ValidationError(
-                f"FetchXML string exceeds maximum supported length ({_MAX_FETCHXML_LENGTH} characters)",
+                f"FetchXML input exceeds maximum length ({_MAX_FETCHXML_LENGTH} characters). "
+                "This limit prevents XML entity expansion attacks before parsing.",
                 subcode=VALIDATION_FETCHXML_TOO_LONG,
             )
 
@@ -1033,11 +1035,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 raise ValidationError(
                     f"FetchXML paging exceeded maximum page limit ({_MAX_FETCHXML_PAGES}). "
                     "This may indicate a query returning too many results or a paging loop.",
-                    subcode=VALIDATION_FETCHXML_MALFORMED,
+                    subcode=VALIDATION_FETCHXML_MAX_PAGES_EXCEEDED,
                 )
             fetchxml_str = ET.tostring(root, encoding="unicode")
             encoded = _url_encode(fetchxml_str, safe="")
             url = f"{self.api}/{entity_set}?fetchXml={encoded}"
+            if len(url) > _MAX_URL_LENGTH:
+                raise ValidationError(
+                    f"FetchXML request URL exceeds maximum length ({_MAX_URL_LENGTH} bytes) after encoding. "
+                    "Simplify the query or reduce the number of attributes/conditions.",
+                    subcode=VALIDATION_FETCHXML_URL_TOO_LONG,
+                )
             data = _do_request(url)
 
             items = data.get("value") if isinstance(data, dict) else None

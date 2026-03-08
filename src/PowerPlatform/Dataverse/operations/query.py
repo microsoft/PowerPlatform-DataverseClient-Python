@@ -100,8 +100,14 @@ class QueryOperations:
         :type page_size: :class:`int` | ``None``
 
         .. note::
-            If the FetchXML already contains a ``count`` attribute, the ``page_size`` parameter
-            is ignored. The ``count`` in FetchXML takes precedence.
+            The ``page_size`` parameter is always validated, but only applied (sets the
+            ``count`` attribute) when the FetchXML does not already contain one.
+            If the FetchXML already has a ``count`` attribute, it takes precedence.
+
+        .. note::
+            Raw FetchXML input is limited to 16,000 characters (security cap before XML
+            parsing). The final encoded request URL is limited to 32,768 bytes. Paging
+            cookies can increase URL size on subsequent pages.
 
         :return: Generator yielding pages, where each page is a list of
             :class:`~PowerPlatform.Dataverse.models.record.Record` objects.

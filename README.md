@@ -306,7 +306,7 @@ for page in client.query.fetchxml(fetchxml, page_size=50):
 ```
 
 > **FetchXML limitations:**
-> - FetchXML queries are sent as URL-encoded GET parameters. Very large FetchXML strings may exceed the 32KB URL limit.
+> - The SDK enforces two size limits: raw FetchXML input is capped at **16,000 characters** (a security guard against XML entity expansion attacks), and the final encoded request URL is capped at **32,768 bytes** (the server-side URL limit). Paging cookies added on subsequent pages increase URL size, so both limits are checked.
 > - Do not use the `top` attribute with paging (`count`/`page`) — they are incompatible.
 > - Aggregate queries (`aggregate='true'`) return a single result set and do not support paging. Aggregates are limited to 50,000 records.
 > - Maximum of 15 `link-entity` (join) elements per query.
