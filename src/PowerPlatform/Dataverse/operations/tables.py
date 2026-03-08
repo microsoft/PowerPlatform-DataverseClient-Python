@@ -187,10 +187,20 @@ class TableOperations:
             ``many_to_many_relationships``.
         :type include_relationships: :class:`bool`
 
-        :return: Dictionary containing ``table_schema_name``,
-            ``table_logical_name``, ``entity_set_name``, and ``metadata_id``.
-            Returns None if the table is not found.
-        :rtype: :class:`dict` or None
+        :return: A :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
+            instance containing table metadata, or ``None`` if the table is
+            not found. Supports dict-like key access for backward
+            compatibility.
+            When ``include_columns`` is ``True``, the ``columns`` attribute
+            contains a list of
+            :class:`~PowerPlatform.Dataverse.models.table_info.ColumnInfo`
+            instances.  When ``include_relationships`` is ``True``, the
+            ``one_to_many_relationships``, ``many_to_one_relationships``, and
+            ``many_to_many_relationships`` attributes are populated.
+            Extra properties requested via ``select`` are accessible via
+            dict-like key access (e.g., ``info["DisplayName"]``).
+        :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
+            or None
 
         Example::
 
@@ -201,11 +211,13 @@ class TableOperations:
 
             # Extended with columns
             info = client.tables.get("account", include_columns=True)
-            for col in info.get("columns", []):
+            for col in info.columns:
                 print(f"{col.logical_name} ({col.attribute_type})")
 
             # Extended with relationships
             info = client.tables.get("account", include_relationships=True)
+            for rel in info.one_to_many_relationships:
+                print(rel["SchemaName"])
         """
         # Normalize empty list to None so callers passing select=[] get the
         # lightweight path instead of an expensive full-entity-definition fetch.
@@ -232,35 +244,15 @@ class TableOperations:
         if raw is None:
             return None
 
-        # Build result dict starting with the standard 4 fields
-        result: Dict[str, Any] = {
-            "table_schema_name": raw.get("SchemaName", table),
-            "table_logical_name": raw.get("LogicalName"),
-            "entity_set_name": raw.get("EntitySetName"),
-            "metadata_id": raw.get("MetadataId"),
-        }
+        info = TableInfo.from_api_response(raw)
 
-        # Include any extra selected entity properties
+        # Store any extra selected entity properties
         if select:
             for prop in select:
                 if prop not in ("SchemaName", "LogicalName", "EntitySetName", "MetadataId"):
-                    result[prop] = raw.get(prop)
+                    info._extra[prop] = raw.get(prop)
 
-        # Convert expanded Attributes into ColumnInfo instances
-        if include_columns and "Attributes" in raw:
-            result["columns"] = [ColumnInfo.from_api_response(a) for a in raw["Attributes"]]
-
-        # Include expanded relationship collections as raw dicts
-        if include_relationships:
-            for raw_key, result_key in (
-                ("OneToManyRelationships", "one_to_many_relationships"),
-                ("ManyToOneRelationships", "many_to_one_relationships"),
-                ("ManyToManyRelationships", "many_to_many_relationships"),
-            ):
-                if raw_key in raw:
-                    result[result_key] = raw[raw_key]
-
-        return result
+        return info
 
     # -------------------------------------------------------------- get_columns
 
@@ -382,7 +374,8 @@ class TableOperations:
 
         :return: Option set information with available choices, or ``None`` if
             the column is not a Picklist, MultiSelect, Boolean, Status, or
-            State type.
+            State type. Also returns ``None`` if the table or column does not
+            exist (404).
         :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.OptionSetInfo`
             or None
 

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, Iterator, KeysView, List, Optional
 
@@ -62,6 +63,38 @@ class ColumnInfo:
     is_valid_for_read: bool = False
     max_length: Optional[int] = None
     metadata_id: Optional[str] = None
+
+    # ---------------------------------------------- deprecated property aliases
+
+    @property
+    def type(self) -> str:
+        """Column type name (deprecated, use ``attribute_type_name`` or ``attribute_type``)."""
+        warnings.warn(
+            "ColumnInfo.type is deprecated. Use attribute_type_name or attribute_type instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.attribute_type_name or self.attribute_type
+
+    @property
+    def is_primary(self) -> bool:
+        """Whether this is the primary name column (deprecated, use ``is_primary_name``)."""
+        warnings.warn(
+            "ColumnInfo.is_primary is deprecated. Use is_primary_name instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.is_primary_name
+
+    @property
+    def is_required(self) -> bool:
+        """Whether the column is required (deprecated, use ``required_level``)."""
+        warnings.warn(
+            "ColumnInfo.is_required is deprecated. Use required_level instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.required_level not in (None, "", "None")
 
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> ColumnInfo:
@@ -154,6 +187,10 @@ class TableInfo:
     description: Optional[str] = None
     columns: Optional[List[ColumnInfo]] = field(default=None, repr=False)
     columns_created: Optional[List[str]] = field(default=None, repr=False)
+    one_to_many_relationships: Optional[List[Dict[str, Any]]] = field(default=None, repr=False)
+    many_to_one_relationships: Optional[List[Dict[str, Any]]] = field(default=None, repr=False)
+    many_to_many_relationships: Optional[List[Dict[str, Any]]] = field(default=None, repr=False)
+    _extra: Dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     # Maps legacy dict keys (used by existing code) to attribute names.
     _LEGACY_KEY_MAP: ClassVar[Dict[str, str]] = {
@@ -171,16 +208,24 @@ class TableInfo:
         return self._LEGACY_KEY_MAP.get(key, key)
 
     def __getitem__(self, key: str) -> Any:
+        if key in self._extra:
+            return self._extra[key]
         attr = self._resolve_key(key)
         if hasattr(self, attr):
-            return getattr(self, attr)
+            val = getattr(self, attr)
+            if val is not None or key in self._LEGACY_KEY_MAP:
+                return val
         raise KeyError(key)
 
     def __contains__(self, key: object) -> bool:
         if not isinstance(key, str):
             return False
+        if key in self._extra:
+            return True
         attr = self._resolve_key(key)
-        return hasattr(self, attr)
+        if not hasattr(self, attr):
+            return False
+        return getattr(self, attr) is not None
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._LEGACY_KEY_MAP)
@@ -246,6 +291,11 @@ class TableInfo:
         desc_label = desc_obj.get("UserLocalizedLabel") or {}
         description = desc_label.get("Label")
 
+        # Parse columns if Attributes are present
+        columns = None
+        if "Attributes" in response_data:
+            columns = [ColumnInfo.from_api_response(a) for a in response_data["Attributes"]]
+
         return cls(
             schema_name=response_data.get("SchemaName", ""),
             logical_name=response_data.get("LogicalName", ""),
@@ -253,6 +303,10 @@ class TableInfo:
             metadata_id=response_data.get("MetadataId", ""),
             display_name=display_name,
             description=description,
+            columns=columns,
+            one_to_many_relationships=response_data.get("OneToManyRelationships"),
+            many_to_one_relationships=response_data.get("ManyToOneRelationships"),
+            many_to_many_relationships=response_data.get("ManyToManyRelationships"),
         )
 
     # -------------------------------------------------------------- conversion
