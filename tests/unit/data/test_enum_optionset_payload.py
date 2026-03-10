@@ -24,6 +24,7 @@ class DummyConfig:
         self.http_retries = 0
         self.http_backoff = 0
         self.http_timeout = 5
+        self.log_config = None
 
 
 def _make_client(lang=1033):

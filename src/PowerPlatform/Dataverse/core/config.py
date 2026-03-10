@@ -12,7 +12,10 @@ convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseCon
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .log_config import LogConfig
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,10 @@ class DataverseConfig:
     :type http_backoff: :class:`float` or None
     :param http_timeout: Optional request timeout in seconds. Reserved for future use.
     :type http_timeout: :class:`float` or None
+    :param log_config: Optional local HTTP diagnostics logging configuration.
+        When provided, all HTTP requests and responses are logged to timestamped
+        ``.log`` files with automatic redaction of sensitive headers.
+    :type log_config: ~PowerPlatform.Dataverse.core.log_config.LogConfig or None
     """
 
     language_code: int = 1033
@@ -36,6 +43,8 @@ class DataverseConfig:
     http_retries: Optional[int] = None
     http_backoff: Optional[float] = None
     http_timeout: Optional[float] = None
+
+    log_config: Optional["LogConfig"] = None
 
     @classmethod
     def from_env(cls) -> "DataverseConfig":
@@ -51,4 +60,5 @@ class DataverseConfig:
             http_retries=None,
             http_backoff=None,
             http_timeout=None,
+            log_config=None,
         )
