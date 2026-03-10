@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
+from ..data._odata import _operation_scope
+
 if TYPE_CHECKING:
     from ..client import DataverseClient
 
@@ -102,12 +104,13 @@ class FileOperations:
                 )
         """
         with self._client._scoped_odata() as od:
-            od._upload_file(
-                table,
-                record_id,
-                file_column,
-                path,
-                mode=mode,
-                mime_type=mime_type,
-                if_none_match=if_none_match,
-            )
+            with _operation_scope("files.upload", table):
+                od._upload_file(
+                    table,
+                    record_id,
+                    file_column,
+                    path,
+                    mode=mode,
+                    mime_type=mime_type,
+                    if_none_match=if_none_match,
+                )

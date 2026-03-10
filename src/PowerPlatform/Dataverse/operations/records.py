@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CHECKING
 
+from ..data._odata import _operation_scope
 from ..models.record import Record
 from ..models.upsert import UpsertItem
 
@@ -94,12 +95,14 @@ class RecordOperations:
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
-                rid = od._create(entity_set, table, data)
+                with _operation_scope("records.create", table):
+                    rid = od._create(entity_set, table, data)
                 if not isinstance(rid, str):
                     raise TypeError("_create (single) did not return GUID string")
                 return rid
             if isinstance(data, list):
-                ids = od._create_multiple(entity_set, table, data)
+                with _operation_scope("records.create_multiple", table):
+                    ids = od._create_multiple(entity_set, table, data)
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                     raise TypeError("_create (multi) did not return list[str]")
                 return ids
@@ -156,11 +159,13 @@ class RecordOperations:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
                     raise TypeError("For single id, changes must be a dict")
-                od._update(table, ids, changes)
+                with _operation_scope("records.update", table):
+                    od._update(table, ids, changes)
                 return None
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
-            od._update_by_ids(table, ids, changes)
+            with _operation_scope("records.update_multiple", table):
+                od._update_by_ids(table, ids, changes)
             return None
 
     # ------------------------------------------------------------------ delete
@@ -209,7 +214,8 @@ class RecordOperations:
         """
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
-                od._delete(table, ids)
+                with _operation_scope("records.delete", table):
+                    od._delete(table, ids)
                 return None
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
@@ -217,10 +223,11 @@ class RecordOperations:
                 return None
             if not all(isinstance(rid, str) for rid in ids):
                 raise TypeError("ids must contain string GUIDs")
-            if use_bulk_delete:
-                return od._delete_multiple(table, ids)
-            for rid in ids:
-                od._delete(table, rid)
+            with _operation_scope("records.delete_multiple", table):
+                if use_bulk_delete:
+                    return od._delete_multiple(table, ids)
+                for rid in ids:
+                    od._delete(table, rid)
             return None
 
     # -------------------------------------------------------------------- get
@@ -421,12 +428,13 @@ class RecordOperations:
                     "expand, page_size) when fetching a single record by ID"
                 )
             with self._client._scoped_odata() as od:
-                raw = od._get(table, record_id, select=select)
-                return Record.from_api_response(table, raw, record_id=record_id)
+                with _operation_scope("records.get", table):
+                    raw = od._get(table, record_id, select=select)
+                    return Record.from_api_response(table, raw, record_id=record_id)
 
         def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
-                for page in od._get_multiple(
+                pages = od._get_multiple(
                     table,
                     select=select,
                     filter=filter,
@@ -434,8 +442,15 @@ class RecordOperations:
                     top=top,
                     expand=expand,
                     page_size=page_size,
-                ):
-                    yield [Record.from_api_response(table, row) for row in page]
+                )
+                while True:
+                    with _operation_scope("records.get_multiple", table):
+                        try:
+                            page = next(pages)
+                        except StopIteration:
+                            return
+                        records_page = [Record.from_api_response(table, row) for row in page]
+                    yield records_page
 
         return _paged()
 
@@ -531,9 +546,11 @@ class RecordOperations:
             entity_set = od._entity_set_from_schema_name(table)
             if len(normalized) == 1:
                 item = normalized[0]
-                od._upsert(entity_set, table, item.alternate_key, item.record)
+                with _operation_scope("records.upsert", table):
+                    od._upsert(entity_set, table, item.alternate_key, item.record)
             else:
                 alternate_keys = [i.alternate_key for i in normalized]
                 records = [i.record for i in normalized]
-                od._upsert_multiple(entity_set, table, alternate_keys, records)
+                with _operation_scope("records.upsert_multiple", table):
+                    od._upsert_multiple(entity_set, table, alternate_keys, records)
         return None
