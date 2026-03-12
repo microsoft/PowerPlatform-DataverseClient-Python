@@ -34,13 +34,15 @@ Navigation property names are case-sensitive and must match the entity's `$metad
 **Critical rule:** The OData parser validates `@odata.bind` property names **case-sensitively** against declared navigation properties. Lowercasing `new_CustomerId@odata.bind` to `new_customerid@odata.bind` causes: `ODataException: An undeclared property 'new_customerid' which only has property annotations...`
 
 **SDK implementation:**
-- `_lowercase_keys()` lowercases all keys EXCEPT those containing `@odata.` -- this preserves navigation property casing in `@odata.bind` keys
-- `_lowercase_list()` lowercases `$select`/`$orderby` params (structural properties)
+
+- `_lowercase_keys()` lowercases all keys EXCEPT those containing `@odata.` (preserves navigation property casing in `@odata.bind` keys)
+- `_lowercase_list()` lowercases `$select` and `$orderby` params (structural properties)
 - `$expand` params are passed as-is (navigation properties, PascalCase)
 - `_convert_labels_to_ints()` skips `@odata.` keys entirely (they are annotations, not attributes)
 
 **When adding new code that processes record dicts or builds query parameters:**
-- Always use `_lowercase_keys()` for record payloads -- never manually call `.lower()` on all keys
+
+- Always use `_lowercase_keys()` for record payloads. Never manually call `.lower()` on all keys
 - Never lowercase `$expand` values or `@odata.bind` key prefixes
 - If iterating record keys, skip keys containing `@odata.` when doing attribute-level operations
 
