@@ -13,7 +13,6 @@ import time
 import re
 import json
 import uuid
-import warnings
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
@@ -107,22 +106,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         if not isinstance(record, dict):
             return record
-        for k in record:
-            if isinstance(k, str) and "@odata.bind" in k:
-                nav_prop = k.split("@odata.bind")[0]
-                if nav_prop and nav_prop == nav_prop.lower() and "_" in nav_prop:
-                    # Likely already-lowercased navigation property name.
-                    # Custom lookup navigation properties use PascalCase
-                    # (e.g. new_CustomerId), not lowercase LogicalName.
-                    warnings.warn(
-                        f"@odata.bind key '{k}' appears to use a lowercase "
-                        f"navigation property name. Navigation property names "
-                        f"are case-sensitive and must match the entity's "
-                        f"$metadata (e.g. 'new_CustomerId@odata.bind', not "
-                        f"'new_customerid@odata.bind'). This will likely "
-                        f"cause a 400 error.",
-                        stacklevel=4,
-                    )
         return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod

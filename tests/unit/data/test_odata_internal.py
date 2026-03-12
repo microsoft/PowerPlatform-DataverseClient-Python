@@ -354,43 +354,6 @@ class TestUpsert(unittest.TestCase):
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertNotIn("new_customerid@odata.bind", payload)
 
-    def test_odata_bind_lowercase_warns(self):
-        """Lowercase @odata.bind nav property emits a warning."""
-        import warnings
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            self.od._upsert(
-                "accounts",
-                "account",
-                {"accountnumber": "ACC-001"},
-                {
-                    "name": "Contoso",
-                    "new_customerid@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
-                },
-            )
-            odata_warnings = [x for x in w if "@odata.bind" in str(x.message)]
-            self.assertEqual(len(odata_warnings), 1)
-            self.assertIn("case-sensitive", str(odata_warnings[0].message))
-
-    def test_odata_bind_pascalcase_no_warning(self):
-        """PascalCase @odata.bind nav property does NOT emit a warning."""
-        import warnings
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            self.od._upsert(
-                "accounts",
-                "account",
-                {"accountnumber": "ACC-001"},
-                {
-                    "name": "Contoso",
-                    "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
-                },
-            )
-            odata_warnings = [x for x in w if "@odata.bind" in str(x.message)]
-            self.assertEqual(len(odata_warnings), 0)
-
     def test_convert_labels_skips_odata_keys(self):
         """_convert_labels_to_ints should skip @odata.bind keys (no metadata lookup)."""
         # Patch _optionset_map to track calls

@@ -373,7 +373,7 @@ except ValidationError as e:
 - Check filter/expand parameters use correct case
 - Verify column names exist and are spelled correctly
 - Ensure custom columns include customization prefix
-- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` is case-sensitive and must match the entity's `$metadata` exactly (e.g., `new_CustomerId@odata.bind` for custom lookups, `parentaccountid@odata.bind` for system lookups). The SDK preserves `@odata.bind` key casing and emits a warning if it detects likely-wrong lowercase casing on custom lookups.
+- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` is case-sensitive and must match the entity's `$metadata` exactly (e.g., `new_CustomerId@odata.bind` for custom lookups, `parentaccountid@odata.bind` for system lookups). The SDK preserves `@odata.bind` key casing.
 
 ## Best Practices
 
