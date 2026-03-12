@@ -100,7 +100,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
         preserved as-is because the navigation property portion before ``@``
-        must retain its original casing (PascalCase SchemaName).  The OData
+        must retain its original casing (case-sensitive navigation property name).  The OData
         parser validates ``@odata.bind`` property names **case-sensitively**
         against the entity's declared navigation properties, so lowercasing
         these keys causes ``400 - undeclared property`` errors.
@@ -112,13 +112,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 nav_prop = k.split("@odata.bind")[0]
                 if nav_prop and nav_prop == nav_prop.lower() and "_" in nav_prop:
                     # Likely already-lowercased navigation property name.
-                    # Navigation properties use PascalCase SchemaName (e.g.
-                    # new_CustomerId), not lowercase LogicalName.
+                    # Custom lookup navigation properties use PascalCase
+                    # (e.g. new_CustomerId), not lowercase LogicalName.
                     warnings.warn(
                         f"@odata.bind key '{k}' appears to use a lowercase "
-                        f"navigation property name. Dataverse requires "
-                        f"PascalCase SchemaName (e.g. 'new_CustomerId@odata.bind',"
-                        f" not 'new_customerid@odata.bind'). This will likely "
+                        f"navigation property name. Navigation property names "
+                        f"are case-sensitive and must match the entity's "
+                        f"$metadata (e.g. 'new_CustomerId@odata.bind', not "
+                        f"'new_customerid@odata.bind'). This will likely "
                         f"cause a 400 error.",
                         stacklevel=4,
                     )

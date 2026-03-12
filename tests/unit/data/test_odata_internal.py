@@ -371,7 +371,7 @@ class TestUpsert(unittest.TestCase):
             )
             odata_warnings = [x for x in w if "@odata.bind" in str(x.message)]
             self.assertEqual(len(odata_warnings), 1)
-            self.assertIn("PascalCase", str(odata_warnings[0].message))
+            self.assertIn("case-sensitive", str(odata_warnings[0].message))
 
     def test_odata_bind_pascalcase_no_warning(self):
         """PascalCase @odata.bind nav property does NOT emit a warning."""

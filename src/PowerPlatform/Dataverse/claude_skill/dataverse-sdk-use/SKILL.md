@@ -108,7 +108,7 @@ for page in client.records.get(
 #### Create Records with Lookup Bindings (@odata.bind)
 ```python
 # Set lookup fields using @odata.bind with PascalCase navigation property names
-# CORRECT: PascalCase SchemaName before @odata.bind
+# CORRECT: use the navigation property name (case-sensitive, must match $metadata)
 guid = client.records.create("new_ticket", {
     "new_name": "TKT-001",
     "new_CustomerId@odata.bind": f"/new_customers({customer_id})",
@@ -373,7 +373,7 @@ except ValidationError as e:
 - Check filter/expand parameters use correct case
 - Verify column names exist and are spelled correctly
 - Ensure custom columns include customization prefix
-- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` must use **PascalCase SchemaName** (e.g., `new_CustomerId@odata.bind`), not lowercase. The OData parser is case-sensitive for navigation property names. The SDK preserves `@odata.bind` key casing and emits a warning if it detects likely-wrong lowercase casing.
+- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` is case-sensitive and must match the entity's `$metadata` exactly (e.g., `new_CustomerId@odata.bind` for custom lookups, `parentaccountid@odata.bind` for system lookups). The SDK preserves `@odata.bind` key casing and emits a warning if it detects likely-wrong lowercase casing on custom lookups.
 
 ## Best Practices
 
@@ -386,7 +386,7 @@ except ValidationError as e:
 5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
-8. **Use lowercase for column names, PascalCase for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys use PascalCase SchemaName (e.g., `new_CustomerId@odata.bind`)
+8. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
 9. **Test in non-production environments** first
 10. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
 

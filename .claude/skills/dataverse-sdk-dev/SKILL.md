@@ -26,8 +26,10 @@ Dataverse uses two different naming conventions for properties. Getting this wro
 
 | Property type | Name convention | Example | When used |
 |---|---|---|---|
-| **Structural** (columns) | LogicalName = always lowercase | `new_name`, `new_priority` | `$select`, `$filter`, `$orderby`, record payload keys |
-| **Navigation** (lookups) | SchemaName = PascalCase | `new_CustomerId`, `new_AgentId` | `$expand`, `@odata.bind` annotation keys |
+| **Structural** (columns) | LogicalName (always lowercase) | `new_name`, `new_priority` | `$select`, `$filter`, `$orderby`, record payload keys |
+| **Navigation** (relationships / lookups) | Navigation Property Name (usually SchemaName, PascalCase, case-sensitive) | `new_CustomerId`, `new_AgentId` | `$expand`, `@odata.bind` annotation keys |
+
+Navigation property names are case-sensitive and must match the entity's `$metadata`. Using the logical name instead of the navigation property name results in 400 Bad Request errors.
 
 **Critical rule:** The OData parser validates `@odata.bind` property names **case-sensitively** against declared navigation properties. Lowercasing `new_CustomerId@odata.bind` to `new_customerid@odata.bind` causes: `ODataException: An undeclared property 'new_customerid' which only has property annotations...`
 
