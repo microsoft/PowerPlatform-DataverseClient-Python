@@ -96,10 +96,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Dataverse LogicalNames for attributes are stored lowercase, but users may
         provide PascalCase names (matching SchemaName). This normalizes the input.
+
+        Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
+        preserved as-is because the navigation property portion before ``@``
+        must retain its original casing (PascalCase SchemaName).
         """
         if not isinstance(record, dict):
             return record
-        return {k.lower() if isinstance(k, str) else k: v for k, v in record.items()}
+        return {
+            k.lower() if isinstance(k, str) and "@odata." not in k else k: v
+            for k, v in record.items()
+        }
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:

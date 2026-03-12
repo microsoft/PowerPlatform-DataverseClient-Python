@@ -335,6 +335,23 @@ class TestUpsert(unittest.TestCase):
         self.assertIn("name", payload)
         self.assertNotIn("Name", payload)
 
+    def test_odata_bind_keys_preserve_case(self):
+        """@odata.bind keys must preserve PascalCase for navigation property."""
+        self.od._upsert(
+            "accounts", "account", {"accountnumber": "ACC-001"},
+            {
+                "Name": "Contoso",
+                "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
+            },
+        )
+        call = self._patch_call()
+        payload = call.kwargs["json"]
+        # Regular field is lowercased
+        self.assertIn("name", payload)
+        # @odata.bind key preserves original casing
+        self.assertIn("new_CustomerId@odata.bind", payload)
+        self.assertNotIn("new_customerid@odata.bind", payload)
+
     def test_returns_none(self):
         """_upsert always returns None."""
         result = self.od._upsert("accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"})
