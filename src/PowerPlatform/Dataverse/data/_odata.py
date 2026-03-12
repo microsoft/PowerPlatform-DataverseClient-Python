@@ -13,6 +13,7 @@ import time
 import re
 import json
 import uuid
+import warnings
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
@@ -99,10 +100,28 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
         preserved as-is because the navigation property portion before ``@``
-        must retain its original casing (PascalCase SchemaName).
+        must retain its original casing (PascalCase SchemaName).  The OData
+        parser validates ``@odata.bind`` property names **case-sensitively**
+        against the entity's declared navigation properties, so lowercasing
+        these keys causes ``400 - undeclared property`` errors.
         """
         if not isinstance(record, dict):
             return record
+        for k in record:
+            if isinstance(k, str) and "@odata.bind" in k:
+                nav_prop = k.split("@odata.bind")[0]
+                if nav_prop and nav_prop == nav_prop.lower() and "_" in nav_prop:
+                    # Likely already-lowercased navigation property name.
+                    # Navigation properties use PascalCase SchemaName (e.g.
+                    # new_CustomerId), not lowercase LogicalName.
+                    warnings.warn(
+                        f"@odata.bind key '{k}' appears to use a lowercase "
+                        f"navigation property name. Dataverse requires "
+                        f"PascalCase SchemaName (e.g. 'new_CustomerId@odata.bind',"
+                        f" not 'new_customerid@odata.bind'). This will likely "
+                        f"cause a 400 error.",
+                        stacklevel=4,
+                    )
         return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod
@@ -724,7 +743,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         params = {}
         if select:
             # Lowercase column names for case-insensitive matching
-            params["$select"] = ",".join(select)
+            params["$select"] = ",".join(self._lowercase_list(select))
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("get", url, params=params)
@@ -1323,6 +1342,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         out = record.copy()
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
+                continue
+            # Skip OData annotations — they are not attribute names
+            if isinstance(k, str) and "@odata." in k:
                 continue
             mapping = self._optionset_map(table_schema_name, k)
             if not mapping:
