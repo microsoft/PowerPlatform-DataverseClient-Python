@@ -338,7 +338,9 @@ class TestUpsert(unittest.TestCase):
     def test_odata_bind_keys_preserve_case(self):
         """@odata.bind keys must preserve PascalCase for navigation property."""
         self.od._upsert(
-            "accounts", "account", {"accountnumber": "ACC-001"},
+            "accounts",
+            "account",
+            {"accountnumber": "ACC-001"},
             {
                 "Name": "Contoso",
                 "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",

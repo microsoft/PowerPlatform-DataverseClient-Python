@@ -103,10 +103,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         if not isinstance(record, dict):
             return record
-        return {
-            k.lower() if isinstance(k, str) and "@odata." not in k else k: v
-            for k, v in record.items()
-        }
+        return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
