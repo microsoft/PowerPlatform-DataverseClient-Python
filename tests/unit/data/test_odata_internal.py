@@ -338,10 +338,45 @@ class TestCreate(unittest.TestCase):
         self.assertNotIn("new_customerid@odata.bind", payload)
         self.assertNotIn("new_agentid@odata.bind", payload)
 
-    def test_returns_guid(self):
+    def test_returns_guid_from_odata_entity_id(self):
         """_create returns the GUID from the OData-EntityId header."""
         result = self.od._create("accounts", "account", {"name": "Contoso"})
         self.assertEqual(result, "00000000-0000-0000-0000-000000000001")
+
+    def test_returns_guid_from_odata_entity_id_uppercase(self):
+        """_create returns the GUID from the OData-EntityID header (uppercase D)."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "OData-EntityID": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000002)"
+        }
+        self.od._request.return_value = mock_resp
+        result = self.od._create("accounts", "account", {"name": "Contoso"})
+        self.assertEqual(result, "00000000-0000-0000-0000-000000000002")
+
+    def test_returns_guid_from_location_header_fallback(self):
+        """_create falls back to Location header when OData-EntityId is absent."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "Location": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000003)"
+        }
+        self.od._request.return_value = mock_resp
+        result = self.od._create("accounts", "account", {"name": "Contoso"})
+        self.assertEqual(result, "00000000-0000-0000-0000-000000000003")
+
+    def test_raises_runtime_error_when_no_guid_in_headers(self):
+        """_create raises RuntimeError when neither header contains a GUID."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {}
+        mock_resp.status_code = 204
+        self.od._request.return_value = mock_resp
+        with self.assertRaises(RuntimeError):
+            self.od._create("accounts", "account", {"name": "Contoso"})
+
+    def test_issues_post_to_entity_set_url(self):
+        """_create issues a POST request to the entity set URL."""
+        self.od._create("accounts", "account", {"name": "Contoso"})
+        call = self._post_call()
+        self.assertIn("/accounts", call.args[1])
 
 
 class TestUpdate(unittest.TestCase):
@@ -381,6 +416,29 @@ class TestUpdate(unittest.TestCase):
         self.assertIn("new_status", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertNotIn("new_customerid@odata.bind", payload)
+
+    def test_sends_if_match_star_header(self):
+        """PATCH request includes If-Match: * header."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        call = self._patch_call()
+        headers = call.kwargs.get("headers", {})
+        self.assertEqual(headers.get("If-Match"), "*")
+
+    def test_url_formats_bare_guid(self):
+        """PATCH URL wraps a bare GUID in parentheses."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        call = self._patch_call()
+        self.assertIn("(00000000-0000-0000-0000-000000000001)", call.args[1])
+
+    def test_returns_none(self):
+        """_update always returns None."""
+        result = self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        self.assertIsNone(result)
+
+    def test_resolves_entity_set_from_schema_name(self):
+        """_update delegates entity set resolution to _entity_set_from_schema_name."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        self.od._entity_set_from_schema_name.assert_called_once_with("new_ticket")
 
 
 class TestUpsert(unittest.TestCase):
