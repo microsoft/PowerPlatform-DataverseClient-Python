@@ -55,6 +55,60 @@ class TestQueryOperations(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertEqual(result, [])
 
+    # -------------------------------------------------------------- fetchxml
+
+    def test_fetchxml_basic(self):
+        """fetchxml() should call _query_fetchxml and return Record objects."""
+        raw_pages = [
+            [{"accountid": "1", "name": "Contoso"}, {"accountid": "2", "name": "Fabrikam"}],
+        ]
+        self.client._odata._query_fetchxml.return_value = iter(raw_pages)
+        self.client._odata._extract_entity_from_fetchxml.return_value = "account"
+
+        fetchxml = "<fetch><entity name='account'><attribute name='name' /></entity></fetch>"
+        result = list(self.client.query.fetchxml(fetchxml))
+
+        self.client._odata._query_fetchxml.assert_called_once_with(fetchxml, page_size=None)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result[0]), 2)
+        self.assertIsInstance(result[0][0], Record)
+        self.assertEqual(result[0][0]["name"], "Contoso")
+        self.assertEqual(result[0][1]["name"], "Fabrikam")
+
+    def test_fetchxml_with_page_size(self):
+        """fetchxml() should pass page_size through to _query_fetchxml."""
+        self.client._odata._query_fetchxml.return_value = iter([])
+        self.client._odata._extract_entity_from_fetchxml.return_value = "account"
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        list(self.client.query.fetchxml(fetchxml, page_size=50))
+
+        self.client._odata._query_fetchxml.assert_called_once_with(fetchxml, page_size=50)
+
+    def test_fetchxml_empty_result(self):
+        """fetchxml() should return empty generator when no results."""
+        self.client._odata._query_fetchxml.return_value = iter([])
+        self.client._odata._extract_entity_from_fetchxml.return_value = "account"
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        result = list(self.client.query.fetchxml(fetchxml))
+
+        self.assertEqual(result, [])
+
+    def test_fetchxml_returns_iterable(self):
+        """fetchxml() should return an iterable of Record pages."""
+        self.client._odata._query_fetchxml.return_value = iter([[{"name": "A"}]])
+        self.client._odata._extract_entity_from_fetchxml.return_value = "account"
+
+        fetchxml = "<fetch><entity name='account' /></fetch>"
+        result = self.client.query.fetchxml(fetchxml)
+
+        self.assertIsNotNone(iter(result))
+        pages = list(result)
+        self.assertEqual(len(pages), 1)
+        self.assertIsInstance(pages[0][0], Record)
+        self.assertEqual(pages[0][0]["name"], "A")
+
 
 if __name__ == "__main__":
     unittest.main()
