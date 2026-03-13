@@ -13,7 +13,6 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 
 - Write access to the GitHub repository (microsoft/PowerPlatform-DataverseClient-Python)
 - Access to the Azure DevOps CI/CD pipeline for PyPI publishing: https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29949
-- Familiarity with [Keep a Changelog](https://keepachangelog.com/) format and [Semantic Versioning](https://semver.org/)
 
 ## Release Checklist
 
