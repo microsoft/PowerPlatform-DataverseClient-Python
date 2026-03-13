@@ -45,11 +45,11 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 [X.Y.Z]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/vPREVIOUS...vX.Y.Z
 ```
 
-**Changelog writing rules (from CONTRIBUTING.md):**
+**Changelog writing rules:**
 
 - **Focus on why it matters to users**, not implementation details
-- Do NOT reference internal function names (e.g., `_convert_labels_to_ints()`)
-- Do NOT reference internal implementation choices (e.g., `TCP/TLS reuse via requests.Session`)
+- Do NOT reference internal function names
+- Do NOT reference internal implementation choices
 - DO describe the user-visible behavior change or new capability
 - Include PR numbers for reference: `(#123)`
 
@@ -127,8 +127,6 @@ git commit -m "Bump version to <next-version> for next development cycle"
 ```
 4. Push: `git push -u origin post-release/bump-<next-version>`
 5. Create a PR on GitHub and merge it
-
-This ensures builds from source are clearly distinguished from the published release.
 
 ## Version Numbering
 
