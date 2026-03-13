@@ -18,6 +18,7 @@ from ..models.table_info import AlternateKeyInfo
 from ..models.labels import Label, LocalizedLabel
 from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
+from ..data._odata import _operation_scope
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -127,13 +128,14 @@ class TableOperations:
                 print(f"Created: {result['table_schema_name']}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._create_table(
-                table,
-                columns,
-                solution,
-                primary_column,
-            )
-            return TableInfo.from_dict(raw)
+            with _operation_scope("tables.create", table):
+                raw = od._create_table(
+                    table,
+                    columns,
+                    solution,
+                    primary_column,
+                )
+                return TableInfo.from_dict(raw)
 
     # ----------------------------------------------------------------- delete
 
@@ -155,7 +157,8 @@ class TableOperations:
             client.tables.delete("new_MyTestTable")
         """
         with self._client._scoped_odata() as od:
-            od._delete_table(table)
+            with _operation_scope("tables.delete", table):
+                od._delete_table(table)
 
     # -------------------------------------------------------------------- get
 
@@ -180,10 +183,11 @@ class TableOperations:
                 print(f"Entity set: {info['entity_set_name']}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._get_table_info(table)
-            if raw is None:
-                return None
-            return TableInfo.from_dict(raw)
+            with _operation_scope("tables.get", table):
+                raw = od._get_table_info(table)
+                if raw is None:
+                    return None
+                return TableInfo.from_dict(raw)
 
     # ------------------------------------------------------------------- list
 
@@ -236,7 +240,8 @@ class TableOperations:
             )
         """
         with self._client._scoped_odata() as od:
-            return od._list_tables(filter=filter, select=select)
+            with _operation_scope("tables.list"):
+                return od._list_tables(filter=filter, select=select)
 
     # ------------------------------------------------------------- add_columns
 
@@ -269,7 +274,8 @@ class TableOperations:
             print(created)  # ['new_Notes', 'new_Active']
         """
         with self._client._scoped_odata() as od:
-            return od._create_columns(table, columns)
+            with _operation_scope("tables.add_columns", table):
+                return od._create_columns(table, columns)
 
     # ---------------------------------------------------------- remove_columns
 
@@ -302,7 +308,8 @@ class TableOperations:
             print(removed)  # ['new_Notes', 'new_Active']
         """
         with self._client._scoped_odata() as od:
-            return od._delete_columns(table, columns)
+            with _operation_scope("tables.remove_columns", table):
+                return od._delete_columns(table, columns)
 
     # ------------------------------------------------------ create_one_to_many
 
@@ -371,18 +378,19 @@ class TableOperations:
                 print(f"Created lookup field: {result.lookup_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._create_one_to_many_relationship(
-                lookup,
-                relationship,
-                solution,
-            )
-            return RelationshipInfo.from_one_to_many(
-                relationship_id=raw["relationship_id"],
-                relationship_schema_name=raw["relationship_schema_name"],
-                lookup_schema_name=raw["lookup_schema_name"],
-                referenced_entity=raw["referenced_entity"],
-                referencing_entity=raw["referencing_entity"],
-            )
+            with _operation_scope("tables.create_one_to_many_relationship", relationship.referencing_entity):
+                raw = od._create_one_to_many_relationship(
+                    lookup,
+                    relationship,
+                    solution,
+                )
+                return RelationshipInfo.from_one_to_many(
+                    relationship_id=raw["relationship_id"],
+                    relationship_schema_name=raw["relationship_schema_name"],
+                    lookup_schema_name=raw["lookup_schema_name"],
+                    referenced_entity=raw["referenced_entity"],
+                    referencing_entity=raw["referencing_entity"],
+                )
 
     # ----------------------------------------------------- create_many_to_many
 
@@ -427,16 +435,17 @@ class TableOperations:
                 print(f"Created: {result.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._create_many_to_many_relationship(
-                relationship,
-                solution,
-            )
-            return RelationshipInfo.from_many_to_many(
-                relationship_id=raw["relationship_id"],
-                relationship_schema_name=raw["relationship_schema_name"],
-                entity1_logical_name=raw["entity1_logical_name"],
-                entity2_logical_name=raw["entity2_logical_name"],
-            )
+            with _operation_scope("tables.create_many_to_many_relationship", relationship.entity1_logical_name):
+                raw = od._create_many_to_many_relationship(
+                    relationship,
+                    solution,
+                )
+                return RelationshipInfo.from_many_to_many(
+                    relationship_id=raw["relationship_id"],
+                    relationship_schema_name=raw["relationship_schema_name"],
+                    entity1_logical_name=raw["entity1_logical_name"],
+                    entity2_logical_name=raw["entity2_logical_name"],
+                )
 
     # ------------------------------------------------------- delete_relationship
 
@@ -460,7 +469,8 @@ class TableOperations:
             )
         """
         with self._client._scoped_odata() as od:
-            od._delete_relationship(relationship_id)
+            with _operation_scope("tables.delete_relationship"):
+                od._delete_relationship(relationship_id)
 
     # -------------------------------------------------------- get_relationship
 
@@ -484,10 +494,11 @@ class TableOperations:
                 print(f"Found: {rel.relationship_schema_name}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._get_relationship(schema_name)
-            if raw is None:
-                return None
-            return RelationshipInfo.from_api_response(raw)
+            with _operation_scope("tables.get_relationship"):
+                raw = od._get_relationship(schema_name)
+                if raw is None:
+                    return None
+                return RelationshipInfo.from_api_response(raw)
 
     # ------------------------------------------------------- create_lookup_field
 

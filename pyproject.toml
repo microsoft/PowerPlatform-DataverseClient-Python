@@ -49,6 +49,10 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+telemetry = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
