@@ -307,6 +307,18 @@ client.tables.add_columns("new_Product", {"new_Category": "string"})
 # Remove columns
 client.tables.remove_columns("new_Product", ["new_Category"])
 
+# List all columns (attributes) for a table to discover schema
+columns = client.tables.list_columns("account")
+for col in columns:
+    print(f"{col['LogicalName']} ({col.get('AttributeType')})")
+
+# List only specific properties
+columns = client.tables.list_columns(
+    "account",
+    select=["LogicalName", "SchemaName", "AttributeType"],
+    filter="AttributeType eq 'String'",
+)
+
 # Clean up
 client.tables.delete("new_Product")
 ```
@@ -358,6 +370,16 @@ print(f"Created M:N relationship: {result['relationship_schema_name']}")
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
     print(f"Found: {rel['SchemaName']}")
+
+# List all relationships
+rels = client.tables.list_relationships()
+for rel in rels:
+    print(f"{rel['SchemaName']} ({rel.get('@odata.type')})")
+
+# List relationships for a specific table (one-to-many + many-to-many)
+account_rels = client.tables.list_table_relationships("account")
+for rel in account_rels:
+    print(f"{rel['SchemaName']} -> {rel.get('@odata.type')}")
 
 # Delete a relationship
 client.tables.delete_relationship(result['relationship_id'])

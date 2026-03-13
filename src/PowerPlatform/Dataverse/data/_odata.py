@@ -1039,6 +1039,50 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 return item
         return None
 
+    def _list_columns(
+        self,
+        table_schema_name: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all attribute (column) definitions for a table.
+
+        Issues ``GET EntityDefinitions({MetadataId})/Attributes`` with optional
+        ``$select`` and ``$filter`` query parameters.
+
+        :param table_schema_name: Schema name of the table
+            (e.g. ``"account"`` or ``"new_Product"``).
+        :type table_schema_name: ``str``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: ``list[str]`` or ``None``
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"AttributeType eq 'String'"`` returns only string columns.
+        :type filter: ``str`` or ``None``
+
+        :return: List of raw attribute metadata dictionaries (may be empty).
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table is not found.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        metadata_id = ent["MetadataId"]
+        url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
+        params: Dict[str, str] = {}
+        if select:
+            params["$select"] = ",".join(select)
+        if filter:
+            params["$filter"] = filter
+        r = self._request("get", url, params=params)
+        return r.json().get("value", [])
+
     def _wait_for_attribute_visibility(
         self,
         entity_set: str,
