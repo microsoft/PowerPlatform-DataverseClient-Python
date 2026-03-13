@@ -74,7 +74,6 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 2. Push: `git push -u origin release/v<version>`
 3. Create a PR on GitHub targeting `main`:
    - **With `gh` CLI:** `gh pr create --base main --title "Update CHANGELOG.md for v<version> release" --body "Release changelog for v<version>"`
-   - **Without `gh` CLI:** Open `https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/main...release/v<version>` to create the PR manually
 4. Get the PR reviewed and merged
 
 ### Step 4: Create Git Tag
@@ -139,7 +138,6 @@ git commit -m "Bump version to <next-version> for next development cycle"
 4. Push: `git push -u origin post-release/bump-<next-version>`
 5. Create a PR on GitHub and merge it:
    - **With `gh` CLI:** `gh pr create --base main --title "Bump version to <next-version> for next development cycle" --body "Post-release version bump"`
-   - **Without `gh` CLI:** Open `https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/main...post-release/bump-<next-version>` to create the PR manually
 
 ## Version Numbering
 
