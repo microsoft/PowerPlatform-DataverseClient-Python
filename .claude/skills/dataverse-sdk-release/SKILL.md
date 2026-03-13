@@ -13,6 +13,7 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 
 - Write access to the GitHub repository (microsoft/PowerPlatform-DataverseClient-Python)
 - Access to the Azure DevOps CI/CD pipeline for PyPI publishing: https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29949
+- _(Optional)_ **GitHub CLI (`gh`)** — enables automated PR creation and GitHub releases from the terminal. Install: `winget install GitHub.cli`, then `gh auth login`.
 
 ## Release Checklist
 
@@ -71,7 +72,9 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 
 1. Commit: `git add CHANGELOG.md && git commit -m "Update CHANGELOG.md for v<version> release"`
 2. Push: `git push -u origin release/v<version>`
-3. Create a PR on GitHub targeting `main`
+3. Create a PR on GitHub targeting `main`:
+   - **With `gh` CLI:** `gh pr create --base main --title "Update CHANGELOG.md for v<version> release" --body "Release changelog for v<version>"`
+   - **Without `gh` CLI:** Open `https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/main...release/v<version>` to create the PR manually
 4. Get the PR reviewed and merged
 
 ### Step 4: Create Git Tag
@@ -107,12 +110,20 @@ Trigger the Azure DevOps CI/CD pipeline:
 
 ### Step 6: Create GitHub Release
 
-1. Go to: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/releases/new
-2. Select the tag: `v<version>`
-3. Title: `v<version>`
-4. Copy release notes from CHANGELOG.md (the Added/Fixed/Changed sections for this version)
-5. Check **"Set as a pre-release"** if the version contains `a`, `b`, or `rc` (alpha/beta/release candidate)
-6. Click **Publish release**
+**Before writing release notes:** Review previous releases at https://github.com/microsoft/PowerPlatform-DataverseClient-Python/releases to match the tone, detail level, and formatting conventions.
+
+- **With `gh` CLI:** Extract the release notes from CHANGELOG.md (the Added/Fixed/Changed sections for this version) into a temp file, then run:
+  ```bash
+  gh release create v<version> --title "v<version>" --notes-file <notes-file> --prerelease
+  ```
+  Omit `--prerelease` if the version does **not** contain `a`, `b`, or `rc`.
+- **Without `gh` CLI:**
+  1. Go to: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/releases/new
+  2. Select the tag: `v<version>`
+  3. Title: `v<version>`
+  4. Copy release notes from CHANGELOG.md
+  5. Check **"Set as a pre-release"** if the version contains `a`, `b`, or `rc` (alpha/beta/release candidate)
+  6. Click **Publish release**
 
 ### Step 7: Post-Release Version Bump
 
@@ -126,7 +137,9 @@ git add pyproject.toml
 git commit -m "Bump version to <next-version> for next development cycle"
 ```
 4. Push: `git push -u origin post-release/bump-<next-version>`
-5. Create a PR on GitHub and merge it
+5. Create a PR on GitHub and merge it:
+   - **With `gh` CLI:** `gh pr create --base main --title "Bump version to <next-version> for next development cycle" --body "Post-release version bump"`
+   - **Without `gh` CLI:** Open `https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/main...post-release/bump-<next-version>` to create the PR manually
 
 ## Version Numbering
 
