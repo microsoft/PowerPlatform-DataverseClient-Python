@@ -289,5 +289,197 @@ class TestGetRelationship(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class MockODataClientWithEntityLookup(MockODataClient):
+    """Extended mock client that also supports _get_entity_by_table_schema_name."""
+
+    def __init__(self, api_base: str):
+        super().__init__(api_base)
+        self._mock_get_entity = MagicMock()
+
+    def _get_entity_by_table_schema_name(self, table_schema_name, headers=None):
+        return self._mock_get_entity(table_schema_name)
+
+
+class TestListRelationships(unittest.TestCase):
+    """Tests for _list_relationships method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.client = MockODataClient("https://example.crm.dynamics.com/api/data/v9.2")
+
+    def test_list_relationships_url(self):
+        """Test that correct URL is used."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"value": []}
+        self.client._mock_request.return_value = mock_response
+
+        self.client._list_relationships()
+
+        call_args = self.client._mock_request.call_args
+        self.assertEqual(call_args[0][0], "get")
+        self.assertEqual(
+            call_args[0][1],
+            "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions",
+        )
+
+    def test_list_relationships_no_params_by_default(self):
+        """Test that no $filter or $select are sent when not specified."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"value": []}
+        self.client._mock_request.return_value = mock_response
+
+        self.client._list_relationships()
+
+        call_args = self.client._mock_request.call_args
+        params = call_args[1].get("params", {})
+        self.assertNotIn("$filter", params)
+        self.assertNotIn("$select", params)
+
+    def test_list_relationships_filter_param(self):
+        """Test that $filter is forwarded."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"value": []}
+        self.client._mock_request.return_value = mock_response
+
+        self.client._list_relationships(filter="RelationshipType eq 'OneToManyRelationship'")
+
+        call_args = self.client._mock_request.call_args
+        params = call_args[1].get("params", {})
+        self.assertEqual(params["$filter"], "RelationshipType eq 'OneToManyRelationship'")
+
+    def test_list_relationships_select_param(self):
+        """Test that $select is joined from list."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"value": []}
+        self.client._mock_request.return_value = mock_response
+
+        self.client._list_relationships(select=["SchemaName", "ReferencedEntity"])
+
+        call_args = self.client._mock_request.call_args
+        params = call_args[1].get("params", {})
+        self.assertEqual(params["$select"], "SchemaName,ReferencedEntity")
+
+    def test_list_relationships_returns_value_array(self):
+        """Test that the 'value' array is returned."""
+        expected = [
+            {"SchemaName": "new_account_orders", "MetadataId": "rel-1"},
+            {"SchemaName": "new_emp_proj", "MetadataId": "rel-2"},
+        ]
+        mock_response = Mock()
+        mock_response.json.return_value = {"value": expected}
+        self.client._mock_request.return_value = mock_response
+
+        result = self.client._list_relationships()
+
+        self.assertEqual(result, expected)
+
+    def test_list_relationships_returns_empty_list_when_no_value(self):
+        """Test that [] is returned when response has no 'value' key."""
+        mock_response = Mock()
+        mock_response.json.return_value = {}
+        self.client._mock_request.return_value = mock_response
+
+        result = self.client._list_relationships()
+
+        self.assertEqual(result, [])
+
+
+class TestListTableRelationships(unittest.TestCase):
+    """Tests for _list_table_relationships method."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.client = MockODataClientWithEntityLookup("https://example.crm.dynamics.com/api/data/v9.2")
+        self.client._mock_get_entity.return_value = {
+            "MetadataId": "ent-guid-1",
+            "LogicalName": "account",
+            "SchemaName": "Account",
+        }
+
+    def _make_response(self, value):
+        r = Mock()
+        r.json.return_value = {"value": value}
+        return r
+
+    def test_uses_one_to_many_and_many_to_many_urls(self):
+        """Test that both OneToMany and ManyToMany URLs are queried."""
+        self.client._mock_request.side_effect = [
+            self._make_response([]),
+            self._make_response([]),
+        ]
+
+        self.client._list_table_relationships("account")
+
+        calls = self.client._mock_request.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertIn("OneToManyRelationships", calls[0][0][1])
+        self.assertIn("ManyToManyRelationships", calls[1][0][1])
+
+    def test_uses_metadata_id_in_urls(self):
+        """Test that the entity MetadataId is used in both URLs."""
+        self.client._mock_request.side_effect = [
+            self._make_response([]),
+            self._make_response([]),
+        ]
+
+        self.client._list_table_relationships("account")
+
+        calls = self.client._mock_request.call_args_list
+        self.assertIn("ent-guid-1", calls[0][0][1])
+        self.assertIn("ent-guid-1", calls[1][0][1])
+
+    def test_combines_one_to_many_and_many_to_many_results(self):
+        """Test that results from both sub-requests are combined."""
+        one_to_many = [{"SchemaName": "rel_1tm", "MetadataId": "r1"}]
+        many_to_many = [{"SchemaName": "rel_mtm", "MetadataId": "r2"}]
+        self.client._mock_request.side_effect = [
+            self._make_response(one_to_many),
+            self._make_response(many_to_many),
+        ]
+
+        result = self.client._list_table_relationships("account")
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["SchemaName"], "rel_1tm")
+        self.assertEqual(result[1]["SchemaName"], "rel_mtm")
+
+    def test_filter_param_is_forwarded(self):
+        """Test that $filter is sent to both sub-requests."""
+        self.client._mock_request.side_effect = [
+            self._make_response([]),
+            self._make_response([]),
+        ]
+
+        self.client._list_table_relationships("account", filter="IsManaged eq false")
+
+        calls = self.client._mock_request.call_args_list
+        for call in calls:
+            params = call[1].get("params", {})
+            self.assertEqual(params["$filter"], "IsManaged eq false")
+
+    def test_select_param_is_forwarded(self):
+        """Test that $select is sent to both sub-requests."""
+        self.client._mock_request.side_effect = [
+            self._make_response([]),
+            self._make_response([]),
+        ]
+
+        self.client._list_table_relationships("account", select=["SchemaName", "MetadataId"])
+
+        calls = self.client._mock_request.call_args_list
+        for call in calls:
+            params = call[1].get("params", {})
+            self.assertEqual(params["$select"], "SchemaName,MetadataId")
+
+    def test_raises_metadata_error_when_table_not_found(self):
+        """Test that MetadataError is raised when entity is not found."""
+        from PowerPlatform.Dataverse.core.errors import MetadataError
+
+        self.client._mock_get_entity.return_value = None
+
+        with self.assertRaises(MetadataError):
+            self.client._list_table_relationships("nonexistent_table")
+
+
 if __name__ == "__main__":
     unittest.main()
