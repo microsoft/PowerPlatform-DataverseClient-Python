@@ -34,6 +34,13 @@ from ..core._error_codes import (
     METADATA_COLUMN_NOT_FOUND,
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
+from ..common.constants import (
+    ODATA_TYPE_BOOLEAN_ATTRIBUTE,
+    ODATA_TYPE_MULTISELECT_PICKLIST_ATTRIBUTE,
+    ODATA_TYPE_PICKLIST_ATTRIBUTE,
+    ODATA_TYPE_STATE_ATTRIBUTE,
+    ODATA_TYPE_STATUS_ATTRIBUTE,
+)
 
 from .. import __version__ as _SDK_VERSION
 
@@ -79,6 +86,15 @@ class _RequestContext:
 
 class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
+
+    _RELATIONSHIP_TYPE_MAP = {
+        "one_to_many": "/OneToManyRelationships",
+        "1:N": "/OneToManyRelationships",
+        "many_to_one": "/ManyToOneRelationships",
+        "N:1": "/ManyToOneRelationships",
+        "many_to_many": "/ManyToManyRelationships",
+        "N:N": "/ManyToManyRelationships",
+    }
 
     @staticmethod
     def _escape_odata_quotes(value: str) -> str:
@@ -1488,6 +1504,272 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
+
+    # -------------------------------------------------------------------------
+    # Extended table metadata (columns, relationships, option sets)
+    # -------------------------------------------------------------------------
+
+    def _get_table_metadata(
+        self,
+        table_schema_name: str,
+        select: Optional[List[str]] = None,
+        include_attributes: bool = False,
+        include_one_to_many: bool = False,
+        include_many_to_one: bool = False,
+        include_many_to_many: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve rich table metadata using EntityDefinitions with optional $select and $expand.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param select: Optional list of PascalCase property names to project.
+        :type select: ``list[str]`` or ``None``
+        :param include_attributes: Expand ``Attributes`` collection.
+        :type include_attributes: ``bool``
+        :param include_one_to_many: Expand ``OneToManyRelationships``.
+        :type include_one_to_many: ``bool``
+        :param include_many_to_one: Expand ``ManyToOneRelationships``.
+        :type include_many_to_one: ``bool``
+        :param include_many_to_many: Expand ``ManyToManyRelationships``.
+        :type include_many_to_many: ``bool``
+
+        :return: Raw entity metadata dict, or ``None`` if not found (404).
+        :rtype: ``dict[str, Any]`` | ``None``
+
+        :raises HttpError: If the request fails (non-404).
+        """
+        logical_lower = table_schema_name.lower()
+        logical_escaped = self._escape_odata_quotes(logical_lower)
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_escaped}')"
+
+        params: Dict[str, str] = {}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        base_fields = ["EntitySetName", "LogicalName", "MetadataId", "SchemaName"]
+        if select:
+            seen = set(base_fields)
+            merged = list(base_fields)
+            for f in select:
+                if f not in seen:
+                    merged.append(f)
+                    seen.add(f)
+        else:
+            merged = list(base_fields)
+        params["$select"] = ",".join(merged)
+        expand_parts: List[str] = []
+        if include_attributes:
+            expand_parts.append("Attributes")
+        if include_one_to_many:
+            expand_parts.append("OneToManyRelationships")
+        if include_many_to_one:
+            expand_parts.append("ManyToOneRelationships")
+        if include_many_to_many:
+            expand_parts.append("ManyToManyRelationships")
+        if expand_parts:
+            params["$expand"] = ",".join(expand_parts)
+
+        try:
+            r = self._request("get", url, params=params)
+            return r.json()
+        except HttpError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+    def _get_table_columns(
+        self,
+        table_schema_name: str,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get all columns/attributes for a table using the Attributes collection endpoint.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param select: Optional list of PascalCase attribute property names to project.
+        :type select: ``list[str]`` or ``None``
+        :param filter: Optional OData $filter expression for attributes.
+        :type filter: ``str`` or ``None``
+
+        :return: List of raw attribute metadata dicts.
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises HttpError: If the request fails.
+        """
+        logical_lower = table_schema_name.lower()
+        logical_escaped = self._escape_odata_quotes(logical_lower)
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_escaped}')/Attributes"
+
+        params: Dict[str, str] = {}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
+        else:
+            params["$select"] = ",".join(
+                [
+                    "LogicalName",
+                    "SchemaName",
+                    "DisplayName",
+                    "AttributeType",
+                    "AttributeTypeName",
+                    "IsCustomAttribute",
+                    "IsPrimaryId",
+                    "IsPrimaryName",
+                    "RequiredLevel",
+                    "IsValidForCreate",
+                    "IsValidForUpdate",
+                    "IsValidForRead",
+                    "MetadataId",
+                ]
+            )
+        if filter:
+            params["$filter"] = filter
+
+        r = self._request("get", url, params=params)
+        return r.json().get("value", [])
+
+    def _get_table_column(
+        self,
+        table_schema_name: str,
+        column_logical_name: str,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get metadata for a single specific column using the alternate key pattern.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param column_logical_name: Logical name of the column.
+        :type column_logical_name: ``str``
+        :param select: Optional list of PascalCase attribute property names to project.
+        :type select: ``list[str]`` or ``None``
+
+        :return: Raw attribute metadata dict, or ``None`` if not found (404).
+        :rtype: ``dict[str, Any]`` | ``None``
+
+        :raises HttpError: If the request fails (non-404).
+        """
+        table_lower = self._escape_odata_quotes(table_schema_name.lower())
+        column_lower = self._escape_odata_quotes(column_logical_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{table_lower}')/Attributes(LogicalName='{column_lower}')"
+
+        params: Dict[str, str] = {}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
+
+        try:
+            r = self._request("get", url, params=params)
+            return r.json()
+        except HttpError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+    def _get_column_optionset(
+        self,
+        table_schema_name: str,
+        column_logical_name: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Get the option set definition for a Picklist, MultiSelectPicklist, or Boolean column.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param column_logical_name: Logical name of the column.
+        :type column_logical_name: ``str``
+
+        :return: Raw option set metadata dict, or ``None`` if not found or not an option-set column.
+        :rtype: ``dict[str, Any]`` | ``None``
+
+        :raises HttpError: If the request fails (non-400/404).
+        """
+        table_lower = self._escape_odata_quotes(table_schema_name.lower())
+        column_lower = self._escape_odata_quotes(column_logical_name.lower())
+        base = f"{self.api}/EntityDefinitions(LogicalName='{table_lower}')/Attributes(LogicalName='{column_lower}')"
+
+        params = {"$select": "LogicalName", "$expand": "OptionSet,GlobalOptionSet"}
+
+        for cast_type in [
+            ODATA_TYPE_PICKLIST_ATTRIBUTE,
+            ODATA_TYPE_BOOLEAN_ATTRIBUTE,
+            ODATA_TYPE_MULTISELECT_PICKLIST_ATTRIBUTE,
+            ODATA_TYPE_STATUS_ATTRIBUTE,
+            ODATA_TYPE_STATE_ATTRIBUTE,
+        ]:
+            url = f"{base}/{cast_type}"
+            try:
+                r = self._request("get", url, params=params)
+                data = r.json()
+                option_set = data.get("OptionSet")
+                if option_set is None:
+                    option_set = data.get("GlobalOptionSet")
+                if option_set is not None:
+                    return option_set
+            except HttpError as e:
+                if e.status_code not in (400, 404):
+                    raise
+
+        return None
+
+    def _list_table_relationships(
+        self,
+        table_schema_name: str,
+        relationship_type: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List relationship metadata for a table, optionally filtered by type.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param relationship_type: Optional filter (e.g. ``"one_to_many"``, ``"1:N"``, ``"N:1"``).
+        :type relationship_type: ``str`` or ``None``
+        :param select: Optional list of PascalCase property names to project.
+        :type select: ``list[str]`` or ``None``
+
+        :return: List of raw relationship metadata dicts.
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises ValueError: If ``relationship_type`` is invalid.
+        :raises HttpError: If the request fails.
+        """
+        table_lower = self._escape_odata_quotes(table_schema_name.lower())
+        base_url = f"{self.api}/EntityDefinitions(LogicalName='{table_lower}')"
+
+        params: Dict[str, str] = {}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
+
+        if relationship_type is not None:
+            sub_path = self._RELATIONSHIP_TYPE_MAP.get(relationship_type)
+            if sub_path is None:
+                raise ValueError(
+                    f"Invalid relationship_type: {relationship_type!r}. "
+                    f"Valid values: {list(self._RELATIONSHIP_TYPE_MAP.keys())} or None for all."
+                )
+            url = f"{base_url}{sub_path}"
+            r = self._request("get", url, params=params)
+            results = r.json().get("value", [])
+            type_tag = sub_path.strip("/").replace("Relationships", "")
+            for item in results:
+                item["_relationship_type"] = type_tag
+            return results
+
+        all_results: List[Dict[str, Any]] = []
+        for sub_path, type_tag in [
+            ("/OneToManyRelationships", "OneToMany"),
+            ("/ManyToOneRelationships", "ManyToOne"),
+            ("/ManyToManyRelationships", "ManyToMany"),
+        ]:
+            url = f"{base_url}{sub_path}"
+            r = self._request("get", url, params=params)
+            items = r.json().get("value", [])
+            for item in items:
+                item["_relationship_type"] = type_tag
+            all_results.extend(items)
+        return all_results
 
     def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name.
