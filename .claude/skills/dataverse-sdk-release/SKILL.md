@@ -12,14 +12,14 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 ## Prerequisites
 
 - Write access to the GitHub repository (microsoft/PowerPlatform-DataverseClient-Python)
-- Access to the Azure DevOps CI/CD pipeline for PyPI publishing
+- Access to the Azure DevOps CI/CD pipeline for PyPI publishing: https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29949
 - Familiarity with [Keep a Changelog](https://keepachangelog.com/) format and [Semantic Versioning](https://semver.org/)
 
 ## Release Checklist
 
 ### Step 1: Identify Changes Since Last Release
 
-1. Find the last release version and date in CHANGELOG.md
+1. Find the last release version and date in CHANGELOG.md (the current dev version is in `pyproject.toml` under `version`)
 2. List merged PRs since the last release:
    - GitHub UI: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/pulls?q=is%3Apr+is%3Amerged
    - Or via git: `git log --oneline --since="<last-release-date>"`
@@ -54,7 +54,7 @@ This skill provides the complete release process for the PowerPlatform Dataverse
 - DO describe the user-visible behavior change or new capability
 - Include PR numbers for reference: `(#123)`
 
-**What to include:**
+**What to include (categorize each change under the appropriate Changelog heading):**
 - New features -> **Added**
 - Changes to existing functionality -> **Changed**
 - Soon-to-be removed features -> **Deprecated**
@@ -85,9 +85,7 @@ git switch main
 git pull origin main
 ```
 
-2. Verify existing tags: `git tag -l`
-
-3. Create and push the tag:
+2. Create and push the tag:
 ```bash
 git tag -a v<version> -m "Release v<version>"
 git push origin --tags
@@ -99,7 +97,13 @@ git push origin --tags
 
 Trigger the Azure DevOps CI/CD pipeline:
 - Pipeline: https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29949
-- Wait for the pipeline to complete successfully
+
+**Runtime variables (set when queuing the pipeline):**
+- `PushToPyPI` — Set to `true` to publish to PyPI. If not set, the pipeline builds, tests, and produces artifacts without publishing.
+- `PackageVersion` — The version string for the release (e.g., `0.1.0b7`). Leave empty to use the version from `pyproject.toml`.
+
+**Recommendation:** First run the pipeline **without** setting `PushToPyPI` to `true`. This validates the build, tests, and packaging. Once the dry run succeeds, queue again with `PushToPyPI` set to `true` to publish.
+
 - Verify the package appears on PyPI: https://pypi.org/project/PowerPlatform-Dataverse-Client/
 
 ### Step 6: Create GitHub Release
@@ -117,7 +121,11 @@ Immediately after the release, bump the version for the next development cycle:
 
 1. Create a branch: `git checkout -b post-release/bump-<next-version>`
 2. Update `version` in `pyproject.toml` to the next beta (e.g., `0.1.0b6` -> `0.1.0b7`)
-3. Commit: `git commit -am "Bump version to <next-version> for next development cycle"`
+3. Stage and commit:
+```bash
+git add pyproject.toml
+git commit -m "Bump version to <next-version> for next development cycle"
+```
 4. Push: `git push -u origin post-release/bump-<next-version>`
 5. Create a PR on GitHub and merge it
 
@@ -126,14 +134,13 @@ This ensures builds from source are clearly distinguished from the published rel
 ## Version Numbering
 
 This project uses Semantic Versioning with PEP 440 pre-release identifiers:
-- Beta releases: `0.1.0b1`, `0.1.0b2`, ..., `0.1.0b6`
+- Beta releases: `0.1.0b1`, `0.1.0b2`, `0.1.0b3`, ...
 - The version in `pyproject.toml` on `main` should always be one ahead of the latest published release
 
 ## Key Links
 
 - **Repository**: https://github.com/microsoft/PowerPlatform-DataverseClient-Python
 - **PyPI Package**: https://pypi.org/project/PowerPlatform-Dataverse-Client/
-- **Closed PRs**: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/pulls?q=is%3Apr+is%3Aclosed
 - **CI/CD Pipeline**: https://dev.azure.com/dynamicscrm/OneCRM/_build?definitionId=29949
 - **Releases**: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/releases
-- **CONTRIBUTING.md**: Reference for changelog format and coding guidelines
+- **CONTRIBUTING.md**: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/CONTRIBUTING.md
