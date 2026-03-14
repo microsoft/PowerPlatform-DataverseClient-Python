@@ -39,9 +39,9 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
-from .filters import FilterExpression, _format_value
+from . import filters
 
 __all__ = ["QueryBuilder"]
 
@@ -75,7 +75,7 @@ class QueryBuilder:
             raise ValueError("table name is required")
         self.table = table
         self._select: List[str] = []
-        self._filter_parts: List[Union[str, FilterExpression]] = []
+        self._filter_parts: List[Union[str, filters.FilterExpression]] = []
         self._orderby: List[str] = []
         self._expand: List[str] = []
         self._top: Optional[int] = None
@@ -109,7 +109,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} eq {_format_value(value)}")
+        self._filter_parts.append(filters.eq(column, value))
         return self
 
     def filter_ne(self, column: str, value: Any) -> QueryBuilder:
@@ -119,7 +119,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} ne {_format_value(value)}")
+        self._filter_parts.append(filters.ne(column, value))
         return self
 
     def filter_gt(self, column: str, value: Any) -> QueryBuilder:
@@ -129,7 +129,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} gt {_format_value(value)}")
+        self._filter_parts.append(filters.gt(column, value))
         return self
 
     def filter_ge(self, column: str, value: Any) -> QueryBuilder:
@@ -139,7 +139,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} ge {_format_value(value)}")
+        self._filter_parts.append(filters.ge(column, value))
         return self
 
     def filter_lt(self, column: str, value: Any) -> QueryBuilder:
@@ -149,7 +149,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} lt {_format_value(value)}")
+        self._filter_parts.append(filters.lt(column, value))
         return self
 
     def filter_le(self, column: str, value: Any) -> QueryBuilder:
@@ -159,7 +159,7 @@ class QueryBuilder:
         :param value: Value to compare against.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} le {_format_value(value)}")
+        self._filter_parts.append(filters.le(column, value))
         return self
 
     # --------------------------------------------------------- filter: string functions
@@ -171,7 +171,7 @@ class QueryBuilder:
         :param value: Substring to search for.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"contains({column.lower()}, {_format_value(value)})")
+        self._filter_parts.append(filters.contains(column, value))
         return self
 
     def filter_startswith(self, column: str, value: str) -> QueryBuilder:
@@ -181,7 +181,7 @@ class QueryBuilder:
         :param value: Prefix to match.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"startswith({column.lower()}, {_format_value(value)})")
+        self._filter_parts.append(filters.startswith(column, value))
         return self
 
     def filter_endswith(self, column: str, value: str) -> QueryBuilder:
@@ -191,7 +191,7 @@ class QueryBuilder:
         :param value: Suffix to match.
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"endswith({column.lower()}, {_format_value(value)})")
+        self._filter_parts.append(filters.endswith(column, value))
         return self
 
     # --------------------------------------------------------- filter: null checks
@@ -202,7 +202,7 @@ class QueryBuilder:
         :param column: Column name (will be lowercased).
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} eq null")
+        self._filter_parts.append(filters.is_null(column))
         return self
 
     def filter_not_null(self, column: str) -> QueryBuilder:
@@ -211,29 +211,10 @@ class QueryBuilder:
         :param column: Column name (will be lowercased).
         :return: Self for method chaining.
         """
-        self._filter_parts.append(f"{column.lower()} ne null")
+        self._filter_parts.append(filters.is_not_null(column))
         return self
 
     # --------------------------------------------------------- filter: special
-
-    def filter_in(self, column: str, values: Sequence[Any]) -> QueryBuilder:
-        """Add an ``in`` filter: ``column in (val1, val2, ...)``.
-
-        :param column: Column name (will be lowercased).
-        :param values: Non-empty list of values for the ``in`` clause.
-        :return: Self for method chaining.
-        :raises ValueError: If ``values`` is empty.
-
-        Example::
-
-            query = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
-            # Produces: statecode in (0, 1, 2)
-        """
-        if not values:
-            raise ValueError("filter_in requires at least one value")
-        formatted = ", ".join(_format_value(v) for v in values)
-        self._filter_parts.append(f"{column.lower()} in ({formatted})")
-        return self
 
     def filter_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
         """Add a between filter: ``(column ge low and column le high)``.
@@ -248,8 +229,7 @@ class QueryBuilder:
             query = QueryBuilder("account").filter_between("revenue", 100000, 500000)
             # Produces: (revenue ge 100000 and revenue le 500000)
         """
-        col = column.lower()
-        self._filter_parts.append(f"({col} ge {_format_value(low)} and {col} le {_format_value(high)})")
+        self._filter_parts.append(filters.between(column, low, high))
         return self
 
     def filter_raw(self, filter_string: str) -> QueryBuilder:
@@ -267,12 +247,12 @@ class QueryBuilder:
                 "(statecode eq 0 or statecode eq 1)"
             )
         """
-        self._filter_parts.append(filter_string)
+        self._filter_parts.append(filters.raw(filter_string))
         return self
 
     # ------------------------------------------------------ filter: expression tree
 
-    def where(self, expression: FilterExpression) -> QueryBuilder:
+    def where(self, expression: filters.FilterExpression) -> QueryBuilder:
         """Add a composable filter expression.
 
         Accepts a :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`
@@ -295,7 +275,7 @@ class QueryBuilder:
                      .where((eq("statecode", 0) | eq("statecode", 1))
                             & gt("revenue", 100000)))
         """
-        if not isinstance(expression, FilterExpression):
+        if not isinstance(expression, filters.FilterExpression):
             raise TypeError(f"where() requires a FilterExpression, got {type(expression).__name__}")
         self._filter_parts.append(expression)
         return self
@@ -376,7 +356,7 @@ class QueryBuilder:
         if self._filter_parts:
             parts: List[str] = []
             for part in self._filter_parts:
-                if isinstance(part, FilterExpression):
+                if isinstance(part, filters.FilterExpression):
                     parts.append(part.to_odata())
                 else:
                     parts.append(part)

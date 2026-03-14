@@ -19,7 +19,6 @@ from PowerPlatform.Dataverse.models.filters import (
     contains,
     startswith,
     endswith,
-    filter_in,
     between,
     is_null,
     is_not_null,
@@ -186,38 +185,6 @@ class TestFunctionFilters(unittest.TestCase):
 
     def test_function_column_lowercased(self):
         self.assertEqual(contains("Name", "Corp").to_odata(), "contains(name, 'Corp')")
-
-
-class TestInFilter(unittest.TestCase):
-    """Tests for the filter_in factory function."""
-
-    def test_filter_in_ints(self):
-        self.assertEqual(
-            filter_in("statecode", [0, 1, 2]).to_odata(),
-            "statecode in (0, 1, 2)",
-        )
-
-    def test_filter_in_strings(self):
-        self.assertEqual(
-            filter_in("name", ["Contoso", "Fabrikam"]).to_odata(),
-            "name in ('Contoso', 'Fabrikam')",
-        )
-
-    def test_filter_in_single_value(self):
-        self.assertEqual(
-            filter_in("statecode", [0]).to_odata(),
-            "statecode in (0)",
-        )
-
-    def test_filter_in_column_lowercased(self):
-        self.assertEqual(
-            filter_in("StateCode", [0, 1]).to_odata(),
-            "statecode in (0, 1)",
-        )
-
-    def test_filter_in_empty_raises(self):
-        with self.assertRaises(ValueError):
-            filter_in("statecode", [])
 
 
 class TestBetween(unittest.TestCase):

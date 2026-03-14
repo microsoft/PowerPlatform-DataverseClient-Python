@@ -10,7 +10,7 @@ complex filter conditions.
 
 Example::
 
-    from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in
+    from PowerPlatform.Dataverse.models.filters import eq, gt, between
 
     # Simple comparison
     expr = eq("statecode", 0)
@@ -20,10 +20,6 @@ Example::
     expr = (eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000)
     print(expr.to_odata())
     # ((statecode eq 0 or statecode eq 1) and revenue gt 100000)
-
-    # In operator
-    expr = filter_in("statecode", [0, 1, 2])
-    print(expr.to_odata())  # statecode in (0, 1, 2)
 
     # Negation
     expr = ~eq("statecode", 1)
@@ -35,7 +31,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Sequence
+from typing import Any
 
 __all__ = [
     "FilterExpression",
@@ -48,7 +44,6 @@ __all__ = [
     "contains",
     "startswith",
     "endswith",
-    "filter_in",
     "between",
     "is_null",
     "is_not_null",
@@ -172,22 +167,6 @@ class _FunctionFilter(FilterExpression):
 
     def to_odata(self) -> str:
         return f"{self.func_name}({self.column}, {_format_value(self.value)})"
-
-
-class _InFilter(FilterExpression):
-    """In filter: ``column in (val1, val2, ...)``."""
-
-    __slots__ = ("column", "values")
-
-    def __init__(self, column: str, values: Sequence[Any]) -> None:
-        if not values:
-            raise ValueError("filter_in requires at least one value")
-        self.column = column.lower()
-        self.values = list(values)
-
-    def to_odata(self) -> str:
-        formatted = ", ".join(_format_value(v) for v in self.values)
-        return f"{self.column} in ({formatted})"
 
 
 class _AndFilter(FilterExpression):
@@ -337,24 +316,6 @@ def endswith(column: str, value: str) -> FilterExpression:
     :return: A filter expression.
     """
     return _FunctionFilter("endswith", column, value)
-
-
-def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
-    """In filter: ``column in (val1, val2, ...)``.
-
-    Named ``filter_in`` because ``in`` is a Python keyword.
-
-    :param column: Column name (will be lowercased).
-    :param values: Non-empty sequence of values.
-    :return: A filter expression.
-    :raises ValueError: If ``values`` is empty.
-
-    Example::
-
-        filter_in("statecode", [0, 1, 2]).to_odata()
-        # "statecode in (0, 1, 2)"
-    """
-    return _InFilter(column, values)
 
 
 def between(column: str, low: Any, high: Any) -> FilterExpression:
