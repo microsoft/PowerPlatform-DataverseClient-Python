@@ -141,34 +141,6 @@ class TestNullFilters(unittest.TestCase):
         self.assertEqual(qb.build()["filter"], "telephone1 ne null")
 
 
-class TestFilterIn(unittest.TestCase):
-    """Tests for the filter_in() method."""
-
-    def test_filter_in_integers(self):
-        qb = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
-        self.assertEqual(qb.build()["filter"], "statecode in (0, 1, 2)")
-
-    def test_filter_in_strings(self):
-        qb = QueryBuilder("account").filter_in("name", ["Contoso", "Fabrikam"])
-        self.assertEqual(qb.build()["filter"], "name in ('Contoso', 'Fabrikam')")
-
-    def test_filter_in_single_value(self):
-        qb = QueryBuilder("account").filter_in("statecode", [0])
-        self.assertEqual(qb.build()["filter"], "statecode in (0)")
-
-    def test_filter_in_column_lowercased(self):
-        qb = QueryBuilder("account").filter_in("StateCode", [0, 1])
-        self.assertEqual(qb.build()["filter"], "statecode in (0, 1)")
-
-    def test_filter_in_empty_raises(self):
-        with self.assertRaises(ValueError):
-            QueryBuilder("account").filter_in("statecode", [])
-
-    def test_filter_in_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_in("statecode", [0, 1]), qb)
-
-
 class TestFilterBetween(unittest.TestCase):
     """Tests for the filter_between() method."""
 
@@ -398,7 +370,6 @@ class TestMethodChainingReturnsSelf(unittest.TestCase):
         self.assertIs(qb.filter_null("j"), qb)
         self.assertIs(qb.filter_not_null("k"), qb)
         self.assertIs(qb.filter_raw("l eq 1"), qb)
-        self.assertIs(qb.filter_in("m", [1, 2]), qb)
         self.assertIs(qb.filter_between("n", 1, 10), qb)
         self.assertIs(qb.where(eq("o", 1)), qb)
         self.assertIs(qb.order_by("p"), qb)

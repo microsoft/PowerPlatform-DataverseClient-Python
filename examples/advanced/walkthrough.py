@@ -278,21 +278,6 @@ def _run_walkthrough(client):
     for rec in qb_records[:5]:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
 
-    # filter_in: records with specific priorities
-    log_call("client.query.builder(...).filter_in('new_Priority', [HIGH, LOW]).execute()")
-    print("Querying records with HIGH or LOW priority (filter_in)...")
-    priority_records = list(
-        backoff(
-            lambda: client.query.builder(table_name)
-            .select("new_Title", "new_Priority")
-            .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
-            .execute()
-        )
-    )
-    print(f"[OK] Found {len(priority_records)} records with HIGH or LOW priority")
-    for rec in priority_records[:5]:
-        print(f"  - '{rec.get('new_title')}' Priority={rec.get('new_priority')}")
-
     # filter_between: amount in a range
     log_call("client.query.builder(...).filter_between('new_Amount', 500, 1500).execute()")
     print("Querying records with amount between 500 and 1500 (filter_between)...")
@@ -447,7 +432,7 @@ def _run_walkthrough(client):
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
-    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where)")
+    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_between, where)")
     print("  [OK] SQL queries")
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
