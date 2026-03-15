@@ -296,6 +296,7 @@ query = (client.query.builder("contact")
          .filter_eq("statecode", 0)          # statecode eq 0
          .filter_gt("revenue", 1000000)      # revenue gt 1000000
          .filter_contains("name", "Corp")    # contains(name, 'Corp')
+         .filter_in("statecode", [0, 1])     # statecode in (0, 1)
          .filter_between("revenue", 100000, 500000)  # (revenue ge 100000 and revenue le 500000)
          .filter_null("telephone1")          # telephone1 eq null
          )
@@ -304,7 +305,7 @@ query = (client.query.builder("contact")
 For complex logic (OR, NOT, grouping), use the composable expression tree with `where()`:
 
 ```python
-from PowerPlatform.Dataverse.models.filters import eq, gt, between
+from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in, between
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
 for record in (client.query.builder("account")
