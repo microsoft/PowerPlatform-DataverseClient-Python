@@ -10,7 +10,7 @@ complex filter conditions.
 
 Example::
 
-    from PowerPlatform.Dataverse.models.filters import eq, gt, between
+    from PowerPlatform.Dataverse.models.filters import eq, gt
 
     # Simple comparison
     expr = eq("statecode", 0)
