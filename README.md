@@ -13,35 +13,25 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ## Table of contents
 
-- [PowerPlatform Dataverse Client for Python](#powerplatform-dataverse-client-for-python)
-  - [Table of contents](#table-of-contents)
-  - [Key features](#key-features)
-  - [Getting started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Install the package](#install-the-package)
-    - [Authenticate the client](#authenticate-the-client)
-  - [Key concepts](#key-concepts)
-  - [Examples](#examples)
-    - [Quick start](#quick-start)
-    - [Basic CRUD operations](#basic-crud-operations)
-    - [Bulk operations](#bulk-operations)
-    - [Upsert operations](#upsert-operations)
-    - [DataFrame operations](#dataframe-operations)
-    - [Query data](#query-data) *(QueryBuilder, SQL, raw OData)*
-    - [Table management](#table-management)
-    - [Relationship management](#relationship-management)
-    - [File operations](#file-operations)
-  - [Next steps](#next-steps)
-    - [More sample code](#more-sample-code)
-    - [Additional documentation](#additional-documentation)
-  - [Troubleshooting](#troubleshooting)
-    - [General](#general)
-    - [Authentication issues](#authentication-issues)
-    - [Performance considerations](#performance-considerations)
-    - [Limitations](#limitations)
-  - [Contributing](#contributing)
-    - [API Design Guidelines](#api-design-guidelines)
-  - [Trademarks](#trademarks)
+- [Key features](#key-features)
+- [Getting started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Install the package](#install-the-package)  
+  - [Authenticate the client](#authenticate-the-client)
+- [Key concepts](#key-concepts)
+- [Examples](#examples)
+  - [Quick start](#quick-start)
+  - [Basic CRUD operations](#basic-crud-operations)
+  - [Bulk operations](#bulk-operations)
+  - [Upsert operations](#upsert-operations)
+  - [DataFrame operations](#dataframe-operations)
+  - [Query data](#query-data) *(QueryBuilder, SQL, raw OData)*
+  - [Table management](#table-management)
+  - [Relationship management](#relationship-management)
+  - [File operations](#file-operations)
+- [Next steps](#next-steps)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
 ## Key features
 
@@ -306,6 +296,7 @@ query = (client.query.builder("contact")
          .filter_eq("statecode", 0)          # statecode eq 0
          .filter_gt("revenue", 1000000)      # revenue gt 1000000
          .filter_contains("name", "Corp")    # contains(name, 'Corp')
+         .filter_in("statecode", [0, 1])     # statecode in (0, 1)
          .filter_between("revenue", 100000, 500000)  # (revenue ge 100000 and revenue le 500000)
          .filter_null("telephone1")          # telephone1 eq null
          )
@@ -314,7 +305,7 @@ query = (client.query.builder("contact")
 For complex logic (OR, NOT, grouping), use the composable expression tree with `where()`:
 
 ```python
-from PowerPlatform.Dataverse.models.filters import eq, gt, between
+from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in, between
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
 for record in (client.query.builder("account")
