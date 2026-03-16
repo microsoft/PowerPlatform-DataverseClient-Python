@@ -380,7 +380,7 @@ class DataverseClient:
 
         When ``record_id`` is provided, returns a single-row DataFrame.
         When ``record_id`` is None, internally iterates all pages and returns one
-        consolidated DataFrame, similar to ``pd.read_sql()``.
+        consolidated DataFrame.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -503,7 +503,7 @@ class DataverseClient:
         Update records from a pandas DataFrame.
 
         Each row in the DataFrame represents an update. The ``id_column`` specifies which
-        column contains the record GUIDs; the remaining columns are the fields to update.
+        column contains the record GUIDs.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`

@@ -124,7 +124,7 @@ The SDK provides DataFrame wrappers for all CRUD operations using pandas DataFra
 ```python
 import pandas as pd
 
-# Query records — returns a single DataFrame (like pd.read_sql)
+# Query records — returns a single DataFrame
 df = client.get_dataframe("account", filter="statecode eq 0", select=["name"])
 print(f"Got {len(df)} rows")
 

@@ -110,7 +110,7 @@ def main():
     client.update_dataframe(table, new_accounts[["accountid", "telephone1"]], id_column="accountid")
     print("[OK] Updated 3 records")
 
-    # Verify the updates with a query
+    # Verify the updates
     verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
