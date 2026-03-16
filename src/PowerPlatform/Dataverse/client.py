@@ -13,6 +13,7 @@ from azure.core.credentials import TokenCredential
 
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
+from .core.telemetry import TelemetryCapture, TelemetryManager, NoOpTelemetryManager, TelemetryConfig, create_telemetry_manager
 from .data._odata import _ODataClient
 from .operations.records import RecordOperations
 from .operations.query import QueryOperations
@@ -766,6 +767,64 @@ class DataverseClient:
             mime_type=mime_type,
             if_none_match=if_none_match,
         )
+
+    # Telemetry capture
+    @contextmanager
+    def capture_telemetry(self) -> Iterator[TelemetryCapture]:
+        """Capture HTTP request telemetry for ad-hoc debugging.
+
+        Returns a context manager that collects telemetry for all SDK
+        HTTP requests made within the ``with`` block.  No full telemetry
+        configuration is required -- this works even when
+        :class:`~PowerPlatform.Dataverse.core.config.DataverseConfig` has
+        no ``telemetry`` set.
+
+        :return: A :class:`~PowerPlatform.Dataverse.core.telemetry.TelemetryCapture`
+            whose ``requests`` list contains one
+            :class:`~PowerPlatform.Dataverse.core.telemetry.CapturedRequest`
+            per HTTP call made inside the block.
+        :rtype: ~PowerPlatform.Dataverse.core.telemetry.TelemetryCapture
+
+        Example:
+            Inspect request details after a call::
+
+                with client.capture_telemetry() as t:
+                    record_id = client.records.create("account", {"name": "Contoso"})
+
+                print(t.requests[-1].service_request_id)
+                print(t.requests[-1].duration_ms)
+
+            See all HTTP calls from a multi-request operation::
+
+                with client.capture_telemetry() as t:
+                    client.tables.create("new_Product", {"new_Price": "decimal"})
+
+                for req in t.requests:
+                    print(f"{req.operation} {req.status_code} {req.duration_ms:.0f}ms")
+        """
+        capture = TelemetryCapture()
+        od = self._get_odata()
+        telemetry = od._telemetry
+
+        # If telemetry is disabled (NoOp), temporarily swap in a real
+        # TelemetryManager so hook dispatch actually fires.
+        swapped = False
+        if isinstance(telemetry, NoOpTelemetryManager):
+            telemetry = TelemetryManager(TelemetryConfig(hooks=[capture]))
+            od._telemetry = telemetry
+            swapped = True
+        else:
+            telemetry._hooks.append(capture)
+
+        try:
+            yield capture
+        finally:
+            if swapped:
+                od._telemetry = create_telemetry_manager(
+                    getattr(od.config, "telemetry", None)
+                )
+            else:
+                telemetry._hooks.remove(capture)
 
     # Cache utilities
     def flush_cache(self, kind) -> int:

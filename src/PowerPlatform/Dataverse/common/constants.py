@@ -29,3 +29,34 @@ CASCADE_BEHAVIOR_REMOVE_LINK = "RemoveLink"
 
 CASCADE_BEHAVIOR_RESTRICT = "Restrict"
 """Prevent the referenced table record from being deleted when referencing table records exist."""
+
+
+# OpenTelemetry semantic convention attribute names
+# See: https://opentelemetry.io/docs/specs/semconv/
+
+OTEL_ATTR_DB_SYSTEM = "db.system"
+"""Database system identifier."""
+
+OTEL_ATTR_DB_OPERATION = "db.operation"
+"""Database operation name."""
+
+OTEL_ATTR_HTTP_METHOD = "http.request.method"
+"""HTTP request method."""
+
+OTEL_ATTR_HTTP_URL = "url.full"
+"""Full HTTP request URL."""
+
+OTEL_ATTR_HTTP_STATUS_CODE = "http.response.status_code"
+"""HTTP response status code."""
+
+OTEL_ATTR_DATAVERSE_TABLE = "dataverse.table"
+"""Dataverse table (entity) name."""
+
+OTEL_ATTR_DATAVERSE_REQUEST_ID = "dataverse.client_request_id"
+"""Client-generated request ID (x-ms-client-request-id header)."""
+
+OTEL_ATTR_DATAVERSE_CORRELATION_ID = "dataverse.correlation_id"
+"""Client-generated correlation ID (x-ms-correlation-id header)."""
+
+OTEL_ATTR_DATAVERSE_SERVICE_REQUEST_ID = "dataverse.service_request_id"
+"""Server-assigned request ID (x-ms-service-request-id header)."""

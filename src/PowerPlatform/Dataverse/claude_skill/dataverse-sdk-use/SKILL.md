@@ -330,6 +330,56 @@ client.files.upload(
 )
 ```
 
+### Telemetry & Observability
+
+The SDK supports opt-in telemetry via hooks, OpenTelemetry, and Python logging:
+
+```python
+from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.telemetry import TelemetryConfig, TelemetryHook
+from PowerPlatform.Dataverse.core.config import DataverseConfig
+
+# Custom hook -- receives on_request_start, on_request_end, and on_request_error
+class MyHook(TelemetryHook):
+    def on_request_end(self, request, response):
+        print(f"{request.operation} -> {response.status_code} in {response.duration_ms:.0f}ms")
+
+config = DataverseConfig(telemetry=TelemetryConfig(hooks=[MyHook()]))
+client = DataverseClient(url, credential, config=config)
+
+# OpenTelemetry (pip install PowerPlatform-Dataverse-Client[telemetry])
+config = DataverseConfig(
+    telemetry=TelemetryConfig(enable_tracing=True, enable_metrics=True)
+)
+
+# Python logging
+config = DataverseConfig(
+    telemetry=TelemetryConfig(enable_logging=True, log_level="DEBUG")
+)
+```
+
+Hook data available on the **request** object: `operation`, `table_name`, `method`, `url`, `client_request_id`, `correlation_id`.
+Hook data available on the **response** object: `status_code`, `duration_ms`, `service_request_id`.
+
+Zero overhead when `TelemetryConfig` is not set.
+
+### Ad-Hoc Telemetry Capture
+
+Inspect HTTP request details without configuring telemetry:
+
+```python
+with client.capture_telemetry() as t:
+    record_id = client.records.create("account", {"name": "Contoso"})
+
+# t.requests contains one CapturedRequest per HTTP call
+for req in t.requests:
+    print(f"{req.operation} {req.status_code} {req.duration_ms:.0f}ms")
+    print(f"  service_request_id: {req.service_request_id}")
+    print(f"  client_request_id: {req.client_request_id}")
+```
+
+Works on any client instance, even without `TelemetryConfig`. Multi-HTTP operations (e.g., `tables.create`) capture all underlying requests.
+
 ## Error Handling
 
 The SDK provides structured exceptions with detailed error information:
