@@ -175,9 +175,7 @@ class DataFrameOperations:
         ids = self._client.records.create(table, record_list)
 
         if len(ids) != len(records):
-            raise ValueError(
-                f"Server returned {len(ids)} IDs for {len(records)} input rows"
-            )
+            raise ValueError(f"Server returned {len(ids)} IDs for {len(records)} input rows")
 
         return pd.Series(ids, index=records.index)
 
