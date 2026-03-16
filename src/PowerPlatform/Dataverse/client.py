@@ -374,13 +374,13 @@ class DataverseClient:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Union[pd.DataFrame, Iterable[pd.DataFrame]]:
+    ) -> pd.DataFrame:
         """
-        Fetch records and return as pandas DataFrames.
+        Fetch records and return as a single pandas DataFrame.
 
         When ``record_id`` is provided, returns a single-row DataFrame.
-        When ``record_id`` is None, returns a generator yielding one DataFrame per page,
-        matching the paging behavior of :meth:`get`.
+        When ``record_id`` is None, internally iterates all pages and returns one
+        consolidated DataFrame, similar to ``pd.read_sql()``.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
@@ -399,9 +399,12 @@ class DataverseClient:
         :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
 
-        :return: Single-row DataFrame if ``record_id`` is provided, otherwise a generator
-            yielding one DataFrame per page of results.
-        :rtype: ~pandas.DataFrame or :class:`collections.abc.Iterable` of ~pandas.DataFrame
+        :return: DataFrame containing all matching records. Returns an empty DataFrame
+            when no records match.
+        :rtype: ~pandas.DataFrame
+
+        .. tip::
+            For large tables, use ``top`` or ``filter`` to limit the result set.
 
         Example:
             Fetch a single record as a DataFrame::
@@ -409,14 +412,14 @@ class DataverseClient:
                 df = client.get_dataframe("account", record_id=account_id, select=["name", "telephone1"])
                 print(df)
 
-            Iterate over paged results::
+            Query with filtering::
 
-                for df_page in client.get_dataframe("account", filter="statecode eq 0", top=100):
-                    print(f"Page has {len(df_page)} rows")
+                df = client.get_dataframe("account", filter="statecode eq 0", select=["name"])
+                print(f"Got {len(df)} active accounts")
 
-            Collect all pages into one DataFrame::
+            Limit result size::
 
-                all_data = pd.concat(client.get_dataframe("account", select=["name"]), ignore_index=True)
+                df = client.get_dataframe("account", select=["name"], top=100)
         """
         if record_id is not None:
             result = self.get(
@@ -426,19 +429,21 @@ class DataverseClient:
             )
             return pd.DataFrame([strip_odata_keys(result)])
 
-        def _paged_df() -> Iterable[pd.DataFrame]:
-            for batch in self.get(
-                table_schema_name,
-                select=select,
-                filter=filter,
-                orderby=orderby,
-                top=top,
-                expand=expand,
-                page_size=page_size,
-            ):
-                yield pd.DataFrame([strip_odata_keys(row) for row in batch])
+        frames: List[pd.DataFrame] = []
+        for batch in self.get(
+            table_schema_name,
+            select=select,
+            filter=filter,
+            orderby=orderby,
+            top=top,
+            expand=expand,
+            page_size=page_size,
+        ):
+            frames.append(pd.DataFrame([strip_odata_keys(row) for row in batch]))
 
-        return _paged_df()
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
     def create_dataframe(
         self,
@@ -457,6 +462,8 @@ class DataverseClient:
         :rtype: ~pandas.Series
 
         :raises TypeError: If ``records`` is not a pandas DataFrame.
+        :raises ValueError: If ``records`` is empty or the number of returned
+            IDs does not match the number of input rows.
 
         Example:
             Create records from a DataFrame::
@@ -472,14 +479,23 @@ class DataverseClient:
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
 
+        if records.empty:
+            raise ValueError("records must be a non-empty DataFrame")
+
         record_list = dataframe_to_records(records)
         ids = self.create(table_schema_name, record_list)
+
+        if len(ids) != len(records):
+            raise ValueError(
+                f"Server returned {len(ids)} IDs for {len(records)} input rows"
+            )
+
         return pd.Series(ids, index=records.index)
 
     def update_dataframe(
         self,
         table_schema_name: str,
-        records: pd.DataFrame,
+        changes: pd.DataFrame,
         id_column: str,
         clear_nulls: bool = False,
     ) -> None:
@@ -487,12 +503,12 @@ class DataverseClient:
         Update records from a pandas DataFrame.
 
         Each row in the DataFrame represents an update. The ``id_column`` specifies which
-        column contains the record GUIDs.
+        column contains the record GUIDs; the remaining columns are the fields to update.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
-        :param records: DataFrame where each row contains record GUID and fields to update.
-        :type records: ~pd.DataFrame
+        :param changes: DataFrame where each row contains a record GUID and the fields to update.
+        :type changes: ~pandas.DataFrame
         :param id_column: Name of the DataFrame column containing record GUIDs.
         :type id_column: :class:`str`
         :param clear_nulls: When ``False`` (default), missing values (NaN/None) are skipped
@@ -501,7 +517,7 @@ class DataverseClient:
             want NaN/None values to clear fields.
         :type clear_nulls: :class:`bool`
 
-        :raises TypeError: If ``records`` is not a pandas DataFrame.
+        :raises TypeError: If ``changes`` is not a pandas DataFrame.
         :raises ValueError: If ``id_column`` is not found in the DataFrame.
 
         Example:
@@ -526,19 +542,19 @@ class DataverseClient:
                 df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
                 client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
         """
-        if not isinstance(records, pd.DataFrame):
-            raise TypeError("records must be a pandas DataFrame")
-        if id_column not in records.columns:
+        if not isinstance(changes, pd.DataFrame):
+            raise TypeError("changes must be a pandas DataFrame")
+        if id_column not in changes.columns:
             raise ValueError(f"id_column '{id_column}' not found in DataFrame columns")
 
-        ids = records[id_column].tolist()
-        change_columns = [column for column in records.columns if column != id_column]
-        changes = dataframe_to_records(records[change_columns], na_as_null=clear_nulls)
+        ids = changes[id_column].tolist()
+        change_columns = [column for column in changes.columns if column != id_column]
+        change_list = dataframe_to_records(changes[change_columns], na_as_null=clear_nulls)
 
         if len(ids) == 1:
-            self.update(table_schema_name, ids[0], changes[0])
+            self.update(table_schema_name, ids[0], change_list[0])
         else:
-            self.update(table_schema_name, ids, changes)
+            self.update(table_schema_name, ids, change_list)
 
     def delete_dataframe(
         self,

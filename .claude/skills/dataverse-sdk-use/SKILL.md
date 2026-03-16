@@ -124,12 +124,12 @@ The SDK provides DataFrame wrappers for all CRUD operations using pandas DataFra
 ```python
 import pandas as pd
 
-# Query records as paged DataFrames (one DataFrame per page)
-for df_page in client.get_dataframe("account", filter="statecode eq 0", select=["name"]):
-    print(f"Page has {len(df_page)} rows")
+# Query records — returns a single DataFrame (like pd.read_sql)
+df = client.get_dataframe("account", filter="statecode eq 0", select=["name"])
+print(f"Got {len(df)} rows")
 
-# Collect all pages into one DataFrame
-df = pd.concat(client.get_dataframe("account", select=["name"], top=100), ignore_index=True)
+# Limit results with top for large tables
+df = client.get_dataframe("account", select=["name"], top=100)
 
 # Fetch single record as one-row DataFrame
 df = client.get_dataframe("account", record_id=account_id, select=["name"])

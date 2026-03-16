@@ -71,28 +71,24 @@ def main():
     print(f"[OK] Created {len(new_accounts)} records")
     print(f"  IDs: {new_accounts['accountid'].tolist()}")
 
-    # ── 2. Query records as paged DataFrames ──────────────────────
+    # ── 2. Query records as a DataFrame ─────────────────────────
     print("\n" + "-" * 60)
-    print("2. Query records as paged DataFrames (lazy generator)")
+    print("2. Query records as a DataFrame")
     print("-" * 60)
 
-    page_count = 0
-    for df_page in client.get_dataframe(table, select=select_cols, filter=test_filter, page_size=2):
-        page_count += 1
-        print(f"  Page {page_count} ({len(df_page)} records):\n{df_page.to_string(index=False)}")
+    df_all = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    print(f"[OK] Got {len(df_all)} records in one DataFrame")
+    print(f"  Columns: {list(df_all.columns)}")
+    print(f"{df_all.to_string(index=False)}")
 
-    # ── 3. Collect all pages into one DataFrame ───────────────────
+    # ── 3. Limit results with top ──────────────────────────────
     print("\n" + "-" * 60)
-    print("3. Collect all pages into one DataFrame with pd.concat")
+    print("3. Limit results with top")
     print("-" * 60)
 
-    all_records = pd.concat(
-        client.get_dataframe(table, select=select_cols, filter=test_filter, page_size=2),
-        ignore_index=True,
-    )
-    print(f"[OK] Got {len(all_records)} total records in one DataFrame")
-    print(f"  Columns: {list(all_records.columns)}")
-    print(f"{all_records.to_string(index=False)}")
+    df_top2 = client.get_dataframe(table, select=select_cols, filter=test_filter, top=2)
+    print(f"[OK] Got {len(df_top2)} records with top=2")
+    print(f"{df_top2.to_string(index=False)}")
 
     # ── 4. Fetch a single record by ID ────────────────────────────
     print("\n" + "-" * 60)
@@ -114,8 +110,8 @@ def main():
     client.update_dataframe(table, new_accounts[["accountid", "telephone1"]], id_column="accountid")
     print("[OK] Updated 3 records")
 
-    # Verify the updates with a bulk get
-    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    # Verify the updates with a query
+    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # ── 6. Broadcast update (same value to all records) ───────────
@@ -130,7 +126,7 @@ def main():
     print("[OK] Broadcast update complete")
 
     # Verify all records have the same websiteurl
-    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # Default: NaN/None fields are skipped (not overridden on server)
@@ -141,14 +137,14 @@ def main():
         ]
     )
     client.update_dataframe(table, sparse_df, id_column="accountid")
-    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
     print(f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n{verified.to_string(index=False)}")
 
     # Opt-in: clear_nulls=True sends None as null to clear the field
     print("\n  Clearing websiteurl for Contoso with clear_nulls=True...")
     clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
     client.update_dataframe(table, clear_df, id_column="accountid", clear_nulls=True)
-    verified = next(client.get_dataframe(table, select=select_cols, filter=test_filter))
+    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
     print(f"  Verified (Contoso websiteurl should be empty):\n{verified.to_string(index=False)}")
 
     # ── 7. Delete records by passing a Series of GUIDs ────────────
@@ -161,9 +157,8 @@ def main():
     print(f"[OK] Deleted {len(new_accounts)} records")
 
     # Verify deletions - filter for our tagged records should return 0
-    remaining = list(client.get_dataframe(table, select=select_cols, filter=test_filter))
-    count = sum(len(page) for page in remaining)
-    print(f"  Verified: {count} test records remaining (expected 0)")
+    remaining = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    print(f"  Verified: {len(remaining)} test records remaining (expected 0)")
 
     print("\n" + "=" * 60)
     print("[OK] DataFrame operations walkthrough complete!")

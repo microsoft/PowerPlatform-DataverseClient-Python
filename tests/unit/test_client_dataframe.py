@@ -43,69 +43,63 @@ class TestDataFrameGet(unittest.TestCase):
         self.client._odata._get.assert_called_once_with("account", "guid-1", select=["name"])
 
     def test_get_multiple_records_single_page(self):
-        """Single page yields one DataFrame."""
+        """Single page returns a DataFrame with all rows."""
         batch = [
             {"accountid": "guid-1", "name": "A"},
             {"accountid": "guid-2", "name": "B"},
         ]
         self.client._odata._get_multiple.return_value = iter([batch])
 
-        pages = list(self.client.get_dataframe("account", filter="statecode eq 0"))
-
-        self.assertEqual(len(pages), 1)
-        self.assertIsInstance(pages[0], pd.DataFrame)
-        self.assertEqual(len(pages[0]), 2)
-        self.assertListEqual(pages[0]["name"].tolist(), ["A", "B"])
-
-    def test_get_multiple_records_multi_page(self):
-        """Multiple pages yield one DataFrame per page."""
-        page1 = [{"accountid": "guid-1", "name": "A"}]
-        page2 = [{"accountid": "guid-2", "name": "B"}]
-        self.client._odata._get_multiple.return_value = iter([page1, page2])
-
-        pages = list(self.client.get_dataframe("account", top=100))
-
-        self.assertEqual(len(pages), 2)
-        self.assertIsInstance(pages[0], pd.DataFrame)
-        self.assertIsInstance(pages[1], pd.DataFrame)
-        self.assertEqual(pages[0].iloc[0]["name"], "A")
-        self.assertEqual(pages[1].iloc[0]["name"], "B")
-
-    def test_get_concat_all_pages(self):
-        """pd.concat collects all pages into one DataFrame."""
-        page1 = [{"accountid": "guid-1", "name": "A"}]
-        page2 = [{"accountid": "guid-2", "name": "B"}]
-        self.client._odata._get_multiple.return_value = iter([page1, page2])
-
-        df = pd.concat(self.client.get_dataframe("account", top=100), ignore_index=True)
+        df = self.client.get_dataframe("account", filter="statecode eq 0")
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
         self.assertListEqual(df["name"].tolist(), ["A", "B"])
 
+    def test_get_multiple_records_multi_page(self):
+        """Multiple pages are concatenated into a single DataFrame."""
+        page1 = [{"accountid": "guid-1", "name": "A"}]
+        page2 = [{"accountid": "guid-2", "name": "B"}]
+        self.client._odata._get_multiple.return_value = iter([page1, page2])
+
+        df = self.client.get_dataframe("account", top=100)
+
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]["name"], "A")
+        self.assertEqual(df.iloc[1]["name"], "B")
+
+    def test_get_index_is_reset(self):
+        """Returned DataFrame has a clean 0-based integer index."""
+        page1 = [{"accountid": "guid-1", "name": "A"}]
+        page2 = [{"accountid": "guid-2", "name": "B"}]
+        self.client._odata._get_multiple.return_value = iter([page1, page2])
+
+        df = self.client.get_dataframe("account", top=100)
+
+        self.assertListEqual(list(df.index), [0, 1])
+
     def test_get_empty_result(self):
-        """Empty result set yields no DataFrames."""
+        """Empty result set returns an empty DataFrame."""
         self.client._odata._get_multiple.return_value = iter([])
 
-        pages = list(self.client.get_dataframe("account"))
+        df = self.client.get_dataframe("account")
 
-        self.assertEqual(len(pages), 0)
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 0)
 
     def test_get_passes_all_parameters(self):
         """All query parameters are forwarded to the underlying get method."""
         self.client._odata._get_multiple.return_value = iter([])
 
-        # Consume the generator to trigger the underlying call
-        list(
-            self.client.get_dataframe(
-                "account",
-                select=["name"],
-                filter="statecode eq 0",
-                orderby=["name asc"],
-                top=50,
-                expand=["primarycontactid"],
-                page_size=25,
-            )
+        self.client.get_dataframe(
+            "account",
+            select=["name"],
+            filter="statecode eq 0",
+            orderby=["name asc"],
+            top=50,
+            expand=["primarycontactid"],
+            page_size=25,
         )
 
         self.client._odata._get_multiple.assert_called_once_with(
@@ -176,16 +170,24 @@ class TestDataFrameCreate(unittest.TestCase):
             self.client.create_dataframe("account", [{"name": "Contoso"}])
         self.assertIn("pandas DataFrame", str(ctx.exception))
 
-    def test_create_empty_dataframe(self):
-        """Empty DataFrame returns empty Series."""
+    def test_create_empty_dataframe_raises(self):
+        """Empty DataFrame raises ValueError."""
         df = pd.DataFrame(columns=["name", "telephone1"])
-        self.client._odata._create_multiple.return_value = []
+
+        with self.assertRaises(ValueError) as ctx:
+            self.client.create_dataframe("account", df)
+        self.assertIn("non-empty DataFrame", str(ctx.exception))
+        self.client._odata._create_multiple.assert_not_called()
+
+    def test_create_length_mismatch_raises(self):
+        """ValueError raised when returned IDs don't match input row count."""
+        df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+        self.client._odata._create_multiple.return_value = ["guid-1"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        ids = self.client.create_dataframe("account", df)
-
-        self.assertIsInstance(ids, pd.Series)
-        self.assertEqual(len(ids), 0)
+        with self.assertRaises(ValueError) as ctx:
+            self.client.create_dataframe("account", df)
+        self.assertIn("1 IDs for 2 input rows", str(ctx.exception))
 
     def test_create_drops_nan_values(self):
         """NaN/None values are omitted from the create payload."""
