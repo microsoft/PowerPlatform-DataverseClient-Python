@@ -67,7 +67,7 @@ def main():
     print(f"  Input DataFrame:\n{new_accounts.to_string(index=False)}\n")
 
     # create_dataframe returns a Series of GUIDs aligned with the input rows
-    new_accounts["accountid"] = client.create_dataframe(table, new_accounts)
+    new_accounts["accountid"] = client.dataframe.create(table, new_accounts)
     print(f"[OK] Created {len(new_accounts)} records")
     print(f"  IDs: {new_accounts['accountid'].tolist()}")
 
@@ -76,7 +76,7 @@ def main():
     print("2. Query records as a DataFrame")
     print("-" * 60)
 
-    df_all = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    df_all = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"[OK] Got {len(df_all)} records in one DataFrame")
     print(f"  Columns: {list(df_all.columns)}")
     print(f"{df_all.to_string(index=False)}")
@@ -86,7 +86,7 @@ def main():
     print("3. Limit results with top")
     print("-" * 60)
 
-    df_top2 = client.get_dataframe(table, select=select_cols, filter=test_filter, top=2)
+    df_top2 = client.dataframe.get(table, select=select_cols, filter=test_filter, top=2)
     print(f"[OK] Got {len(df_top2)} records with top=2")
     print(f"{df_top2.to_string(index=False)}")
 
@@ -97,7 +97,7 @@ def main():
 
     first_id = new_accounts["accountid"].iloc[0]
     print(f"  Fetching record {first_id}...")
-    single = client.get_dataframe(table, record_id=first_id, select=select_cols)
+    single = client.dataframe.get(table, record_id=first_id, select=select_cols)
     print(f"[OK] Single record DataFrame:\n{single.to_string(index=False)}")
 
     # ── 5. Update records from a DataFrame ────────────────────────
@@ -107,11 +107,11 @@ def main():
 
     new_accounts["telephone1"] = ["555-1100", "555-1200", "555-1300"]
     print(f"  New telephone numbers: {new_accounts['telephone1'].tolist()}")
-    client.update_dataframe(table, new_accounts[["accountid", "telephone1"]], id_column="accountid")
+    client.dataframe.update(table, new_accounts[["accountid", "telephone1"]], id_column="accountid")
     print("[OK] Updated 3 records")
 
     # Verify the updates
-    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # ── 6. Broadcast update (same value to all records) ───────────
@@ -122,11 +122,11 @@ def main():
     broadcast_df = new_accounts[["accountid"]].copy()
     broadcast_df["websiteurl"] = "https://updated.example.com"
     print(f"  Setting websiteurl to 'https://updated.example.com' for all {len(broadcast_df)} records")
-    client.update_dataframe(table, broadcast_df, id_column="accountid")
+    client.dataframe.update(table, broadcast_df, id_column="accountid")
     print("[OK] Broadcast update complete")
 
     # Verify all records have the same websiteurl
-    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # Default: NaN/None fields are skipped (not overridden on server)
@@ -136,15 +136,15 @@ def main():
             {"accountid": new_accounts["accountid"].iloc[0], "telephone1": "555-9999", "websiteurl": None},
         ]
     )
-    client.update_dataframe(table, sparse_df, id_column="accountid")
-    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    client.dataframe.update(table, sparse_df, id_column="accountid")
+    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n{verified.to_string(index=False)}")
 
     # Opt-in: clear_nulls=True sends None as null to clear the field
     print("\n  Clearing websiteurl for Contoso with clear_nulls=True...")
     clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
-    client.update_dataframe(table, clear_df, id_column="accountid", clear_nulls=True)
-    verified = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    client.dataframe.update(table, clear_df, id_column="accountid", clear_nulls=True)
+    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"  Verified (Contoso websiteurl should be empty):\n{verified.to_string(index=False)}")
 
     # ── 7. Delete records by passing a Series of GUIDs ────────────
@@ -153,11 +153,11 @@ def main():
     print("-" * 60)
 
     print(f"  Deleting {len(new_accounts)} records...")
-    client.delete_dataframe(table, new_accounts["accountid"], use_bulk_delete=False)
+    client.dataframe.delete(table, new_accounts["accountid"], use_bulk_delete=False)
     print(f"[OK] Deleted {len(new_accounts)} records")
 
     # Verify deletions - filter for our tagged records should return 0
-    remaining = client.get_dataframe(table, select=select_cols, filter=test_filter)
+    remaining = client.dataframe.get(table, select=select_cols, filter=test_filter)
     print(f"  Verified: {len(remaining)} test records remaining (expected 0)")
 
     print("\n" + "=" * 60)

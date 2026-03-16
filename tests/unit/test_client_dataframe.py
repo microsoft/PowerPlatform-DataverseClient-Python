@@ -11,7 +11,7 @@ from PowerPlatform.Dataverse.client import DataverseClient
 
 
 class TestDataFrameGet(unittest.TestCase):
-    """Tests for get_dataframe."""
+    """Tests for client.dataframe.get()."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
@@ -24,7 +24,7 @@ class TestDataFrameGet(unittest.TestCase):
         expected = {"accountid": "guid-1", "name": "Contoso"}
         self.client._odata._get.return_value = expected
 
-        df = self.client.get_dataframe("account", record_id="guid-1")
+        df = self.client.dataframe.get("account", record_id="guid-1")
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 1)
@@ -36,7 +36,7 @@ class TestDataFrameGet(unittest.TestCase):
         expected = {"accountid": "guid-1", "name": "Contoso"}
         self.client._odata._get.return_value = expected
 
-        df = self.client.get_dataframe("account", record_id="guid-1", select=["name"])
+        df = self.client.dataframe.get("account", record_id="guid-1", select=["name"])
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 1)
@@ -50,7 +50,7 @@ class TestDataFrameGet(unittest.TestCase):
         ]
         self.client._odata._get_multiple.return_value = iter([batch])
 
-        df = self.client.get_dataframe("account", filter="statecode eq 0")
+        df = self.client.dataframe.get("account", filter="statecode eq 0")
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
@@ -62,7 +62,7 @@ class TestDataFrameGet(unittest.TestCase):
         page2 = [{"accountid": "guid-2", "name": "B"}]
         self.client._odata._get_multiple.return_value = iter([page1, page2])
 
-        df = self.client.get_dataframe("account", top=100)
+        df = self.client.dataframe.get("account", top=100)
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
@@ -75,7 +75,7 @@ class TestDataFrameGet(unittest.TestCase):
         page2 = [{"accountid": "guid-2", "name": "B"}]
         self.client._odata._get_multiple.return_value = iter([page1, page2])
 
-        df = self.client.get_dataframe("account", top=100)
+        df = self.client.dataframe.get("account", top=100)
 
         self.assertListEqual(list(df.index), [0, 1])
 
@@ -83,7 +83,7 @@ class TestDataFrameGet(unittest.TestCase):
         """Empty result set returns an empty DataFrame."""
         self.client._odata._get_multiple.return_value = iter([])
 
-        df = self.client.get_dataframe("account")
+        df = self.client.dataframe.get("account")
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 0)
@@ -92,7 +92,7 @@ class TestDataFrameGet(unittest.TestCase):
         """All query parameters are forwarded to the underlying get method."""
         self.client._odata._get_multiple.return_value = iter([])
 
-        self.client.get_dataframe(
+        self.client.dataframe.get(
             "account",
             select=["name"],
             filter="statecode eq 0",
@@ -114,7 +114,7 @@ class TestDataFrameGet(unittest.TestCase):
 
 
 class TestDataFrameCreate(unittest.TestCase):
-    """Tests for create_dataframe."""
+    """Tests for client.dataframe.create()."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
@@ -133,7 +133,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        ids = self.client.create_dataframe("account", df)
+        ids = self.client.dataframe.create("account", df)
 
         self.assertIsInstance(ids, pd.Series)
         self.assertListEqual(ids.tolist(), ["guid-1", "guid-2"])
@@ -149,7 +149,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        df["accountid"] = self.client.create_dataframe("account", df)
+        df["accountid"] = self.client.dataframe.create("account", df)
 
         self.assertListEqual(df["accountid"].tolist(), ["guid-1", "guid-2"])
 
@@ -159,7 +159,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._create_multiple.return_value = ["guid-1"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        ids = self.client.create_dataframe("account", df)
+        ids = self.client.dataframe.create("account", df)
 
         self.assertIsInstance(ids, pd.Series)
         self.assertEqual(ids.iloc[0], "guid-1")
@@ -167,7 +167,7 @@ class TestDataFrameCreate(unittest.TestCase):
     def test_create_rejects_non_dataframe(self):
         """Non-DataFrame input raises TypeError."""
         with self.assertRaises(TypeError) as ctx:
-            self.client.create_dataframe("account", [{"name": "Contoso"}])
+            self.client.dataframe.create("account", [{"name": "Contoso"}])
         self.assertIn("pandas DataFrame", str(ctx.exception))
 
     def test_create_empty_dataframe_raises(self):
@@ -175,7 +175,7 @@ class TestDataFrameCreate(unittest.TestCase):
         df = pd.DataFrame(columns=["name", "telephone1"])
 
         with self.assertRaises(ValueError) as ctx:
-            self.client.create_dataframe("account", df)
+            self.client.dataframe.create("account", df)
         self.assertIn("non-empty DataFrame", str(ctx.exception))
         self.client._odata._create_multiple.assert_not_called()
 
@@ -186,7 +186,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
         with self.assertRaises(ValueError) as ctx:
-            self.client.create_dataframe("account", df)
+            self.client.dataframe.create("account", df)
         self.assertIn("1 IDs for 2 input rows", str(ctx.exception))
 
     def test_create_drops_nan_values(self):
@@ -200,7 +200,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        self.client.create_dataframe("account", df)
+        self.client.dataframe.create("account", df)
 
         call_args = self.client._odata._create_multiple.call_args
         records_arg = call_args[0][2]
@@ -215,7 +215,7 @@ class TestDataFrameCreate(unittest.TestCase):
         self.client._odata._create_multiple.return_value = ["guid-1"]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        self.client.create_dataframe("account", df)
+        self.client.dataframe.create("account", df)
 
         call_args = self.client._odata._create_multiple.call_args
         records_arg = call_args[0][2]
@@ -223,7 +223,7 @@ class TestDataFrameCreate(unittest.TestCase):
 
 
 class TestDataFrameUpdate(unittest.TestCase):
-    """Tests for update_dataframe."""
+    """Tests for client.dataframe.update()."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
@@ -240,7 +240,7 @@ class TestDataFrameUpdate(unittest.TestCase):
             ]
         )
 
-        self.client.update_dataframe("account", df, id_column="accountid")
+        self.client.dataframe.update("account", df, id_column="accountid")
 
         self.client._odata._update_by_ids.assert_called_once()
         call_args = self.client._odata._update_by_ids.call_args[0]
@@ -251,14 +251,14 @@ class TestDataFrameUpdate(unittest.TestCase):
     def test_update_rejects_non_dataframe(self):
         """Non-DataFrame input raises TypeError."""
         with self.assertRaises(TypeError) as ctx:
-            self.client.update_dataframe("account", {"id": "guid-1"}, id_column="id")
+            self.client.dataframe.update("account", {"id": "guid-1"}, id_column="id")
         self.assertIn("pandas DataFrame", str(ctx.exception))
 
     def test_update_rejects_missing_id_column(self):
         """Missing id_column raises ValueError."""
         df = pd.DataFrame([{"name": "Contoso"}])
         with self.assertRaises(ValueError) as ctx:
-            self.client.update_dataframe("account", df, id_column="accountid")
+            self.client.dataframe.update("account", df, id_column="accountid")
         self.assertIn("accountid", str(ctx.exception))
 
     def test_update_multiple_change_columns(self):
@@ -269,7 +269,7 @@ class TestDataFrameUpdate(unittest.TestCase):
             ]
         )
 
-        self.client.update_dataframe("account", df, id_column="accountid")
+        self.client.dataframe.update("account", df, id_column="accountid")
 
         self.client._odata._update.assert_called_once()
         call_args = self.client._odata._update.call_args[0]
@@ -289,7 +289,7 @@ class TestDataFrameUpdate(unittest.TestCase):
             ]
         )
 
-        self.client.update_dataframe("account", df, id_column="accountid")
+        self.client.dataframe.update("account", df, id_column="accountid")
 
         call_args = self.client._odata._update_by_ids.call_args[0]
         changes = call_args[2]
@@ -305,7 +305,7 @@ class TestDataFrameUpdate(unittest.TestCase):
             ]
         )
 
-        self.client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
+        self.client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
 
         call_args = self.client._odata._update_by_ids.call_args[0]
         changes = call_args[2]
@@ -314,7 +314,7 @@ class TestDataFrameUpdate(unittest.TestCase):
 
 
 class TestDataFrameDelete(unittest.TestCase):
-    """Tests for delete_dataframe."""
+    """Tests for client.dataframe.delete()."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
@@ -327,7 +327,7 @@ class TestDataFrameDelete(unittest.TestCase):
         ids = pd.Series(["guid-1", "guid-2", "guid-3"])
         self.client._odata._delete_multiple.return_value = "job-123"
 
-        job_id = self.client.delete_dataframe("account", ids)
+        job_id = self.client.dataframe.delete("account", ids)
 
         self.assertEqual(job_id, "job-123")
         self.client._odata._delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2", "guid-3"])
@@ -337,7 +337,7 @@ class TestDataFrameDelete(unittest.TestCase):
         df = pd.DataFrame({"accountid": ["guid-1", "guid-2"], "name": ["A", "B"]})
         self.client._odata._delete_multiple.return_value = "job-123"
 
-        self.client.delete_dataframe("account", df["accountid"])
+        self.client.dataframe.delete("account", df["accountid"])
 
         self.client._odata._delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2"])
 
@@ -345,7 +345,7 @@ class TestDataFrameDelete(unittest.TestCase):
         """use_bulk_delete=False deletes records sequentially."""
         ids = pd.Series(["guid-1", "guid-2"])
 
-        result = self.client.delete_dataframe("account", ids, use_bulk_delete=False)
+        result = self.client.dataframe.delete("account", ids, use_bulk_delete=False)
 
         self.assertIsNone(result)
         self.assertEqual(self.client._odata._delete.call_count, 2)
@@ -353,13 +353,13 @@ class TestDataFrameDelete(unittest.TestCase):
     def test_delete_rejects_non_series(self):
         """Non-Series input raises TypeError."""
         with self.assertRaises(TypeError) as ctx:
-            self.client.delete_dataframe("account", ["guid-1"])
+            self.client.dataframe.delete("account", ["guid-1"])
         self.assertIn("pandas Series", str(ctx.exception))
 
     def test_delete_empty_series(self):
         """Empty Series returns None without calling delete."""
         ids = pd.Series([], dtype="str")
 
-        result = self.client.delete_dataframe("account", ids)
+        result = self.client.dataframe.delete("account", ids)
 
         self.assertIsNone(result)

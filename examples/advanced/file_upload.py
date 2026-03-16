@@ -89,68 +89,25 @@ def file_sha256(path: Path):  # returns (hex_digest, size_bytes)
         return None, None
 
 
-def generate_test_pdf(size_mb: int = 10) -> Path:
-    """Generate a dummy PDF file of specified size for testing purposes."""
-    try:
-        from reportlab.pdfgen import canvas  # type: ignore # noqa: WPS433
-        from reportlab.lib.pagesizes import letter  # type: ignore # noqa: WPS433
-    except ImportError:
-        # Fallback: generate a simple binary file with PDF headers
-        test_file = Path(__file__).resolve().parent / f"test_dummy_{size_mb}mb.pdf"
-        target_size = size_mb * 1024 * 1024
+def generate_test_file(size_mb: int = 10) -> Path:
+    """Generate a dummy text file of specified size for testing purposes.
 
-        # Minimal PDF structure
-        pdf_header = b"%PDF-1.4\n"
-        pdf_body = b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-        pdf_body += b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
-        pdf_body += b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\n"
-
-        # Fill with dummy data to reach target size
-        current_size = len(pdf_header) + len(pdf_body)
-        padding_needed = target_size - current_size - 50  # Reserve space for trailer
-        padding = b"% " + (b"padding " * (padding_needed // 8))[:padding_needed] + b"\n"
-
-        pdf_trailer = b"xref\n0 4\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n"
-
-        with test_file.open("wb") as f:
-            f.write(pdf_header)
-            f.write(pdf_body)
-            f.write(padding)
-            f.write(pdf_trailer)
-
-        print({"test_pdf_generated": str(test_file), "size_mb": test_file.stat().st_size / (1024 * 1024)})
-        return test_file
-
-    # ReportLab available - generate proper PDF
-    test_file = Path(__file__).resolve().parent / f"test_dummy_{size_mb}mb.pdf"
-    c = canvas.Canvas(str(test_file), pagesize=letter)
-
-    # Add pages with content until we reach target size
+    Creates a plain text file with repeating content to reach the target
+    size. No external dependencies required.
+    """
+    test_file = Path(__file__).resolve().parent / f"test_dummy_{size_mb}mb.txt"
     target_size = size_mb * 1024 * 1024
-    page_num = 0
 
-    while test_file.exists() is False or test_file.stat().st_size < target_size:
-        page_num += 1
-        c.drawString(100, 750, f"Test PDF - Page {page_num}")
-        c.drawString(100, 730, f"Generated for file upload testing")
+    line = b"The quick brown fox jumps over the lazy dog. " * 2 + b"\n"
+    with test_file.open("wb") as f:
+        written = 0
+        while written < target_size:
+            chunk = line * min(1000, (target_size - written) // len(line) + 1)
+            chunk = chunk[: target_size - written]
+            f.write(chunk)
+            written += len(chunk)
 
-        # Add some text to increase file size
-        for i in range(50):
-            c.drawString(50, 700 - (i * 12), f"Line {i}: " + "Sample text content " * 20)
-
-        c.showPage()
-
-        # Save periodically to check size
-        if page_num % 10 == 0:
-            c.save()
-            if test_file.stat().st_size >= target_size:
-                break
-            c = canvas.Canvas(str(test_file), pagesize=letter)
-
-    if not test_file.exists() or test_file.stat().st_size < target_size:
-        c.save()
-
-    print({"test_pdf_generated": str(test_file), "size_mb": test_file.stat().st_size / (1024 * 1024)})
+    print({"test_file_generated": str(test_file), "size_mb": test_file.stat().st_size / (1024 * 1024)})
     return test_file
 
 
@@ -185,12 +142,12 @@ TABLE_SCHEMA_NAME = "new_FileSample"
 
 def ensure_table():
     # Check by schema
-    existing = backoff(lambda: client.get_table_info(TABLE_SCHEMA_NAME))
+    existing = backoff(lambda: client.tables.get(TABLE_SCHEMA_NAME))
     if existing:
         print({"table": TABLE_SCHEMA_NAME, "existed": True})
         return existing
-    log(f"client.create_table('{TABLE_SCHEMA_NAME}', schema={{'new_Title': 'string'}})")
-    info = backoff(lambda: client.create_table(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
+    log(f"client.tables.create('{TABLE_SCHEMA_NAME}', schema={{'new_Title': 'string'}})")
+    info = backoff(lambda: client.tables.create(TABLE_SCHEMA_NAME, {"new_Title": "string"}))
     print({"table": TABLE_SCHEMA_NAME, "existed": False, "metadata_id": info.get("metadata_id")})
     return info
 
@@ -213,12 +170,8 @@ chunk_file_attr_schema = f"{attr_prefix}_ChunkDocument"  # attribute for streami
 record_id = None
 try:
     payload = {name_attr: "File Sample Record"}
-    log(f"client.create('{table_schema_name}', payload)")
-    created_ids = backoff(lambda: client.create(table_schema_name, payload))
-    if isinstance(created_ids, list) and created_ids:
-        record_id = created_ids[0]
-    else:
-        raise RuntimeError("Unexpected create return; expected list[str] with at least one GUID")
+    log(f"client.records.create('{table_schema_name}', payload)")
+    record_id = backoff(lambda: client.records.create(table_schema_name, payload))
     print({"record_created": True, "id": record_id, "table schema name": table_schema_name})
 except Exception as e:  # noqa: BLE001
     print({"record_created": False, "error": str(e)})
@@ -232,8 +185,8 @@ src_hash_block = None
 
 # --------------------------- Shared dataset helpers ---------------------------
 _DATASET_INFO_CACHE = {}  # cache dict: file_path -> (path, size_bytes, sha256_hex)
-_GENERATED_TEST_FILE = generate_test_pdf(10)  # track generated file for cleanup
-_GENERATED_TEST_FILE_8MB = generate_test_pdf(8)  # track 8MB replacement file for cleanup
+_GENERATED_TEST_FILE = generate_test_file(10)  # track generated file for cleanup
+_GENERATED_TEST_FILE_8MB = generate_test_file(8)  # track 8MB replacement file for cleanup
 
 
 def get_dataset_info(file_path: Path):
@@ -252,11 +205,11 @@ if run_small:
     try:
         DATASET_FILE, small_file_size, src_hash = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(
-            lambda: client.upload_file(
-                table_schema_name,
-                record_id,
-                small_file_attr_schema,
-                str(DATASET_FILE),
+            lambda: client.files.upload(
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=small_file_attr_schema,
+                path=str(DATASET_FILE),
                 mode="small",
             )
         )
@@ -286,12 +239,13 @@ if run_small:
         print("Small single-request upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_small, replace_hash_small = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(
-            lambda: client.upload_file(
-                table_schema_name,
-                record_id,
-                small_file_attr_schema,
-                str(replacement_file),
+            lambda: client.files.upload(
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=small_file_attr_schema,
+                path=str(replacement_file),
                 mode="small",
+                if_none_match=False,
             )
         )
         print({"small_replace_upload_completed": True, "small_replace_source_size": replace_size_small})
@@ -320,15 +274,15 @@ if run_small:
 
 # --------------------------- Chunk (streaming) upload demo ---------------------------
 if run_chunk:
-    print("Streaming chunk upload demo (upload_file_chunk):")
+    print("Streaming chunk upload demo (mode='chunk'):")
     try:
         DATASET_FILE, src_size_chunk, src_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE)
         backoff(
-            lambda: client.upload_file(
-                table_schema_name,
-                record_id,
-                chunk_file_attr_schema,
-                str(DATASET_FILE),
+            lambda: client.files.upload(
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=chunk_file_attr_schema,
+                path=str(DATASET_FILE),
                 mode="chunk",
             )
         )
@@ -355,12 +309,13 @@ if run_chunk:
         print("Streaming chunk upload demo - REPLACE with 8MB file:")
         replacement_file, replace_size_chunk, replace_hash_chunk = get_dataset_info(_GENERATED_TEST_FILE_8MB)
         backoff(
-            lambda: client.upload_file(
-                table_schema_name,
-                record_id,
-                chunk_file_attr_schema,
-                str(replacement_file),
+            lambda: client.files.upload(
+                table=table_schema_name,
+                record_id=record_id,
+                file_column=chunk_file_attr_schema,
+                path=str(replacement_file),
                 mode="chunk",
+                if_none_match=False,
             )
         )
         print({"chunk_replace_upload_completed": True})
@@ -386,8 +341,8 @@ if run_chunk:
 # --------------------------- Cleanup ---------------------------
 if cleanup_record and record_id:
     try:
-        log(f"client.delete('{table_schema_name}', '{record_id}')")
-        backoff(lambda: client.delete(table_schema_name, record_id))
+        log(f"client.records.delete('{table_schema_name}', '{record_id}')")
+        backoff(lambda: client.records.delete(table_schema_name, record_id))
         print({"record_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"record_deleted": False, "error": str(e)})
@@ -396,8 +351,8 @@ else:
 
 if cleanup_table:
     try:
-        log(f"client.delete_table('{TABLE_SCHEMA_NAME}')")
-        backoff(lambda: client.delete_table(TABLE_SCHEMA_NAME))
+        log(f"client.tables.delete('{TABLE_SCHEMA_NAME}')")
+        backoff(lambda: client.tables.delete(TABLE_SCHEMA_NAME))
         print({"table_deleted": True})
     except Exception as e:  # noqa: BLE001
         print({"table_deleted": False, "error": str(e)})
@@ -420,4 +375,5 @@ if _GENERATED_TEST_FILE_8MB and _GENERATED_TEST_FILE_8MB.exists():
     except Exception as e:  # noqa: BLE001
         print({"test_file_8mb_deleted": False, "error": str(e)})
 
+client.close()
 print("Done.")

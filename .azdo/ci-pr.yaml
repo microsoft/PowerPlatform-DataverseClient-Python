@@ -47,7 +47,7 @@ extends:
           displayName: 'Install dependencies'
         
         - script: |
-            black src tests --check
+            black src tests examples --check
           displayName: 'Check format with black'
         
         - script: |

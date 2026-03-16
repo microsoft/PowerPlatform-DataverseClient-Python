@@ -19,7 +19,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from ..core._http import _HttpClient
-from ._upload import _ODataFileUpload
+from ._upload import _FileUploadMixin
+from ._relationships import _RelationshipOperationsMixin
 from ..core.errors import *
 from ..core._error_codes import (
     _http_subcode,
@@ -34,7 +35,7 @@ from ..core._error_codes import (
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
 
-from ..__version__ import __version__ as _SDK_VERSION
+from .. import __version__ as _SDK_VERSION
 
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -76,7 +77,7 @@ class _RequestContext:
         )
 
 
-class _ODataClient(_ODataFileUpload):
+class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     @staticmethod
@@ -95,10 +96,17 @@ class _ODataClient(_ODataFileUpload):
 
         Dataverse LogicalNames for attributes are stored lowercase, but users may
         provide PascalCase names (matching SchemaName). This normalizes the input.
+
+        Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
+        preserved as-is because the navigation property portion before ``@``
+        must retain its original casing (case-sensitive navigation property name).  The OData
+        parser validates ``@odata.bind`` property names **case-sensitively**
+        against the entity's declared navigation properties, so lowercasing
+        these keys causes ``400 - undeclared property`` errors.
         """
         if not isinstance(record, dict):
             return record
-        return {k.lower() if isinstance(k, str) else k: v for k, v in record.items()}
+        return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
@@ -115,6 +123,7 @@ class _ODataClient(_ODataFileUpload):
         auth,
         base_url: str,
         config=None,
+        session=None,
     ) -> None:
         """Initialize the OData client.
 
@@ -126,6 +135,8 @@ class _ODataClient(_ODataFileUpload):
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
+        :param session: Optional ``requests.Session`` for HTTP connection pooling.
+        :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -143,6 +154,7 @@ class _ODataClient(_ODataFileUpload):
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
+            session=session,
         )
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
@@ -161,6 +173,18 @@ class _ODataClient(_ODataFileUpload):
             yield shared_id
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+    def close(self) -> None:
+        """Close the OData client and release resources.
+
+        Clears all internal caches and closes the underlying HTTP client.
+        Safe to call multiple times.
+        """
+        self._logical_to_entityset_cache.clear()
+        self._logical_primaryid_cache.clear()
+        self._picklist_label_cache.clear()
+        if self._http is not None:
+            self._http.close()
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -350,6 +374,123 @@ class _ODataClient(_ODataFileUpload):
                             break
             return out
         return []
+
+    def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
+        """Build an OData alternate key segment from a mapping of key names to values.
+
+        String values are single-quoted and escaped; all other values are rendered as-is.
+
+        :param alternate_key: Mapping of alternate key attribute names to their values.
+            Must be a non-empty dict with string keys.
+        :type alternate_key: ``dict[str, Any]``
+
+        :return: Comma-separated key=value pairs suitable for use in a URL segment.
+        :rtype: ``str``
+
+        :raises ValueError: If ``alternate_key`` is empty.
+        :raises TypeError: If any key in ``alternate_key`` is not a string.
+        """
+        if not alternate_key:
+            raise ValueError("alternate_key must be a non-empty dict")
+        bad_keys = [k for k in alternate_key if not isinstance(k, str)]
+        if bad_keys:
+            raise TypeError(f"alternate_key keys must be strings; got: {bad_keys!r}")
+        parts = []
+        for k, v in alternate_key.items():
+            k_lower = k.lower() if isinstance(k, str) else k
+            if isinstance(v, str):
+                v_escaped = self._escape_odata_quotes(v)
+                parts.append(f"{k_lower}='{v_escaped}'")
+            else:
+                parts.append(f"{k_lower}={v}")
+        return ",".join(parts)
+
+    def _upsert(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        alternate_key: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> None:
+        """Upsert a single record using an alternate key.
+
+        Issues a PATCH request to ``{entity_set}({key_pairs})`` where ``key_pairs``
+        is the OData alternate key segment built from ``alternate_key``. Creates the
+        record if it does not exist; updates it if it does.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param alternate_key: Mapping of alternate key attribute names to their values
+            used to identify the target record in the URL.
+        :type alternate_key: ``dict[str, Any]``
+        :param record: Attribute payload to set on the record.
+        :type record: ``dict[str, Any]``
+
+        :return: ``None``
+        :rtype: ``None``
+        """
+        record = self._lowercase_keys(record)
+        record = self._convert_labels_to_ints(table_schema_name, record)
+        key_str = self._build_alternate_key_str(alternate_key)
+        url = f"{self.api}/{entity_set}({key_str})"
+        self._request("patch", url, json=record, expected=(200, 201, 204))
+
+    def _upsert_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        alternate_keys: List[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+    ) -> None:
+        """Upsert multiple records using the collection-bound ``UpsertMultiple`` action.
+
+        Each target is formed by merging the corresponding alternate key fields and record
+        fields. The ``@odata.type`` annotation is injected automatically if absent.
+
+        :param entity_set: Resolved entity set (plural) name.
+        :type entity_set: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param alternate_keys: List of alternate key dictionaries, one per record.
+            Order is significant: ``alternate_keys[i]`` must correspond to ``records[i]``.
+            Python ``list`` preserves insertion order, so the correspondence is guaranteed
+            as long as both lists are built from the same source in the same order.
+        :type alternate_keys: ``list[dict[str, Any]]``
+        :param records: List of record payload dictionaries, one per record.
+            Must be the same length as ``alternate_keys``.
+        :type records: ``list[dict[str, Any]]``
+
+        :return: ``None``
+        :rtype: ``None``
+
+        :raises ValueError: If ``alternate_keys`` and ``records`` differ in length, or if
+            any record payload contains an alternate key field with a conflicting value.
+        """
+        if len(alternate_keys) != len(records):
+            raise ValueError(
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
+            )
+        logical_name = table_schema_name.lower()
+        targets: List[Dict[str, Any]] = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = self._convert_labels_to_ints(table_schema_name, record_processed)
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
+            if conflicting:
+                raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
+            if "@odata.type" not in record_processed:
+                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            key_str = self._build_alternate_key_str(alt_key)
+            record_processed["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(record_processed)
+        payload = {"Targets": targets}
+        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
+        self._request("post", url, json=payload, expected=(200, 201, 204))
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -586,7 +727,7 @@ class _ODataClient(_ODataFileUpload):
         params = {}
         if select:
             # Lowercase column names for case-insensitive matching
-            params["$select"] = ",".join(select)
+            params["$select"] = ",".join(self._lowercase_list(select))
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("get", url, params=params)
@@ -1186,6 +1327,9 @@ class _ODataClient(_ODataFileUpload):
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
                 continue
+            # Skip OData annotations — they are not attribute names
+            if isinstance(k, str) and "@odata." in k:
+                continue
             mapping = self._optionset_map(table_schema_name, k)
             if not mapping:
                 continue
@@ -1304,8 +1448,27 @@ class _ODataClient(_ODataFileUpload):
             "columns_created": [],
         }
 
-    def _list_tables(self) -> List[Dict[str, Any]]:
+    def _list_tables(
+        self,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """List all non-private tables (``IsPrivate eq false``).
+
+        :param filter: Optional additional OData ``$filter`` expression that is
+            combined with the default ``IsPrivate eq false`` clause using
+            ``and``.  For example, ``"SchemaName eq 'Account'"`` becomes
+            ``"IsPrivate eq false and (SchemaName eq 'Account')"``.
+            When ``None`` (the default), only the ``IsPrivate eq false`` filter
+            is applied.
+        :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase) because
+            ``EntityDefinitions`` uses PascalCase property names.
+            When ``None`` (the default) or an empty list, no ``$select`` is
+            applied and all properties are returned.  Passing a bare string
+            raises ``TypeError``.
+        :type select: ``list[str]`` or ``None``
 
         :return: Metadata entries for non-private tables (may be empty).
         :rtype: ``list[dict[str, Any]]``
@@ -1313,7 +1476,16 @@ class _ODataClient(_ODataFileUpload):
         :raises HttpError: If the metadata request fails.
         """
         url = f"{self.api}/EntityDefinitions"
-        params = {"$filter": "IsPrivate eq false"}
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and ({filter})"
+        else:
+            combined_filter = base_filter
+        params: Dict[str, str] = {"$filter": combined_filter}
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            params["$select"] = ",".join(select)
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
 
@@ -1338,6 +1510,112 @@ class _ODataClient(_ODataFileUpload):
         metadata_id = ent["MetadataId"]
         url = f"{self.api}/EntityDefinitions({metadata_id})"
         r = self._request("delete", url)
+
+    # ------------------- Alternate key metadata helpers -------------------
+
+    def _create_alternate_key(
+        self,
+        table_schema_name: str,
+        key_name: str,
+        columns: List[str],
+        display_name_label=None,
+    ) -> Dict[str, Any]:
+        """Create an alternate key on a table.
+
+        Issues ``POST EntityDefinitions(LogicalName='{logical_name}')/Keys``
+        with ``EntityKeyMetadata`` payload.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_name: Schema name for the new alternate key.
+        :type key_name: ``str``
+        :param columns: List of column logical names that compose the key.
+        :type columns: ``list[str]``
+        :param display_name_label: Label for the key display name.
+        :type display_name_label: ``Label`` or ``None``
+
+        :return: Dictionary with ``metadata_id``, ``schema_name``, and ``key_attributes``.
+        :rtype: ``dict[str, Any]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        payload: Dict[str, Any] = {
+            "SchemaName": key_name,
+            "KeyAttributes": columns,
+        }
+        if display_name_label is not None:
+            payload["DisplayName"] = display_name_label.to_dict()
+        r = self._request("post", url, json=payload)
+        metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
+
+        return {
+            "metadata_id": metadata_id,
+            "schema_name": key_name,
+            "key_attributes": columns,
+        }
+
+    def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
+        """List all alternate keys on a table.
+
+        Issues ``GET EntityDefinitions(LogicalName='{logical_name}')/Keys``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+
+        :return: List of raw ``EntityKeyMetadata`` dictionaries.
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        r = self._request("get", url)
+        return r.json().get("value", [])
+
+    def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
+        """Delete an alternate key by metadata ID.
+
+        Issues ``DELETE EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_id: Metadata GUID of the alternate key.
+        :type key_id: ``str``
+
+        :return: ``None``
+        :rtype: ``None``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})"
+        self._request("delete", url)
 
     def _create_table(
         self,

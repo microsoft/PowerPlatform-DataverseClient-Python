@@ -60,6 +60,11 @@ import subprocess
 from typing import Optional
 from datetime import datetime
 
+from PowerPlatform.Dataverse.operations.records import RecordOperations
+from PowerPlatform.Dataverse.operations.query import QueryOperations
+from PowerPlatform.Dataverse.operations.tables import TableOperations
+from PowerPlatform.Dataverse.operations.files import FileOperations
+
 
 def validate_imports():
     """Validate that all key imports work correctly."""
@@ -119,25 +124,43 @@ def validate_client_methods(DataverseClient):
     print("\nValidating Client Methods...")
     print("-" * 50)
 
-    expected_methods = [
-        "create",
-        "get",
-        "update",
-        "delete",
-        "create_table",
-        "get_table_info",
-        "delete_table",
-        "list_tables",
-        "query_sql",
-    ]
+    # Validate namespace API: client.records, client.query, client.tables, client.files
+    expected_namespaces = {
+        "records": ["create", "get", "update", "delete", "upsert"],
+        "query": ["sql"],
+        "tables": [
+            "create",
+            "get",
+            "list",
+            "delete",
+            "add_columns",
+            "remove_columns",
+            "create_one_to_many_relationship",
+            "create_many_to_many_relationship",
+            "delete_relationship",
+            "get_relationship",
+            "create_lookup_field",
+        ],
+        "files": ["upload"],
+    }
+
+    ns_classes = {
+        "records": RecordOperations,
+        "query": QueryOperations,
+        "tables": TableOperations,
+        "files": FileOperations,
+    }
 
     missing_methods = []
-    for method in expected_methods:
-        if hasattr(DataverseClient, method):
-            print(f"  [OK] Method exists: {method}")
-        else:
-            print(f"  [ERR] Method missing: {method}")
-            missing_methods.append(method)
+    for ns, methods in expected_namespaces.items():
+        ns_cls = ns_classes.get(ns)
+        for method in methods:
+            attr_path = f"{ns}.{method}"
+            if ns_cls is not None and hasattr(ns_cls, method):
+                print(f"  [OK] Method exists: {attr_path}")
+            else:
+                print(f"  [ERR] Method missing: {attr_path}")
+                missing_methods.append(attr_path)
 
     return len(missing_methods) == 0
 
@@ -182,35 +205,36 @@ from azure.identity import InteractiveBrowserCredential
 # Set up authentication
 credential = InteractiveBrowserCredential()
 
-# Create client
-client = DataverseClient(
-    "https://yourorg.crm.dynamics.com",
-    credential
-)
+# Recommended: use context manager for connection pooling and automatic cleanup
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+
+# Or without context manager:
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
 CRUD Operations:
 ```python
-# Create a record
+# Create a record (returns a single ID string)
 account_data = {"name": "Contoso Ltd", "telephone1": "555-0100"}
-account_ids = client.create("account", account_data)
-print(f"Created account: {account_ids[0]}")
+account_id = client.records.create("account", account_data)
+print(f"Created account: {account_id}")
 
-# Read a record
-account = client.get("account", account_ids[0])
+# Read a single record by ID
+account = client.records.get("account", account_id)
 print(f"Account name: {account['name']}")
 
 # Update a record
-client.update("account", account_ids[0], {"telephone1": "555-0200"})
+client.records.update("account", account_id, {"telephone1": "555-0200"})
 
 # Delete a record
-client.delete("account", account_ids[0])
+client.records.delete("account", account_id)
 ```
 
 Querying Data:
 ```python
 # Query with OData filter
-accounts = client.get("account", 
+accounts = client.records.get("account",
                      filter="name eq 'Contoso Ltd'",
                      select=["name", "telephone1"],
                      top=10)
@@ -220,7 +244,7 @@ for batch in accounts:
         print(f"Account: {account['name']}")
 
 # SQL queries (if enabled)
-results = client.query_sql("SELECT TOP 5 name FROM account")
+results = client.query.sql("SELECT TOP 5 name FROM account")
 for row in results:
     print(row['name'])
 ```
@@ -228,20 +252,27 @@ for row in results:
 Table Management:
 ```python
 # Create custom table
-table_info = client.create_table("CustomEntity", {
-    "name": "string",
-    "description": "string", 
-    "amount": "decimal",
-    "is_active": "bool"
+table_info = client.tables.create("new_Product", {
+    "new_Code": "string",
+    "new_Description": "string",
+    "new_Amount": "decimal",
+    "new_Active": "bool"
 })
 
 # Get table information
-info = client.get_table_info("CustomEntity")
+info = client.tables.get("new_Product")
 print(f"Table: {info['table_schema_name']}")
 
 # List all tables
-tables = client.list_tables()
+tables = client.tables.list()
 print(f"Found {len(tables)} tables")
+
+# List with filter and select
+custom_tables = client.tables.list(
+    filter="IsCustomEntity eq true",
+    select=["LogicalName", "SchemaName", "DisplayName"],
+)
+print(f"Found {len(custom_tables)} custom tables")
 ```
 """)
 
@@ -277,14 +308,18 @@ def interactive_test():
         credential = InteractiveBrowserCredential()
 
         print("  Creating client...")
-        client = DataverseClient(org_url.rstrip("/"), credential)
+        with DataverseClient(org_url.rstrip("/"), credential) as client:
+            print("  Testing connection...")
+            tables = client.tables.list()
+            print(f"  [OK] Connection successful!")
+            print(f"  Found {len(tables)} tables in environment")
 
-        print("  Testing connection...")
-        tables = client.list_tables()
-
-        print(f"  [OK] Connection successful!")
-        print(f"  Found {len(tables)} tables in environment")
-        print(f"  Connected to: {org_url}")
+            custom_tables = client.tables.list(
+                filter="IsCustomEntity eq true",
+                select=["LogicalName", "SchemaName"],
+            )
+            print(f"  Found {len(custom_tables)} custom tables (filter + select)")
+            print(f"  Connected to: {org_url}")
 
         print("\n  Your SDK is ready for use!")
         print("  Check the usage examples above for common patterns")

@@ -1,6 +1,6 @@
 ---
 name: dataverse-sdk-use
-description: Guidance for using the PowerPlatform Dataverse Client Python SDK. Use when calling the SDK like creating CRUD operations, SQL queries, table metadata management, and upload files.
+description: Guidance for using the PowerPlatform Dataverse Client Python SDK. Use when calling the SDK like creating CRUD operations, SQL queries, table metadata management, relationships, and upload files.
 ---
 
 # PowerPlatform Dataverse SDK Guide
@@ -17,6 +17,12 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - Custom columns: include customization prefix (e.g., `"new_Price"`, `"cr123_Status"`)
 - ALWAYS use **schema names** (logical names), NOT display names
 
+### Operation Namespaces
+- `client.records` -- CRUD and OData queries
+- `client.query` -- query and search operations
+- `client.tables` -- table metadata, columns, and relationships
+- `client.files` -- file upload operations
+
 ### Bulk Operations
 The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation
 
@@ -25,14 +31,14 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 - Use `top` parameter to limit total records returned
 
 ### DataFrame Support
-- All CRUD operations have `_dataframe` variants: `get_dataframe`, `create_dataframe`, `update_dataframe`, `delete_dataframe`
+- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.get()`, `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()`
 
 ## Common Operations
 
 ### Import
 ```python
 from azure.identity import (
-    InteractiveBrowserCredential, 
+    InteractiveBrowserCredential,
     ClientSecretCredential,
     CertificateCredential,
     AzureCliCredential
@@ -50,7 +56,13 @@ credential = AzureCliCredential()
 credential = ClientSecretCredential(tenant_id, client_id, client_secret)
 credential = CertificateCredential(tenant_id, client_id, cert_path)
 
-# Create client (no trailing slash on URL!)
+# Create client with context manager (recommended -- enables HTTP connection pooling)
+# No trailing slash on URL!
+with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+# Session closed, caches cleared automatically
+
+# Or without context manager:
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
@@ -59,98 +71,143 @@ client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 #### Create Records
 ```python
 # Single record
-account_ids = client.create("account", {"name": "Contoso Ltd", "telephone1": "555-0100"})
-account_id = account_ids[0]
+account_id = client.records.create("account", {"name": "Contoso Ltd", "telephone1": "555-0100"})
 
 # Bulk create (uses CreateMultiple API automatically)
 contacts = [
     {"firstname": "John", "lastname": "Doe"},
     {"firstname": "Jane", "lastname": "Smith"}
 ]
-contact_ids = client.create("contact", contacts)
+contact_ids = client.records.create("contact", contacts)
 ```
 
 #### Read Records
 ```python
 # Get single record by ID
-account = client.get("account", account_id, select=["name", "telephone1"])
+account = client.records.get("account", account_id, select=["name", "telephone1"])
 
-# Query with filter
-pages = client.get(
+# Query with filter (paginated)
+for page in client.records.get(
     "account",
     select=["accountid", "name"],      # select is case-insensitive (automatically lowercased)
     filter="statecode eq 0",           # filter must use lowercase logical names (not transformed)
-    top=100
-)
-for page in pages:
+    top=100,
+):
     for record in page:
         print(record["name"])
 
 # Query with navigation property expansion (case-sensitive!)
-pages = client.get(
+for page in client.records.get(
     "account",
     select=["name"],
     expand=["primarycontactid"],  # Navigation properties are case-sensitive!
-    filter="statecode eq 0"       # Column names must be lowercase logical names
-)
-for page in pages:
+    filter="statecode eq 0",      # Column names must be lowercase logical names
+):
     for account in page:
         contact = account.get("primarycontactid", {})
         print(f"{account['name']} - {contact.get('fullname', 'N/A')}")
 ```
 
+#### Create Records with Lookup Bindings (@odata.bind)
+```python
+# Set lookup fields using @odata.bind with PascalCase navigation property names
+# CORRECT: use the navigation property name (case-sensitive, must match $metadata)
+guid = client.records.create("new_ticket", {
+    "new_name": "TKT-001",
+    "new_CustomerId@odata.bind": f"/new_customers({customer_id})",
+    "new_AgentId@odata.bind": f"/new_agents({agent_id})",
+})
+
+# WRONG: lowercase navigation property causes 400 error
+# "new_customerid@odata.bind" -> ODataException: undeclared property 'new_customerid'
+```
+
 #### Update Records
 ```python
 # Single update
-client.update("account", account_id, {"telephone1": "555-0200"})
+client.records.update("account", account_id, {"telephone1": "555-0200"})
 
 # Bulk update (broadcast same change to multiple records)
-client.update("account", [id1, id2, id3], {"industry": "Technology"})
+client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
+```
+
+#### Upsert Records
+Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+> **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
+```python
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+# Single upsert
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001"},
+        record={"name": "Contoso Ltd", "telephone1": "555-0100"},
+    )
+])
+
+# Bulk upsert (uses UpsertMultiple API automatically)
+client.records.upsert("account", [
+    UpsertItem(alternate_key={"accountnumber": "ACC-001"}, record={"name": "Contoso Ltd"}),
+    UpsertItem(alternate_key={"accountnumber": "ACC-002"}, record={"name": "Fabrikam Inc"}),
+])
+
+# Composite alternate key
+client.records.upsert("account", [
+    UpsertItem(
+        alternate_key={"accountnumber": "ACC-001", "address1_postalcode": "98052"},
+        record={"name": "Contoso Ltd"},
+    )
+])
+
+# Plain dict syntax (no import needed)
+client.records.upsert("account", [
+    {"alternate_key": {"accountnumber": "ACC-001"}, "record": {"name": "Contoso Ltd"}}
+])
 ```
 
 #### Delete Records
 ```python
 # Single delete
-client.delete("account", account_id)
+client.records.delete("account", account_id)
 
 # Bulk delete (uses BulkDelete API)
-client.delete("account", [id1, id2, id3], use_bulk_delete=True)
+client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 ```
 
 ### DataFrame Operations
 
-The SDK provides DataFrame wrappers for all CRUD operations using pandas DataFrames and Series as input/output.
+The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
 
 ```python
 import pandas as pd
 
 # Query records — returns a single DataFrame
-df = client.get_dataframe("account", filter="statecode eq 0", select=["name"])
+df = client.dataframe.get("account", filter="statecode eq 0", select=["name"])
 print(f"Got {len(df)} rows")
 
 # Limit results with top for large tables
-df = client.get_dataframe("account", select=["name"], top=100)
+df = client.dataframe.get("account", select=["name"], top=100)
 
 # Fetch single record as one-row DataFrame
-df = client.get_dataframe("account", record_id=account_id, select=["name"])
+df = client.dataframe.get("account", record_id=account_id, select=["name"])
 
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
     {"name": "Contoso", "telephone1": "555-0100"},
     {"name": "Fabrikam", "telephone1": "555-0200"},
 ])
-new_accounts["accountid"] = client.create_dataframe("account", new_accounts)
+new_accounts["accountid"] = client.dataframe.create("account", new_accounts)
 
 # Update records from a DataFrame (id_column identifies the GUID column)
 new_accounts["telephone1"] = ["555-0199", "555-0299"]
-client.update_dataframe("account", new_accounts, id_column="accountid")
+client.dataframe.update("account", new_accounts, id_column="accountid")
 
 # Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
 df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
-client.update_dataframe("account", df, id_column="accountid", clear_nulls=True)
+client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
 
 # Delete records by passing a Series of GUIDs
-client.delete_dataframe("account", new_accounts["accountid"])
+client.dataframe.delete("account", new_accounts["accountid"])
 ```
 
 ### SQL Queries
@@ -158,8 +215,7 @@ client.delete_dataframe("account", new_accounts["accountid"])
 SQL queries are **read-only** and support limited SQL syntax. A single SELECT statement with optional WHERE, TOP (integer literal), ORDER BY (column names only), and a simple table alias after FROM is supported. But JOIN and subqueries may not be. Refer to the Dataverse documentation for the current feature set.
 
 ```python
-# Basic SQL query
-results = client.query_sql(
+results = client.query.sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
 )
 for record in results:
@@ -171,22 +227,22 @@ for record in results:
 #### Create Custom Tables
 ```python
 # Create table with columns (include customization prefix!)
-table_info = client.create_table(
-    table_schema_name="new_Product",
-    columns={
+table_info = client.tables.create(
+    "new_Product",
+    {
         "new_Code": "string",
         "new_Price": "decimal",
         "new_Active": "bool",
-        "new_Quantity": "int"
-    }
+        "new_Quantity": "int",
+    },
 )
 
 # With solution assignment and custom primary column
-table_info = client.create_table(
-    table_schema_name="new_Product",
-    columns={"new_Code": "string", "new_Price": "decimal"},
-    solution_unique_name="MyPublisher",
-    primary_column_schema_name="new_ProductCode"
+table_info = client.tables.create(
+    "new_Product",
+    {"new_Code": "string", "new_Price": "decimal"},
+    solution="MyPublisher",
+    primary_column="new_ProductCode",
 )
 ```
 
@@ -204,43 +260,112 @@ Types on the same line map to the same exact format under the hood
 #### Manage Columns
 ```python
 # Add columns to existing table (must include customization prefix!)
-client.create_columns("new_Product", {
+client.tables.add_columns("new_Product", {
     "new_Category": "string",
-    "new_InStock": "bool"
+    "new_InStock": "bool",
 })
 
 # Remove columns
-client.delete_columns("new_Product", ["new_Category"])
+client.tables.remove_columns("new_Product", ["new_Category"])
 ```
 
 #### Inspect Tables
 ```python
 # Get single table information
-table_info = client.get_table_info("new_Product")
+table_info = client.tables.get("new_Product")
 print(f"Logical name: {table_info['table_logical_name']}")
 print(f"Entity set: {table_info['entity_set_name']}")
 
 # List all tables
-tables = client.list_tables()
+tables = client.tables.list()
 for table in tables:
     print(table)
 ```
 
 #### Delete Tables
 ```python
-# Delete custom table
-client.delete_table("new_Product")
+client.tables.delete("new_Product")
+```
+
+### Relationship Management
+
+#### Create One-to-Many Relationship
+```python
+from PowerPlatform.Dataverse.models.relationship import (
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    Label,
+    LocalizedLabel,
+    CascadeConfiguration,
+)
+from PowerPlatform.Dataverse.common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
+
+lookup = LookupAttributeMetadata(
+    schema_name="new_DepartmentId",
+    display_name=Label(
+        localized_labels=[LocalizedLabel(label="Department", language_code=1033)]
+    ),
+)
+
+relationship = OneToManyRelationshipMetadata(
+    schema_name="new_Department_Employee",
+    referenced_entity="new_department",
+    referencing_entity="new_employee",
+    referenced_attribute="new_departmentid",
+    cascade_configuration=CascadeConfiguration(
+        delete=CASCADE_BEHAVIOR_REMOVE_LINK,
+    ),
+)
+
+result = client.tables.create_one_to_many_relationship(lookup, relationship)
+print(f"Created lookup field: {result['lookup_schema_name']}")
+```
+
+#### Create Many-to-Many Relationship
+```python
+from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
+
+relationship = ManyToManyRelationshipMetadata(
+    schema_name="new_employee_project",
+    entity1_logical_name="new_employee",
+    entity2_logical_name="new_project",
+)
+
+result = client.tables.create_many_to_many_relationship(relationship)
+print(f"Created: {result['relationship_schema_name']}")
+```
+
+#### Convenience Method for Lookup Fields
+```python
+result = client.tables.create_lookup_field(
+    referencing_table="new_order",
+    lookup_field_name="new_AccountId",
+    referenced_table="account",
+    display_name="Account",
+    required=True,
+)
+```
+
+#### Query and Delete Relationships
+```python
+# Get relationship metadata
+rel = client.tables.get_relationship("new_Department_Employee")
+if rel:
+    print(f"Found: {rel['SchemaName']}")
+
+# Delete relationship
+client.tables.delete_relationship(result["relationship_id"])
 ```
 
 ### File Operations
 
 ```python
 # Upload file to a file column
-client.upload_file(
-    table_schema_name="account",
+client.files.upload(
+    table="account",
     record_id=account_id,
-    file_name_attribute="new_Document",  # If the file column doesn't exist, it will be created automatically
-    path="/path/to/document.pdf"
+    file_column="new_Document",  # If the file column doesn't exist, it will be created automatically
+    path="/path/to/document.pdf",
 )
 ```
 
@@ -259,7 +384,7 @@ from PowerPlatform.Dataverse.core.errors import (
 from PowerPlatform.Dataverse.client import DataverseClient
 
 try:
-    client.get("account", "invalid-id")
+    client.records.get("account", "invalid-id")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
     print(f"Error code: {e.code}")
@@ -287,6 +412,7 @@ except ValidationError as e:
 - Check filter/expand parameters use correct case
 - Verify column names exist and are spelled correctly
 - Ensure custom columns include customization prefix
+- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` is case-sensitive and must match the entity's `$metadata` exactly (e.g., `new_CustomerId@odata.bind` for custom lookups, `parentaccountid@odata.bind` for system lookups). The SDK preserves `@odata.bind` key casing.
 
 ## Best Practices
 
@@ -299,8 +425,9 @@ except ValidationError as e:
 5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
-8. **Use lowercase** - Generally using lowercase input won't go wrong, except for custom table/column naming
+8. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
 9. **Test in non-production environments** first
+10. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
 
 ## Additional Resources
 
