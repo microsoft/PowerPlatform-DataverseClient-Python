@@ -39,7 +39,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from . import filters
 
@@ -215,6 +215,23 @@ class QueryBuilder:
         return self
 
     # --------------------------------------------------------- filter: special
+
+    def filter_in(self, column: str, values: Sequence[Any]) -> QueryBuilder:
+        """Add an ``in`` filter using ``Microsoft.Dynamics.CRM.In``.
+
+        :param column: Column name (will be lowercased).
+        :param values: Non-empty list of values for the ``in`` clause.
+        :return: Self for method chaining.
+        :raises ValueError: If ``values`` is empty.
+
+        Example::
+
+            query = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
+            # Produces: Microsoft.Dynamics.CRM.In(
+            #     PropertyName='statecode',PropertyValues=[0, 1, 2])
+        """
+        self._filter_parts.append(filters.filter_in(column, values))
+        return self
 
     def filter_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
         """Add a between filter: ``(column ge low and column le high)``.

@@ -10,7 +10,7 @@ complex filter conditions.
 
 Example::
 
-    from PowerPlatform.Dataverse.models.filters import eq, gt
+    from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in
 
     # Simple comparison
     expr = eq("statecode", 0)
@@ -20,6 +20,11 @@ Example::
     expr = (eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000)
     print(expr.to_odata())
     # ((statecode eq 0 or statecode eq 1) and revenue gt 100000)
+
+    # In operator (Dataverse function)
+    expr = filter_in("statecode", [0, 1, 2])
+    print(expr.to_odata())
+    # Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])
 
     # Negation
     expr = ~eq("statecode", 1)
@@ -31,7 +36,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 __all__ = [
     "FilterExpression",
@@ -47,6 +52,7 @@ __all__ = [
     "between",
     "is_null",
     "is_not_null",
+    "filter_in",
     "raw",
 ]
 
@@ -207,6 +213,25 @@ class _NotFilter(FilterExpression):
         return f"not ({self.expr.to_odata()})"
 
 
+class _InFilter(FilterExpression):
+    """In filter using ``Microsoft.Dynamics.CRM.In``."""
+
+    __slots__ = ("column", "values")
+
+    def __init__(self, column: str, values: Sequence[Any]) -> None:
+        if not values:
+            raise ValueError("filter_in requires at least one value")
+        self.column = column.lower()
+        self.values = list(values)
+
+    def to_odata(self) -> str:
+        formatted = ", ".join(_format_value(v) for v in self.values)
+        return (
+            f"Microsoft.Dynamics.CRM.In"
+            f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
+        )
+
+
 class _RawFilter(FilterExpression):
     """Raw verbatim OData filter expression."""
 
@@ -352,6 +377,24 @@ def is_not_null(column: str) -> FilterExpression:
     :return: A filter expression.
     """
     return _ComparisonFilter(column, "ne", None)
+
+
+def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
+    """In filter using ``Microsoft.Dynamics.CRM.In``.
+
+    Named ``filter_in`` because ``in`` is a Python keyword.
+
+    :param column: Column name (will be lowercased).
+    :param values: Non-empty sequence of values.
+    :return: A filter expression.
+    :raises ValueError: If ``values`` is empty.
+
+    Example::
+
+        filter_in("statecode", [0, 1, 2]).to_odata()
+        # "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])"
+    """
+    return _InFilter(column, values)
 
 
 def raw(filter_string: str) -> FilterExpression:

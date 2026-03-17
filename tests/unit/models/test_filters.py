@@ -22,6 +22,7 @@ from PowerPlatform.Dataverse.models.filters import (
     between,
     is_null,
     is_not_null,
+    filter_in,
     raw,
 )
 
@@ -225,6 +226,38 @@ class TestRawFilter(unittest.TestCase):
         """Raw filter should pass through exactly as given."""
         text = "(statecode eq 0 or statecode eq 1)"
         self.assertEqual(raw(text).to_odata(), text)
+
+
+class TestInFilter(unittest.TestCase):
+    """Tests for the filter_in factory function."""
+
+    def test_filter_in_ints(self):
+        self.assertEqual(
+            filter_in("statecode", [0, 1, 2]).to_odata(),
+            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])",
+        )
+
+    def test_filter_in_strings(self):
+        self.assertEqual(
+            filter_in("name", ["Contoso", "Fabrikam"]).to_odata(),
+            "Microsoft.Dynamics.CRM.In(PropertyName='name',PropertyValues=['Contoso', 'Fabrikam'])",
+        )
+
+    def test_filter_in_single_value(self):
+        self.assertEqual(
+            filter_in("statecode", [0]).to_odata(),
+            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0])",
+        )
+
+    def test_filter_in_column_lowercased(self):
+        self.assertEqual(
+            filter_in("StateCode", [0, 1]).to_odata(),
+            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1])",
+        )
+
+    def test_filter_in_empty_raises(self):
+        with self.assertRaises(ValueError):
+            filter_in("statecode", [])
 
 
 class TestLogicalOperators(unittest.TestCase):
