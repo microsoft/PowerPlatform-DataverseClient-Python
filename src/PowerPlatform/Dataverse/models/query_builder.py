@@ -90,6 +90,8 @@ class QueryBuilder:
         self._expand: List[str] = []
         self._top: Optional[int] = None
         self._page_size: Optional[int] = None
+        self._count: bool = False
+        self._include_annotations: Optional[str] = None
         self._query_ops: Optional[Any] = None  # Set by QueryOperations.builder()
 
     # ----------------------------------------------------------------- select
@@ -388,6 +390,81 @@ class QueryBuilder:
         self._page_size = size
         return self
 
+    def count(self) -> QueryBuilder:
+        """Request a count of matching records in the response.
+
+        Adds ``$count=true`` to the query, causing the server to include
+        an ``@odata.count`` annotation in the response with the total
+        number of matching records (up to 5,000).
+
+        :return: Self for method chaining.
+
+        Example::
+
+            results = (client.query.builder("account")
+                       .filter_eq("statecode", 0)
+                       .count()
+                       .execute())
+        """
+        self._count = True
+        return self
+
+    def include_formatted_values(self) -> QueryBuilder:
+        """Request formatted values in the response.
+
+        Adds ``Prefer: odata.include-annotations="OData.Community.Display.V1.FormattedValue"``
+        to the request, causing the server to return formatted string
+        representations alongside raw values. This includes:
+
+        - Localized labels for choice, yes/no, status, and status reason columns
+        - Primary name values for lookup and owner properties
+        - Currency values with currency symbols
+        - Formatted dates in the user's time zone
+
+        Access formatted values in the response via the annotation key::
+
+            record["statecode@OData.Community.Display.V1.FormattedValue"]
+
+        :return: Self for method chaining.
+
+        Example::
+
+            for record in (client.query.builder("account")
+                           .select("name", "statecode")
+                           .include_formatted_values()
+                           .execute()):
+                label = record["statecode@OData.Community.Display.V1.FormattedValue"]
+                print(f"{record['name']}: {label}")
+        """
+        self._include_annotations = "OData.Community.Display.V1.FormattedValue"
+        return self
+
+    def include_annotations(self, annotation: str = "*") -> QueryBuilder:
+        """Request specific OData annotations in the response.
+
+        Sets the ``Prefer: odata.include-annotations`` header. Use ``"*"``
+        to request all annotations, or specify a particular annotation
+        pattern.
+
+        :param annotation: Annotation pattern to request. Defaults to
+            ``"*"`` (all annotations).
+        :return: Self for method chaining.
+
+        Example::
+
+            # Request all annotations
+            builder = (client.query.builder("account")
+                       .select("name", "_ownerid_value")
+                       .include_annotations("*"))
+
+            # Request only lookup metadata
+            builder = (client.query.builder("account")
+                       .include_annotations(
+                           "Microsoft.Dynamics.CRM.lookuplogicalname"))
+        """
+        self._include_annotations = annotation
+        return self
+
     # --------------------------------------------------------------- expand
 
     def expand(self, *relations: str) -> QueryBuilder:
@@ -411,7 +488,8 @@ class QueryBuilder:
         a single ``filter`` string in call order.
 
         :return: Dictionary with ``table`` and optionally ``select``,
-            ``filter``, ``orderby``, ``expand``, ``top``, ``page_size``.
+            ``filter``, ``orderby``, ``expand``, ``top``, ``page_size``,
+            ``count``, ``include_annotations``.
         :rtype: dict
         """
         params: dict = {"table": self.table}
@@ -433,6 +511,10 @@ class QueryBuilder:
             params["top"] = self._top
         if self._page_size is not None:
             params["page_size"] = self._page_size
+        if self._count:
+            params["count"] = True
+        if self._include_annotations is not None:
+            params["include_annotations"] = self._include_annotations
         return params
 
     # --------------------------------------------------------------- execute
@@ -492,6 +574,8 @@ class QueryBuilder:
             top=params.get("top"),
             expand=params.get("expand"),
             page_size=params.get("page_size"),
+            count=params.get("count", False),
+            include_annotations=params.get("include_annotations"),
         )
 
         if by_page:
@@ -542,4 +626,6 @@ class QueryBuilder:
             top=params.get("top"),
             expand=params.get("expand"),
             page_size=params.get("page_size"),
+            count=params.get("count", False),
+            include_annotations=params.get("include_annotations"),
         )

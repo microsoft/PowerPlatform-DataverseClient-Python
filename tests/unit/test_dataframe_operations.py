@@ -94,6 +94,8 @@ class TestDataFrameGet(unittest.TestCase):
             top=50,
             expand=["primarycontactid"],
             page_size=25,
+            count=False,
+            include_annotations=None,
         )
 
     def test_get_record_id_with_query_params_raises(self):

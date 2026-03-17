@@ -81,6 +81,8 @@ class TestQueryOperations(unittest.TestCase):
             top=10,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["name"], "Test")
@@ -130,6 +132,8 @@ class TestQueryOperations(unittest.TestCase):
             top=50,
             expand=["primarycontactid"],
             page_size=25,
+            count=False,
+            include_annotations=None,
         )
 
     def test_builder_execute_with_where(self):

@@ -742,6 +742,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
@@ -765,10 +767,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
 
         extra_headers: Dict[str, str] = {}
+        prefer_parts: List[str] = []
         if page_size is not None:
             ps = int(page_size)
             if ps > 0:
-                extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
+                prefer_parts.append(f"odata.maxpagesize={ps}")
+        if include_annotations:
+            prefer_parts.append(f'odata.include-annotations="{include_annotations}"')
+        if prefer_parts:
+            extra_headers["Prefer"] = ",".join(prefer_parts)
 
         def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             headers = extra_headers if extra_headers else None
@@ -795,6 +802,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             params["$expand"] = ",".join(expand)
         if top is not None:
             params["$top"] = int(top)
+        if count:
+            params["$count"] = "true"
 
         data = _do_request(base_url, params=params)
         items = data.get("value") if isinstance(data, dict) else None

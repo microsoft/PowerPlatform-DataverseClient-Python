@@ -63,6 +63,8 @@ class DataFrameOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> pd.DataFrame:
         """Fetch records and return as a single pandas DataFrame.
 
@@ -138,6 +140,8 @@ class DataFrameOperations:
             top=top,
             expand=expand,
             page_size=page_size,
+            count=count,
+            include_annotations=include_annotations,
         ):
             rows.extend(row.data for row in batch)
 

@@ -466,6 +466,58 @@ class TestExpand(unittest.TestCase):
         self.assertIs(qb.expand("primarycontactid"), qb)
 
 
+class TestCount(unittest.TestCase):
+    """Tests for the count() method."""
+
+    def test_count_sets_flag(self):
+        qb = QueryBuilder("account").count()
+        self.assertTrue(qb.build()["count"])
+
+    def test_count_not_in_build_by_default(self):
+        params = QueryBuilder("account").build()
+        self.assertNotIn("count", params)
+
+    def test_count_returns_self(self):
+        qb = QueryBuilder("account")
+        self.assertIs(qb.count(), qb)
+
+
+class TestIncludeAnnotations(unittest.TestCase):
+    """Tests for include_formatted_values() and include_annotations()."""
+
+    def test_include_formatted_values(self):
+        qb = QueryBuilder("account").include_formatted_values()
+        self.assertEqual(
+            qb.build()["include_annotations"],
+            "OData.Community.Display.V1.FormattedValue",
+        )
+
+    def test_include_annotations_default_wildcard(self):
+        qb = QueryBuilder("account").include_annotations()
+        self.assertEqual(qb.build()["include_annotations"], "*")
+
+    def test_include_annotations_custom(self):
+        qb = QueryBuilder("account").include_annotations(
+            "Microsoft.Dynamics.CRM.lookuplogicalname"
+        )
+        self.assertEqual(
+            qb.build()["include_annotations"],
+            "Microsoft.Dynamics.CRM.lookuplogicalname",
+        )
+
+    def test_annotations_not_in_build_by_default(self):
+        params = QueryBuilder("account").build()
+        self.assertNotIn("include_annotations", params)
+
+    def test_include_formatted_values_returns_self(self):
+        qb = QueryBuilder("account")
+        self.assertIs(qb.include_formatted_values(), qb)
+
+    def test_include_annotations_returns_self(self):
+        qb = QueryBuilder("account")
+        self.assertIs(qb.include_annotations(), qb)
+
+
 class TestBuild(unittest.TestCase):
     """Tests for the build() method."""
 
@@ -537,6 +589,9 @@ class TestMethodChainingReturnsSelf(unittest.TestCase):
         self.assertIs(qb.expand("q"), qb)
         self.assertIs(qb.top(10), qb)
         self.assertIs(qb.page_size(5), qb)
+        self.assertIs(qb.count(), qb)
+        self.assertIs(qb.include_formatted_values(), qb)
+        self.assertIs(qb.include_annotations(), qb)
 
 
 class TestExecute(unittest.TestCase):
@@ -570,6 +625,8 @@ class TestExecute(unittest.TestCase):
             top=100,
             expand=["primarycontactid"],
             page_size=50,
+            count=False,
+            include_annotations=None,
         )
 
     def test_execute_returns_flat_records_by_default(self):
@@ -619,6 +676,8 @@ class TestExecute(unittest.TestCase):
             top=None,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
 
     def test_execute_with_where_expressions(self):
@@ -653,6 +712,29 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(
             call_args.kwargs["filter"],
             'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
+        )
+
+    def test_execute_passes_count_and_annotations(self):
+        """execute() should forward count and include_annotations when set."""
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.records.get.return_value = iter([])
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.count().include_formatted_values()
+        list(qb.execute())
+
+        mock_client.records.get.assert_called_once_with(
+            "account",
+            select=None,
+            filter=None,
+            orderby=None,
+            top=None,
+            expand=None,
+            page_size=None,
+            count=True,
+            include_annotations="OData.Community.Display.V1.FormattedValue",
         )
 
 
@@ -690,6 +772,8 @@ class TestToDataframe(unittest.TestCase):
             top=100,
             expand=["primarycontactid"],
             page_size=50,
+            count=False,
+            include_annotations=None,
         )
         pd.testing.assert_frame_equal(result, expected_df)
 
@@ -713,6 +797,8 @@ class TestToDataframe(unittest.TestCase):
             top=None,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
 
     def test_to_dataframe_returns_dataframe(self):
