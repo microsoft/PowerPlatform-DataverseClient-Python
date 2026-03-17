@@ -150,6 +150,50 @@ class TestQueryOperations(unittest.TestCase):
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
         )
 
+    def test_builder_execute_with_filter_in(self):
+        """builder().filter_in().execute() should forward CRM.In filter to _get_multiple."""
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
+
+        list(self.client.query.builder("account").select("name").filter_in("statecode", [0, 1, 2]).execute())
+
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(
+            call_kwargs.kwargs["filter"],
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
+        )
+
+    def test_builder_execute_with_where_filter_in(self):
+        """builder().where(filter_in(...) & ...).execute() should compile composed expression."""
+        from PowerPlatform.Dataverse.models.filters import filter_in, gt
+
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
+
+        list(
+            self.client.query.builder("account").where(filter_in("statecode", [0, 1]) & gt("revenue", 100000)).execute()
+        )
+
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(
+            call_kwargs.kwargs["filter"],
+            '(Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"]) and revenue gt 100000)',
+        )
+
+    def test_builder_execute_with_filter_between_datetimes(self):
+        """builder().filter_between() with datetimes should forward correct OData."""
+        from datetime import datetime, timezone
+
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
+
+        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        list(self.client.query.builder("account").filter_between("createdon", start, end).execute())
+
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(
+            call_kwargs.kwargs["filter"],
+            "(createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z)",
+        )
+
     def test_builder_full_fluent_workflow(self):
         """End-to-end test of the fluent query workflow."""
         expected_records = [

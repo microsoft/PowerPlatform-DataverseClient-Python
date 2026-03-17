@@ -24,7 +24,7 @@ Example::
     # In operator (Dataverse function)
     expr = filter_in("statecode", [0, 1, 2])
     print(expr.to_odata())
-    # Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])
+    # Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=["0","1","2"])
 
     # Negation
     expr = ~eq("statecode", 1)
@@ -225,7 +225,11 @@ class _InFilter(FilterExpression):
         self.values = list(values)
 
     def to_odata(self) -> str:
-        formatted = ", ".join(_format_value(v) for v in self.values)
+        # PropertyValues is Collection(Edm.String)
+        formatted = ",".join(
+            f'"{v.value if isinstance(v, enum.Enum) else v}"'
+            for v in self.values
+        )
         return (
             f"Microsoft.Dynamics.CRM.In"
             f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
@@ -392,7 +396,7 @@ def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
     Example::
 
         filter_in("statecode", [0, 1, 2]).to_odata()
-        # "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])"
+        # "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=["0","1","2"])"
     """
     return _InFilter(column, values)
 

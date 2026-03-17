@@ -171,6 +171,31 @@ class TestComparisonFilters(unittest.TestCase):
             "accountid eq 12345678-1234-1234-1234-123456789abc",
         )
 
+    def test_eq_datetime(self):
+        dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        self.assertEqual(
+            eq("createdon", dt).to_odata(),
+            "createdon eq 2024-01-15T10:30:00Z",
+        )
+
+    def test_eq_int_enum(self):
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 2
+
+        self.assertEqual(eq("priority", Priority.HIGH).to_odata(), "priority eq 2")
+
+    def test_ne_string(self):
+        self.assertEqual(ne("name", "Contoso").to_odata(), "name ne 'Contoso'")
+
+    def test_gt_negative(self):
+        self.assertEqual(gt("temperature", -10).to_odata(), "temperature gt -10")
+
+    def test_gt_float(self):
+        self.assertEqual(gt("revenue", 99.5).to_odata(), "revenue gt 99.5")
+
 
 class TestFunctionFilters(unittest.TestCase):
     """Tests for string function filter factory functions."""
@@ -187,6 +212,12 @@ class TestFunctionFilters(unittest.TestCase):
     def test_function_column_lowercased(self):
         self.assertEqual(contains("Name", "Corp").to_odata(), "contains(name, 'Corp')")
 
+    def test_contains_single_quotes(self):
+        self.assertEqual(
+            contains("name", "O'Brien").to_odata(),
+            "contains(name, 'O''Brien')",
+        )
+
 
 class TestBetween(unittest.TestCase):
     """Tests for the between factory function."""
@@ -200,6 +231,20 @@ class TestBetween(unittest.TestCase):
     def test_between_dates(self):
         result = between("createdon", date(2024, 1, 1), date(2024, 12, 31)).to_odata()
         self.assertEqual(result, "(createdon ge 2024-01-01 and createdon le 2024-12-31)")
+
+    def test_between_floats(self):
+        self.assertEqual(
+            between("revenue", 100.5, 999.9).to_odata(),
+            "(revenue ge 100.5 and revenue le 999.9)",
+        )
+
+    def test_between_datetimes(self):
+        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        self.assertEqual(
+            between("createdon", start, end).to_odata(),
+            "(createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z)",
+        )
 
 
 class TestNullChecks(unittest.TestCase):
@@ -234,30 +279,57 @@ class TestInFilter(unittest.TestCase):
     def test_filter_in_ints(self):
         self.assertEqual(
             filter_in("statecode", [0, 1, 2]).to_odata(),
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
         )
 
     def test_filter_in_strings(self):
         self.assertEqual(
             filter_in("name", ["Contoso", "Fabrikam"]).to_odata(),
-            "Microsoft.Dynamics.CRM.In(PropertyName='name',PropertyValues=['Contoso', 'Fabrikam'])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
         )
 
     def test_filter_in_single_value(self):
         self.assertEqual(
             filter_in("statecode", [0]).to_odata(),
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0])",
+            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[\"0\"])",
         )
 
     def test_filter_in_column_lowercased(self):
         self.assertEqual(
             filter_in("StateCode", [0, 1]).to_odata(),
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"])',
         )
 
     def test_filter_in_empty_raises(self):
         with self.assertRaises(ValueError):
             filter_in("statecode", [])
+
+    def test_filter_in_int_enum(self):
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            MEDIUM = 2
+            HIGH = 3
+
+        self.assertEqual(
+            filter_in("priority", [Priority.LOW, Priority.HIGH]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","3"])',
+        )
+
+    def test_filter_in_strings_with_quotes(self):
+        self.assertEqual(
+            filter_in("name", ["O'Brien", "McDonald's"]).to_odata(),
+            "Microsoft.Dynamics.CRM.In(PropertyName='name',PropertyValues=[\"O'Brien\",\"McDonald's\"])",
+        )
+
+    def test_filter_in_uuids(self):
+        uid1 = uuid.UUID("12345678-1234-1234-1234-123456789abc")
+        uid2 = uuid.UUID("87654321-4321-4321-4321-cba987654321")
+        self.assertEqual(
+            filter_in("accountid", [uid1, uid2]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'accountid\',PropertyValues=["12345678-1234-1234-1234-123456789abc","87654321-4321-4321-4321-cba987654321"])',
+        )
 
 
 class TestLogicalOperators(unittest.TestCase):
@@ -310,6 +382,13 @@ class TestLogicalOperators(unittest.TestCase):
     def test_or_with_non_expression_returns_not_implemented(self):
         result = eq("a", 1).__or__("not an expression")
         self.assertIs(result, NotImplemented)
+
+    def test_and_with_filter_in(self):
+        expr = filter_in("statecode", [0, 1]) & gt("revenue", 100000)
+        self.assertEqual(
+            expr.to_odata(),
+            '(Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"]) and revenue gt 100000)',
+        )
 
 
 class TestStrAndRepr(unittest.TestCase):

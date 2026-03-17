@@ -228,7 +228,7 @@ class QueryBuilder:
 
             query = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
             # Produces: Microsoft.Dynamics.CRM.In(
-            #     PropertyName='statecode',PropertyValues=[0, 1, 2])
+            #     PropertyName='statecode',PropertyValues=["0","1","2"])
         """
         self._filter_parts.append(filters.filter_in(column, values))
         return self

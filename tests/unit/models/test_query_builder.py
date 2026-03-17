@@ -78,6 +78,13 @@ class TestComparisonFilters(unittest.TestCase):
         qb = QueryBuilder("account").filter_eq("revenue", 1000000.5)
         self.assertEqual(qb.build()["filter"], "revenue eq 1000000.5")
 
+    def test_filter_eq_datetime(self):
+        from datetime import datetime, timezone
+
+        dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        qb = QueryBuilder("account").filter_eq("createdon", dt)
+        self.assertEqual(qb.build()["filter"], "createdon eq 2024-01-15T10:30:00Z")
+
 
 class TestFilterIn(unittest.TestCase):
     """Tests for the filter_in() method."""
@@ -86,28 +93,28 @@ class TestFilterIn(unittest.TestCase):
         qb = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
         self.assertEqual(
             qb.build()["filter"],
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1, 2])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
         )
 
     def test_filter_in_strings(self):
         qb = QueryBuilder("account").filter_in("name", ["Contoso", "Fabrikam"])
         self.assertEqual(
             qb.build()["filter"],
-            "Microsoft.Dynamics.CRM.In(PropertyName='name',PropertyValues=['Contoso', 'Fabrikam'])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
         )
 
     def test_filter_in_single_value(self):
         qb = QueryBuilder("account").filter_in("statecode", [0])
         self.assertEqual(
             qb.build()["filter"],
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0])",
+            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[\"0\"])",
         )
 
     def test_filter_in_column_lowercased(self):
         qb = QueryBuilder("account").filter_in("StateCode", [0, 1])
         self.assertEqual(
             qb.build()["filter"],
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[0, 1])",
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"])',
         )
 
     def test_filter_in_empty_raises(self):
@@ -117,6 +124,26 @@ class TestFilterIn(unittest.TestCase):
     def test_filter_in_returns_self(self):
         qb = QueryBuilder("account")
         self.assertIs(qb.filter_in("statecode", [0, 1]), qb)
+
+    def test_filter_in_int_enum(self):
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 3
+
+        qb = QueryBuilder("account").filter_in("priority", [Priority.LOW, Priority.HIGH])
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","3"])',
+        )
+
+    def test_filter_in_combined_with_other_filters(self):
+        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_in("priority", [1, 2, 3])
+        self.assertEqual(
+            qb.build()["filter"],
+            'statecode eq 0 and Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","2","3"])',
+        )
 
     def test_filter_ne(self):
         qb = QueryBuilder("account").filter_ne("statecode", 1)
@@ -168,6 +195,10 @@ class TestStringFunctionFilters(unittest.TestCase):
         qb = QueryBuilder("account").filter_endswith("name", "Ltd")
         self.assertEqual(qb.build()["filter"], "endswith(name, 'Ltd')")
 
+    def test_filter_contains_single_quotes(self):
+        qb = QueryBuilder("account").filter_contains("name", "O'Brien")
+        self.assertEqual(qb.build()["filter"], "contains(name, 'O''Brien')")
+
 
 class TestNullFilters(unittest.TestCase):
     """Tests for null/not-null filter methods."""
@@ -207,6 +238,17 @@ class TestFilterBetween(unittest.TestCase):
         self.assertEqual(
             qb.build()["filter"],
             "statecode eq 0 and (revenue ge 100000 and revenue le 500000)",
+        )
+
+    def test_filter_between_datetimes(self):
+        from datetime import datetime, timezone
+
+        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        qb = QueryBuilder("account").filter_between("createdon", start, end)
+        self.assertEqual(
+            qb.build()["filter"],
+            "(createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z)",
         )
 
 
@@ -276,6 +318,16 @@ class TestWhere(unittest.TestCase):
 
         qb = QueryBuilder("account").where(~eq("statecode", 1))
         self.assertEqual(qb.build()["filter"], "not (statecode eq 1)")
+
+    def test_where_with_filter_in(self):
+        from PowerPlatform.Dataverse.models.filters import filter_in, gt
+
+        expr = filter_in("statecode", [0, 1]) & gt("revenue", 100000)
+        qb = QueryBuilder("account").where(expr)
+        self.assertEqual(
+            qb.build()["filter"],
+            '(Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"]) and revenue gt 100000)',
+        )
 
 
 class TestOrderBy(unittest.TestCase):
@@ -517,6 +569,22 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(
             call_args.kwargs["filter"],
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
+        )
+
+    def test_execute_with_filter_in(self):
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.records.get.return_value = iter([])
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.filter_in("statecode", [0, 1, 2])
+        list(qb.execute())
+
+        call_args = mock_client.records.get.call_args
+        self.assertEqual(
+            call_args.kwargs["filter"],
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
         )
 
 
