@@ -125,6 +125,19 @@ class TestFilterIn(unittest.TestCase):
         qb = QueryBuilder("account")
         self.assertIs(qb.filter_in("statecode", [0, 1]), qb)
 
+    def test_filter_in_accepts_set(self):
+        qb = QueryBuilder("account").filter_in("statecode", {0, 1})
+        result = qb.build()["filter"]
+        self.assertIn("Microsoft.Dynamics.CRM.In", result)
+        self.assertIn("statecode", result)
+
+    def test_filter_in_accepts_tuple(self):
+        qb = QueryBuilder("account").filter_in("statecode", (0, 1, 2))
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
+        )
+
     def test_filter_in_int_enum(self):
         from enum import IntEnum
 

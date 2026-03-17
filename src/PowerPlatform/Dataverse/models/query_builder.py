@@ -46,11 +46,12 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, Union
 
 import pandas as pd
 
 from . import filters
+from .record import Record
 
 __all__ = ["QueryBuilder"]
 
@@ -225,7 +226,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------- filter: special
 
-    def filter_in(self, column: str, values: Sequence[Any]) -> QueryBuilder:
+    def filter_in(self, column: str, values: Collection[Any]) -> QueryBuilder:
         """Add an ``in`` filter using ``Microsoft.Dynamics.CRM.In``.
 
         :param column: Column name (will be lowercased).
@@ -243,7 +244,7 @@ class QueryBuilder:
         return self
 
     def filter_not_in(
-        self, column: str, values: Sequence[Any]
+        self, column: str, values: Collection[Any]
     ) -> QueryBuilder:
         """Add a ``not in`` filter using ``Microsoft.Dynamics.CRM.NotIn``.
 
@@ -436,7 +437,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- execute
 
-    def execute(self, *, by_page: bool = False) -> Union[Iterable[Dict[str, Any]], Iterable[List[Dict[str, Any]]]]:
+    def execute(self, *, by_page: bool = False) -> Union[Iterable[Record], Iterable[List[Record]]]:
         """Execute the query and return results.
 
         By default, returns a flat iterator over individual records,
@@ -448,12 +449,14 @@ class QueryBuilder:
         instances should use :meth:`build` to get parameters and pass them
         to ``client.records.get()`` manually.
 
-        :param by_page: If ``True``, yield pages (lists of record dicts)
+        :param by_page: If ``True``, yield pages (lists of
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects)
             instead of individual records. Defaults to ``False``.
         :type by_page: bool
-        :return: Generator yielding individual record dicts (default) or
-            pages of record dicts (when ``by_page=True``).
-        :rtype: Iterable[Dict[str, Any]] or Iterable[List[Dict[str, Any]]]
+        :return: Generator yielding individual
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects
+            (default) or pages of records (when ``by_page=True``).
+        :rtype: Iterable[Record] or Iterable[List[Record]]
         :raises RuntimeError: If the query was not created via
             ``client.query.builder()``.
 
@@ -494,7 +497,7 @@ class QueryBuilder:
         if by_page:
             return pages
 
-        def _flat() -> Iterable[Dict[str, Any]]:
+        def _flat() -> Iterable[Record]:
             for page in pages:
                 yield from page
 

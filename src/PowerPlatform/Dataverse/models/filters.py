@@ -36,7 +36,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Sequence
+from typing import Any, Collection, Sequence
 
 __all__ = [
     "FilterExpression",
@@ -220,7 +220,7 @@ class _InFilter(FilterExpression):
 
     __slots__ = ("column", "values")
 
-    def __init__(self, column: str, values: Sequence[Any]) -> None:
+    def __init__(self, column: str, values: Collection[Any]) -> None:
         if not values:
             raise ValueError("filter_in requires at least one value")
         self.column = column.lower()
@@ -241,7 +241,7 @@ class _NotInFilter(FilterExpression):
 
     __slots__ = ("column", "values")
 
-    def __init__(self, column: str, values: Sequence[Any]) -> None:
+    def __init__(self, column: str, values: Collection[Any]) -> None:
         if not values:
             raise ValueError("not_in requires at least one value")
         self.column = column.lower()
@@ -404,7 +404,7 @@ def is_not_null(column: str) -> FilterExpression:
     return _ComparisonFilter(column, "ne", None)
 
 
-def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
+def filter_in(column: str, values: Collection[Any]) -> FilterExpression:
     """In filter using ``Microsoft.Dynamics.CRM.In``.
 
     Named ``filter_in`` because ``in`` is a Python keyword.
@@ -422,7 +422,7 @@ def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
     return _InFilter(column, values)
 
 
-def not_in(column: str, values: Sequence[Any]) -> FilterExpression:
+def not_in(column: str, values: Collection[Any]) -> FilterExpression:
     """Not-in filter using ``Microsoft.Dynamics.CRM.NotIn``.
 
     Named ``not_in`` to parallel :func:`filter_in`.
