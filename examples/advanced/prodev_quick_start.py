@@ -106,7 +106,7 @@ def run_demo(client):
     print(f"[INFO] Output folder: {OUTPUT_DIR.resolve()}")
 
     # -- Step 1: Create 4 tables --
-    primary_name_col = step1_create_tables(client)
+    primary_name_col, primary_id_col = step1_create_tables(client)
 
     # -- Step 2: Create relationships --
     step2_create_relationships(client)
@@ -118,7 +118,7 @@ def run_demo(client):
     step4_query_and_analyze(client, customer_ids, primary_name_col)
 
     # -- Step 5: Update and delete --
-    step5_update_and_delete(client, task_ids, primary_name_col)
+    step5_update_and_delete(client, task_ids, primary_name_col, primary_id_col)
 
     # -- Step 6: Cleanup --
     cleanup(client)
@@ -148,10 +148,11 @@ def step1_create_tables(client):
             f"{TABLE_CUSTOMER}_Revenue": "money",
         },
     )
-    # The primary name column logical name is returned by tables.create()
-    # so we know exactly what key to use in create payloads.
+    # The primary column logical names are returned by tables.create()
+    # so we know exactly what keys to use in payloads and queries.
     primary_name_col = result.primary_name_attribute
-    print(f"[OK] Created table: {TABLE_CUSTOMER} (primary column: {primary_name_col})")
+    primary_id_col = result.primary_id_attribute
+    print(f"[OK] Created table: {TABLE_CUSTOMER} (name: {primary_name_col}, id: {primary_id_col})")
 
     # Project table
     client.tables.create(
@@ -186,9 +187,9 @@ def step1_create_tables(client):
     )
     print(f"[OK] Created table: {TABLE_TIMEENTRY}")
     print(f"[OK] All 4 tables created (suffix: {SUFFIX})")
-    print(f"[INFO] Primary name column: '{primary_name_col}'")
+    print(f"[INFO] Primary name column: '{primary_name_col}', ID column: '{primary_id_col}'")
 
-    return primary_name_col
+    return primary_name_col, primary_id_col
 
 
 # ================================================================
@@ -451,7 +452,7 @@ def step4_query_and_analyze(client, customer_ids, primary_name_col):
 # ================================================================
 
 
-def step5_update_and_delete(client, task_ids, primary_name_col):
+def step5_update_and_delete(client, task_ids, primary_name_col, primary_id_col):
     """Demonstrate update and delete with DataFrames."""
     print("\n" + "-" * 60)
     print("STEP 5: Update and delete records")
@@ -460,13 +461,14 @@ def step5_update_and_delete(client, task_ids, primary_name_col):
     status_col = f"{TABLE_TASK}_Status"
 
     # Update: mark first two tasks as "Complete"
+    # Use primary_id_col (from tables.create metadata) as the ID column name
     update_df = pd.DataFrame(
         {
-            f"{TABLE_TASK}id": [task_ids.iloc[0], task_ids.iloc[1]],
+            primary_id_col: [task_ids.iloc[0], task_ids.iloc[1]],
             status_col: ["Complete", "Complete"],
         }
     )
-    client.dataframe.update(TABLE_TASK, update_df, id_column=f"{TABLE_TASK}id")
+    client.dataframe.update(TABLE_TASK, update_df, id_column=primary_id_col)
     print(f"[OK] Updated 2 tasks to 'Complete'")
 
     # Delete: remove the last task

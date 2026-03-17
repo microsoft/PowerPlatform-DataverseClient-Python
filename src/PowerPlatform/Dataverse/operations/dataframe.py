@@ -142,7 +142,7 @@ class DataFrameOperations:
             rows.extend(row.data for row in batch)
 
         if not rows:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=select) if select else pd.DataFrame()
         return pd.DataFrame.from_records(rows)
 
     # ----------------------------------------------------------------- create
@@ -287,7 +287,7 @@ class DataFrameOperations:
         change_columns = [column for column in changes.columns if column != id_column]
         if not change_columns:
             raise ValueError(
-                "No columns to update. The DataFrame must contain at least one column " "besides the id_column."
+                "No columns to update. The DataFrame must contain at least one column besides the id_column."
             )
         change_list = dataframe_to_records(changes[change_columns], na_as_null=clear_nulls)
 
@@ -348,7 +348,7 @@ class DataFrameOperations:
         invalid = [ids.index[i] for i, v in enumerate(raw_list) if not isinstance(v, str) or not v.strip()]
         if invalid:
             raise ValueError(
-                f"ids Series contains invalid values at index(es) {invalid}. " "All IDs must be non-empty strings."
+                f"ids Series contains invalid values at index(es) {invalid}. " f"All IDs must be non-empty strings."
             )
         id_list = [v.strip() for v in raw_list]
 

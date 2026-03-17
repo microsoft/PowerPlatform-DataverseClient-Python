@@ -561,8 +561,13 @@ def _summarize_with_template(flagged_df):
     return summaries
 
 
-def _export_llm_log(llm_complete):
-    """Export LLM interaction log (prompts, responses, timing) to a text file."""
+def _export_llm_log(llm_complete, include_prompts=False):
+    """Export LLM interaction log (timing, provider metadata) to a text file.
+
+    By default, prompt and response content is not included to avoid logging
+    sensitive data (PII, customer data). Set include_prompts=True to include
+    full content for debugging.
+    """
     log_path = OUTPUT_DIR / "llm_interactions.txt"
     with open(log_path, "w", encoding="utf-8") as f:
         f.write("LLM Interaction Log\n")
@@ -576,9 +581,12 @@ def _export_llm_log(llm_complete):
 
         for i, entry in enumerate(llm_complete.log, 1):
             f.write(f"--- Call {i} ({entry['elapsed_seconds']:.2f}s) ---\n\n")
-            f.write(f"[System Prompt]\n{entry['system_prompt']}\n\n")
-            f.write(f"[User Prompt]\n{entry['user_prompt']}\n\n")
-            f.write(f"[Response]\n{entry['response']}\n\n")
+            if include_prompts:
+                f.write(f"[System Prompt]\n{entry['system_prompt']}\n\n")
+                f.write(f"[User Prompt]\n{entry['user_prompt']}\n\n")
+                f.write(f"[Response]\n{entry['response']}\n\n")
+            else:
+                f.write(f"[Response length: {len(entry['response'])} chars]\n\n")
 
     print(f"[OK] LLM interaction log saved to {log_path}")
 
