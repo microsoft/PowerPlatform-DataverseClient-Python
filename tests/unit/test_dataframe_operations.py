@@ -59,6 +59,21 @@ class TestDataFrameGet(unittest.TestCase):
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 0)
 
+    def test_get_no_results_with_select_preserves_columns(self):
+        """Empty result with select returns DataFrame with expected columns."""
+        self.client._odata._get_multiple.return_value = iter([])
+        df = self.client.dataframe.get("account", select=["name", "telephone1"])
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 0)
+        self.assertListEqual(list(df.columns), ["name", "telephone1"])
+
+    def test_create_all_nan_rows_raises(self):
+        """DataFrame where all values are NaN raises ValueError."""
+        df = pd.DataFrame([{"name": None, "phone": None}])
+        with self.assertRaises(ValueError) as ctx:
+            self.client.dataframe.create("account", df)
+        self.assertIn("no non-null values", str(ctx.exception))
+
     def test_get_passes_all_params(self):
         """All OData parameters are forwarded to the underlying API call."""
         self.client._odata._get_multiple.return_value = iter([])

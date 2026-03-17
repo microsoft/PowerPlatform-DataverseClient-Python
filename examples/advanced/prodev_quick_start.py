@@ -120,8 +120,12 @@ def run_demo(client):
     # -- Step 5: Update and delete --
     step5_update_and_delete(client, task_ids, primary_name_col, primary_id_col)
 
-    # -- Step 6: Cleanup --
-    cleanup(client)
+    # -- Step 6: Cleanup (optional -- prompts before deleting) --
+    do_cleanup = input("\n6. Delete demo tables and cleanup? (Y/n): ").strip() or "y"
+    if do_cleanup.lower() in ("y", "yes"):
+        cleanup(client)
+    else:
+        print("[INFO] Tables kept for inspection.")
 
     print("\n" + "=" * 60)
     print("[OK] Pro-dev quick start demo complete!")
