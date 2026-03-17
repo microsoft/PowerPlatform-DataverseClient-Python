@@ -643,5 +643,85 @@ class TestExecute(unittest.TestCase):
         )
 
 
+class TestToDataframe(unittest.TestCase):
+    """Tests for the to_dataframe() terminal method."""
+
+    def test_to_dataframe_without_query_ops_raises(self):
+        qb = QueryBuilder("account").filter_eq("statecode", 0)
+        with self.assertRaises(RuntimeError) as ctx:
+            qb.to_dataframe()
+        self.assertIn("client.query.builder()", str(ctx.exception))
+
+    def test_to_dataframe_delegates_to_dataframe_get(self):
+        """to_dataframe() should delegate to client.dataframe.get() with built params."""
+        import pandas as pd
+
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        expected_df = pd.DataFrame([{"name": "Contoso", "revenue": 1000}])
+        mock_client.dataframe.get.return_value = expected_df
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name", "revenue").filter_eq("statecode", 0).order_by("revenue", descending=True).top(100).page_size(
+            50
+        ).expand("primarycontactid")
+
+        result = qb.to_dataframe()
+
+        mock_client.dataframe.get.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0",
+            orderby=["revenue desc"],
+            top=100,
+            expand=["primarycontactid"],
+            page_size=50,
+        )
+        pd.testing.assert_frame_equal(result, expected_df)
+
+    def test_to_dataframe_passes_none_for_empty_options(self):
+        """to_dataframe() with no options should pass None for all optional params."""
+        import pandas as pd
+
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.dataframe.get.return_value = pd.DataFrame()
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.to_dataframe()
+
+        mock_client.dataframe.get.assert_called_once_with(
+            "account",
+            select=None,
+            filter=None,
+            orderby=None,
+            top=None,
+            expand=None,
+            page_size=None,
+        )
+
+    def test_to_dataframe_returns_dataframe(self):
+        """to_dataframe() should return a pandas DataFrame."""
+        import pandas as pd
+
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.dataframe.get.return_value = pd.DataFrame(
+            [{"name": "A", "revenue": 100}, {"name": "B", "revenue": 200}]
+        )
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name", "revenue")
+
+        result = qb.to_dataframe()
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 2)
+        self.assertListEqual(list(result.columns), ["name", "revenue"])
+
+
 if __name__ == "__main__":
     unittest.main()

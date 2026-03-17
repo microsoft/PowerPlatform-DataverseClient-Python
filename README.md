@@ -291,6 +291,16 @@ for record in (client.query.builder("account")
 The QueryBuilder handles value formatting, column name casing, and OData syntax automatically. All filter methods are discoverable via IDE autocomplete:
 
 ```python
+# Get results as a pandas DataFrame (consolidates all pages)
+df = (client.query.builder("account")
+      .select("name", "telephone1")
+      .filter_eq("statecode", 0)
+      .top(100)
+      .to_dataframe())
+print(f"Got {len(df)} accounts")
+```
+
+```python
 # Comparison filters
 query = (client.query.builder("contact")
          .filter_eq("statecode", 0)          # statecode eq 0

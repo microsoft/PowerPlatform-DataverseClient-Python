@@ -35,11 +35,20 @@ Example::
                  .select("name")
                  .execute(by_page=True)):
         process_batch(page)
+
+    # Get results as a pandas DataFrame
+    df = (client.query.builder("account")
+          .select("name", "telephone1")
+          .filter_eq("statecode", 0)
+          .top(100)
+          .to_dataframe())
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+
+import pandas as pd
 
 from . import filters
 
@@ -490,3 +499,44 @@ class QueryBuilder:
                 yield from page
 
         return _flat()
+
+    # ----------------------------------------------------------- to_dataframe
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Execute the query and return results as a pandas DataFrame.
+
+        All pages are consolidated into a single DataFrame, matching
+        the behavior of ``client.dataframe.get()``.
+
+        This method is only available when the QueryBuilder was created
+        via ``client.query.builder(table)``.
+
+        :return: DataFrame containing all matching records. Returns an empty
+            DataFrame when no records match.
+        :rtype: ~pandas.DataFrame
+        :raises RuntimeError: If the query was not created via
+            ``client.query.builder()``.
+
+        Example::
+
+            df = (client.query.builder("account")
+                  .select("name", "telephone1")
+                  .filter_eq("statecode", 0)
+                  .top(100)
+                  .to_dataframe())
+        """
+        if self._query_ops is None:
+            raise RuntimeError(
+                "Cannot execute: query was not created via client.query.builder(). "
+                "Use build() and pass parameters to client.dataframe.get() instead."
+            )
+        params = self.build()
+        return self._query_ops._client.dataframe.get(
+            params["table"],
+            select=params.get("select"),
+            filter=params.get("filter"),
+            orderby=params.get("orderby"),
+            top=params.get("top"),
+            expand=params.get("expand"),
+            page_size=params.get("page_size"),
+        )
