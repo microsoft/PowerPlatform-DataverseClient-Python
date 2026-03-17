@@ -293,7 +293,9 @@ def step3_populate_data(client, primary_name_col):
     print(f"[OK] Created {len(customers_df)} customers")
 
     # -- Projects (linked to customers via lookup) --
-    # The @odata.bind key references the lookup navigation property
+    # @odata.bind keys use the navigation property logical name (lowercase)
+    # and the entity set name (also lowercase) in the value.
+    customer_lookup = f"{TABLE_PROJECT}_CustomerId".lower() + "@odata.bind"
     customer_set = TABLE_CUSTOMER.lower() + "s"
     projects_df = pd.DataFrame(
         [
@@ -302,28 +304,28 @@ def step3_populate_data(client, primary_name_col):
                 f"{TABLE_PROJECT}_Budget": 250000,
                 f"{TABLE_PROJECT}_Status": "Active",
                 f"{TABLE_PROJECT}_StartDate": pd.Timestamp("2026-01-15"),
-                f"{TABLE_PROJECT}_CustomerId@odata.bind": f"/{customer_set}({customer_ids.iloc[0]})",
+                customer_lookup: f"/{customer_set}({customer_ids.iloc[0]})",
             },
             {
                 name_col: "ERP Upgrade",
                 f"{TABLE_PROJECT}_Budget": 500000,
                 f"{TABLE_PROJECT}_Status": "Active",
                 f"{TABLE_PROJECT}_StartDate": pd.Timestamp("2026-02-01"),
-                f"{TABLE_PROJECT}_CustomerId@odata.bind": f"/{customer_set}({customer_ids.iloc[1]})",
+                customer_lookup: f"/{customer_set}({customer_ids.iloc[1]})",
             },
             {
                 name_col: "POS Modernization",
                 f"{TABLE_PROJECT}_Budget": 150000,
                 f"{TABLE_PROJECT}_Status": "Planning",
                 f"{TABLE_PROJECT}_StartDate": pd.Timestamp("2026-03-01"),
-                f"{TABLE_PROJECT}_CustomerId@odata.bind": f"/{customer_set}({customer_ids.iloc[2]})",
+                customer_lookup: f"/{customer_set}({customer_ids.iloc[2]})",
             },
             {
                 name_col: "Data Analytics Platform",
                 f"{TABLE_PROJECT}_Budget": 180000,
                 f"{TABLE_PROJECT}_Status": "Active",
                 f"{TABLE_PROJECT}_StartDate": pd.Timestamp("2026-01-20"),
-                f"{TABLE_PROJECT}_CustomerId@odata.bind": f"/{customer_set}({customer_ids.iloc[0]})",
+                customer_lookup: f"/{customer_set}({customer_ids.iloc[0]})",
             },
         ]
     )
@@ -345,6 +347,7 @@ def step3_populate_data(client, primary_name_col):
 
     for i, (task_name, priority, status, hours) in enumerate(task_names):
         proj_idx = project_assignment[i]
+        project_lookup = f"{TABLE_TASK}_ProjectId".lower() + "@odata.bind"
         project_set = TABLE_PROJECT.lower() + "s"
         tasks_data.append(
             {
@@ -352,7 +355,7 @@ def step3_populate_data(client, primary_name_col):
                 f"{TABLE_TASK}_Priority": priority,
                 f"{TABLE_TASK}_Status": status,
                 f"{TABLE_TASK}_EstimatedHours": hours,
-                f"{TABLE_TASK}_ProjectId@odata.bind": f"/{project_set}({project_ids.iloc[proj_idx]})",
+                project_lookup: f"/{project_set}({project_ids.iloc[proj_idx]})",
             }
         )
 
