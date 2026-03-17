@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0b7] - 2026-03-17
+
+### Added
+- DataFrame namespace: `client.dataframe.get()`, `.create()`, `.update()`, `.delete()` for working with Dataverse records as pandas DataFrames and Series — no manual dict conversion required (#98)
+- Table metadata now includes `primary_name_attribute` and `primary_id_attribute` from `tables.create()` and `tables.get_info()` (#148)
+
+### Changed
+- `pandas>=2.0.0` is now a required dependency (#98)
+
 ## [0.1.0b6] - 2026-03-12
 
 ### Added
@@ -82,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
+[0.1.0b7]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b6...v0.1.0b7
 [0.1.0b6]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b5...v0.1.0b6
 [0.1.0b5]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b4...v0.1.0b5
 [0.1.0b4]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b3...v0.1.0b4
