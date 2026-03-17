@@ -236,7 +236,18 @@ class DataFrameOperations:
             raise ValueError(f"id_column '{id_column}' not found in DataFrame columns")
 
         ids = changes[id_column].tolist()
+        invalid = [i for i, v in enumerate(ids) if not isinstance(v, str) or not v.strip()]
+        if invalid:
+            raise ValueError(
+                f"id_column '{id_column}' contains invalid values at row index(es) {invalid}. "
+                "All IDs must be non-empty strings."
+            )
+
         change_columns = [column for column in changes.columns if column != id_column]
+        if not change_columns:
+            raise ValueError(
+                "No columns to update. The DataFrame must contain at least one column " "besides the id_column."
+            )
         change_list = dataframe_to_records(changes[change_columns], na_as_null=clear_nulls)
 
         if len(ids) == 1:
@@ -279,6 +290,15 @@ class DataFrameOperations:
             raise TypeError("ids must be a pandas Series")
 
         id_list = ids.tolist()
+        if not id_list:
+            return None
+
+        invalid = [i for i, v in enumerate(id_list) if not isinstance(v, str) or not v.strip()]
+        if invalid:
+            raise ValueError(
+                f"ids Series contains invalid values at index(es) {invalid}. " "All IDs must be non-empty strings."
+            )
+
         if len(id_list) == 1:
             return self._client.records.delete(table, id_list[0])
         else:
