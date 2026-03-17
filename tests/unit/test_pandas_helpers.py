@@ -8,7 +8,63 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from PowerPlatform.Dataverse.utils._pandas import dataframe_to_records
+from PowerPlatform.Dataverse.utils._pandas import _normalize_scalar, dataframe_to_records
+
+
+class TestNormalizeScalar(unittest.TestCase):
+    """Unit tests for _normalize_scalar()."""
+
+    def test_timestamp(self):
+        """pd.Timestamp is converted to an ISO 8601 string."""
+        ts = pd.Timestamp("2024-01-15 10:30:00")
+        result = _normalize_scalar(ts)
+        self.assertEqual(result, "2024-01-15T10:30:00")
+
+    def test_numpy_integer(self):
+        """np.int64 is converted to Python int."""
+        result = _normalize_scalar(np.int64(42))
+        self.assertIsInstance(result, int)
+        self.assertEqual(result, 42)
+
+    def test_numpy_floating(self):
+        """np.float64 is converted to Python float."""
+        result = _normalize_scalar(np.float64(3.14))
+        self.assertIsInstance(result, float)
+        self.assertAlmostEqual(result, 3.14)
+
+    def test_numpy_bool(self):
+        """np.bool_ is converted to Python bool."""
+        result = _normalize_scalar(np.bool_(True))
+        self.assertIsInstance(result, bool)
+        self.assertTrue(result)
+
+    def test_python_str_passthrough(self):
+        """Python str values pass through unchanged."""
+        result = _normalize_scalar("hello")
+        self.assertEqual(result, "hello")
+
+    def test_python_int_passthrough(self):
+        """Native Python int values pass through unchanged."""
+        result = _normalize_scalar(42)
+        self.assertIsInstance(result, int)
+        self.assertEqual(result, 42)
+
+    def test_python_float_passthrough(self):
+        """Native Python float values pass through unchanged."""
+        result = _normalize_scalar(3.14)
+        self.assertIsInstance(result, float)
+        self.assertAlmostEqual(result, 3.14)
+
+    def test_python_bool_passthrough(self):
+        """Native Python bool values pass through unchanged."""
+        result = _normalize_scalar(True)
+        self.assertIsInstance(result, bool)
+        self.assertTrue(result)
+
+    def test_none_passthrough(self):
+        """None passes through unchanged (caller is responsible for NA handling)."""
+        result = _normalize_scalar(None)
+        self.assertIsNone(result)
 
 
 class TestDataframeToRecords(unittest.TestCase):

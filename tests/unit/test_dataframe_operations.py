@@ -361,5 +361,78 @@ class TestDataFrameDelete(unittest.TestCase):
         self.assertEqual(self.client._odata._delete.call_count, 2)
 
 
+class TestDataFrameEndToEnd(unittest.TestCase):
+    """End-to-end mocked flow: create -> get -> update -> delete."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+    def test_create_get_update_delete_flow(self):
+        """Full CRUD cycle works end-to-end through the dataframe namespace."""
+        # Step 1: create
+        df = pd.DataFrame(
+            [{"name": "Contoso", "telephone1": "555-0100"}, {"name": "Fabrikam", "telephone1": "555-0200"}]
+        )
+        self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
+
+        ids = self.client.dataframe.create("account", df)
+
+        self.assertIsInstance(ids, pd.Series)
+        self.assertListEqual(ids.tolist(), ["guid-1", "guid-2"])
+
+        # Step 2: get
+        df["accountid"] = ids
+        self.client._odata._get_multiple.return_value = iter(
+            [[{"accountid": "guid-1", "name": "Contoso"}, {"accountid": "guid-2", "name": "Fabrikam"}]]
+        )
+
+        result_df = self.client.dataframe.get("account", select=["accountid", "name"])
+
+        self.assertIsInstance(result_df, pd.DataFrame)
+        self.assertEqual(len(result_df), 2)
+
+        # Step 3: update
+        df["telephone1"] = ["555-9999", "555-8888"]
+
+        self.client.dataframe.update("account", df, id_column="accountid")
+
+        self.client._odata._update_by_ids.assert_called_once()
+
+        # Step 4: delete
+        self.client._odata._delete_multiple.return_value = "job-abc"
+
+        job_id = self.client.dataframe.delete("account", df["accountid"])
+
+        self.assertEqual(job_id, "job-abc")
+        self.client._odata._delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2"])
+
+    def test_create_normalizes_numpy_types_before_api(self):
+        """NumPy types in DataFrame cells are normalized to Python types before the API call."""
+        df = pd.DataFrame(
+            [
+                {
+                    "count": np.int64(10),
+                    "score": np.float64(9.5),
+                    "active": np.bool_(True),
+                    "createdon": pd.Timestamp("2024-06-01"),
+                }
+            ]
+        )
+        self.client._odata._create_multiple.return_value = ["guid-1"]
+
+        self.client.dataframe.create("account", df)
+
+        records_arg = self.client._odata._create_multiple.call_args[0][2]
+        rec = records_arg[0]
+        self.assertIsInstance(rec["count"], int)
+        self.assertIsInstance(rec["score"], float)
+        self.assertIsInstance(rec["active"], bool)
+        self.assertIsInstance(rec["createdon"], str)
+        self.assertEqual(rec["createdon"], "2024-06-01T00:00:00")
+
+
 if __name__ == "__main__":
     unittest.main()
