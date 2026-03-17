@@ -129,7 +129,7 @@ class DataFrameOperations:
             )
             return pd.DataFrame([result.data])
 
-        frames: List[pd.DataFrame] = []
+        rows: List[dict] = []
         for batch in self._client.records.get(
             table,
             select=select,
@@ -139,11 +139,11 @@ class DataFrameOperations:
             expand=expand,
             page_size=page_size,
         ):
-            frames.append(pd.DataFrame([row.data for row in batch]))
+            rows.extend(row.data for row in batch)
 
-        if not frames:
+        if not rows:
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        return pd.DataFrame.from_records(rows)
 
     # ----------------------------------------------------------------- create
 
@@ -189,6 +189,15 @@ class DataFrameOperations:
             raise ValueError("records must be a non-empty DataFrame")
 
         record_list = dataframe_to_records(records)
+
+        # Detect rows where all values were NaN/None (empty dicts after normalization)
+        empty_rows = [records.index[i] for i, r in enumerate(record_list) if not r]
+        if empty_rows:
+            raise ValueError(
+                f"Records at index(es) {empty_rows} have no non-null values. "
+                "All rows must contain at least one field to create."
+            )
+
         ids = self._client.records.create(table, record_list)
 
         if len(ids) != len(records):

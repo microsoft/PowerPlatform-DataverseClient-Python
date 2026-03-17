@@ -34,7 +34,7 @@ of the SDK and must be installed separately. Pick ONE LLM provider):
     pip install matplotlib          # for charts / visualization
     pip install azure-ai-inference   # Option A: Azure AI Foundry / Azure OpenAI
     pip install openai               # Option B: OpenAI / Azure OpenAI
-    pip install copilot-sdk          # Option C: GitHub Copilot SDK (requires Copilot CLI)
+    pip install github-copilot-sdk   # Option C: GitHub Copilot SDK (requires Copilot CLI)
 """
 
 import sys
@@ -79,10 +79,10 @@ except ImportError:
 #   - Works with OpenAI API and Azure OpenAI
 #   - pip install openai
 #
-# Option C: GitHub Copilot SDK (copilot-sdk)
+# Option C: GitHub Copilot SDK (github-copilot-sdk)
 #   - Uses your existing GitHub Copilot subscription (no separate API key)
 #   - Requires the Copilot CLI binary and async execution
-#   - pip install copilot-sdk
+#   - pip install github-copilot-sdk
 # ================================================================
 
 
