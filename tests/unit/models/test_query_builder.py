@@ -465,6 +465,45 @@ class TestExpand(unittest.TestCase):
         qb = QueryBuilder("account")
         self.assertIs(qb.expand("primarycontactid"), qb)
 
+    def test_expand_with_expand_option(self):
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = ExpandOption("Account_Tasks").select("subject", "createdon").top(5)
+        qb = QueryBuilder("account").expand(opt)
+        self.assertEqual(
+            qb.build()["expand"],
+            ["Account_Tasks($select=subject,createdon;$top=5)"],
+        )
+
+    def test_expand_option_with_filter_and_orderby(self):
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = (ExpandOption("Account_Tasks")
+               .select("subject")
+               .filter("contains(subject,'Task')")
+               .order_by("createdon", descending=True)
+               .top(10))
+        self.assertEqual(
+            opt.to_odata(),
+            "Account_Tasks($select=subject;$filter=contains(subject,'Task');$orderby=createdon desc;$top=10)",
+        )
+
+    def test_expand_option_no_options_returns_plain_name(self):
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = ExpandOption("primarycontactid")
+        self.assertEqual(opt.to_odata(), "primarycontactid")
+
+    def test_expand_mixed_strings_and_options(self):
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = ExpandOption("Account_Tasks").select("subject")
+        qb = QueryBuilder("account").expand("primarycontactid", opt)
+        self.assertEqual(
+            qb.build()["expand"],
+            ["primarycontactid", "Account_Tasks($select=subject)"],
+        )
+
 
 class TestCount(unittest.TestCase):
     """Tests for the count() method."""

@@ -53,7 +53,97 @@ import pandas as pd
 from . import filters
 from .record import Record
 
-__all__ = ["QueryBuilder"]
+__all__ = ["QueryBuilder", "ExpandOption"]
+
+
+class ExpandOption:
+    """Structured options for an ``$expand`` navigation property.
+
+    Allows specifying nested ``$select``, ``$filter``, ``$orderby``, and
+    ``$top`` options for a single navigation property expansion, following
+    the OData ``$expand`` syntax.
+
+    :param relation: Navigation property name (case-sensitive).
+    :type relation: str
+
+    Example::
+
+        # Expand Account_Tasks with nested options
+        opt = (ExpandOption("Account_Tasks")
+               .select("subject", "createdon")
+               .filter("contains(subject,'Task')")
+               .order_by("createdon", descending=True)
+               .top(5))
+
+        query = (client.query.builder("account")
+                 .select("name")
+                 .expand(opt)
+                 .execute())
+    """
+
+    def __init__(self, relation: str) -> None:
+        self.relation = relation
+        self._select: List[str] = []
+        self._filter: Optional[str] = None
+        self._orderby: List[str] = []
+        self._top: Optional[int] = None
+
+    def select(self, *columns: str) -> ExpandOption:
+        """Select specific columns from the expanded entity.
+
+        :param columns: Column names to select.
+        :return: Self for method chaining.
+        """
+        self._select.extend(columns)
+        return self
+
+    def filter(self, filter_str: str) -> ExpandOption:
+        """Filter the expanded collection.
+
+        :param filter_str: OData ``$filter`` expression.
+        :return: Self for method chaining.
+        """
+        self._filter = filter_str
+        return self
+
+    def order_by(self, column: str, descending: bool = False) -> ExpandOption:
+        """Sort the expanded collection.
+
+        :param column: Column name to sort by.
+        :param descending: Sort descending if ``True``.
+        :return: Self for method chaining.
+        """
+        order = f"{column} desc" if descending else column
+        self._orderby.append(order)
+        return self
+
+    def top(self, count: int) -> ExpandOption:
+        """Limit expanded results.
+
+        :param count: Maximum number of expanded records.
+        :return: Self for method chaining.
+        """
+        self._top = count
+        return self
+
+    def to_odata(self) -> str:
+        """Compile to OData ``$expand`` syntax.
+
+        :return: OData expand string like ``"Nav($select=col1,col2;$filter=...)"``
+        :rtype: str
+        """
+        options: List[str] = []
+        if self._select:
+            options.append(f"$select={','.join(self._select)}")
+        if self._filter:
+            options.append(f"$filter={self._filter}")
+        if self._orderby:
+            options.append(f"$orderby={','.join(self._orderby)}")
+        if self._top is not None:
+            options.append(f"$top={self._top}")
+        if options:
+            return f"{self.relation}({';'.join(options)})"
+        return self.relation
 
 
 class QueryBuilder:
@@ -467,15 +557,34 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- expand
 
-    def expand(self, *relations: str) -> QueryBuilder:
+    def expand(self, *relations: Union[str, ExpandOption]) -> QueryBuilder:
         """Expand navigation properties.
 
-        Navigation property names are case-sensitive and passed as-is.
+        Accepts plain navigation property names (case-sensitive, passed
+        as-is) or :class:`ExpandOption` objects for nested options like
+        ``$select``, ``$filter``, ``$orderby``, and ``$top``.
 
-        :param relations: Navigation property names to expand.
+        :param relations: Navigation property names or
+            :class:`ExpandOption` objects.
         :return: Self for method chaining.
+
+        Example::
+
+            # Simple expand
+            query = QueryBuilder("account").expand("primarycontactid")
+
+            # Nested expand with options
+            query = (QueryBuilder("account")
+                     .expand(ExpandOption("Account_Tasks")
+                             .select("subject")
+                             .filter("contains(subject,'Task')")
+                             .top(5)))
         """
-        self._expand.extend(relations)
+        for rel in relations:
+            if isinstance(rel, ExpandOption):
+                self._expand.append(rel.to_odata())
+            else:
+                self._expand.append(rel)
         return self
 
     # --------------------------------------------------------------- build
