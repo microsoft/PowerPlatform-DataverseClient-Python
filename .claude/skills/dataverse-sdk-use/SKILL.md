@@ -30,6 +30,9 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 - Control page size with `page_size` parameter
 - Use `top` parameter to limit total records returned
 
+### DataFrame Support
+- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.get()`, `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()`
+
 ## Common Operations
 
 ### Import
@@ -129,7 +132,7 @@ client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 ```
 
 #### Upsert Records
-Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+Creates or updates records identified by alternate keys. Single item -> PATCH; multiple items -> `UpsertMultiple` bulk action.
 > **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
 ```python
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
@@ -169,6 +172,42 @@ client.records.delete("account", account_id)
 
 # Bulk delete (uses BulkDelete API)
 client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
+```
+
+### DataFrame Operations
+
+The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
+
+```python
+import pandas as pd
+
+# Query records -- returns a single DataFrame
+df = client.dataframe.get("account", filter="statecode eq 0", select=["name"])
+print(f"Got {len(df)} rows")
+
+# Limit results with top for large tables
+df = client.dataframe.get("account", select=["name"], top=100)
+
+# Fetch single record as one-row DataFrame
+df = client.dataframe.get("account", record_id=account_id, select=["name"])
+
+# Create records from a DataFrame (returns a Series of GUIDs)
+new_accounts = pd.DataFrame([
+    {"name": "Contoso", "telephone1": "555-0100"},
+    {"name": "Fabrikam", "telephone1": "555-0200"},
+])
+new_accounts["accountid"] = client.dataframe.create("account", new_accounts)
+
+# Update records from a DataFrame (id_column identifies the GUID column)
+new_accounts["telephone1"] = ["555-0199", "555-0299"]
+client.dataframe.update("account", new_accounts, id_column="accountid")
+
+# Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
+df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
+client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
+
+# Delete records by passing a Series of GUIDs
+client.dataframe.delete("account", new_accounts["accountid"])
 ```
 
 ### SQL Queries

@@ -14,6 +14,7 @@ from azure.core.credentials import TokenCredential
 from .core._auth import _AuthManager
 from .core.config import DataverseConfig
 from .data._odata import _ODataClient
+from .operations.dataframe import DataFrameOperations
 from .operations.records import RecordOperations
 from .operations.query import QueryOperations
 from .operations.files import FileOperations
@@ -60,6 +61,7 @@ class DataverseClient:
     - ``client.query`` -- query and search operations
     - ``client.tables`` -- table and column metadata management
     - ``client.files`` -- file upload operations
+    - ``client.dataframe`` -- pandas DataFrame wrappers for record CRUD
 
     The client supports Python's context manager protocol for automatic resource
     cleanup and HTTP connection pooling:
@@ -106,6 +108,7 @@ class DataverseClient:
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
         self.files = FileOperations(self)
+        self.dataframe = DataFrameOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """
