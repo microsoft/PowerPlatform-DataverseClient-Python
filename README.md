@@ -333,6 +333,45 @@ for record in (client.query.builder("account")
     print(record["name"])
 ```
 
+**Formatted values and annotations** -- request localized labels, currency symbols, and display names:
+
+```python
+# Get formatted values (choice labels, currency, lookup names)
+for record in (client.query.builder("account")
+               .select("name", "statecode", "revenue")
+               .include_formatted_values()
+               .execute()):
+    status = record["statecode@OData.Community.Display.V1.FormattedValue"]
+    print(f"{record['name']}: {status}")
+```
+
+**Nested expand with options** -- expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
+
+```python
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+# Expand related tasks with filtering and sorting
+for record in (client.query.builder("account")
+               .select("name")
+               .expand(ExpandOption("Account_Tasks")
+                       .select("subject", "createdon")
+                       .filter("contains(subject,'Task')")
+                       .order_by("createdon", descending=True)
+                       .top(5))
+               .execute()):
+    print(record["name"], record.get("Account_Tasks"))
+```
+
+**Record count** -- include `$count=true` in the request:
+
+```python
+# Request count alongside results
+results = (client.query.builder("account")
+           .filter_eq("statecode", 0)
+           .count()
+           .execute())
+```
+
 **SQL queries** provide an alternative read-only query syntax:
 
 ```python
