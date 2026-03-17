@@ -24,6 +24,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Basic CRUD operations](#basic-crud-operations)
   - [Bulk operations](#bulk-operations)
   - [Upsert operations](#upsert-operations)
+  - [DataFrame operations](#dataframe-operations)
   - [Query data](#query-data)
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
@@ -39,6 +40,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter  
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
+- **🐼 DataFrame Support**: Pandas wrappers for all CRUD operations, returning DataFrames and Series
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
@@ -230,6 +232,42 @@ client.records.upsert("account", [
         "record": {"name": "Contoso Ltd"},
     }
 ])
+```
+
+### DataFrame operations
+
+The SDK provides pandas wrappers for all CRUD operations via the `client.dataframe` namespace, using DataFrames and Series for input and output.
+
+```python
+import pandas as pd
+
+# Query records as a single DataFrame
+df = client.dataframe.get("account", filter="statecode eq 0", select=["name", "telephone1"])
+print(f"Found {len(df)} accounts")
+
+# Limit results with top for large tables
+df = client.dataframe.get("account", select=["name"], top=100)
+
+# Fetch a single record as a one-row DataFrame
+df = client.dataframe.get("account", record_id=account_id, select=["name"])
+
+# Create records from a DataFrame (returns a Series of GUIDs)
+new_accounts = pd.DataFrame([
+    {"name": "Contoso", "telephone1": "555-0100"},
+    {"name": "Fabrikam", "telephone1": "555-0200"},
+])
+new_accounts["accountid"] = client.dataframe.create("account", new_accounts)
+
+# Update records from a DataFrame (id_column identifies the GUID column)
+new_accounts["telephone1"] = ["555-0199", "555-0299"]
+client.dataframe.update("account", new_accounts, id_column="accountid")
+
+# Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
+df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
+client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
+
+# Delete records by passing a Series of GUIDs
+client.dataframe.delete("account", new_accounts["accountid"])
 ```
 
 ### Query data

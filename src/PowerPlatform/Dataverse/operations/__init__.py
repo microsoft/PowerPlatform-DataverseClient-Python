@@ -8,4 +8,4 @@ This module contains the operation namespace classes that organize
 SDK operations into logical groups: records, query, and tables.
 """
 
-__all__ = []
+__all__: list[str] = []
