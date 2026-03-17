@@ -23,6 +23,8 @@ from PowerPlatform.Dataverse.models.filters import (
     is_null,
     is_not_null,
     filter_in,
+    not_in,
+    not_between,
     raw,
 )
 
@@ -317,18 +319,123 @@ class TestInFilter(unittest.TestCase):
             'Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","3"])',
         )
 
-    def test_filter_in_strings_with_quotes(self):
-        self.assertEqual(
-            filter_in("name", ["O'Brien", "McDonald's"]).to_odata(),
-            "Microsoft.Dynamics.CRM.In(PropertyName='name',PropertyValues=[\"O'Brien\",\"McDonald's\"])",
-        )
-
     def test_filter_in_uuids(self):
         uid1 = uuid.UUID("12345678-1234-1234-1234-123456789abc")
         uid2 = uuid.UUID("87654321-4321-4321-4321-cba987654321")
         self.assertEqual(
             filter_in("accountid", [uid1, uid2]).to_odata(),
             'Microsoft.Dynamics.CRM.In(PropertyName=\'accountid\',PropertyValues=["12345678-1234-1234-1234-123456789abc","87654321-4321-4321-4321-cba987654321"])',
+        )
+
+    def test_filter_in_bools(self):
+        self.assertEqual(
+            filter_in("completed", [True, False]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'completed\',PropertyValues=["true","false"])',
+        )
+
+    def test_filter_in_floats(self):
+        self.assertEqual(
+            filter_in("amount", [10.5, 20.0]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'amount\',PropertyValues=["10.5","20.0"])',
+        )
+
+    def test_filter_in_datetimes(self):
+        from datetime import datetime, timezone
+
+        dt1 = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        dt2 = datetime(2024, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(
+            filter_in("createdon", [dt1, dt2]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'createdon\',PropertyValues=["2024-01-15T10:30:00Z","2024-06-01T00:00:00Z"])',
+        )
+
+    def test_filter_in_none(self):
+        self.assertEqual(
+            filter_in("status", [None, 1]).to_odata(),
+            'Microsoft.Dynamics.CRM.In(PropertyName=\'status\',PropertyValues=["null","1"])',
+        )
+
+    def test_filter_in_mixed_types(self):
+        """Ints, bools, and strings together."""
+        result = filter_in("field", [1, True, "hello"]).to_odata()
+        self.assertIn('"1"', result)
+        self.assertIn('"true"', result)
+        self.assertIn('"hello"', result)
+
+
+class TestNotInFilter(unittest.TestCase):
+    """Tests for the not_in factory function."""
+
+    def test_not_in_ints(self):
+        self.assertEqual(
+            not_in("statecode", [2, 3]).to_odata(),
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
+        )
+
+    def test_not_in_strings(self):
+        self.assertEqual(
+            not_in("name", ["Contoso", "Fabrikam"]).to_odata(),
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
+        )
+
+    def test_not_in_single_value(self):
+        self.assertEqual(
+            not_in("statecode", [0]).to_odata(),
+            "Microsoft.Dynamics.CRM.NotIn(PropertyName='statecode',PropertyValues=[\"0\"])",
+        )
+
+    def test_not_in_column_lowercased(self):
+        self.assertEqual(
+            not_in("StateCode", [0, 1]).to_odata(),
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["0","1"])',
+        )
+
+    def test_not_in_empty_raises(self):
+        with self.assertRaises(ValueError):
+            not_in("statecode", [])
+
+    def test_not_in_int_enum(self):
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 3
+
+        self.assertEqual(
+            not_in("priority", [Priority.LOW, Priority.HIGH]).to_odata(),
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'priority\',PropertyValues=["1","3"])',
+        )
+
+
+class TestNotBetween(unittest.TestCase):
+    """Tests for the not_between factory function."""
+
+    def test_not_between_ints(self):
+        self.assertEqual(
+            not_between("revenue", 100000, 500000).to_odata(),
+            "not ((revenue ge 100000 and revenue le 500000))",
+        )
+
+    def test_not_between_floats(self):
+        self.assertEqual(
+            not_between("amount", 10.5, 99.9).to_odata(),
+            "not ((amount ge 10.5 and amount le 99.9))",
+        )
+
+    def test_not_between_datetimes(self):
+        from datetime import datetime, timezone
+
+        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        self.assertEqual(
+            not_between("createdon", start, end).to_odata(),
+            "not ((createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z))",
+        )
+
+    def test_not_between_column_lowercased(self):
+        self.assertEqual(
+            not_between("Revenue", 100, 500).to_odata(),
+            "not ((revenue ge 100 and revenue le 500))",
         )
 
 

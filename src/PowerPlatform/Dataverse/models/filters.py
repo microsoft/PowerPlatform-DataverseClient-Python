@@ -53,6 +53,8 @@ __all__ = [
     "is_null",
     "is_not_null",
     "filter_in",
+    "not_in",
+    "not_between",
     "raw",
 ]
 
@@ -226,12 +228,31 @@ class _InFilter(FilterExpression):
 
     def to_odata(self) -> str:
         # PropertyValues is Collection(Edm.String)
-        formatted = ",".join(
-            f'"{v.value if isinstance(v, enum.Enum) else v}"'
-            for v in self.values
-        )
+        parts = [f'"{_format_value(v).strip("'")}"' for v in self.values]
+        formatted = ",".join(parts)
         return (
             f"Microsoft.Dynamics.CRM.In"
+            f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
+        )
+
+
+class _NotInFilter(FilterExpression):
+    """Not-in filter using ``Microsoft.Dynamics.CRM.NotIn``."""
+
+    __slots__ = ("column", "values")
+
+    def __init__(self, column: str, values: Sequence[Any]) -> None:
+        if not values:
+            raise ValueError("not_in requires at least one value")
+        self.column = column.lower()
+        self.values = list(values)
+
+    def to_odata(self) -> str:
+        # Same Collection(Edm.String) rules as _InFilter.
+        parts = [f'"{ _format_value(v).strip("'") }"' for v in self.values]
+        formatted = ",".join(parts)
+        return (
+            f"Microsoft.Dynamics.CRM.NotIn"
             f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
         )
 
@@ -399,6 +420,42 @@ def filter_in(column: str, values: Sequence[Any]) -> FilterExpression:
         # "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=["0","1","2"])"
     """
     return _InFilter(column, values)
+
+
+def not_in(column: str, values: Sequence[Any]) -> FilterExpression:
+    """Not-in filter using ``Microsoft.Dynamics.CRM.NotIn``.
+
+    Named ``not_in`` to parallel :func:`filter_in`.
+
+    :param column: Column name (will be lowercased).
+    :param values: Non-empty sequence of values.
+    :return: A filter expression.
+    :raises ValueError: If ``values`` is empty.
+
+    Example::
+
+        not_in("statecode", [0, 1]).to_odata()
+        # "Microsoft.Dynamics.CRM.NotIn(PropertyName='statecode',PropertyValues=[\"0\",\"1\"])"
+    """
+    return _NotInFilter(column, values)
+
+
+def not_between(column: str, low: Any, high: Any) -> FilterExpression:
+    """Not-between filter: ``not (column ge low and column le high)``.
+
+    Syntactic sugar that negates :func:`between` with ``~``.
+
+    :param column: Column name (will be lowercased).
+    :param low: Lower bound (inclusive, will be excluded).
+    :param high: Upper bound (inclusive, will be excluded).
+    :return: A composed filter expression.
+
+    Example::
+
+        not_between("revenue", 100000, 500000).to_odata()
+        # "not ((revenue ge 100000 and revenue le 500000))"
+    """
+    return ~between(column, low, high)
 
 
 def raw(filter_string: str) -> FilterExpression:

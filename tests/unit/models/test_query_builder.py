@@ -252,6 +252,61 @@ class TestFilterBetween(unittest.TestCase):
         )
 
 
+class TestFilterNotIn(unittest.TestCase):
+    """Tests for the filter_not_in() method."""
+
+    def test_filter_not_in_ints(self):
+        qb = QueryBuilder("account").filter_not_in("statecode", [2, 3])
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
+        )
+
+    def test_filter_not_in_strings(self):
+        qb = QueryBuilder("account").filter_not_in("name", ["Contoso", "Fabrikam"])
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
+        )
+
+    def test_filter_not_in_empty_raises(self):
+        with self.assertRaises(ValueError):
+            QueryBuilder("account").filter_not_in("statecode", [])
+
+    def test_filter_not_in_returns_self(self):
+        qb = QueryBuilder("account")
+        self.assertIs(qb.filter_not_in("statecode", [0, 1]), qb)
+
+    def test_filter_not_in_combined_with_other_filters(self):
+        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_not_in("priority", [1, 2])
+        self.assertEqual(
+            qb.build()["filter"],
+            'statecode eq 0 and Microsoft.Dynamics.CRM.NotIn(PropertyName=\'priority\',PropertyValues=["1","2"])',
+        )
+
+
+class TestFilterNotBetween(unittest.TestCase):
+    """Tests for the filter_not_between() method."""
+
+    def test_filter_not_between_ints(self):
+        qb = QueryBuilder("account").filter_not_between("revenue", 100000, 500000)
+        self.assertEqual(
+            qb.build()["filter"],
+            "not ((revenue ge 100000 and revenue le 500000))",
+        )
+
+    def test_filter_not_between_returns_self(self):
+        qb = QueryBuilder("account")
+        self.assertIs(qb.filter_not_between("revenue", 100, 500), qb)
+
+    def test_filter_not_between_combined_with_other_filters(self):
+        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_not_between("revenue", 100000, 500000)
+        self.assertEqual(
+            qb.build()["filter"],
+            "statecode eq 0 and not ((revenue ge 100000 and revenue le 500000))",
+        )
+
+
 class TestFilterRaw(unittest.TestCase):
     """Tests for the filter_raw() method."""
 

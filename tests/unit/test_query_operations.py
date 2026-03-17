@@ -194,6 +194,30 @@ class TestQueryOperations(unittest.TestCase):
             "(createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z)",
         )
 
+    def test_builder_execute_with_filter_not_in(self):
+        """builder().filter_not_in().execute() should forward CRM.NotIn filter."""
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
+
+        list(self.client.query.builder("account").select("name").filter_not_in("statecode", [2, 3]).execute())
+
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(
+            call_kwargs.kwargs["filter"],
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
+        )
+
+    def test_builder_execute_with_filter_not_between(self):
+        """builder().filter_not_between().execute() should forward negated between filter."""
+        self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
+
+        list(self.client.query.builder("account").filter_not_between("revenue", 100000, 500000).execute())
+
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(
+            call_kwargs.kwargs["filter"],
+            "not ((revenue ge 100000 and revenue le 500000))",
+        )
+
     def test_builder_full_fluent_workflow(self):
         """End-to-end test of the fluent query workflow."""
         expected_records = [

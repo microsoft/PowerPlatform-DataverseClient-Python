@@ -233,6 +233,25 @@ class QueryBuilder:
         self._filter_parts.append(filters.filter_in(column, values))
         return self
 
+    def filter_not_in(
+        self, column: str, values: Sequence[Any]
+    ) -> QueryBuilder:
+        """Add a ``not in`` filter using ``Microsoft.Dynamics.CRM.NotIn``.
+
+        :param column: Column name (will be lowercased).
+        :param values: Non-empty list of values to exclude.
+        :return: Self for method chaining.
+        :raises ValueError: If ``values`` is empty.
+
+        Example::
+
+            query = QueryBuilder("account").filter_not_in("statecode", [2, 3])
+            # Produces: Microsoft.Dynamics.CRM.NotIn(
+            #     PropertyName='statecode',PropertyValues=["2","3"])
+        """
+        self._filter_parts.append(filters.not_in(column, values))
+        return self
+
     def filter_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
         """Add a between filter: ``(column ge low and column le high)``.
 
@@ -247,6 +266,24 @@ class QueryBuilder:
             # Produces: (revenue ge 100000 and revenue le 500000)
         """
         self._filter_parts.append(filters.between(column, low, high))
+        return self
+
+    def filter_not_between(
+        self, column: str, low: Any, high: Any
+    ) -> QueryBuilder:
+        """Add a not-between filter: ``not (column ge low and column le high)``.
+
+        :param column: Column name (will be lowercased).
+        :param low: Lower bound (inclusive, will be excluded).
+        :param high: Upper bound (inclusive, will be excluded).
+        :return: Self for method chaining.
+
+        Example::
+
+            query = QueryBuilder("account").filter_not_between("revenue", 100000, 500000)
+            # Produces: not ((revenue ge 100000 and revenue le 500000))
+        """
+        self._filter_parts.append(filters.not_between(column, low, high))
         return self
 
     def filter_raw(self, filter_string: str) -> QueryBuilder:
