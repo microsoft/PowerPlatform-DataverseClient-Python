@@ -384,7 +384,8 @@ def step4_query_and_analyze(client, customer_ids, primary_name_col):
     print("-" * 60)
 
     # Query all projects as a DataFrame
-    # Note: select uses logical names (lowercase). The SDK lowercases automatically.
+    # Note: The SDK lowercases $select values automatically, so schema-name
+    # casing (e.g., new_DemoProject_Budget) works -- it becomes the logical name.
     name_attr = primary_name_col
     projects = client.dataframe.get(
         TABLE_PROJECT,

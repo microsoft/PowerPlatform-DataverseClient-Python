@@ -343,16 +343,20 @@ def step2_analyze(accounts, cases, opportunities):
 
     # -- Opportunity pipeline analysis per account --
     if not opportunities.empty and "_parentaccountid_value" in opportunities.columns:
+        # Precompute weighted value to avoid closure-based aggregation
+        opportunities = opportunities.copy()
+        opportunities["_weighted_value"] = (
+            pd.to_numeric(opportunities["estimatedvalue"], errors="coerce").fillna(0)
+            * pd.to_numeric(opportunities["closeprobability"], errors="coerce").fillna(0)
+            / 100
+        )
         opp_stats = (
             opportunities.groupby("_parentaccountid_value")
             .agg(
                 total_opportunities=("opportunityid", "count"),
                 pipeline_value=("estimatedvalue", "sum"),
                 avg_close_probability=("closeprobability", "mean"),
-                weighted_pipeline=(
-                    "estimatedvalue",
-                    lambda x: (x * opportunities.loc[x.index, "closeprobability"] / 100).sum(),
-                ),
+                weighted_pipeline=("_weighted_value", "sum"),
             )
             .reset_index()
             .rename(columns={"_parentaccountid_value": "accountid"})
