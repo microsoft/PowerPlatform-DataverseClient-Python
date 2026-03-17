@@ -215,41 +215,16 @@ def _init_openai(endpoint, api_key, model):
 
 
 def _init_copilot_sdk():
-    """Initialize GitHub Copilot SDK (uses existing Copilot subscription)."""
-    try:
-        from copilot import CopilotClient
-    except ImportError:
-        return None
+    """Initialize GitHub Copilot SDK.
 
-    import asyncio
-    import shutil
-
-    # Find the Copilot CLI binary (may not be bundled in source installs)
-    cli_path = shutil.which("copilot")
-    if cli_path and not cli_path.endswith((".ps1", ".bat", ".cmd")):
-        copilot_kwargs = {"cli_path": cli_path}
-    else:
-        copilot_kwargs = {}  # let the SDK try its default lookup
-
-    async def _copilot_complete(prompt_text):
-        async with CopilotClient(**copilot_kwargs) as client:
-            session = await client.create_session()
-            events = []
-            session.on(lambda e: events.append(e))
-            await session.send({"prompt": prompt_text})
-            # Collect text from response events
-            text_parts = []
-            for e in events:
-                if hasattr(e, "type") and e.type == "content" and hasattr(e, "body"):
-                    text_parts.append(e.body)
-            return "".join(text_parts).strip()
-
-    def complete(system_prompt, user_prompt):
-        combined = f"{system_prompt}\n\n{user_prompt}"
-        return asyncio.run(_copilot_complete(combined))
-
-    print("[INFO] LLM provider: GitHub Copilot SDK")
-    return _wrap_with_logging(complete, "GitHub Copilot SDK", "copilot")
+    # Uncomment and configure to use your Copilot subscription as the LLM provider.
+    # Requires: pip install github-copilot-sdk
+    # Copilot CLI must be installed. See: https://github.com/github/copilot-sdk
+    """
+    # To enable, install the SDK and uncomment the implementation below.
+    # from copilot import CopilotClient
+    # ... (see Copilot SDK docs for session/send_and_wait usage)
+    return None
 
 
 # ================================================================

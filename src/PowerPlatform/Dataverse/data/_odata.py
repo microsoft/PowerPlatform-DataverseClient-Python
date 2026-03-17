@@ -960,7 +960,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         logical_lower = table_schema_name.lower()
         logical_escaped = self._escape_odata_quotes(logical_lower)
         params = {
-            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
+            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
         r = self._request("get", url, params=params, headers=headers)
@@ -1445,6 +1445,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": ent.get("LogicalName"),
             "entity_set_name": ent.get("EntitySetName"),
             "metadata_id": ent.get("MetadataId"),
+            "primary_name_attribute": ent.get("PrimaryNameAttribute"),
+            "primary_id_attribute": ent.get("PrimaryIdAttribute"),
             "columns_created": [],
         }
 
@@ -1689,6 +1691,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": metadata.get("LogicalName"),
             "entity_set_name": metadata.get("EntitySetName"),
             "metadata_id": metadata.get("MetadataId"),
+            "primary_name_attribute": metadata.get("PrimaryNameAttribute"),
+            "primary_id_attribute": metadata.get("PrimaryIdAttribute"),
             "columns_created": created_cols,
         }
 
