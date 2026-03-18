@@ -9,7 +9,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ..core.errors import HttpError, MetadataError, ValidationError
 from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
@@ -276,7 +276,7 @@ class _BatchClient:
             url,
             data=body.encode("utf-8"),
             headers=headers,
-            expected=(200, 400),
+            expected=(200, 202, 207, 400),
         )
         return self._parse_batch_response(response)
 
@@ -601,9 +601,9 @@ def _extract_boundary(content_type: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _split_multipart(body: str, boundary: str) -> List[tuple]:
+def _split_multipart(body: str, boundary: str) -> List[Tuple[Dict[str, str], str]]:
     delimiter = f"--{boundary}"
-    parts: List[tuple] = []
+    parts: List[Tuple[Dict[str, str], str]] = []
     lines = body.replace("\r\n", "\n").split("\n")
     current: List[str] = []
     in_part = False
@@ -623,7 +623,7 @@ def _split_multipart(body: str, boundary: str) -> List[tuple]:
     return parts
 
 
-def _parse_mime_part(raw: str) -> tuple:
+def _parse_mime_part(raw: str) -> Tuple[Dict[str, str], str]:
     if "\n\n" in raw:
         header_block, body = raw.split("\n\n", 1)
     else:

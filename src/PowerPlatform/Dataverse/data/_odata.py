@@ -1647,11 +1647,21 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         needs_picklist_flush = False
 
         for column_name, column_type in columns.items():
-            req = self._build_create_column(metadata_id, column_name, column_type)
+            attr = self._attribute_payload(column_name, column_type)
+            if not attr:
+                raise ValidationError(
+                    f"Unsupported column type '{column_type}' for column '{column_name}'.",
+                    subcode="unsupported_column_type",
+                )
+            if "OptionSet" in attr:
+                needs_picklist_flush = True
+            req = _RawRequest(
+                method="POST",
+                url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes",
+                body=json.dumps(attr, ensure_ascii=False),
+            )
             self._execute_raw(req)
             created.append(column_name)
-            if req.body and '"OptionSet"' in req.body:
-                needs_picklist_flush = True
 
         if needs_picklist_flush:
             self._flush_cache("picklist")
@@ -2181,6 +2191,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         Resolves the entity set from the table name in the SQL statement via
         :meth:`_extract_logical_table`, then embeds the SQL as a URL-encoded
         ``?sql=`` query parameter.
+
+        Uses ``urllib.parse.quote`` (``%20`` for spaces) rather than
+        ``urllib.parse.urlencode`` (``+`` for spaces).  Both are accepted by
+        Dataverse and ``%20`` is the canonical RFC 3986 encoding for query-
+        string values.
 
         :param sql: SELECT statement (non-empty string; caller is responsible
             for validation).
