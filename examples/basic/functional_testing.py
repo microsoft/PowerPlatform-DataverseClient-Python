@@ -508,7 +508,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             ],
         )
         result = batch.execute()
-        all_ids = list(result.created_ids)
+        all_ids = list(result.entity_ids)
         if result.has_errors:
             for item in result.failed:
                 print(f"[WARN] {item.status_code}: {item.error_message}")
@@ -583,7 +583,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                 for item in result.failed:
                     print(f"[WARN] Changeset error {item.status_code}: {item.error_message}")
             else:
-                new_id = next(iter(result.created_ids), None)
+                new_id = next(iter(result.entity_ids), None)
                 if new_id:
                     all_ids[-1] = new_id  # replace deleted id with the new one
                 print(f"[OK] {len(result.succeeded)} ops committed atomically (create + update + delete)")
@@ -609,7 +609,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
         # 404 to the outer batch HTTP status (which some environments do).
         result = batch.execute(continue_on_error=True)
         if result.has_errors:
-            leaked = list(result.created_ids)
+            leaked = list(result.entity_ids)
             if not leaked:
                 print("[OK] Changeset rollback verified: changeset failed, no records created")
             else:
@@ -617,7 +617,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                 all_ids.extend(leaked)
         else:
             print("[WARN] Expected rollback but changeset succeeded (unexpected)")
-            all_ids.extend(result.created_ids)
+            all_ids.extend(result.entity_ids)
 
         # -------------------------------------------------------------------
         # [6/11] TWO CHANGESETS — Content-IDs are unique across the entire batch
@@ -650,7 +650,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             for item in result.failed:
                 print(f"[WARN] Two-changeset error {item.status_code}: {item.error_message}")
         else:
-            cs_ids = list(result.created_ids)
+            cs_ids = list(result.entity_ids)
             all_ids.extend(cs_ids)
             print(
                 f"[OK] Both changesets committed — {len(cs_ids)} records created "
@@ -689,7 +689,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             for item in result.failed:
                 print(f"[WARN] Chaining error {item.status_code}: {item.error_message}")
         else:
-            chain_ids = list(result.created_ids)
+            chain_ids = list(result.entity_ids)
             all_ids.extend(chain_ids)
             print(f"[OK] Both records created and updated via content-ID refs " f"{ref_a} and {ref_b}: {chain_ids}")
 
@@ -738,7 +738,7 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             if result.has_errors:
                 print(f"[WARN] Upsert failed as expected (no alternate key configured): {result.failed[0].status_code}")
             else:
-                upsert_ids = list(result.created_ids)
+                upsert_ids = list(result.entity_ids)
                 all_ids.extend(upsert_ids)
                 print(f"[OK] Upsert succeeded: {len(upsert_ids)} record(s) — alternate key was accepted")
         except Exception as e:

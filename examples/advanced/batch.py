@@ -51,7 +51,7 @@ batch.records.create(
 result = batch.execute()
 
 print(f"[OK] Total: {len(result.responses)}, Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
-for guid in result.created_ids:
+for guid in result.entity_ids:
     print(f"[OK] Created: {guid}")
 for item in result.failed:
     print(f"[ERR] {item.status_code}: {item.error_message}")
@@ -93,7 +93,7 @@ if result.has_errors:
     for item in result.failed:
         print(f"  {item.status_code}: {item.error_message}")
 else:
-    print(f"[OK] {len(result.created_ids)} records created atomically")
+    print(f"[OK] {len(result.entity_ids)} records created atomically")
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ batch = client.batch.new()
 batch.dataframe.create("account", df)
 result = batch.execute()
 print(f"[OK] DataFrame create: {len(result.succeeded)} succeeded")
-created_ids = list(result.created_ids)
+created_ids = list(result.entity_ids)
 
 # Update records from a DataFrame
 if len(created_ids) >= 2:

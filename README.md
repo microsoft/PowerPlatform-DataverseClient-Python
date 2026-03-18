@@ -549,7 +549,7 @@ with batch.changeset() as cs:
         "primarycontactid@odata.bind": contact_ref,
     })
 result = batch.execute()
-print(f"Created {len(result.created_ids)} records atomically")
+print(f"Created {len(result.entity_ids)} records atomically")
 ```
 
 **Table metadata and SQL queries in a batch:**

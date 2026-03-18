@@ -182,7 +182,7 @@ class TestChangeSetRollbackResponse(unittest.TestCase):
 
         self.assertFalse(result.has_errors)
         self.assertEqual(len(result.succeeded), 3)
-        self.assertEqual(len(result.created_ids), 3)
+        self.assertEqual(len(result.entity_ids), 3)
         # Verify content-IDs were extracted
         content_ids = [r.content_id for r in result.responses]
         self.assertEqual(content_ids, ["1", "2", "3"])
@@ -518,7 +518,7 @@ class TestBatchContinueOnError(unittest.TestCase):
         self.assertEqual(len(result.succeeded), 2)
         self.assertEqual(len(result.failed), 1)
         self.assertEqual(result.failed[0].error_code, "0x80040237")
-        self.assertEqual(len(result.created_ids), 2)
+        self.assertEqual(len(result.entity_ids), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -603,8 +603,8 @@ class TestSerializationCompliance(unittest.TestCase):
 class TestBatchResultProperties(unittest.TestCase):
     """Verify computed properties of BatchResult."""
 
-    def test_created_ids_only_from_201_and_204(self):
-        """created_ids should include entity_ids from all 2xx (including 201 and 204)."""
+    def test_entity_ids_only_from_201_and_204(self):
+        """entity_ids should include entity_ids from all 2xx (including 201 and 204)."""
         responses = [
             BatchItemResponse(status_code=201, entity_id="id-201"),
             BatchItemResponse(status_code=204, entity_id="id-204"),
@@ -612,7 +612,7 @@ class TestBatchResultProperties(unittest.TestCase):
             BatchItemResponse(status_code=400, entity_id=None),
         ]
         result = BatchResult(responses=responses)
-        self.assertEqual(result.created_ids, ["id-201", "id-204"])
+        self.assertEqual(result.entity_ids, ["id-201", "id-204"])
 
     def test_empty_batch_result_properties(self):
         """Empty BatchResult has correct defaults."""
@@ -620,7 +620,7 @@ class TestBatchResultProperties(unittest.TestCase):
         self.assertEqual(result.succeeded, [])
         self.assertEqual(result.failed, [])
         self.assertFalse(result.has_errors)
-        self.assertEqual(result.created_ids, [])
+        self.assertEqual(result.entity_ids, [])
 
     def test_all_success_no_errors(self):
         """All 2xx responses means has_errors is False."""
@@ -643,10 +643,10 @@ class TestBatchResultProperties(unittest.TestCase):
         self.assertTrue(result.has_errors)
         self.assertEqual(len(result.failed), 1)
 
-    def test_created_ids_from_create_multiple_not_in_created_ids(self):
-        """CreateMultiple IDs are in data['Ids'], NOT in created_ids property.
+    def test_entity_ids_from_create_multiple_not_in_created_ids(self):
+        """CreateMultiple IDs are in data['Ids'], NOT in entity_ids property.
 
-        created_ids only returns entity_id from OData-EntityId headers.
+        entity_ids only returns entity_id from OData-EntityId headers.
         Callers access CreateMultiple IDs via response.data['Ids'] directly.
         """
         responses = [
@@ -658,17 +658,17 @@ class TestBatchResultProperties(unittest.TestCase):
             ),
         ]
         result = BatchResult(responses=responses)
-        # created_ids does NOT include bulk IDs (no OData-EntityId header)
-        self.assertEqual(result.created_ids, [])
+        # entity_ids does NOT include bulk IDs (no OData-EntityId header)
+        self.assertEqual(result.entity_ids, [])
         # Callers access them from the response data
         self.assertEqual(result.succeeded[0].data["Ids"], ["guid-1", "guid-2", "guid-3"])
 
-    def test_created_ids_only_from_odata_entity_id_header(self):
-        """created_ids only collects entity_id from OData-EntityId headers."""
+    def test_entity_ids_only_from_odata_entity_id_header(self):
+        """entity_ids only collects entity_id from OData-EntityId headers."""
         responses = [
             # Single create: entity_id from header
             BatchItemResponse(status_code=204, entity_id="single-id"),
-            # CreateMultiple: Ids from body (not in created_ids)
+            # CreateMultiple: Ids from body (not in entity_ids)
             BatchItemResponse(
                 status_code=200,
                 entity_id=None,
@@ -677,7 +677,7 @@ class TestBatchResultProperties(unittest.TestCase):
         ]
         result = BatchResult(responses=responses)
         # Only the header-based entity_id
-        self.assertEqual(result.created_ids, ["single-id"])
+        self.assertEqual(result.entity_ids, ["single-id"])
         # Bulk IDs accessed via response.data
         self.assertEqual(result.responses[1].data["Ids"], ["bulk-id-1", "bulk-id-2"])
 
@@ -693,7 +693,7 @@ class TestBatchResultProperties(unittest.TestCase):
         ]
         result = BatchResult(responses=responses)
         # Collect all IDs from both sources (what a caller would do)
-        all_ids = list(result.created_ids)
+        all_ids = list(result.entity_ids)
         for resp in result.succeeded:
             if resp.data and isinstance(resp.data.get("Ids"), list):
                 all_ids.extend(resp.data["Ids"])
@@ -740,7 +740,7 @@ class TestCreateMultipleInBatch(unittest.TestCase):
         # But data should contain the Ids array
         self.assertEqual(result.succeeded[0].data["Ids"], ["aaa-111", "bbb-222", "ccc-333"])
         # created_ids won't have these (no OData-EntityId header)
-        self.assertEqual(result.created_ids, [])
+        self.assertEqual(result.entity_ids, [])
         # Callers access bulk IDs via response.data["Ids"]
         bulk_ids = result.succeeded[0].data["Ids"]
         self.assertEqual(len(bulk_ids), 3)
@@ -784,8 +784,8 @@ class TestCreateMultipleInBatch(unittest.TestCase):
 
         self.assertFalse(result.has_errors)
         self.assertEqual(len(result.succeeded), 2)
-        # created_ids only has the individual create's entity_id
-        self.assertEqual(result.created_ids, [single_guid])
+        # entity_ids only has the individual create's entity_id
+        self.assertEqual(result.entity_ids, [single_guid])
         # CreateMultiple IDs are in the second response's data
         self.assertEqual(result.responses[1].data["Ids"], ["bulk-1", "bulk-2"])
 

@@ -407,7 +407,7 @@ print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 - `result.succeeded` -- responses with 2xx status codes
 - `result.failed` -- responses with non-2xx status codes
 - `result.has_errors` -- True if any response failed
-- `result.created_ids` -- GUIDs from successful create operations
+- `result.entity_ids` -- GUIDs from successful create operations
 
 **Batch limitations:**
 - Maximum 1000 operations per batch
