@@ -246,6 +246,36 @@ class TestQueryOperations(unittest.TestCase):
         self.assertEqual(records[0]["name"], "Big Corp")
         self.assertEqual(records[1]["name"], "Mega Inc")
 
+    def test_builder_to_dataframe(self):
+        """builder().to_dataframe() should delegate to client.dataframe.get()."""
+        import pandas as pd
+
+        expected_df = pd.DataFrame([{"name": "Contoso", "revenue": 1000}])
+        self.client.dataframe = MagicMock()
+        self.client.dataframe.get.return_value = expected_df
+
+        result = (
+            self.client.query.builder("account")
+            .select("name", "revenue")
+            .filter_eq("statecode", 0)
+            .order_by("name")
+            .top(50)
+            .to_dataframe()
+        )
+
+        self.client.dataframe.get.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0",
+            orderby=["name"],
+            top=50,
+            expand=None,
+            page_size=None,
+            count=False,
+            include_annotations=None,
+        )
+        pd.testing.assert_frame_equal(result, expected_df)
+
 
 if __name__ == "__main__":
     unittest.main()

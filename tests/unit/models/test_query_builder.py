@@ -125,13 +125,13 @@ class TestFilterIn(unittest.TestCase):
         qb = QueryBuilder("account")
         self.assertIs(qb.filter_in("statecode", [0, 1]), qb)
 
-    def test_filter_in_accepts_set(self):
+    def test_filter_in_with_set(self):
         qb = QueryBuilder("account").filter_in("statecode", {0, 1})
         result = qb.build()["filter"]
         self.assertIn("Microsoft.Dynamics.CRM.In", result)
         self.assertIn("statecode", result)
 
-    def test_filter_in_accepts_tuple(self):
+    def test_filter_in_with_tuple(self):
         qb = QueryBuilder("account").filter_in("statecode", (0, 1, 2))
         self.assertEqual(
             qb.build()["filter"],
@@ -295,6 +295,19 @@ class TestFilterNotIn(unittest.TestCase):
         self.assertEqual(
             qb.build()["filter"],
             'statecode eq 0 and Microsoft.Dynamics.CRM.NotIn(PropertyName=\'priority\',PropertyValues=["1","2"])',
+        )
+
+    def test_filter_not_in_with_set(self):
+        qb = QueryBuilder("account").filter_not_in("statecode", {2, 3})
+        result = qb.build()["filter"]
+        self.assertIn("Microsoft.Dynamics.CRM.NotIn", result)
+        self.assertIn("statecode", result)
+
+    def test_filter_not_in_with_tuple(self):
+        qb = QueryBuilder("account").filter_not_in("statecode", (2, 3))
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
         )
 
 
@@ -506,6 +519,38 @@ class TestExpand(unittest.TestCase):
             ["primarycontactid", "Account_Tasks($select=subject)"],
         )
 
+    def test_expand_option_chained_select_accumulates(self):
+        """Calling select() multiple times should accumulate columns."""
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = ExpandOption("Account_Tasks").select("subject").select("createdon")
+        self.assertEqual(
+            opt.to_odata(),
+            "Account_Tasks($select=subject,createdon)",
+        )
+
+    def test_expand_option_multiple_order_by(self):
+        """Calling order_by() multiple times should accumulate sort clauses."""
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = (
+            ExpandOption("Account_Tasks").select("subject").order_by("priority", descending=True).order_by("createdon")
+        )
+        self.assertEqual(
+            opt.to_odata(),
+            "Account_Tasks($select=subject;$orderby=priority desc,createdon)",
+        )
+
+    def test_expand_option_filter_last_wins(self):
+        """Calling filter() multiple times should use the last value."""
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+        opt = ExpandOption("Account_Tasks").filter("statecode eq 0").filter("contains(subject,'Task')")
+        self.assertEqual(
+            opt.to_odata(),
+            "Account_Tasks($filter=contains(subject,'Task'))",
+        )
+
 
 class TestCount(unittest.TestCase):
     """Tests for the count() method."""
@@ -555,6 +600,19 @@ class TestIncludeAnnotations(unittest.TestCase):
     def test_include_annotations_returns_self(self):
         qb = QueryBuilder("account")
         self.assertIs(qb.include_annotations(), qb)
+
+    def test_include_annotations_overrides_formatted_values(self):
+        """Last annotation call should win."""
+        qb = QueryBuilder("account").include_formatted_values().include_annotations("*")
+        self.assertEqual(qb.build()["include_annotations"], "*")
+
+    def test_include_formatted_values_overrides_annotations(self):
+        """Last annotation call should win (reverse order)."""
+        qb = QueryBuilder("account").include_annotations("*").include_formatted_values()
+        self.assertEqual(
+            qb.build()["include_annotations"],
+            "OData.Community.Display.V1.FormattedValue",
+        )
 
 
 class TestBuild(unittest.TestCase):
@@ -859,6 +917,31 @@ class TestToDataframe(unittest.TestCase):
         self.assertIsInstance(result, pd.DataFrame)
         self.assertEqual(len(result), 2)
         self.assertListEqual(list(result.columns), ["name", "revenue"])
+
+    def test_to_dataframe_forwards_count_and_annotations(self):
+        """to_dataframe() should forward count and include_annotations when set."""
+        import pandas as pd
+
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.dataframe.get.return_value = pd.DataFrame()
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.count().include_formatted_values()
+        qb.to_dataframe()
+
+        mock_client.dataframe.get.assert_called_once_with(
+            "account",
+            select=None,
+            filter=None,
+            orderby=None,
+            top=None,
+            expand=None,
+            page_size=None,
+            count=True,
+            include_annotations="OData.Community.Display.V1.FormattedValue",
+        )
 
 
 if __name__ == "__main__":
