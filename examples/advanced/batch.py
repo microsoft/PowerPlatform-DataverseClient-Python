@@ -173,3 +173,45 @@ result = batch.execute(continue_on_error=True)
 print(f"[OK] Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 for item in result.failed:
     print(f"[ERR] {item.status_code}: {item.error_message}")
+
+
+# ---------------------------------------------------------------------------
+# Example 7: DataFrame integration
+# ---------------------------------------------------------------------------
+
+print("\n[INFO] Example 7: DataFrame batch operations")
+
+import pandas as pd
+
+# Create records from a DataFrame
+df = pd.DataFrame(
+    [
+        {"name": "DF-Batch-A", "telephone1": "555-0100"},
+        {"name": "DF-Batch-B", "telephone1": "555-0200"},
+    ]
+)
+batch = client.batch.new()
+batch.dataframe.create("account", df)
+result = batch.execute()
+print(f"[OK] DataFrame create: {len(result.succeeded)} succeeded")
+created_ids = list(result.created_ids)
+
+# Update records from a DataFrame
+if len(created_ids) >= 2:
+    update_df = pd.DataFrame(
+        [
+            {"accountid": created_ids[0], "telephone1": "555-9990"},
+            {"accountid": created_ids[1], "telephone1": "555-9991"},
+        ]
+    )
+    batch = client.batch.new()
+    batch.dataframe.update("account", update_df, id_column="accountid")
+    result = batch.execute()
+    print(f"[OK] DataFrame update: {len(result.succeeded)} succeeded")
+
+# Delete records from a Series
+if created_ids:
+    batch = client.batch.new()
+    batch.dataframe.delete("account", pd.Series(created_ids), use_bulk_delete=False)
+    result = batch.execute()
+    print(f"[OK] DataFrame delete: {len(result.succeeded)} succeeded")

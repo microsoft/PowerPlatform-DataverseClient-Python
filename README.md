@@ -573,6 +573,30 @@ for item in result.failed:
     print(f"[ERR] {item.status_code}: {item.error_message}")
 ```
 
+**DataFrame integration** -- feed pandas DataFrames directly into a batch:
+
+```python
+import pandas as pd
+
+batch = client.batch.new()
+
+# Create records from a DataFrame
+df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+batch.dataframe.create("account", df)
+
+# Update records from a DataFrame
+updates = pd.DataFrame([
+    {"accountid": id1, "telephone1": "555-0100"},
+    {"accountid": id2, "telephone1": "555-0200"},
+])
+batch.dataframe.update("account", updates, id_column="accountid")
+
+# Delete records from a Series
+batch.dataframe.delete("account", pd.Series([id1, id2]))
+
+result = batch.execute()
+```
+
 For a complete example see [examples/advanced/batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py).
 
 ## Next steps
