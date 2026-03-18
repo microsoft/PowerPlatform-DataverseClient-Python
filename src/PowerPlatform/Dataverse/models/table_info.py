@@ -97,9 +97,9 @@ class TableInfo:
     :param description: Table description.
     :type description: :class:`str` or None
     :param columns: Column metadata (when retrieved).
-    :type columns: :class:`list` of :class:`ColumnInfo` or None
+    :type columns: list[ColumnInfo] or None
     :param columns_created: Column schema names created with the table.
-    :type columns_created: :class:`list` of :class:`str` or None
+    :type columns_created: list[str] or None
 
     Example::
 
@@ -241,7 +241,7 @@ class AlternateKeyInfo:
     :param schema_name: Key schema name.
     :type schema_name: :class:`str`
     :param key_attributes: List of column logical names that compose the key.
-    :type key_attributes: :class:`list` of :class:`str`
+    :type key_attributes: list[str]
     :param status: Index creation status (``"Active"``, ``"Pending"``, ``"InProgress"``, ``"Failed"``).
     :type status: :class:`str`
     """

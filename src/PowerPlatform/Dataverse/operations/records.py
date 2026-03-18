@@ -69,11 +69,11 @@ class RecordOperations:
         :type table: :class:`str`
         :param data: A single record dictionary or a list of record dictionaries.
             Each dictionary maps column schema names to values.
-        :type data: :class:`dict` or :class:`list` of :class:`dict`
+        :type data: dict or list[dict]
 
         :return: A single GUID string for a single record, or a list of GUID
             strings for bulk creation.
-        :rtype: :class:`str` or :class:`list` of :class:`str`
+        :rtype: str or list[str]
 
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
@@ -127,10 +127,10 @@ class RecordOperations:
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param changes: A dictionary of field changes (single/broadcast), or a
             list of dictionaries (paired, one per ID).
-        :type changes: :class:`dict` or :class:`list` of :class:`dict`
+        :type changes: dict or list[dict]
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes``
             does not match the expected pattern.
@@ -187,7 +187,7 @@ class RecordOperations:
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param use_bulk_delete: When True (default) and ``ids`` is a list, use
             the BulkDelete action and return its async job ID. When False, delete
             records one at a time.
@@ -241,7 +241,7 @@ class RecordOperations:
         :type record_id: :class:`str`
         :param select: Optional list of column logical names to include in the
             response.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
         :return: Typed record with dict-like access for backward compatibility.
         :rtype: :class:`~PowerPlatform.Dataverse.models.record.Record`
@@ -282,7 +282,7 @@ class RecordOperations:
         :type table: :class:`str`
         :param select: Optional list of column logical names to include.
             Column names are automatically lowercased.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData ``$filter`` expression (e.g.
             ``"name eq 'Contoso'"``). Column names in filter expressions must
             use exact lowercase logical names.
@@ -290,21 +290,20 @@ class RecordOperations:
         :param orderby: Optional list of sort expressions (e.g.
             ``["name asc", "createdon desc"]``). Column names are automatically
             lowercased.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum total number of records to return.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (e.g.
             ``["primarycontactid"]``). Case-sensitive; must match server-defined
             names exactly.
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional per-page size hint sent via
             ``Prefer: odata.maxpagesize``.
         :type page_size: :class:`int` or None
 
         :return: Generator yielding pages, where each page is a list of
             :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
-        :rtype: :class:`collections.abc.Iterable` of :class:`list` of
-            :class:`~PowerPlatform.Dataverse.models.record.Record`
+        :rtype: collections.abc.Iterable[list[~PowerPlatform.Dataverse.models.record.Record]]
 
         Example:
             Fetch with filtering and pagination::
@@ -356,7 +355,7 @@ class RecordOperations:
         :type record_id: :class:`str` or None
         :param select: Optional list of column logical names to include.
             Column names are automatically lowercased.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData ``$filter`` expression (e.g.
             ``"name eq 'Contoso'"``). Column names in filter expressions must
             use exact lowercase logical names. Only used for multi-record
@@ -365,14 +364,14 @@ class RecordOperations:
         :param orderby: Optional list of sort expressions (e.g.
             ``["name asc", "createdon desc"]``). Column names are
             automatically lowercased. Only used for multi-record queries.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum total number of records to return. Only
             used for multi-record queries.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (e.g.
             ``["primarycontactid"]``). Case-sensitive; must match
             server-defined names exactly. Only used for multi-record queries.
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional per-page size hint sent via
             ``Prefer: odata.maxpagesize``. Only used for multi-record queries.
         :type page_size: :class:`int` or None
@@ -380,8 +379,7 @@ class RecordOperations:
         :return: A single record dict when ``record_id`` is provided, or a
             generator yielding pages (lists of record dicts) when fetching
             multiple records.
-        :rtype: :class:`dict` or :class:`collections.abc.Iterable` of
-            :class:`list` of :class:`dict`
+        :rtype: dict or collections.abc.Iterable[list[dict]]
 
         :raises TypeError: If ``record_id`` is provided but not a string.
         :raises ValueError: If query parameters are provided alongside

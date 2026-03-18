@@ -75,15 +75,15 @@ class DataFrameOperations:
         :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
         :type record_id: :class:`str` or None
         :param select: Optional list of attribute logical names to retrieve.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData filter string. Column names must use exact lowercase logical names.
         :type filter: :class:`str` or None
         :param orderby: Optional list of attributes to sort by.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum number of records to return.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (case-sensitive).
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
 

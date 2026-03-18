@@ -51,8 +51,7 @@ class QueryOperations:
 
         :return: List of :class:`~PowerPlatform.Dataverse.models.record.Record`
             objects. Returns an empty list when no rows match.
-        :rtype: :class:`list` of
-            :class:`~PowerPlatform.Dataverse.models.record.Record`
+        :rtype: list[~PowerPlatform.Dataverse.models.record.Record]
 
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``sql`` is not a string or is empty.
