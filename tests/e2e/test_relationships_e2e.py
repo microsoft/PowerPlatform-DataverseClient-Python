@@ -87,6 +87,7 @@ def _backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
 
 def _wait_for_table(client, schema_name, retries=15, delay=3):
     """Poll until table metadata is available."""
+    last_exc = None
     for attempt in range(1, retries + 1):
         try:
             info = client.tables.get(schema_name)
@@ -94,11 +95,14 @@ def _wait_for_table(client, schema_name, retries=15, delay=3):
                 odata = client._get_odata()
                 odata._entity_set_from_schema_name(schema_name)
                 return info
-        except Exception:
-            pass
+        except Exception as exc:
+            last_exc = exc
         if attempt < retries:
             time.sleep(delay)
-    raise RuntimeError(f"Table {schema_name} metadata not available after {retries} attempts")
+    msg = f"Table {schema_name} metadata not available after {retries} attempts"
+    if last_exc:
+        raise RuntimeError(msg) from last_exc
+    raise RuntimeError(msg)
 
 
 def _wait_for_relationship(client, schema_name, retries=15, delay=3):
@@ -381,7 +385,6 @@ class TestDataThroughRelationships:
         # Get server-assigned navigation property name
         rel_info = _wait_for_relationship(client, self.REL_NAME)
         self.server_nav_prop = rel_info.lookup_schema_name
-        self.bind_nav_prop = self.rel_result.lookup_schema_name
         self.lookup_value_key = f"_{self.server_nav_prop.lower()}_value"
 
         # Wait for lookup column to become queryable (instead of hard-coded sleep)
@@ -395,8 +398,9 @@ class TestDataThroughRelationships:
         self.p1_id = _backoff(lambda: client.records.create(self.PARENT, {"new_parname": "Alpha Corp"}))
         self.p2_id = _backoff(lambda: client.records.create(self.PARENT, {"new_parname": "Beta Inc"}))
 
-        # Create child records
-        nav = self.bind_nav_prop
+        # Create child records -- use server_nav_prop for @odata.bind
+        # (server-assigned nav prop is authoritative for case-sensitive OData operations)
+        nav = self.server_nav_prop
         es = self.entity_set
         p1 = self.p1_id
         p2 = self.p2_id
@@ -508,7 +512,7 @@ class TestDataThroughRelationships:
             self.CHILD,
             self.c1_id,
             {
-                f"{self.bind_nav_prop}@odata.bind": f"/{self.entity_set}({self.p2_id})",
+                f"{self.server_nav_prop}@odata.bind": f"/{self.entity_set}({self.p2_id})",
             },
         )
         updated = client.records.get(self.CHILD, self.c1_id)
@@ -519,7 +523,7 @@ class TestDataThroughRelationships:
             self.CHILD,
             self.c1_id,
             {
-                f"{self.bind_nav_prop}@odata.bind": f"/{self.entity_set}({self.p1_id})",
+                f"{self.server_nav_prop}@odata.bind": f"/{self.entity_set}({self.p1_id})",
             },
         )
 
