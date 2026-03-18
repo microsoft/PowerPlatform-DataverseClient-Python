@@ -478,11 +478,13 @@ class TestExpand(unittest.TestCase):
     def test_expand_option_with_filter_and_orderby(self):
         from PowerPlatform.Dataverse.models.query_builder import ExpandOption
 
-        opt = (ExpandOption("Account_Tasks")
-               .select("subject")
-               .filter("contains(subject,'Task')")
-               .order_by("createdon", descending=True)
-               .top(10))
+        opt = (
+            ExpandOption("Account_Tasks")
+            .select("subject")
+            .filter("contains(subject,'Task')")
+            .order_by("createdon", descending=True)
+            .top(10)
+        )
         self.assertEqual(
             opt.to_odata(),
             "Account_Tasks($select=subject;$filter=contains(subject,'Task');$orderby=createdon desc;$top=10)",
@@ -536,9 +538,7 @@ class TestIncludeAnnotations(unittest.TestCase):
         self.assertEqual(qb.build()["include_annotations"], "*")
 
     def test_include_annotations_custom(self):
-        qb = QueryBuilder("account").include_annotations(
-            "Microsoft.Dynamics.CRM.lookuplogicalname"
-        )
+        qb = QueryBuilder("account").include_annotations("Microsoft.Dynamics.CRM.lookuplogicalname")
         self.assertEqual(
             qb.build()["include_annotations"],
             "Microsoft.Dynamics.CRM.lookuplogicalname",

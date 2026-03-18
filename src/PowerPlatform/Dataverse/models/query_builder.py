@@ -335,9 +335,7 @@ class QueryBuilder:
         self._filter_parts.append(filters.filter_in(column, values))
         return self
 
-    def filter_not_in(
-        self, column: str, values: Collection[Any]
-    ) -> QueryBuilder:
+    def filter_not_in(self, column: str, values: Collection[Any]) -> QueryBuilder:
         """Add a ``not in`` filter using ``Microsoft.Dynamics.CRM.NotIn``.
 
         :param column: Column name (will be lowercased).
@@ -370,9 +368,7 @@ class QueryBuilder:
         self._filter_parts.append(filters.between(column, low, high))
         return self
 
-    def filter_not_between(
-        self, column: str, low: Any, high: Any
-    ) -> QueryBuilder:
+    def filter_not_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
         """Add a not-between filter: ``not (column ge low and column le high)``.
 
         :param column: Column name (will be lowercased).

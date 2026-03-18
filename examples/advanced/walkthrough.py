@@ -377,13 +377,7 @@ def _run_walkthrough(client):
     print("Querying accounts with primary contact expanded...")
     try:
         expanded_records = list(
-            backoff(
-                lambda: client.query.builder("account")
-                .select("name")
-                .expand("primarycontactid")
-                .top(3)
-                .execute()
-            )
+            backoff(lambda: client.query.builder("account").select("name").expand("primarycontactid").top(3).execute())
         )
         print(f"[OK] Found {len(expanded_records)} accounts with expanded contact:")
         for rec in expanded_records:
@@ -398,19 +392,10 @@ def _run_walkthrough(client):
     print("Querying accounts with nested expand options on tasks...")
     try:
         tasks_opt = (
-            ExpandOption("Account_Tasks")
-            .select("subject", "createdon")
-            .order_by("createdon", descending=True)
-            .top(3)
+            ExpandOption("Account_Tasks").select("subject", "createdon").order_by("createdon", descending=True).top(3)
         )
         nested_records = list(
-            backoff(
-                lambda: client.query.builder("account")
-                .select("name")
-                .expand(tasks_opt)
-                .top(3)
-                .execute()
-            )
+            backoff(lambda: client.query.builder("account").select("name").expand(tasks_opt).top(3).execute())
         )
         print(f"[OK] Found {len(nested_records)} accounts with nested task expansion:")
         for rec in nested_records:

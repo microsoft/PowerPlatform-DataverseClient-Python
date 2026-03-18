@@ -230,10 +230,7 @@ class _InFilter(FilterExpression):
         # PropertyValues is Collection(Edm.String)
         parts = [f'"{_format_value(v).strip("'")}"' for v in self.values]
         formatted = ",".join(parts)
-        return (
-            f"Microsoft.Dynamics.CRM.In"
-            f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
-        )
+        return f"Microsoft.Dynamics.CRM.In" f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
 
 
 class _NotInFilter(FilterExpression):
@@ -251,10 +248,7 @@ class _NotInFilter(FilterExpression):
         # Same Collection(Edm.String) rules as _InFilter.
         parts = [f'"{_format_value(v).strip("'")}"' for v in self.values]
         formatted = ",".join(parts)
-        return (
-            f"Microsoft.Dynamics.CRM.NotIn"
-            f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
-        )
+        return f"Microsoft.Dynamics.CRM.NotIn" f"(PropertyName='{self.column}',PropertyValues=[{formatted}])"
 
 
 class _RawFilter(FilterExpression):
