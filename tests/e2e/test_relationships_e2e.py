@@ -43,15 +43,20 @@ from PowerPlatform.Dataverse.common.constants import (
     CASCADE_BEHAVIOR_RESTRICT,
 )
 
+pytestmark = pytest.mark.e2e
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-ORG_URL = os.environ.get("DATAVERSE_URL", "")
+
+def _get_org_url():
+    """Read DATAVERSE_URL at call time so late-set env vars are picked up."""
+    return os.environ.get("DATAVERSE_URL", "")
 
 
 def _skip_if_no_url():
-    if not ORG_URL:
+    if not _get_org_url():
         pytest.skip("DATAVERSE_URL not set -- skipping e2e tests")
 
 
@@ -60,8 +65,11 @@ def client():
     """Authenticated DataverseClient for the test module."""
     _skip_if_no_url()
     cred = InteractiveBrowserCredential(timeout=600)
-    c = DataverseClient(ORG_URL, cred)
-    yield c
+    c = DataverseClient(_get_org_url(), cred)
+    try:
+        yield c
+    finally:
+        c.close()
 
 
 def _backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
@@ -104,6 +112,22 @@ def _wait_for_relationship(client, schema_name, retries=15, delay=3):
     raise RuntimeError(f"Relationship {schema_name} not queryable after {retries} attempts")
 
 
+def _wait_for_lookup_ready(client, table_schema, lookup_logical, retries=15, delay=3):
+    """Poll until a lookup column is queryable on the table."""
+    for attempt in range(1, retries + 1):
+        try:
+            for page in client.records.get(table_schema, select=[lookup_logical], top=1):
+                pass  # If we get here without error, the column is ready
+            return
+        except HttpError:
+            pass
+        except Exception:
+            pass
+        if attempt < retries:
+            time.sleep(delay)
+    raise RuntimeError(f"Lookup column {lookup_logical} not ready on {table_schema} after {retries} attempts")
+
+
 def _safe_delete_relationship(client, schema_name):
     try:
         rel = client.tables.get_relationship(schema_name)
@@ -123,7 +147,7 @@ def _safe_delete_table(client, schema_name):
 
 def _create_table(client, schema_name, columns=None):
     """Create a table and wait for metadata."""
-    cols = columns or {"test_Name": "string"}
+    cols = columns or {"new_Name": "string"}
     info = _backoff(lambda: client.tables.create(schema_name, cols))
     _wait_for_table(client, schema_name)
     return info
@@ -137,9 +161,9 @@ def _create_table(client, schema_name, columns=None):
 class TestOneToManyCore:
     """One-to-many relationship lifecycle via core API."""
 
-    PARENT = "test_E2E1NPar"
-    CHILD = "test_E2E1NChi"
-    REL_NAME = "test_E2E1NPar_1NChi"
+    PARENT = "new_E2E1NPar"
+    CHILD = "new_E2E1NChi"
+    REL_NAME = "new_E2E1NPar_1NChi"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, client):
@@ -153,11 +177,11 @@ class TestOneToManyCore:
 
     def test_create_get_delete_1n(self, client):
         """Full 1:N lifecycle: create tables, create relationship, get, delete."""
-        parent = _create_table(client, self.PARENT, {"test_Code": "string"})
-        child = _create_table(client, self.CHILD, {"test_Num": "string"})
+        parent = _create_table(client, self.PARENT, {"new_Code": "string"})
+        child = _create_table(client, self.CHILD, {"new_Num": "string"})
 
         lookup = LookupAttributeMetadata(
-            schema_name="test_ParRef",
+            schema_name="new_ParRef",
             display_name=Label(localized_labels=[LocalizedLabel(label="Parent Ref", language_code=1033)]),
             required_level="None",
         )
@@ -205,7 +229,7 @@ class TestOneToManyCore:
 class TestLookupField:
     """Convenience create_lookup_field API."""
 
-    CHILD = "test_E2ELkpChi"
+    CHILD = "new_E2ELkpChi"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, client):
@@ -221,12 +245,12 @@ class TestLookupField:
 
     def test_lookup_to_system_table(self, client):
         """Create lookup from custom table to system 'account'."""
-        child = _create_table(client, self.CHILD, {"test_Info": "string"})
+        child = _create_table(client, self.CHILD, {"new_Info": "string"})
 
         result = _backoff(
             lambda: client.tables.create_lookup_field(
                 referencing_table=child["table_logical_name"],
-                lookup_field_name="test_AcctLkp",
+                lookup_field_name="new_AcctLkp",
                 referenced_table="account",
                 display_name="Account",
                 required=False,
@@ -252,9 +276,9 @@ class TestLookupField:
 class TestManyToMany:
     """Many-to-many relationship lifecycle."""
 
-    TBL1 = "test_E2ENNTbl1"
-    TBL2 = "test_E2ENNTbl2"
-    REL_NAME = "test_e2enntbl1_nntbl2"
+    TBL1 = "new_E2ENNTbl1"
+    TBL2 = "new_E2ENNTbl2"
+    REL_NAME = "new_e2enntbl1_nntbl2"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, client):
@@ -268,8 +292,8 @@ class TestManyToMany:
 
     def test_create_get_delete_nn(self, client):
         """Full N:N lifecycle: create, get, delete."""
-        tbl1 = _create_table(client, self.TBL1, {"test_C1": "string"})
-        tbl2 = _create_table(client, self.TBL2, {"test_C2": "string"})
+        tbl1 = _create_table(client, self.TBL1, {"new_C1": "string"})
+        tbl2 = _create_table(client, self.TBL2, {"new_C2": "string"})
 
         m2m = ManyToManyRelationshipMetadata(
             schema_name=self.REL_NAME,
@@ -309,9 +333,9 @@ class TestManyToMany:
 class TestDataThroughRelationships:
     """Verify relationships work with actual record operations."""
 
-    PARENT = "test_E2EDataPar"
-    CHILD = "test_E2EDataChi"
-    REL_NAME = "test_E2EDataPar_DataChi"
+    PARENT = "new_E2EDataPar"
+    CHILD = "new_E2EDataChi"
+    REL_NAME = "new_E2EDataPar_DataChi"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, client):
@@ -324,20 +348,20 @@ class TestDataThroughRelationships:
             client,
             self.PARENT,
             {
-                "test_ParName": "string",
+                "new_ParName": "string",
             },
         )
         self.child_info = _create_table(
             client,
             self.CHILD,
             {
-                "test_ChiName": "string",
-                "test_ChiVal": "int",
+                "new_ChiName": "string",
+                "new_ChiVal": "int",
             },
         )
 
         lookup = LookupAttributeMetadata(
-            schema_name="test_DataParLkp",
+            schema_name="new_DataParLkp",
             display_name=Label(localized_labels=[LocalizedLabel(label="Data Parent", language_code=1033)]),
         )
         rel = OneToManyRelationshipMetadata(
@@ -360,15 +384,16 @@ class TestDataThroughRelationships:
         self.bind_nav_prop = self.rel_result.lookup_schema_name
         self.lookup_value_key = f"_{self.server_nav_prop.lower()}_value"
 
-        time.sleep(5)  # Wait for lookup metadata propagation
+        # Wait for lookup column to become queryable (instead of hard-coded sleep)
+        _wait_for_lookup_ready(client, self.CHILD, self.lookup_value_key)
 
         # Get entity set for @odata.bind
         parent_full = client.tables.get(self.PARENT)
         self.entity_set = parent_full["entity_set_name"]
 
         # Create parent records
-        self.p1_id = _backoff(lambda: client.records.create(self.PARENT, {"test_parname": "Alpha Corp"}))
-        self.p2_id = _backoff(lambda: client.records.create(self.PARENT, {"test_parname": "Beta Inc"}))
+        self.p1_id = _backoff(lambda: client.records.create(self.PARENT, {"new_parname": "Alpha Corp"}))
+        self.p2_id = _backoff(lambda: client.records.create(self.PARENT, {"new_parname": "Beta Inc"}))
 
         # Create child records
         nav = self.bind_nav_prop
@@ -380,8 +405,8 @@ class TestDataThroughRelationships:
             lambda: client.records.create(
                 self.CHILD,
                 {
-                    "test_chiname": "Child A1",
-                    "test_chival": 100,
+                    "new_chiname": "Child A1",
+                    "new_chival": 100,
                     f"{nav}@odata.bind": f"/{es}({p1})",
                 },
             )
@@ -390,8 +415,8 @@ class TestDataThroughRelationships:
             lambda: client.records.create(
                 self.CHILD,
                 {
-                    "test_chiname": "Child A2",
-                    "test_chival": 200,
+                    "new_chiname": "Child A2",
+                    "new_chival": 200,
                     f"{nav}@odata.bind": f"/{es}({p1})",
                 },
             )
@@ -400,8 +425,8 @@ class TestDataThroughRelationships:
             lambda: client.records.create(
                 self.CHILD,
                 {
-                    "test_chiname": "Child B1",
-                    "test_chival": 300,
+                    "new_chiname": "Child B1",
+                    "new_chival": 300,
                     f"{nav}@odata.bind": f"/{es}({p2})",
                 },
             )
@@ -410,8 +435,8 @@ class TestDataThroughRelationships:
             lambda: client.records.create(
                 self.CHILD,
                 {
-                    "test_chiname": "Orphan",
-                    "test_chival": 0,
+                    "new_chiname": "Orphan",
+                    "new_chival": 0,
                 },
             )
         )
@@ -450,7 +475,7 @@ class TestDataThroughRelationships:
         all_recs = []
         for page in client.records.get(
             self.CHILD,
-            select=["test_chiname"],
+            select=["new_chiname"],
             expand=[self.server_nav_prop],
             top=10,
         ):
@@ -460,21 +485,21 @@ class TestDataThroughRelationships:
         bound = [r for r in all_recs if r.get(self.server_nav_prop) is not None]
         assert len(bound) >= 3
         for rec in bound:
-            assert rec[self.server_nav_prop].get("test_parname") is not None
+            assert rec[self.server_nav_prop].get("new_parname") is not None
 
     def test_filter_on_lookup_value(self, client):
         """$filter on lookup _value returns correct children."""
         filtered = []
         for page in client.records.get(
             self.CHILD,
-            select=["test_chiname"],
+            select=["new_chiname"],
             filter=f"{self.lookup_value_key} eq {self.p1_id}",
             top=10,
         ):
             filtered.extend(page)
 
         assert len(filtered) == 2
-        names = {r["test_chiname"] for r in filtered}
+        names = {r["new_chiname"] for r in filtered}
         assert names == {"Child A1", "Child A2"}
 
     def test_update_lookup_binding(self, client):
@@ -513,8 +538,8 @@ class TestCascadeBehaviors:
         _safe_delete_table(client, child_schema)
         _safe_delete_table(client, parent_schema)
 
-        parent = _create_table(client, parent_schema, {"test_Name": "string"})
-        child = _create_table(client, child_schema, {"test_Info": "string"})
+        parent = _create_table(client, parent_schema, {"new_Name": "string"})
+        child = _create_table(client, child_schema, {"new_Info": "string"})
 
         lookup = LookupAttributeMetadata(
             schema_name=lookup_name,
@@ -535,30 +560,33 @@ class TestCascadeBehaviors:
             lambda: client.tables.create_one_to_many_relationship(lookup=lookup, relationship=relationship)
         )
         rel_info = _wait_for_relationship(client, rel_name)
-        time.sleep(5)
 
         parent_full = client.tables.get(parent_schema)
         entity_set = parent_full["entity_set_name"]
         nav_prop = rel_info.lookup_schema_name
 
+        # Wait for lookup column to become queryable
+        lookup_value_key = f"_{nav_prop.lower()}_value"
+        _wait_for_lookup_ready(client, child_schema, lookup_value_key)
+
         return rel_result, entity_set, nav_prop
 
     def test_restrict_prevents_parent_delete(self, client):
         """Restrict cascade: deleting parent with children fails."""
-        ps, cs, rn = "test_E2ERestrPar", "test_E2ERestrChi", "test_E2ERestrPar_RestrChi"
+        ps, cs, rn = "new_E2ERestrPar", "new_E2ERestrChi", "new_E2ERestrPar_RestrChi"
         rel_result = None
         p_id = c_id = None
         try:
             rel_result, entity_set, nav_prop = self._create_cascade_setup(
-                client, ps, cs, rn, "test_RestrRef", CASCADE_BEHAVIOR_RESTRICT
+                client, ps, cs, rn, "new_RestrRef", CASCADE_BEHAVIOR_RESTRICT
             )
 
-            p_id = _backoff(lambda: client.records.create(ps, {"test_name": "Restrict Parent"}))
+            p_id = _backoff(lambda: client.records.create(ps, {"new_name": "Restrict Parent"}))
             c_id = _backoff(
                 lambda: client.records.create(
                     cs,
                     {
-                        "test_info": "Restrict Child",
+                        "new_info": "Restrict Child",
                         f"{nav_prop}@odata.bind": f"/{entity_set}({p_id})",
                     },
                 )
@@ -599,19 +627,19 @@ class TestCascadeBehaviors:
 
     def test_cascade_deletes_children(self, client):
         """Cascade delete: deleting parent also deletes children."""
-        ps, cs, rn = "test_E2ECascPar", "test_E2ECascChi", "test_E2ECascPar_CascChi"
+        ps, cs, rn = "new_E2ECascPar", "new_E2ECascChi", "new_E2ECascPar_CascChi"
         rel_result = None
         try:
             rel_result, entity_set, nav_prop = self._create_cascade_setup(
-                client, ps, cs, rn, "test_CascRef", CASCADE_BEHAVIOR_CASCADE
+                client, ps, cs, rn, "new_CascRef", CASCADE_BEHAVIOR_CASCADE
             )
 
-            p_id = _backoff(lambda: client.records.create(ps, {"test_name": "Cascade Parent"}))
+            p_id = _backoff(lambda: client.records.create(ps, {"new_name": "Cascade Parent"}))
             c1_id = _backoff(
                 lambda: client.records.create(
                     cs,
                     {
-                        "test_info": "Cascade Child 1",
+                        "new_info": "Cascade Child 1",
                         f"{nav_prop}@odata.bind": f"/{entity_set}({p_id})",
                     },
                 )
@@ -620,7 +648,7 @@ class TestCascadeBehaviors:
                 lambda: client.records.create(
                     cs,
                     {
-                        "test_info": "Cascade Child 2",
+                        "new_info": "Cascade Child 2",
                         f"{nav_prop}@odata.bind": f"/{entity_set}({p_id})",
                     },
                 )
@@ -628,12 +656,20 @@ class TestCascadeBehaviors:
 
             # Delete parent -- children should be cascade-deleted
             client.records.delete(ps, p_id)
-            time.sleep(2)
 
+            # Poll until children return 404 (cascade may be async)
             for cid in [c1_id, c2_id]:
-                with pytest.raises(HttpError) as exc_info:
-                    client.records.get(cs, cid)
-                assert exc_info.value.status_code == 404
+                for attempt in range(1, 11):
+                    try:
+                        client.records.get(cs, cid)
+                    except HttpError as e:
+                        if e.status_code == 404:
+                            break
+                        raise
+                    if attempt < 10:
+                        time.sleep(2)
+                else:
+                    pytest.fail(f"Child {cid} still exists after cascade delete")
 
         finally:
             if rel_result:
@@ -653,10 +689,10 @@ class TestCascadeBehaviors:
 class TestTypeDetection:
     """get_relationship returns correct type for both relationship kinds."""
 
-    TBL1 = "test_E2ETypeTbl1"
-    TBL2 = "test_E2ETypeTbl2"
-    REL_1N = "test_E2ETypeTbl1_TypeTbl2"
-    REL_NN = "test_e2etypetbl1_typetbl2_nn"
+    TBL1 = "new_E2ETypeTbl1"
+    TBL2 = "new_E2ETypeTbl2"
+    REL_1N = "new_E2ETypeTbl1_TypeTbl2"
+    REL_NN = "new_e2etypetbl1_typetbl2_nn"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, client):
@@ -676,12 +712,12 @@ class TestTypeDetection:
 
     def test_type_detection(self, client):
         """get_relationship correctly detects 1:N vs N:N."""
-        tbl1 = _create_table(client, self.TBL1, {"test_TC1": "string"})
-        tbl2 = _create_table(client, self.TBL2, {"test_TC2": "string"})
+        tbl1 = _create_table(client, self.TBL1, {"new_TC1": "string"})
+        tbl2 = _create_table(client, self.TBL2, {"new_TC2": "string"})
 
         # Create 1:N
         lookup = LookupAttributeMetadata(
-            schema_name="test_TypeRef",
+            schema_name="new_TypeRef",
             display_name=Label(localized_labels=[LocalizedLabel(label="Type Test", language_code=1033)]),
         )
         result_1n = _backoff(

@@ -432,7 +432,8 @@ def test_relationships(client: DataverseClient) -> None:
 
     try:
         # --- Cleanup any leftover resources from previous run ---
-        print("Cleaning up previous relationship test resources...")
+        print("Checking for leftover relationship test resources...")
+        found_leftovers = False
         for rel_name in [
             "test_RelParent_RelChild",
             "contact_test_relchild_test_ManagerId",
@@ -441,18 +442,45 @@ def test_relationships(client: DataverseClient) -> None:
             try:
                 rel = client.tables.get_relationship(rel_name)
                 if rel:
-                    client.tables.delete_relationship(rel.relationship_id)
-                    print(f"   (Cleaned up relationship: {rel_name})")
+                    found_leftovers = True
+                    break
             except Exception:
                 pass
 
-        for tbl in [rel_child_schema, rel_parent_schema, rel_m2m_schema]:
-            try:
-                if client.tables.get(tbl):
-                    client.tables.delete(tbl)
-                    print(f"   (Cleaned up table: {tbl})")
-            except Exception:
-                pass
+        if not found_leftovers:
+            for tbl in [rel_child_schema, rel_parent_schema, rel_m2m_schema]:
+                try:
+                    if client.tables.get(tbl):
+                        found_leftovers = True
+                        break
+                except Exception:
+                    pass
+
+        if found_leftovers:
+            cleanup_ok = input("Found leftover test resources. Clean up? (y/N): ").strip().lower() in ["y", "yes"]
+            if cleanup_ok:
+                for rel_name in [
+                    "test_RelParent_RelChild",
+                    "contact_test_relchild_test_ManagerId",
+                    "test_relchild_relproject",
+                ]:
+                    try:
+                        rel = client.tables.get_relationship(rel_name)
+                        if rel:
+                            client.tables.delete_relationship(rel.relationship_id)
+                            print(f"   (Cleaned up relationship: {rel_name})")
+                    except Exception:
+                        pass
+
+                for tbl in [rel_child_schema, rel_parent_schema, rel_m2m_schema]:
+                    try:
+                        if client.tables.get(tbl):
+                            client.tables.delete(tbl)
+                            print(f"   (Cleaned up table: {tbl})")
+                    except Exception:
+                        pass
+            else:
+                print("Skipping cleanup -- resources may conflict with new test run.")
 
         # --- Create parent and child tables ---
         print("\nCreating relationship test tables...")
