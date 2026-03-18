@@ -87,5 +87,20 @@ class BatchResult:
 
     @property
     def created_ids(self) -> List[str]:
-        """GUIDs from all successful create operations (where entity_id is set)."""
-        return [r.entity_id for r in self.succeeded if r.entity_id is not None]
+        """GUIDs from all successful create operations.
+
+        Collects IDs from two sources:
+
+        - ``entity_id`` extracted from the ``OData-EntityId`` response header
+          (individual POST creates return ``204 No Content`` with this header).
+        - ``data["Ids"]`` from ``CreateMultiple`` / ``UpsertMultiple`` action
+          responses (these return ``200 OK`` with ``{"Ids": [...]}`` in the
+          body instead of per-record headers).
+        """
+        ids: List[str] = []
+        for r in self.succeeded:
+            if r.entity_id is not None:
+                ids.append(r.entity_id)
+            elif r.data is not None and isinstance(r.data.get("Ids"), list):
+                ids.extend(i for i in r.data["Ids"] if isinstance(i, str))
+        return ids

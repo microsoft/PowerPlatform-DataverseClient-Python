@@ -643,9 +643,144 @@ class TestBatchResultProperties(unittest.TestCase):
         self.assertTrue(result.has_errors)
         self.assertEqual(len(result.failed), 1)
 
+    def test_created_ids_from_create_multiple_response_body(self):
+        """CreateMultiple returns IDs in data['Ids'], not in entity_id header."""
+        responses = [
+            # CreateMultiple response: 200 OK with {"Ids": [...]} body
+            BatchItemResponse(
+                status_code=200,
+                entity_id=None,
+                data={"Ids": ["guid-1", "guid-2", "guid-3"]},
+            ),
+        ]
+        result = BatchResult(responses=responses)
+        self.assertEqual(result.created_ids, ["guid-1", "guid-2", "guid-3"])
+
+    def test_created_ids_combines_header_and_body_ids(self):
+        """created_ids includes both OData-EntityId (single create) and Ids array (bulk)."""
+        responses = [
+            # Single create: entity_id from header
+            BatchItemResponse(status_code=204, entity_id="single-id"),
+            # CreateMultiple: Ids from body
+            BatchItemResponse(
+                status_code=200,
+                entity_id=None,
+                data={"Ids": ["bulk-id-1", "bulk-id-2"]},
+            ),
+        ]
+        result = BatchResult(responses=responses)
+        self.assertEqual(result.created_ids, ["single-id", "bulk-id-1", "bulk-id-2"])
+
+    def test_created_ids_ignores_non_string_ids_in_body(self):
+        """Non-string values in data['Ids'] are filtered out."""
+        responses = [
+            BatchItemResponse(
+                status_code=200,
+                data={"Ids": ["good-id", 12345, None, "another-id"]},
+            ),
+        ]
+        result = BatchResult(responses=responses)
+        self.assertEqual(result.created_ids, ["good-id", "another-id"])
+
+    def test_created_ids_skips_failed_create_multiple(self):
+        """Failed CreateMultiple responses should not contribute IDs."""
+        responses = [
+            BatchItemResponse(
+                status_code=400,
+                data={"error": {"code": "0x123", "message": "fail"}},
+            ),
+        ]
+        result = BatchResult(responses=responses)
+        self.assertEqual(result.created_ids, [])
+
 
 # ---------------------------------------------------------------------------
-# 12. Multipart parsing edge cases
+# 12. CreateMultiple response parsing in batch
+# ---------------------------------------------------------------------------
+
+
+class TestCreateMultipleInBatch(unittest.TestCase):
+    """CreateMultiple action returns 200 with {Ids: [...]} in the body."""
+
+    def test_create_multiple_response_parsed(self):
+        """A 200 OK CreateMultiple response has IDs in the body, not in headers."""
+        ids_body = json.dumps({"Ids": ["aaa-111", "bbb-222", "ccc-333"]})
+        batch_boundary = "batchresponse_cm123"
+        resp_text = (
+            f"--{batch_boundary}\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json; odata.metadata=minimal\r\n"
+            "OData-Version: 4.0\r\n"
+            "\r\n"
+            f"{ids_body}\r\n"
+            f"--{batch_boundary}--\r\n"
+        )
+
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": f'multipart/mixed; boundary="{batch_boundary}"'}
+        mock_response.text = resp_text
+
+        od = _make_od()
+        client = _BatchClient(od)
+        result = client._parse_batch_response(mock_response)
+
+        self.assertFalse(result.has_errors)
+        self.assertEqual(len(result.succeeded), 1)
+        # entity_id should be None (no OData-EntityId header for CreateMultiple)
+        self.assertIsNone(result.succeeded[0].entity_id)
+        # But data should contain the Ids array
+        self.assertEqual(result.succeeded[0].data["Ids"], ["aaa-111", "bbb-222", "ccc-333"])
+        # And created_ids should extract them
+        self.assertEqual(result.created_ids, ["aaa-111", "bbb-222", "ccc-333"])
+
+    def test_mixed_single_and_bulk_creates(self):
+        """Batch with both individual POST create and CreateMultiple."""
+        single_guid = "11111111-1111-1111-1111-111111111111"
+        ids_body = json.dumps({"Ids": ["bulk-1", "bulk-2"]})
+        batch_boundary = "batchresponse_mix_cm"
+        resp_text = (
+            # Individual create: 204 with OData-EntityId
+            f"--{batch_boundary}\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-Version: 4.0\r\n"
+            f"OData-EntityId: https://org.crm.dynamics.com/api/data/v9.2/"
+            f"accounts({single_guid})\r\n"
+            "\r\n"
+            "\r\n"
+            # CreateMultiple: 200 with Ids body
+            f"--{batch_boundary}\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            f"{ids_body}\r\n"
+            f"--{batch_boundary}--\r\n"
+        )
+
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": f'multipart/mixed; boundary="{batch_boundary}"'}
+        mock_response.text = resp_text
+
+        od = _make_od()
+        client = _BatchClient(od)
+        result = client._parse_batch_response(mock_response)
+
+        self.assertFalse(result.has_errors)
+        self.assertEqual(len(result.succeeded), 2)
+        # All 3 IDs should appear in created_ids
+        self.assertEqual(result.created_ids, [single_guid, "bulk-1", "bulk-2"])
+
+
+# ---------------------------------------------------------------------------
+# 13. Multipart parsing edge cases
 # ---------------------------------------------------------------------------
 
 
