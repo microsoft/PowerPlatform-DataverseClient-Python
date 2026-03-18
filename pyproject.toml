@@ -90,3 +90,11 @@ select = [
     "UP",      # pyupgrade
     "B",       # flake8-bugbear
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = [
+    "e2e: end-to-end tests requiring a live Dataverse environment (DATAVERSE_URL)",
+]
+# e2e tests require a live Dataverse environment:
+#   DATAVERSE_URL=https://yourorg.crm.dynamics.com pytest tests/e2e/ -v -s
