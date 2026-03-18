@@ -37,6 +37,7 @@ from ..core._error_codes import (
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_UNSUPPORTED_COLUMN_TYPE,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -1651,7 +1652,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not attr:
                 raise ValidationError(
                     f"Unsupported column type '{column_type}' for column '{column_name}'.",
-                    subcode="unsupported_column_type",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
                 )
             if "OptionSet" in attr:
                 needs_picklist_flush = True
@@ -1767,6 +1768,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         records: List[Dict[str, Any]],
     ) -> _RawRequest:
         """Build a CreateMultiple POST request without sending it."""
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
         logical_name = table.lower()
         enriched = []
         for r in records:
@@ -2014,7 +2017,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not attr:
                 raise ValidationError(
                     f"Unsupported column type '{dtype}' for column '{col_name}'.",
-                    subcode="unsupported_column_type",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
                 )
             attributes.append(attr)
         body = {
@@ -2088,7 +2091,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not attr:
             raise ValidationError(
                 f"Unsupported column type '{dtype}' for column '{col_name}'.",
-                subcode="unsupported_column_type",
+                subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
             )
         return _RawRequest(
             method="POST",

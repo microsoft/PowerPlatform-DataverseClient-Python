@@ -5,6 +5,7 @@ import json
 import unittest
 from unittest.mock import MagicMock
 
+from PowerPlatform.Dataverse.core.errors import ValidationError
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -574,7 +575,7 @@ class TestBuildUpsertMultiple(unittest.TestCase):
 
     def test_conflicting_key_field_raises(self):
         """Raises when a record field contradicts its alternate key value."""
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(ValidationError) as ctx:
             self.od._build_upsert_multiple(
                 "accounts",
                 "account",
@@ -585,7 +586,7 @@ class TestBuildUpsertMultiple(unittest.TestCase):
 
     def test_mismatched_lengths_raises(self):
         """Raises when alternate_keys and records lengths differ."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             self.od._build_upsert_multiple("accounts", "account", [{"accountnumber": "ACC-001"}], [])
 
     def test_url_contains_upsert_multiple_action(self):
