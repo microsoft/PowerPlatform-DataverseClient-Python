@@ -129,7 +129,7 @@ This SDK's API reference is published on [Microsoft Learn](https://learn.microso
 
 **Rules for `:type:` and `:rtype:` directives:**
 
-- Use **Python bracket notation** for generic types: `list[str]`, `dict[str, Any]`, `list[dict]`
+- Use **Python bracket notation** for generic types: `list[str]`, `dict[str, typing.Any]`, `list[dict]`
 - Use **`or`** (without `:class:`) for union types: `str or None`, `dict or list[dict]`
 - Use **bracket nesting** for complex types: `collections.abc.Iterable[list[dict]]`
 - `:class:` is fine for **single standalone types**: `:class:`str``, `:class:`bool``

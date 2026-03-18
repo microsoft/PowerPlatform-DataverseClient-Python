@@ -61,7 +61,7 @@ This SDK's API reference is published on Microsoft Learn. The Learn doc pipeline
 
 **Rules for `:type:` and `:rtype:` directives:**
 
-- Use Python bracket notation for generic types: `list[str]`, `dict[str, Any]`, `list[dict]`
+- Use Python bracket notation for generic types: `list[str]`, `dict[str, typing.Any]`, `list[dict]`
 - Use `or` (without `:class:`) for union types: `str or None`, `dict or list[dict]`
 - Use bracket nesting for complex types: `collections.abc.Iterable[list[dict]]`
 - Use `~` prefix for SDK types to show short name: `list[~PowerPlatform.Dataverse.models.record.Record]`
