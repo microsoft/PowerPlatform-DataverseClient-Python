@@ -122,3 +122,40 @@ published release:
 # Update version in pyproject.toml
 # Commit directly to main: "Bump version to 0.1.0b5 for next development cycle"
 ```
+
+### Docstring Type Annotations (Microsoft Learn Compatibility)
+
+This SDK's API reference is published on [Microsoft Learn](https://learn.microsoft.com). The Learn doc pipeline processes `:type:` and `:rtype:` Sphinx directives differently from standard Sphinx -- every word between `:class:` back-tick references is treated as a separate cross-reference (`<xref:word>`). For example:
+
+```
+:rtype: :class:`list` of :class:`str`
+```
+
+This produces a broken `<xref:of>` link because `of` is not a valid type.
+
+**Rules for `:type:` and `:rtype:` directives:**
+
+- Use **Python bracket notation** for generic types: `list[str]`, `dict[str, typing.Any]`, `list[dict]`
+- Use **`or`** (without `:class:`) for union types: `str or None`, `dict or list[dict]`
+- Use **bracket nesting** for complex types: `collections.abc.Iterable[list[dict]]`
+- `:class:` is fine for **single standalone types**: `` :class:`str` ``, `` :class:`bool` ``
+
+**NEVER** use the following patterns -- the connector words (`of`, `mapping`, `to`) become broken `<xref:>` links on Learn:
+
+```
+:class:`X` of :class:`Y`
+:class:`X` mapping :class:`Y` to :class:`Z`
+```
+
+Correct:
+```
+:type data: dict or list[dict]
+:rtype: list[str]
+:type select: list[str] or None
+```
+
+Wrong:
+```
+:type data: :class:`dict` or :class:`list` of :class:`dict`
+:rtype: :class:`list` of :class:`str`
+```

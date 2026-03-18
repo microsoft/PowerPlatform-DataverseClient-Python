@@ -208,10 +208,10 @@ class DataverseClient:
         :type table_schema_name: :class:`str`
         :param records: A single record dictionary or a list of record dictionaries.
             Each dictionary should contain column schema names as keys.
-        :type records: :class:`dict` or :class:`list` of :class:`dict`
+        :type records: dict or list[dict]
 
         :return: List of created record GUIDs. Returns a single-element list for a single input.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
 
         :raises TypeError: If ``records`` is not a dict or list[dict], or if the internal
             client returns an unexpected type.
@@ -260,12 +260,12 @@ class DataverseClient:
         :param table_schema_name:  Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to update.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param changes: Dictionary of changes for single/broadcast mode, or list of dictionaries
             for paired mode. When ``ids`` is a list and ``changes`` is a single dict,
             the same changes are broadcast to all records. When both are lists, they must
             have equal length for one-to-one mapping.
-        :type changes: :class:`dict` or :class:`list` of :class:`dict`
+        :type changes: dict or list[dict]
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes`` type doesn't match usage pattern.
 
@@ -312,7 +312,7 @@ class DataverseClient:
         :param table_schema_name: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
         :param ids: Single GUID string or list of GUID strings to delete.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param use_bulk_delete: When ``True`` (default) and ``ids`` is a list, execute the BulkDelete action and
             return its async job identifier. When ``False`` each record is deleted sequentially.
         :type use_bulk_delete: :class:`bool`
@@ -367,21 +367,21 @@ class DataverseClient:
         :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
         :type record_id: :class:`str` or None
         :param select: Optional list of attribute logical names to retrieve. Column names are case-insensitive and automatically lowercased (e.g. ``["new_Title", "new_Amount"]`` becomes ``"new_title,new_amount"``).
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData filter string, e.g. ``"name eq 'Contoso'"`` or ``"new_quantity gt 5"``. Column names in filter expressions must use exact lowercase logical names (e.g. ``"new_quantity"``, not ``"new_Quantity"``). The filter string is passed directly to the Dataverse Web API without transformation.
         :type filter: :class:`str` or None
         :param orderby: Optional list of attributes to sort by, e.g. ``["name asc", "createdon desc"]``. Column names are automatically lowercased.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum number of records to return.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand, e.g. ``["primarycontactid"]``. Navigation property names are case-sensitive and must match the server-defined  names exactly. These are NOT automatically transformed. Consult entity metadata for correct casing.
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
 
         :return: Single record dict if ``record_id`` is provided, otherwise a generator
             yielding lists of record dictionaries (one list per page).
-        :rtype: :class:`dict` or :class:`collections.abc.Iterable` of :class:`list` of :class:`dict`
+        :rtype: dict or collections.abc.Iterable[list[dict]]
 
         :raises TypeError: If ``record_id`` is provided but not a string.
 
@@ -456,7 +456,7 @@ class DataverseClient:
         :type sql: :class:`str`
 
         :return: List of result row dictionaries. Returns an empty list if no rows match.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict]
 
         :raises ~PowerPlatform.Dataverse.core.errors.SQLParseError: If the SQL query uses unsupported syntax.
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError: If the Web API returns an error.
@@ -545,7 +545,7 @@ class DataverseClient:
                           1036: {"Active": "Actif", "Inactive": "Inactif"}
                       }
 
-        :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
+        :type columns: dict[str, typing.Any]
         :param solution_unique_name: Optional solution unique name that should own the new table. When omitted the table is created in the default solution.
         :type solution_unique_name: :class:`str` or None
         :param primary_column_schema_name: Optional primary name column schema name with customization prefix value (e.g. ``"new_MyTestTable"``). If not provided, defaults to ``"{customization prefix value}_Name"``.
@@ -634,7 +634,7 @@ class DataverseClient:
         List all non-private tables in the Dataverse environment.
 
         :return: List of EntityDefinition metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict]
 
         Example:
             List all non-private tables and print their logical names::
@@ -666,9 +666,9 @@ class DataverseClient:
         :param columns: Mapping of column schema names (with customization prefix value) to supported types. All custom column names must include the customization prefix value** (e.g. ``"new_Notes"``). Primitive types include
             ``"string"`` (alias: ``"text"``), ``"int"`` (alias: ``"integer"``), ``"decimal"`` (alias: ``"money"``), ``"float"`` (alias: ``"double"``), ``"datetime"`` (alias: ``"date"``), ``"bool"`` (alias: ``"boolean"``), and ``"file"``. Enum subclasses (IntEnum preferred)
             generate a local option set and can specify localized labels via ``__labels__``.
-        :type columns: :class:`dict` mapping :class:`str` to :class:`typing.Any`
+        :type columns: dict[str, typing.Any]
         :returns: Schema names for the columns that were created.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
         Example:
             Create multiple columns on the custom table::
 
@@ -703,9 +703,9 @@ class DataverseClient:
         :param table_schema_name: Schema name of the table (e.g. ``"new_MyTestTable"``).
         :type table_schema_name: :class:`str`
         :param columns: Column name or list of column names to remove. Must include customization prefix value (e.g. ``"new_TestColumn"``).
-        :type columns: :class:`str` or :class:`list` of :class:`str`
+        :type columns: str or list[str]
         :returns: Schema names for the columns that were removed.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
         Example:
             Remove two custom columns by schema name:
 
