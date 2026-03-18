@@ -8,6 +8,7 @@ This example shows:
 - Table creation with various column types including enums
 - Single and multiple record CRUD operations
 - Querying with filtering, paging, QueryBuilder, and SQL
+- Expand (navigation properties) with QueryBuilder
 - Picklist label-to-value conversion
 - Column management
 - Cleanup
@@ -25,6 +26,7 @@ from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 from PowerPlatform.Dataverse.models.filters import eq, gt, between
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
 import requests
 
 
@@ -346,10 +348,66 @@ def _run_walkthrough(client):
     print(f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)")
 
     # ============================================================================
-    # 8. SQL QUERY
+    # 8. EXPAND (NAVIGATION PROPERTIES)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("8. SQL Query")
+    print("8. Expand (Navigation Properties)")
+    print("=" * 80)
+
+    # Simple expand: fetch accounts with their primary contact in one request
+    log_call("client.query.builder('account').select('name').expand('primarycontactid').top(3).execute()")
+    print("Querying accounts with primary contact expanded...")
+    try:
+        expanded_records = list(
+            backoff(
+                lambda: client.query.builder("account")
+                .select("name")
+                .expand("primarycontactid")
+                .top(3)
+                .execute()
+            )
+        )
+        print(f"[OK] Found {len(expanded_records)} accounts with expanded contact:")
+        for rec in expanded_records:
+            contact = rec.get("primarycontactid")
+            contact_name = contact.get("fullname", "(none)") if contact else "(no contact)"
+            print(f"  - '{rec.get('name')}' -> Contact: {contact_name}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[SKIP] Expand demo skipped (no accounts in org): {e}")
+
+    # ExpandOption with nested $select, $filter, $orderby, $top
+    log_call("ExpandOption('Account_Tasks').select('subject').order_by('createdon', descending=True).top(3)")
+    print("Querying accounts with nested expand options on tasks...")
+    try:
+        tasks_opt = (
+            ExpandOption("Account_Tasks")
+            .select("subject", "createdon")
+            .order_by("createdon", descending=True)
+            .top(3)
+        )
+        nested_records = list(
+            backoff(
+                lambda: client.query.builder("account")
+                .select("name")
+                .expand(tasks_opt)
+                .top(3)
+                .execute()
+            )
+        )
+        print(f"[OK] Found {len(nested_records)} accounts with nested task expansion:")
+        for rec in nested_records:
+            tasks = rec.get("Account_Tasks", [])
+            print(f"  - '{rec.get('name')}' has {len(tasks)} task(s)")
+            for task in tasks:
+                print(f"      - {task.get('subject')}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[SKIP] Nested expand demo skipped: {e}")
+
+    # ============================================================================
+    # 9. SQL QUERY
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("9. SQL Query")
     print("=" * 80)
 
     log_call(f"client.query.sql('SELECT new_title, new_quantity FROM {table_name} WHERE new_completed = 1')")
@@ -363,10 +421,10 @@ def _run_walkthrough(client):
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
     # ============================================================================
-    # 9. PICKLIST LABEL CONVERSION
+    # 10. PICKLIST LABEL CONVERSION
     # ============================================================================
     print("\n" + "=" * 80)
-    print("9. Picklist Label Conversion")
+    print("10. Picklist Label Conversion")
     print("=" * 80)
 
     log_call(f"client.records.create('{table_name}', {{'new_Priority': 'High'}})")
@@ -384,10 +442,10 @@ def _run_walkthrough(client):
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
 
     # ============================================================================
-    # 10. COLUMN MANAGEMENT
+    # 11. COLUMN MANAGEMENT
     # ============================================================================
     print("\n" + "=" * 80)
-    print("10. Column Management")
+    print("11. Column Management")
     print("=" * 80)
 
     log_call(f"client.tables.add_columns('{table_name}', {{'new_Notes': 'string'}})")
@@ -400,10 +458,10 @@ def _run_walkthrough(client):
     print(f"[OK] Deleted column: new_Notes")
 
     # ============================================================================
-    # 11. DELETE OPERATIONS
+    # 12. DELETE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("11. Delete Operations")
+    print("12. Delete Operations")
     print("=" * 80)
 
     # Single delete
@@ -418,19 +476,24 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 12. CLEANUP
+    # 13. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("12. Cleanup")
+    print("13. Cleanup")
     print("=" * 80)
 
     log_call(f"client.tables.delete('{table_name}')")
     try:
         backoff(lambda: client.tables.delete(table_name))
         print(f"[OK] Deleted table: {table_name}")
+    except MetadataError as ex:
+        if "not found" in str(ex).lower():
+            print(f"[OK] Table already removed: {table_name}")
+        else:
+            raise
     except Exception as ex:  # noqa: BLE001
         code = getattr(getattr(ex, "response", None), "status_code", None)
-        if isinstance(ex, (requests.exceptions.HTTPError, MetadataError)) and code == 404:
+        if isinstance(ex, requests.exceptions.HTTPError) and code == 404:
             print(f"[OK] Table removed: {table_name}")
         else:
             raise
@@ -448,6 +511,7 @@ def _run_walkthrough(client):
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
     print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where)")
+    print("  [OK] Expand navigation properties (simple + nested ExpandOption)")
     print("  [OK] SQL queries")
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
