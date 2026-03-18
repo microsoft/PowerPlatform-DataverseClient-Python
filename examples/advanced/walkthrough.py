@@ -347,6 +347,24 @@ def _run_walkthrough(client):
         print(f"  Page {combined_page_count}: {len(page)} records - {titles}")
     print(f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)")
 
+    # to_dataframe: get results as a pandas DataFrame
+    log_call(f"client.query.builder('{table_name}').select(...).filter_eq(...).to_dataframe()")
+    print("Querying completed records as a pandas DataFrame (to_dataframe)...")
+    df = backoff(
+        lambda: (
+            client.query.builder(table_name)
+            .select("new_title", "new_quantity")
+            .filter_eq("new_completed", True)
+            .to_dataframe()
+        )
+    )
+    print(f"[OK] to_dataframe() returned {len(df)} rows, columns: {list(df.columns)}")
+    if not df.empty:
+        print(f"  First row: new_title='{df.iloc[0].get('new_title')}', new_quantity={df.iloc[0].get('new_quantity')}")
+        print(f"  Sum of new_quantity: {df['new_quantity'].sum()}")
+    else:
+        print("  (empty DataFrame)")
+
     # ============================================================================
     # 8. EXPAND (NAVIGATION PROPERTIES)
     # ============================================================================
@@ -510,7 +528,7 @@ def _run_walkthrough(client):
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
-    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where)")
+    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where, to_dataframe)")
     print("  [OK] Expand navigation properties (simple + nested ExpandOption)")
     print("  [OK] SQL queries")
     print("  [OK] Picklist label-to-value conversion")

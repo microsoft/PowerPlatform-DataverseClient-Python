@@ -249,7 +249,7 @@ class _NotInFilter(FilterExpression):
 
     def to_odata(self) -> str:
         # Same Collection(Edm.String) rules as _InFilter.
-        parts = [f'"{ _format_value(v).strip("'") }"' for v in self.values]
+        parts = [f'"{_format_value(v).strip("'")}"' for v in self.values]
         formatted = ",".join(parts)
         return (
             f"Microsoft.Dynamics.CRM.NotIn"

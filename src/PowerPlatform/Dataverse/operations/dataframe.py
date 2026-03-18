@@ -88,6 +88,13 @@ class DataFrameOperations:
         :type expand: :class:`list` of :class:`str` or None
         :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
+        :param count: If ``True``, adds ``$count=true`` to include a total
+            record count in the response.
+        :type count: :class:`bool`
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: :class:`str` or None
 
         :return: DataFrame containing all matching records. Returns an empty DataFrame
             when no records match.

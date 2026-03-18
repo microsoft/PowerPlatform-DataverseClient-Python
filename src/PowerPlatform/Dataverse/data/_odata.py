@@ -761,6 +761,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type expand: ``list[str]`` | ``None``
         :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
         :type page_size: ``int`` | ``None``
+        :param count: If ``True``, adds ``$count=true`` to include a total record count in the response.
+        :type count: ``bool``
+        :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: ``str`` | ``None``
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
