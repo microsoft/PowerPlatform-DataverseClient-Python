@@ -215,3 +215,52 @@ if created_ids:
     batch.dataframe.delete("account", pd.Series(created_ids), use_bulk_delete=False)
     result = batch.execute()
     print(f"[OK] DataFrame delete: {len(result.succeeded)} succeeded")
+
+
+# ---------------------------------------------------------------------------
+# Example 8: Understanding response data patterns
+# ---------------------------------------------------------------------------
+
+print("\n[INFO] Example 8: Response data patterns")
+
+# Every batch result maps 1:1 with the operations you added.
+# Different operations return different response shapes:
+
+batch = client.batch.new()
+# Op 0: single create -> 204 No Content, entity_id in OData-EntityId header
+batch.records.create("account", {"name": "Pattern-Demo"})
+# Op 1: bulk create -> 200 OK, IDs in body as {"Ids": [...]}
+batch.records.create("account", [{"name": "Bulk-A"}, {"name": "Bulk-B"}])
+# Op 2: SQL query -> 200 OK, rows in body as {"value": [...]}
+batch.query.sql("SELECT TOP 3 name FROM account")
+
+result = batch.execute()
+
+for i, resp in enumerate(result.responses):
+    if not resp.is_success:
+        print(f"  Op {i}: [FAIL] {resp.status_code}: {resp.error_message}")
+        continue
+
+    # Single create: entity_id from OData-EntityId header
+    if resp.entity_id:
+        print(f"  Op {i}: [CREATE] entity_id={resp.entity_id}")
+
+    # Bulk action (CreateMultiple/UpsertMultiple): IDs in body
+    elif resp.data and "Ids" in resp.data:
+        print(f"  Op {i}: [BULK] {len(resp.data['Ids'])} IDs: {resp.data['Ids']}")
+
+    # Query: rows in body
+    elif resp.data and "value" in resp.data:
+        print(f"  Op {i}: [QUERY] {len(resp.data['value'])} rows")
+
+    # Delete or metadata operation: 204, no data
+    else:
+        print(f"  Op {i}: [OK] {resp.status_code}")
+
+# Clean up demo records
+for rid in result.entity_ids:
+    client.records.delete("account", rid)
+for resp in result.succeeded:
+    if resp.data and "Ids" in resp.data:
+        for rid in resp.data["Ids"]:
+            client.records.delete("account", rid)
