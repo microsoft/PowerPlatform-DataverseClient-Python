@@ -714,9 +714,7 @@ class BatchDataFrameOperations:
             return
         invalid = [ids.index[i] for i, v in enumerate(raw_list) if not isinstance(v, str) or not v.strip()]
         if invalid:
-            raise ValueError(
-                f"ids contains invalid values at index(es) {invalid}. All IDs must be non-empty strings."
-            )
+            raise ValueError(f"ids contains invalid values at index(es) {invalid}. All IDs must be non-empty strings.")
         id_list = [v.strip() for v in raw_list]
         self._batch.records.delete(table, id_list, use_bulk_delete=use_bulk_delete)
 

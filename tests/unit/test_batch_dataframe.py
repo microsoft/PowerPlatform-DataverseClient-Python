@@ -36,10 +36,12 @@ class TestBatchDataFrameCreate(unittest.TestCase):
 
     def test_create_from_dataframe(self):
         batch = _make_batch()
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": "555-0200"},
+            ]
+        )
         batch.dataframe.create("account", df)
         # Should have enqueued a _RecordCreate with a list of dicts
         self.assertEqual(len(batch._items), 1)
@@ -82,10 +84,12 @@ class TestBatchDataFrameCreate(unittest.TestCase):
     def test_create_handles_nan_values(self):
         """NaN values are dropped from individual records by default."""
         batch = _make_batch()
-        df = pd.DataFrame([
-            {"name": "Contoso", "telephone1": "555-0100"},
-            {"name": "Fabrikam", "telephone1": None},
-        ])
+        df = pd.DataFrame(
+            [
+                {"name": "Contoso", "telephone1": "555-0100"},
+                {"name": "Fabrikam", "telephone1": None},
+            ]
+        )
         batch.dataframe.create("account", df)
         item = batch._items[0]
         # Second record should not have telephone1
@@ -98,10 +102,12 @@ class TestBatchDataFrameUpdate(unittest.TestCase):
 
     def test_update_enqueues_record_update(self):
         batch = _make_batch()
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "telephone1": "555-0100"},
-            {"accountid": "guid-2", "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "telephone1": "555-0100"},
+                {"accountid": "guid-2", "telephone1": "555-0200"},
+            ]
+        )
         batch.dataframe.update("account", df, id_column="accountid")
         self.assertEqual(len(batch._items), 1)
         item = batch._items[0]
@@ -139,9 +145,11 @@ class TestBatchDataFrameUpdate(unittest.TestCase):
     def test_update_skips_all_nan_rows(self):
         """Rows where all change values are NaN are silently skipped."""
         batch = _make_batch()
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": None},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": None},
+            ]
+        )
         batch.dataframe.update("account", df, id_column="accountid")
         # Nothing enqueued because all change values were NaN
         self.assertEqual(len(batch._items), 0)

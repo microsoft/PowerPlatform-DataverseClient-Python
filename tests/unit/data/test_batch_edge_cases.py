@@ -335,9 +335,7 @@ class TestBatchSizeLimitMixed(unittest.TestCase):
         items.append(cs)
 
         od._build_get.return_value = _RawRequest(method="GET", url="https://org/api/data/v9.2/accounts(x)")
-        od._build_create.return_value = _RawRequest(
-            method="POST", url="https://org/api/data/v9.2/accounts", body="{}"
-        )
+        od._build_create.return_value = _RawRequest(method="POST", url="https://org/api/data/v9.2/accounts", body="{}")
 
         with self.assertRaises(ValidationError) as ctx:
             client.execute(items)
