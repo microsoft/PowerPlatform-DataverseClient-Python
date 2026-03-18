@@ -288,6 +288,9 @@ class _BatchClient:
         result: List[Union[_RawRequest, _ChangeSetBatchItem]] = []
         for item in items:
             if isinstance(item, _ChangeSet):
+                if not item.operations:
+                    # Empty changeset — nothing to send; skip silently.
+                    continue
                 cs_requests = [self._resolve_one(op) for op in item.operations]
                 result.append(_ChangeSetBatchItem(requests=cs_requests))
             else:
@@ -560,7 +563,7 @@ class _BatchClient:
                         if item is not None:
                             responses.append(item)
             else:
-                item = _parse_http_response_part(part_body, content_id=None)
+                item = _parse_http_response_part(part_body, content_id=part_headers.get("content-id"))
                 if item is not None:
                     responses.append(item)
         return BatchResult(responses=responses)

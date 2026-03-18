@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import pandas as pd
+
 from ..core.errors import ValidationError
 from ..core._error_codes import VALIDATION_SQL_EMPTY
 from ..data._batch import (
@@ -548,6 +550,178 @@ class BatchQueryOperations:
 
 
 # ---------------------------------------------------------------------------
+# DataFrame batch operations
+# ---------------------------------------------------------------------------
+
+
+class BatchDataFrameOperations:
+    """DataFrame-oriented wrappers for batch record operations.
+
+    Provides :meth:`create`, :meth:`update`, and :meth:`delete` that accept
+    ``pandas.DataFrame`` / ``pandas.Series`` inputs and convert them to standard
+    dicts before enqueueing on the batch.  This lets data-science callers feed
+    DataFrames directly into a batch without manual conversion.
+
+    Accessed via ``batch.dataframe``.
+
+    Example::
+
+        import pandas as pd
+
+        batch = client.batch.new()
+        df = pd.DataFrame([
+            {"name": "Contoso", "telephone1": "555-0100"},
+            {"name": "Fabrikam", "telephone1": "555-0200"},
+        ])
+        batch.dataframe.create("account", df)
+        result = batch.execute()
+    """
+
+    def __init__(self, batch: "BatchRequest") -> None:
+        self._batch = batch
+
+    def create(self, table: str, records: pd.DataFrame) -> None:
+        """Enqueue record creates from a pandas DataFrame.
+
+        Each row becomes a record. All rows are bundled in a single
+        ``CreateMultiple`` batch item (one HTTP request in the batch).
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param records: DataFrame where each row is a record to create.
+        :type records: ~pandas.DataFrame
+
+        :raises TypeError: If ``records`` is not a pandas DataFrame.
+        :raises ValueError: If ``records`` is empty or any row has no non-null values.
+
+        Example::
+
+            df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+            batch.dataframe.create("account", df)
+        """
+        if not isinstance(records, pd.DataFrame):
+            raise TypeError("records must be a pandas DataFrame")
+        if records.empty:
+            raise ValueError("records must be a non-empty DataFrame")
+
+        from ..utils._pandas import dataframe_to_records
+
+        record_list = dataframe_to_records(records)
+        empty_rows = [records.index[i] for i, r in enumerate(record_list) if not r]
+        if empty_rows:
+            raise ValueError(
+                f"Records at index(es) {empty_rows} have no non-null values. "
+                "All rows must contain at least one field to create."
+            )
+        self._batch.records.create(table, record_list)
+
+    def update(
+        self,
+        table: str,
+        changes: pd.DataFrame,
+        id_column: str,
+        clear_nulls: bool = False,
+    ) -> None:
+        """Enqueue record updates from a pandas DataFrame.
+
+        Each row represents an update. The ``id_column`` specifies which
+        column contains the record GUIDs.
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param changes: DataFrame where each row contains a record GUID and
+            the fields to update.
+        :type changes: ~pandas.DataFrame
+        :param id_column: Name of the DataFrame column containing record GUIDs.
+        :type id_column: :class:`str`
+        :param clear_nulls: When ``False`` (default), NaN/None values are
+            skipped. When ``True``, NaN/None sends ``null`` to clear the field.
+        :type clear_nulls: :class:`bool`
+
+        :raises TypeError: If ``changes`` is not a pandas DataFrame.
+        :raises ValueError: If ``changes`` is empty, ``id_column`` is missing,
+            or IDs are invalid.
+
+        Example::
+
+            df = pd.DataFrame([
+                {"accountid": "guid-1", "telephone1": "555-0100"},
+                {"accountid": "guid-2", "telephone1": "555-0200"},
+            ])
+            batch.dataframe.update("account", df, id_column="accountid")
+        """
+        if not isinstance(changes, pd.DataFrame):
+            raise TypeError("changes must be a pandas DataFrame")
+        if changes.empty:
+            raise ValueError("changes must be a non-empty DataFrame")
+        if id_column not in changes.columns:
+            raise ValueError(f"id_column '{id_column}' not found in DataFrame columns")
+
+        raw_ids = changes[id_column].tolist()
+        invalid = [changes.index[i] for i, v in enumerate(raw_ids) if not isinstance(v, str) or not v.strip()]
+        if invalid:
+            raise ValueError(
+                f"id_column '{id_column}' contains invalid values at row index(es) {invalid}. "
+                "All IDs must be non-empty strings."
+            )
+        ids = [v.strip() for v in raw_ids]
+
+        change_columns = [c for c in changes.columns if c != id_column]
+        if not change_columns:
+            raise ValueError(
+                "No columns to update. The DataFrame must contain at least one column besides the id_column."
+            )
+
+        from ..utils._pandas import dataframe_to_records
+
+        change_list = dataframe_to_records(changes[change_columns], na_as_null=clear_nulls)
+        paired = [(rid, patch) for rid, patch in zip(ids, change_list) if patch]
+        if not paired:
+            return
+        ids_filtered = [p[0] for p in paired]
+        change_filtered = [p[1] for p in paired]
+
+        self._batch.records.update(table, ids_filtered, change_filtered)
+
+    def delete(
+        self,
+        table: str,
+        ids: pd.Series,
+        use_bulk_delete: bool = True,
+    ) -> None:
+        """Enqueue record deletes from a pandas Series of GUIDs.
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param ids: Series of record GUIDs to delete.
+        :type ids: ~pandas.Series
+        :param use_bulk_delete: When ``True`` (default) and ``ids`` has multiple
+            values, use the ``BulkDelete`` action.
+        :type use_bulk_delete: :class:`bool`
+
+        :raises TypeError: If ``ids`` is not a pandas Series.
+        :raises ValueError: If ``ids`` contains invalid values.
+
+        Example::
+
+            ids_series = pd.Series(["guid-1", "guid-2", "guid-3"])
+            batch.dataframe.delete("account", ids_series)
+        """
+        if not isinstance(ids, pd.Series):
+            raise TypeError("ids must be a pandas Series")
+        raw_list = ids.tolist()
+        if not raw_list:
+            return
+        invalid = [ids.index[i] for i, v in enumerate(raw_list) if not isinstance(v, str) or not v.strip()]
+        if invalid:
+            raise ValueError(
+                f"ids contains invalid values at index(es) {invalid}. All IDs must be non-empty strings."
+            )
+        id_list = [v.strip() for v in raw_list]
+        self._batch.records.delete(table, id_list, use_bulk_delete=use_bulk_delete)
+
+
+# ---------------------------------------------------------------------------
 # BatchRequest and BatchOperations
 # ---------------------------------------------------------------------------
 
@@ -557,7 +731,8 @@ class BatchRequest:
     Builder for constructing and executing a Dataverse OData ``$batch`` request.
 
     Obtain via :meth:`BatchOperations.new` (``client.batch.new()``). Add operations
-    through :attr:`records`, :attr:`tables`, and :attr:`query`, optionally group writes
+    through :attr:`records`, :attr:`tables`, :attr:`query`, and :attr:`dataframe`,
+    optionally group writes
     into a :meth:`changeset`, then call :meth:`execute`.
 
     Operations are executed sequentially in the order added. The resulting
@@ -588,6 +763,7 @@ class BatchRequest:
         self.records = BatchRecordOperations(self)
         self.tables = BatchTableOperations(self)
         self.query = BatchQueryOperations(self)
+        self.dataframe = BatchDataFrameOperations(self)
 
     def changeset(self) -> ChangeSet:
         """
