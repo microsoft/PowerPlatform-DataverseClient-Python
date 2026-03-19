@@ -46,14 +46,32 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, TypedDict, Union
 
 import pandas as pd
 
 from . import filters
 from .record import Record
 
-__all__ = ["QueryBuilder", "ExpandOption"]
+__all__ = ["QueryBuilder", "QueryParams", "ExpandOption"]
+
+
+class QueryParams(TypedDict, total=False):
+    """Typed dictionary returned by :meth:`QueryBuilder.build`.
+
+    Provides IDE autocomplete when passing build results to
+    ``client.records.get()`` manually.
+    """
+
+    table: str
+    select: List[str]
+    filter: str
+    orderby: List[str]
+    expand: List[str]
+    top: int
+    page_size: int
+    count: bool
+    include_annotations: str
 
 
 class ExpandOption:
@@ -390,6 +408,11 @@ class QueryBuilder:
         Use this for complex filters not covered by other methods.
         Column names in the filter string should be lowercase.
 
+        .. warning::
+            The filter string is passed directly to Dataverse without validation.
+            Ensure it follows OData filter syntax; a malformed expression will result
+            in a ``400 Bad Request`` error from the server.
+
         :param filter_string: Raw OData filter expression.
         :return: Self for method chaining.
 
@@ -585,19 +608,19 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- build
 
-    def build(self) -> dict:
+    def build(self) -> QueryParams:
         """Build query parameters dictionary.
 
-        Returns a dictionary suitable for passing to the OData layer.
-        All ``filter_*()`` and ``where()`` clauses are AND-joined into
-        a single ``filter`` string in call order.
+        Returns a :class:`QueryParams` dictionary suitable for passing to
+        the OData layer.  All ``filter_*()`` and ``where()`` clauses are
+        AND-joined into a single ``filter`` string in call order.
 
         :return: Dictionary with ``table`` and optionally ``select``,
             ``filter``, ``orderby``, ``expand``, ``top``, ``page_size``,
             ``count``, ``include_annotations``.
-        :rtype: dict
+        :rtype: QueryParams
         """
-        params: dict = {"table": self.table}
+        params: QueryParams = {"table": self.table}
         if self._select:
             params["select"] = list(self._select)
         if self._filter_parts:
@@ -622,6 +645,23 @@ class QueryBuilder:
             params["include_annotations"] = self._include_annotations
         return params
 
+    # --------------------------------------------------------------- guards
+
+    def _validate_constraints(self) -> None:
+        """Raise if the query has no limiting constraints.
+
+        At least one of ``select``, ``filter``, or ``top`` must be set
+        before executing a query to prevent accidental full-table scans.
+
+        :raises ValueError: If none of ``select()``, ``filter_*()``,
+            ``where()``, or ``top()`` has been called.
+        """
+        if not (self._select or self._filter_parts or self._top is not None):
+            raise ValueError(
+                "Unbounded query: set at least one of select(), filter_*(), "
+                "where(), or top() before calling execute() or to_dataframe()."
+            )
+
     # --------------------------------------------------------------- execute
 
     def execute(self, *, by_page: bool = False) -> Union[Iterable[Record], Iterable[List[Record]]]:
@@ -636,6 +676,11 @@ class QueryBuilder:
         instances should use :meth:`build` to get parameters and pass them
         to ``client.records.get()`` manually.
 
+        At least one of ``select()``, ``filter_*()``, ``where()``, or
+        ``top()`` must be called before ``execute()``; otherwise a
+        :class:`ValueError` is raised to prevent accidental full-table
+        scans.
+
         :param by_page: If ``True``, yield pages (lists of
             :class:`~PowerPlatform.Dataverse.models.record.Record` objects)
             instead of individual records. Defaults to ``False``.
@@ -644,6 +689,8 @@ class QueryBuilder:
             :class:`~PowerPlatform.Dataverse.models.record.Record` objects
             (default) or pages of records (when ``by_page=True``).
         :rtype: Iterable[Record] or Iterable[List[Record]]
+        :raises ValueError: If no ``select``, ``filter``, or ``top``
+            constraint has been set.
         :raises RuntimeError: If the query was not created via
             ``client.query.builder()``.
 
@@ -668,6 +715,7 @@ class QueryBuilder:
                 "Cannot execute: query was not created via client.query.builder(). "
                 "Use build() and pass parameters to client.records.get() instead."
             )
+        self._validate_constraints()
         params = self.build()
         client = self._query_ops._client
 
@@ -703,9 +751,16 @@ class QueryBuilder:
         This method is only available when the QueryBuilder was created
         via ``client.query.builder(table)``.
 
+        At least one of ``select()``, ``filter_*()``, ``where()``, or
+        ``top()`` must be called before ``to_dataframe()``; otherwise a
+        :class:`ValueError` is raised to prevent accidental full-table
+        scans.
+
         :return: DataFrame containing all matching records. Returns an empty
             DataFrame when no records match.
         :rtype: ~pandas.DataFrame
+        :raises ValueError: If no ``select``, ``filter``, or ``top``
+            constraint has been set.
         :raises RuntimeError: If the query was not created via
             ``client.query.builder()``.
 
@@ -722,6 +777,7 @@ class QueryBuilder:
                 "Cannot execute: query was not created via client.query.builder(). "
                 "Use build() and pass parameters to client.dataframe.get() instead."
             )
+        self._validate_constraints()
         params = self.build()
         return self._query_ops._client.dataframe.get(
             params["table"],

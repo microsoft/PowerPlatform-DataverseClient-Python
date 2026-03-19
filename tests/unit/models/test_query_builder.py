@@ -733,6 +733,7 @@ class TestExecute(unittest.TestCase):
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
+        qb.select("name")
         records = list(qb.execute())
 
         self.assertEqual(len(records), 3)
@@ -750,32 +751,75 @@ class TestExecute(unittest.TestCase):
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
+        qb.select("name")
         pages = list(qb.execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
         self.assertEqual(pages[0], page1)
         self.assertEqual(pages[1], page2)
 
-    def test_execute_passes_none_for_empty_options(self):
+    def test_execute_unbounded_raises(self):
+        """execute() with no select/filter/top should raise ValueError."""
+        mock_query_ops = MagicMock()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        with self.assertRaises(ValueError) as ctx:
+            qb.execute()
+        self.assertIn("Unbounded query", str(ctx.exception))
+
+    def test_execute_with_only_select_succeeds(self):
+        """execute() with select only should not raise."""
         mock_query_ops = MagicMock()
         mock_client = mock_query_ops._client
         mock_client.records.get.return_value = iter([])
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        list(qb.execute())
+        qb.select("name")
+        list(qb.execute())  # should not raise
+        mock_client.records.get.assert_called_once()
 
-        mock_client.records.get.assert_called_once_with(
-            "account",
-            select=None,
-            filter=None,
-            orderby=None,
-            top=None,
-            expand=None,
-            page_size=None,
-            count=False,
-            include_annotations=None,
-        )
+    def test_execute_with_only_filter_succeeds(self):
+        """execute() with filter only should not raise."""
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.records.get.return_value = iter([])
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.filter_eq("statecode", 0)
+        list(qb.execute())  # should not raise
+        mock_client.records.get.assert_called_once()
+
+    def test_execute_with_only_top_succeeds(self):
+        """execute() with top only should not raise."""
+        mock_query_ops = MagicMock()
+        mock_client = mock_query_ops._client
+        mock_client.records.get.return_value = iter([])
+
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.top(10)
+        list(qb.execute())  # should not raise
+        mock_client.records.get.assert_called_once()
+
+    def test_execute_with_only_expand_raises(self):
+        """expand alone is not a sufficient constraint."""
+        mock_query_ops = MagicMock()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.expand("primarycontactid")
+        with self.assertRaises(ValueError):
+            qb.execute()
+
+    def test_execute_with_only_count_raises(self):
+        """count alone is not a sufficient constraint."""
+        mock_query_ops = MagicMock()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.count()
+        with self.assertRaises(ValueError):
+            qb.execute()
 
     def test_execute_with_where_expressions(self):
         from PowerPlatform.Dataverse.models.filters import eq, gt
@@ -819,12 +863,12 @@ class TestExecute(unittest.TestCase):
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.count().include_formatted_values()
+        qb.select("name").count().include_formatted_values()
         list(qb.execute())
 
         mock_client.records.get.assert_called_once_with(
             "account",
-            select=None,
+            select=["name"],
             filter=None,
             orderby=None,
             top=None,
@@ -874,29 +918,14 @@ class TestToDataframe(unittest.TestCase):
         )
         pd.testing.assert_frame_equal(result, expected_df)
 
-    def test_to_dataframe_passes_none_for_empty_options(self):
-        """to_dataframe() with no options should pass None for all optional params."""
-        import pandas as pd
-
+    def test_to_dataframe_unbounded_raises(self):
+        """to_dataframe() with no select/filter/top should raise ValueError."""
         mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.dataframe.get.return_value = pd.DataFrame()
-
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.to_dataframe()
-
-        mock_client.dataframe.get.assert_called_once_with(
-            "account",
-            select=None,
-            filter=None,
-            orderby=None,
-            top=None,
-            expand=None,
-            page_size=None,
-            count=False,
-            include_annotations=None,
-        )
+        with self.assertRaises(ValueError) as ctx:
+            qb.to_dataframe()
+        self.assertIn("Unbounded query", str(ctx.exception))
 
     def test_to_dataframe_returns_dataframe(self):
         """to_dataframe() should return a pandas DataFrame."""
@@ -928,12 +957,12 @@ class TestToDataframe(unittest.TestCase):
 
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.count().include_formatted_values()
+        qb.select("name").count().include_formatted_values()
         qb.to_dataframe()
 
         mock_client.dataframe.get.assert_called_once_with(
             "account",
-            select=None,
+            select=["name"],
             filter=None,
             orderby=None,
             top=None,

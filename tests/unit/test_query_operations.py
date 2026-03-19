@@ -91,7 +91,7 @@ class TestQueryOperations(unittest.TestCase):
         """execute() should flatten records from multiple pages."""
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}], [{"accountid": "2"}]])
 
-        records = list(self.client.query.builder("account").execute())
+        records = list(self.client.query.builder("account").select("name").execute())
 
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["accountid"], "1")
@@ -101,7 +101,7 @@ class TestQueryOperations(unittest.TestCase):
         """execute(by_page=True) should yield pages."""
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}], [{"accountid": "2"}]])
 
-        pages = list(self.client.query.builder("account").execute(by_page=True))
+        pages = list(self.client.query.builder("account").select("name").execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
         self.assertEqual(len(pages[0]), 1)
