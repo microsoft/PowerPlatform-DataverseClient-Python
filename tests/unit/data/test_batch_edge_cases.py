@@ -965,5 +965,109 @@ class TestBatchBoundaryFormat(unittest.TestCase):
         self.assertIn("batch_", ct)
 
 
+# ---------------------------------------------------------------------------
+# 16. Robustness: malformed inputs and edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestRobustnessEdgeCases(unittest.TestCase):
+    """Edge cases for input validation and malformed data handling."""
+
+    def test_parse_response_with_malformed_json_body(self):
+        """A response with invalid JSON in the body should not crash parsing."""
+        text = "HTTP/1.1 200 OK\r\n" "Content-Type: application/json\r\n" "\r\n" "{this is not valid json}"
+        item = _parse_http_response_part(text, content_id=None)
+        self.assertIsNotNone(item)
+        self.assertEqual(item.status_code, 200)
+        # Malformed JSON: data should be None (parsing failed silently)
+        self.assertIsNone(item.data)
+
+    def test_parse_response_with_truncated_json(self):
+        """Truncated JSON body should not crash."""
+        text = 'HTTP/1.1 200 OK\r\n\r\n{"name": "Contoso", "accou'
+        item = _parse_http_response_part(text, content_id=None)
+        self.assertIsNotNone(item)
+        self.assertEqual(item.status_code, 200)
+        self.assertIsNone(item.data)
+
+    def test_changeset_exception_in_context_manager(self):
+        """If user code raises inside with batch.changeset(), batch should still work."""
+        from PowerPlatform.Dataverse.operations.batch import BatchRequest
+
+        client = MagicMock()
+        batch = BatchRequest(client)
+
+        # Exception inside changeset -- changeset is added to items before __enter__
+        try:
+            with batch.changeset() as cs:
+                cs.records.create("account", {"name": "before error"})
+                raise ValueError("user error")
+        except ValueError:
+            pass
+
+        # The changeset IS in the items list (added in changeset() call)
+        # This is correct -- the changeset has 1 create operation
+        self.assertEqual(len(batch._items), 1)
+
+    def test_empty_string_table_name_in_create(self):
+        """Empty table name should propagate (validated downstream by OData layer)."""
+        from PowerPlatform.Dataverse.operations.batch import BatchRequest
+
+        client = MagicMock()
+        batch = BatchRequest(client)
+        # Empty string is accepted at batch level -- validated at execute time
+        batch.records.create("", {"name": "test"})
+        self.assertEqual(len(batch._items), 1)
+        self.assertEqual(batch._items[0].table, "")
+
+    def test_special_chars_in_odata_filter_are_escaped(self):
+        """OData filter values with single quotes are escaped by _escape_odata_quotes."""
+        from PowerPlatform.Dataverse.data._odata import _ODataClient
+
+        mock_auth = MagicMock()
+        mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+        od = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
+
+        # _escape_odata_quotes doubles single quotes
+        escaped = od._escape_odata_quotes("test'table")
+        self.assertEqual(escaped, "test''table")
+
+        # _build_get_entity uses the escaped value
+        req = od._build_get_entity("test'Table")
+        self.assertIn("test''table", req.url)
+        self.assertNotIn("test'table", req.url.replace("test''table", ""))
+
+    def test_batch_item_response_with_non_dict_json_body(self):
+        """JSON body that is a list (not dict) should be handled."""
+        text = "HTTP/1.1 200 OK\r\n\r\n[1, 2, 3]"
+        item = _parse_http_response_part(text, content_id=None)
+        self.assertIsNotNone(item)
+        self.assertEqual(item.status_code, 200)
+        # Non-dict JSON: data should be None (only dicts are captured)
+        self.assertIsNone(item.data)
+
+    def test_batch_response_boundary_with_special_chars(self):
+        """Boundary strings with special chars should be handled."""
+        boundary = "batch_abc+123/xyz"
+        resp_text = (
+            f"--{boundary}\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            f"--{boundary}--\r\n"
+        )
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": f'multipart/mixed; boundary="{boundary}"'}
+        mock_response.text = resp_text
+
+        od = _make_od()
+        client = _BatchClient(od)
+        result = client._parse_batch_response(mock_response)
+        self.assertEqual(len(result.responses), 1)
+        self.assertTrue(result.responses[0].is_success)
+
+
 if __name__ == "__main__":
     unittest.main()
