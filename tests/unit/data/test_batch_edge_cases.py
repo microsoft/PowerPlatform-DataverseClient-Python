@@ -10,7 +10,7 @@ https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/exec
 
 import json
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from PowerPlatform.Dataverse.data._batch import (
     _BatchClient,

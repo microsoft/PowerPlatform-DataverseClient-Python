@@ -4,13 +4,12 @@
 """Unit tests for BatchDataFrameOperations."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 
 from PowerPlatform.Dataverse.operations.batch import (
     BatchDataFrameOperations,
-    BatchRecordOperations,
     BatchRequest,
 )
 from PowerPlatform.Dataverse.data._batch import _RecordCreate, _RecordUpdate, _RecordDelete

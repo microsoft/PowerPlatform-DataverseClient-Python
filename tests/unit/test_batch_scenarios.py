@@ -9,24 +9,17 @@ explains expected behavior, and verifies the correct access pattern.
 These tests serve as executable documentation for SDK consumers.
 """
 
-import json
 import unittest
 from unittest.mock import MagicMock
 
 from PowerPlatform.Dataverse.data._batch import (
     _BatchClient,
     _ChangeSet,
-    _RecordCreate,
-    _RecordDelete,
     _RecordGet,
-    _RecordUpdate,
-    _QuerySql,
-    _CRLF,
 )
 from PowerPlatform.Dataverse.core.errors import ValidationError
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
-from PowerPlatform.Dataverse.operations.batch import BatchRequest
 
 
 def _make_od():

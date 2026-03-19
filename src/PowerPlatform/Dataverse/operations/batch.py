@@ -756,7 +756,7 @@ class BatchRequest:
 
     def __init__(self, client: "DataverseClient") -> None:
         self._client = client
-        self._items: list = []
+        self._items: List[Any] = []
         self._content_id_counter: List[int] = [1]  # shared across all changesets
         self.records = BatchRecordOperations(self)
         self.tables = BatchTableOperations(self)

@@ -166,7 +166,7 @@ print("\n[INFO] Example 5: Mixed batch")
 print("\n[INFO] Example 6: Continue on error")
 
 batch = client.batch.new()
-batch.records.get("account", "nonexistent-guid-1111-1111-111111111111")
+batch.records.get("account", "00000000-0000-0000-0000-000000000000")
 batch.query.sql("SELECT TOP 1 name FROM account")
 
 result = batch.execute(continue_on_error=True)
