@@ -365,10 +365,7 @@ class _BatchClient:
     def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:
         if isinstance(op.ids, str):
             if not isinstance(op.changes, dict):
-                raise ValidationError(
-                    "For a single-record update, changes must be a dict.",
-                    subcode="invalid_changes_type",
-                )
+                raise TypeError("For single id, changes must be a dict")
             return [self._od._build_update(op.table, op.ids, op.changes, content_id=op.content_id)]
         entity_set = self._od._entity_set_from_schema_name(op.table)
         return [self._od._build_update_multiple(entity_set, op.table, op.ids, op.changes)]

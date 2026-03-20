@@ -287,10 +287,9 @@ class TestResolveBatchItems(unittest.TestCase):
 
     def test_resolve_record_update_single_with_list_changes_raises(self):
         client, od = self._client_and_od()
-        from PowerPlatform.Dataverse.core.errors import ValidationError
 
         op = _RecordUpdate(table="account", ids="guid-1", changes=[{"name": "A"}])
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(TypeError):
             client._resolve_record_update(op)
 
     def test_resolve_record_delete_multiple_ids(self):

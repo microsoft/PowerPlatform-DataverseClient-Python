@@ -80,7 +80,9 @@ class ChangeSetRecordOperations:
         Add a single-record create to this changeset.
 
         :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
         :param data: Column values for the new record.
+        :type data: dict[str, typing.Any]
         :returns: A content-ID reference string (e.g. ``"$1"``) usable in
             subsequent operations within this changeset as a URI reference
             in ``@odata.bind`` fields or as ``record_id`` in
@@ -104,9 +106,12 @@ class ChangeSetRecordOperations:
 
         :param table: Table schema name. Ignored when ``record_id`` is a
             content-ID reference.
+        :type table: :class:`str`
         :param record_id: GUID or a content-ID reference (e.g. ``"$1"``)
             returned by a prior :meth:`create` in this changeset.
+        :type record_id: :class:`str`
         :param changes: Column values to update.
+        :type changes: dict[str, typing.Any]
         """
         self._cs.add_update(table, record_id, changes)
 
@@ -116,7 +121,9 @@ class ChangeSetRecordOperations:
 
         :param table: Table schema name. Ignored when ``record_id`` is a
             content-ID reference.
+        :type table: :class:`str`
         :param record_id: GUID or a content-ID reference (e.g. ``"$1"``).
+        :type record_id: :class:`str`
         """
         self._cs.add_delete(table, record_id)
 
@@ -183,7 +190,9 @@ class BatchRecordOperations:
         (one batch item).
 
         :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
         :param data: Single record dict or list of record dicts.
+        :type data: dict or list[dict]
         """
         self._batch._items.append(_RecordCreate(table=table, data=data))
 
@@ -201,8 +210,11 @@ class BatchRecordOperations:
         - **Paired** ``(table, [id1, id2], [{...}, {...}])`` -> one ``UpdateMultiple`` POST.
 
         :param table: Table schema name.
+        :type table: :class:`str`
         :param ids: Single GUID or list of GUIDs.
+        :type ids: str or list[str]
         :param changes: Single dict (single/broadcast) or list of dicts (paired).
+        :type changes: dict or list[dict]
         """
         self._batch._items.append(_RecordUpdate(table=table, ids=ids, changes=changes))
 
@@ -222,9 +234,12 @@ class BatchRecordOperations:
         - **List + use_bulk_delete=False** -> one DELETE per record.
 
         :param table: Table schema name.
+        :type table: :class:`str`
         :param ids: Single GUID or list of GUIDs.
+        :type ids: str or list[str]
         :param use_bulk_delete: When True (default) and ``ids`` is a list, use the
             BulkDelete action. When False, delete records individually.
+        :type use_bulk_delete: :class:`bool`
         """
         self._batch._items.append(_RecordDelete(table=table, ids=ids, use_bulk_delete=use_bulk_delete))
 
@@ -250,8 +265,11 @@ class BatchRecordOperations:
         after :meth:`BatchRequest.execute`.
 
         :param table: Table schema name.
+        :type table: :class:`str`
         :param record_id: GUID of the record to retrieve.
+        :type record_id: :class:`str`
         :param select: Optional list of column names to include.
+        :type select: list[str] or None
         """
         self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
 
@@ -271,8 +289,10 @@ class BatchRecordOperations:
         or a plain ``dict`` with ``"alternate_key"`` and ``"record"`` keys (both dicts).
 
         :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
         :param items: Non-empty list of :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem`
             instances or equivalent dicts.
+        :type items: list[~PowerPlatform.Dataverse.models.upsert.UpsertItem]
 
         :raises TypeError: If ``items`` is not a non-empty list, or if any element is
             neither a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem` nor a
@@ -348,9 +368,13 @@ class BatchTableOperations:
             in the corresponding :class:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse`.
 
         :param table: Schema name of the new table (e.g. ``"new_Product"``).
+        :type table: :class:`str`
         :param columns: Mapping of column schema names to type strings or Enum subclasses.
+        :type columns: dict[str, typing.Any]
         :param solution: Optional solution unique name.
+        :type solution: str or None
         :param primary_column: Optional primary column schema name.
+        :type primary_column: str or None
         """
         self._batch._items.append(
             _TableCreate(
@@ -368,6 +392,7 @@ class BatchTableOperations:
         The table's ``MetadataId`` is resolved via a GET request at execute time.
 
         :param table: Schema name of the table to delete.
+        :type table: :class:`str`
         """
         self._batch._items.append(_TableDelete(table=table))
 
@@ -378,6 +403,7 @@ class BatchTableOperations:
         The response will be in ``BatchItemResponse.data`` after execute.
 
         :param table: Schema name of the table.
+        :type table: :class:`str`
         """
         self._batch._items.append(_TableGet(table=table))
 
@@ -412,7 +438,9 @@ class BatchTableOperations:
         produces one entry in :attr:`BatchResult.responses`.
 
         :param table: Schema name of the target table.
+        :type table: :class:`str`
         :param columns: Mapping of column schema names to type strings or Enum subclasses.
+        :type columns: dict[str, typing.Any]
         """
         self._batch._items.append(_TableAddColumns(table=table, columns=columns))
 
@@ -425,7 +453,9 @@ class BatchTableOperations:
         :attr:`BatchResult.responses`.
 
         :param table: Schema name of the target table.
+        :type table: :class:`str`
         :param columns: Column schema name or list of column schema names to remove.
+        :type columns: str or list[str]
         """
         self._batch._items.append(_TableRemoveColumns(table=table, columns=columns))
 
@@ -440,8 +470,11 @@ class BatchTableOperations:
         Add a one-to-many relationship creation to the batch.
 
         :param lookup: Lookup attribute metadata.
+        :type lookup: ~PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata
         :param relationship: Relationship metadata.
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata
         :param solution: Optional solution unique name.
+        :type solution: str or None
         """
         self._batch._items.append(_TableCreateOneToMany(lookup=lookup, relationship=relationship, solution=solution))
 
@@ -455,7 +488,9 @@ class BatchTableOperations:
         Add a many-to-many relationship creation to the batch.
 
         :param relationship: Relationship metadata.
+        :type relationship: ~PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata
         :param solution: Optional solution unique name.
+        :type solution: str or None
         """
         self._batch._items.append(_TableCreateManyToMany(relationship=relationship, solution=solution))
 
@@ -464,6 +499,7 @@ class BatchTableOperations:
         Add a relationship-delete operation to the batch.
 
         :param relationship_id: GUID of the relationship metadata to delete.
+        :type relationship_id: :class:`str`
         """
         self._batch._items.append(_TableDeleteRelationship(relationship_id=relationship_id))
 
@@ -474,6 +510,7 @@ class BatchTableOperations:
         The response will be in ``BatchItemResponse.data`` after execute.
 
         :param schema_name: Schema name of the relationship.
+        :type schema_name: :class:`str`
         """
         self._batch._items.append(_TableGetRelationship(schema_name=schema_name))
 
@@ -495,14 +532,23 @@ class BatchTableOperations:
         :meth:`create_one_to_many_relationship`).
 
         :param referencing_table: Logical name of the child (many) table.
+        :type referencing_table: :class:`str`
         :param lookup_field_name: Schema name for the lookup field.
+        :type lookup_field_name: :class:`str`
         :param referenced_table: Logical name of the parent (one) table.
+        :type referenced_table: :class:`str`
         :param display_name: Display name for the lookup field.
+        :type display_name: str or None
         :param description: Optional description.
+        :type description: str or None
         :param required: Whether the lookup is required.
+        :type required: :class:`bool`
         :param cascade_delete: Delete cascade behaviour.
+        :type cascade_delete: :class:`str`
         :param solution: Optional solution unique name.
+        :type solution: str or None
         :param language_code: Language code for labels (default 1033).
+        :type language_code: :class:`int`
         """
         self._batch._items.append(
             _TableCreateLookupField(
@@ -547,7 +593,10 @@ class BatchQueryOperations:
         :meth:`BatchRequest.execute` time.
 
         :param sql: A single ``SELECT`` statement within the Dataverse-supported subset.
-        :type sql: ``str``
+        :type sql: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
+            If ``sql`` is not a non-empty string.
 
         Example::
 
