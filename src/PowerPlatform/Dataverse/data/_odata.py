@@ -150,13 +150,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
             ).DataverseConfig.from_env()
         )
+        _log = None
+        if self.config.log_config is not None:
+            from ..core._http_logger import _HttpLogger
+
+            _log = _HttpLogger(self.config.log_config)
         self._http = _HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
             session=session,
+            logger=_log,
         )
-        # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
