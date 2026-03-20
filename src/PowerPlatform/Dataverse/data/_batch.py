@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ..core.errors import HttpError, MetadataError, ValidationError
-from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
+from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND, _http_subcode
 from ..models.batch import BatchItemResponse, BatchResult
 from ..models.relationship import (
     LookupAttributeMetadata,
@@ -589,7 +589,7 @@ def _raise_top_level_batch_error(response: Any) -> None:
     raise HttpError(
         message=f"Batch request rejected by Dataverse: {message}",
         status_code=status_code,
-        subcode="4xx" if 400 <= status_code < 500 else ("5xx" if status_code >= 500 else None),
+        subcode=_http_subcode(status_code) if status_code else None,
         service_error_code=service_error_code,
     )
 
