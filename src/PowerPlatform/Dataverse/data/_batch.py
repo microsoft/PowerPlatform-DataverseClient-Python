@@ -594,8 +594,11 @@ def _raise_top_level_batch_error(response: Any) -> None:
     )
 
 
+_BOUNDARY_RE = re.compile(r'boundary="?([^";,\s]+)"?', re.IGNORECASE)
+
+
 def _extract_boundary(content_type: str) -> Optional[str]:
-    m = re.search(r'boundary="?([^";,\s]+)"?', content_type, re.IGNORECASE)
+    m = _BOUNDARY_RE.search(content_type)
     return m.group(1) if m else None
 
 

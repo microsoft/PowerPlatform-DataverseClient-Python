@@ -28,50 +28,6 @@ def _make_od():
     return od
 
 
-def _mock_batch_response(batch_boundary, parts):
-    """Build a mock HTTP response from a list of (status, headers_dict, body_str) tuples."""
-    body_parts = []
-    for status_line, headers, body in parts:
-        lines = [
-            f"--{batch_boundary}",
-            "Content-Type: application/http",
-            "Content-Transfer-Encoding: binary",
-        ]
-        for k, v in (headers or {}).items():
-            lines.append(f"{k}: {v}")
-        lines.append("")
-        lines.append(status_line)
-        for k, v in (headers or {}).items():
-            if k.lower() != "content-id":
-                pass  # handled below
-        # Add response headers that contain OData-EntityId, Content-Type, etc.
-        resp_lines = [status_line]
-        if body:
-            resp_lines.append("Content-Type: application/json; odata.metadata=minimal")
-        resp_lines.append("OData-Version: 4.0")
-        # Add OData-EntityId if present in headers
-        for k, v in (headers or {}).items():
-            resp_lines.append(f"{k}: {v}")
-        resp_lines.append("")
-        if body:
-            resp_lines.append(body)
-        resp_text = "\r\n".join(resp_lines)
-        part = (
-            f"--{batch_boundary}\r\n"
-            "Content-Type: application/http\r\n"
-            "Content-Transfer-Encoding: binary\r\n"
-            "\r\n" + resp_text + "\r\n"
-        )
-        body_parts.append(part)
-    body_parts.append(f"--{batch_boundary}--\r\n")
-    full_body = "".join(body_parts)
-
-    mock_resp = MagicMock()
-    mock_resp.headers = {"Content-Type": f'multipart/mixed; boundary="{batch_boundary}"'}
-    mock_resp.text = full_body
-    return mock_resp
-
-
 # ---------------------------------------------------------------------------
 # Scenario 1: Response ordering matches operation order
 # ---------------------------------------------------------------------------

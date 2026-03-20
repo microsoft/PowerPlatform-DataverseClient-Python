@@ -29,7 +29,7 @@ from PowerPlatform.Dataverse.data._batch import (
 from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
-from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
+from PowerPlatform.Dataverse.models.batch import BatchItemResponse
 
 
 def _make_od():
