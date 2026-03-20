@@ -276,6 +276,10 @@ class _BatchClient:
             url,
             data=body.encode("utf-8"),
             headers=headers,
+            # 400 is expected: Dataverse returns 400 for top-level batch
+            # errors (e.g. malformed body). We parse the response body to
+            # surface the service error via _parse_batch_response /
+            # _raise_top_level_batch_error rather than letting _request raise.
             expected=(200, 202, 207, 400),
         )
         return self._parse_batch_response(response)
@@ -353,10 +357,9 @@ class _BatchClient:
     # ------------------------------------------------------------------
 
     def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:
-        if isinstance(op.data, dict):
-            entity_set = self._od._entity_set_from_schema_name(op.table)
-            return [self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
         entity_set = self._od._entity_set_from_schema_name(op.table)
+        if isinstance(op.data, dict):
+            return [self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
         return [self._od._build_create_multiple(entity_set, op.table, op.data)]
 
     def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:
@@ -398,17 +401,22 @@ class _BatchClient:
     #  specific lookups needed before the relevant _build_* call)
     # ------------------------------------------------------------------
 
+    def _require_entity_metadata(self, table: str) -> str:
+        """Look up MetadataId for *table*, raising MetadataError if not found."""
+        ent = self._od._get_entity_by_table_schema_name(table)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        return ent["MetadataId"]
+
     def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:
         return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column)]
 
     def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        return [self._od._build_delete_entity(ent["MetadataId"])]
+        metadata_id = self._require_entity_metadata(op.table)
+        return [self._od._build_delete_entity(metadata_id)]
 
     def _resolve_table_get(self, op: _TableGet) -> List[_RawRequest]:
         return [self._od._build_get_entity(op.table)]
@@ -417,25 +425,12 @@ class _BatchClient:
         return [self._od._build_list_entities(filter=op.filter, select=op.select)]
 
     def _resolve_table_add_columns(self, op: _TableAddColumns) -> List[_RawRequest]:
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        return [
-            self._od._build_create_column(ent["MetadataId"], col_name, dtype) for col_name, dtype in op.columns.items()
-        ]
+        metadata_id = self._require_entity_metadata(op.table)
+        return [self._od._build_create_column(metadata_id, col_name, dtype) for col_name, dtype in op.columns.items()]
 
     def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:
         columns = [op.columns] if isinstance(op.columns, str) else list(op.columns)
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        metadata_id = ent["MetadataId"]
+        metadata_id = self._require_entity_metadata(op.table)
         requests: List[_RawRequest] = []
         for col_name in columns:
             attr_meta = self._od._get_attribute_metadata(

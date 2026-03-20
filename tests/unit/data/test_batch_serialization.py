@@ -14,6 +14,7 @@ from PowerPlatform.Dataverse.data._batch import (
     _RecordCreate,
     _RecordDelete,
     _RecordGet,
+    _RecordUpdate,
     _RecordUpsert,
     _TableGet,
     _TableList,
@@ -257,6 +258,88 @@ class TestResolveBatchItems(unittest.TestCase):
 
         od._build_delete.assert_called_once_with("account", "guid-1", content_id=None)
         self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_update_single(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_update.return_value = mock_req
+
+        op = _RecordUpdate(table="account", ids="guid-1", changes={"name": "Updated"})
+        result = client._resolve_record_update(op)
+
+        od._build_update.assert_called_once_with("account", "guid-1", {"name": "Updated"}, content_id=None)
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_update_multiple(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_update_multiple.return_value = mock_req
+
+        op = _RecordUpdate(
+            table="account",
+            ids=["guid-1", "guid-2"],
+            changes=[{"name": "A"}, {"name": "B"}],
+        )
+        result = client._resolve_record_update(op)
+
+        od._build_update_multiple.assert_called_once()
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_update_single_with_list_changes_raises(self):
+        client, od = self._client_and_od()
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        op = _RecordUpdate(table="account", ids="guid-1", changes=[{"name": "A"}])
+        with self.assertRaises(ValidationError):
+            client._resolve_record_update(op)
+
+    def test_resolve_record_delete_multiple_ids(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_delete_multiple.return_value = mock_req
+
+        op = _RecordDelete(table="account", ids=["guid-1", "guid-2", "guid-3"])
+        result = client._resolve_record_delete(op)
+
+        od._build_delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2", "guid-3"])
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_delete_multiple_no_bulk(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_delete.return_value = mock_req
+
+        op = _RecordDelete(table="account", ids=["guid-1", "guid-2"], use_bulk_delete=False)
+        result = client._resolve_record_delete(op)
+
+        self.assertEqual(od._build_delete.call_count, 2)
+        self.assertEqual(len(result), 2)
+
+    def test_resolve_record_delete_empty_ids_returns_empty(self):
+        client, od = self._client_and_od()
+
+        op = _RecordDelete(table="account", ids=[])
+        result = client._resolve_record_delete(op)
+
+        self.assertEqual(result, [])
+
+    def test_resolve_record_delete_filters_empty_strings(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_delete_multiple.return_value = mock_req
+
+        op = _RecordDelete(table="account", ids=["guid-1", "", "guid-2", ""])
+        result = client._resolve_record_delete(op)
+
+        od._build_delete_multiple.assert_called_once_with("account", ["guid-1", "guid-2"])
+
+    def test_resolve_record_delete_all_empty_strings_returns_empty(self):
+        client, od = self._client_and_od()
+
+        op = _RecordDelete(table="account", ids=["", "", ""])
+        result = client._resolve_record_delete(op)
+
+        self.assertEqual(result, [])
 
     def test_resolve_table_get(self):
         client, od = self._client_and_od()

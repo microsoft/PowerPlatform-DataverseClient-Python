@@ -44,7 +44,16 @@ from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 if TYPE_CHECKING:
     from ..client import DataverseClient
 
-__all__ = []
+__all__ = [
+    "BatchRecordOperations",
+    "BatchTableOperations",
+    "BatchQueryOperations",
+    "BatchDataFrameOperations",
+    "BatchRequest",
+    "BatchOperations",
+    "ChangeSet",
+    "ChangeSetRecordOperations",
+]
 
 
 # ---------------------------------------------------------------------------

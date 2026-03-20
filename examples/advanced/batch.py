@@ -8,7 +8,7 @@ Demonstrates how to use client.batch to send multiple operations in a single
 HTTP request to the Dataverse Web API.
 
 Requirements:
-    pip install "PowerPlatform.Dataverse" azure-identity
+    pip install PowerPlatform-Dataverse-Client azure-identity
 """
 
 from __future__ import annotations
@@ -144,7 +144,8 @@ if result.responses and result.responses[0].is_success and result.responses[0].d
 
 print("\n[INFO] Example 5: Mixed batch")
 
-# Assume account_id exists
+# NOTE: Commented out because it requires a pre-existing account_id.
+# Uncomment and set account_id to run this example.
 # batch = client.batch.new()
 #
 # with batch.changeset() as cs:
