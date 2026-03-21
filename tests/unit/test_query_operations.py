@@ -379,5 +379,301 @@ class TestQueryOperations(unittest.TestCase):
         pd.testing.assert_frame_equal(result, expected_df)
 
 
+# ===================================================================
+# SQL Helper Tests
+# ===================================================================
+
+
+class TestSqlColumns(unittest.TestCase):
+    """Tests for client.query.sql_columns()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def _mock_columns(self, columns):
+        self.client._odata._list_columns.return_value = columns
+
+    def test_basic_columns(self):
+        self._mock_columns(
+            [
+                {
+                    "LogicalName": "accountid",
+                    "AttributeType": "Uniqueidentifier",
+                    "IsPrimaryId": True,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Account"}},
+                },
+                {
+                    "LogicalName": "name",
+                    "AttributeType": "String",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": True,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Account Name"}},
+                },
+                {
+                    "LogicalName": "revenue",
+                    "AttributeType": "Money",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Annual Revenue"}},
+                },
+            ]
+        )
+        cols = self.client.query.sql_columns("account")
+        self.assertEqual(len(cols), 3)
+        # PK first, then name, then alphabetical
+        self.assertEqual(cols[0]["name"], "accountid")
+        self.assertTrue(cols[0]["is_pk"])
+        self.assertEqual(cols[1]["name"], "name")
+        self.assertTrue(cols[1]["is_name"])
+        self.assertEqual(cols[2]["name"], "revenue")
+        self.assertEqual(cols[2]["label"], "Annual Revenue")
+
+    def test_excludes_system_columns(self):
+        self._mock_columns(
+            [
+                {
+                    "LogicalName": "name",
+                    "AttributeType": "String",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": True,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Name"}},
+                },
+                {
+                    "LogicalName": "revenue_base",
+                    "AttributeType": "Money",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Revenue Base"}},
+                },
+                {
+                    "LogicalName": "versionnumber",
+                    "AttributeType": "BigInt",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Version"}},
+                },
+            ]
+        )
+        cols = self.client.query.sql_columns("account", include_system=False)
+        names = [c["name"] for c in cols]
+        self.assertIn("name", names)
+        self.assertNotIn("revenue_base", names)
+        self.assertNotIn("versionnumber", names)
+
+    def test_include_system_columns(self):
+        self._mock_columns(
+            [
+                {
+                    "LogicalName": "name",
+                    "AttributeType": "String",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Name"}},
+                },
+                {
+                    "LogicalName": "versionnumber",
+                    "AttributeType": "BigInt",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {"UserLocalizedLabel": {"Label": "Version"}},
+                },
+            ]
+        )
+        cols = self.client.query.sql_columns("account", include_system=True)
+        names = [c["name"] for c in cols]
+        self.assertIn("versionnumber", names)
+
+    def test_empty_table(self):
+        self._mock_columns([])
+        cols = self.client.query.sql_columns("account")
+        self.assertEqual(cols, [])
+
+
+class TestSqlSelect(unittest.TestCase):
+    """Tests for client.query.sql_select()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_returns_comma_separated(self):
+        self.client._odata._list_columns.return_value = [
+            {
+                "LogicalName": "accountid",
+                "AttributeType": "Uniqueidentifier",
+                "IsPrimaryId": True,
+                "IsPrimaryName": False,
+                "DisplayName": {},
+            },
+            {
+                "LogicalName": "name",
+                "AttributeType": "String",
+                "IsPrimaryId": False,
+                "IsPrimaryName": True,
+                "DisplayName": {},
+            },
+            {
+                "LogicalName": "revenue",
+                "AttributeType": "Money",
+                "IsPrimaryId": False,
+                "IsPrimaryName": False,
+                "DisplayName": {},
+            },
+        ]
+        result = self.client.query.sql_select("account")
+        self.assertIn("accountid", result)
+        self.assertIn("name", result)
+        self.assertIn("revenue", result)
+        self.assertEqual(result.count(","), 2)  # 3 cols = 2 commas
+
+
+class TestSqlJoins(unittest.TestCase):
+    """Tests for client.query.sql_joins()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def _mock_rels(self, rels):
+        self.client._odata._list_table_relationships.return_value = rels
+
+    def test_outgoing_lookups(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "contact_customer_accounts",
+                },
+            ]
+        )
+        joins = self.client.query.sql_joins("contact")
+        self.assertEqual(len(joins), 1)
+        j = joins[0]
+        self.assertEqual(j["column"], "parentcustomerid")
+        self.assertEqual(j["target"], "account")
+        self.assertEqual(j["target_pk"], "accountid")
+        self.assertIn("JOIN account", j["join_clause"])
+        self.assertIn("parentcustomerid", j["join_clause"])
+
+    def test_ignores_incoming_rels(self):
+        self._mock_rels(
+            [
+                # This is an incoming relationship (account is referenced, not referencing)
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "opp_customer_accounts",
+                },
+            ]
+        )
+        joins = self.client.query.sql_joins("account")
+        self.assertEqual(len(joins), 0)
+
+    def test_polymorphic_returns_multiple(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "opp_customer_accounts",
+                },
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "contact",
+                    "ReferencedAttribute": "contactid",
+                    "SchemaName": "opp_customer_contacts",
+                },
+            ]
+        )
+        joins = self.client.query.sql_joins("opportunity")
+        self.assertEqual(len(joins), 2)
+        targets = {j["target"] for j in joins}
+        self.assertEqual(targets, {"account", "contact"})
+        # Both use the same source column
+        self.assertTrue(all(j["column"] == "customerid" for j in joins))
+
+    def test_empty_relationships(self):
+        self._mock_rels([])
+        joins = self.client.query.sql_joins("account")
+        self.assertEqual(joins, [])
+
+
+class TestSqlJoin(unittest.TestCase):
+    """Tests for client.query.sql_join()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def _mock_rels(self, rels):
+        self.client._odata._list_table_relationships.return_value = rels
+
+    def test_generates_join_clause(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "contact_customer_accounts",
+                },
+            ]
+        )
+        result = self.client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
+        self.assertEqual(result, "JOIN account a ON c.parentcustomerid = a.accountid")
+
+    def test_default_aliases(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "contact_customer_accounts",
+                },
+            ]
+        )
+        result = self.client.query.sql_join("contact", "account")
+        self.assertIn("JOIN account a ON contact.parentcustomerid = a.accountid", result)
+
+    def test_no_relationship_raises(self):
+        self._mock_rels([])
+        with self.assertRaises(ValueError) as ctx:
+            self.client.query.sql_join("contact", "nonexistent")
+        self.assertIn("No relationship found", str(ctx.exception))
+
+    def test_case_insensitive_target(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "ownerid",
+                    "ReferencedEntity": "systemuser",
+                    "ReferencedAttribute": "systemuserid",
+                    "SchemaName": "contact_owner",
+                },
+            ]
+        )
+        result = self.client.query.sql_join("contact", "SystemUser", from_alias="c", to_alias="su")
+        self.assertIn("JOIN systemuser su", result)
+        self.assertIn("c.ownerid = su.systemuserid", result)
+
+
 if __name__ == "__main__":
     unittest.main()

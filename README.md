@@ -404,6 +404,20 @@ results = client.query.sql("SELECT * FROM account")
 df = client.dataframe.sql(
     "SELECT name, revenue FROM account ORDER BY revenue DESC"
 )
+
+# SQL helpers: discover columns and JOINs from metadata
+cols = client.query.sql_select("account")  # "accountid, name, revenue, ..."
+join = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
+# Returns: "JOIN account a ON c.parentcustomerid = a.accountid"
+
+# Build queries using helpers -- no OData knowledge needed
+sql = f"SELECT TOP 10 c.fullname, a.name FROM contact c {join}"
+df = client.dataframe.sql(sql)
+
+# Discover all possible JOINs from a table (including polymorphic)
+joins = client.query.sql_joins("opportunity")
+for j in joins:
+    print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
 ```
 
 **Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string:
