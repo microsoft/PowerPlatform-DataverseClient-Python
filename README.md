@@ -420,9 +420,28 @@ for j in joins:
     print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
 ```
 
-**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string:
+**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string. The SDK provides helpers to eliminate the most error-prone parts:
 
 ```python
+# Discover columns for $select (returns list ready for select= parameter)
+cols = client.query.odata_select("account")
+for page in client.records.get("account", select=cols, top=10):
+    ...
+
+# Discover $expand navigation properties (auto-resolves PascalCase names)
+nav = client.query.odata_expand("contact", "account")
+# Returns: "parentcustomerid_account"
+for page in client.records.get("contact", select=["fullname"], expand=[nav], top=5):
+    for r in page:
+        acct = r.get(nav) or {}
+        print(f"{r['fullname']} -> {acct.get('name')}")
+
+# Build @odata.bind for lookup fields (no manual name construction)
+bind = client.query.odata_bind("contact", "account", account_id)
+# Returns: {"parentcustomerid_account@odata.bind": "/accounts(guid)"}
+client.records.create("contact", {"firstname": "Jane", **bind})
+
+# Raw OData query with manual parameters
 for page in client.records.get(
     "account",
     select=["name"],

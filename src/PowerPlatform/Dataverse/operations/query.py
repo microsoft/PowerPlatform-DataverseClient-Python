@@ -375,3 +375,209 @@ class QueryOperations:
         src = from_alias or from_table.lower()
         tgt = to_alias or to_lower[0]
         return f"JOIN {to_lower} {tgt} " f"ON {src}.{j['column']} = {tgt}.{j['target_pk']}"
+
+    # ===========================================================
+    # OData helpers -- eliminate friction for records.get() users
+    # ===========================================================
+
+    # -------------------------------------------------------- odata_select
+
+    def odata_select(
+        self,
+        table: str,
+        *,
+        include_system: bool = False,
+    ) -> List[str]:
+        """Return a list of column logical names suitable for ``$select``.
+
+        Can be passed directly to ``client.records.get(table, select=...)``.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param include_system: Include system columns (default ``False``).
+        :type include_system: :class:`bool`
+
+        :return: List of lowercase column logical names.
+        :rtype: list[str]
+
+        Example::
+
+            cols = client.query.odata_select("account")
+            for page in client.records.get("account", select=cols, top=10):
+                for r in page:
+                    print(r)
+        """
+        columns = self.sql_columns(table, include_system=include_system)
+        return [c["name"] for c in columns]
+
+    # ------------------------------------------------------- odata_expands
+
+    def odata_expands(
+        self,
+        table: str,
+    ) -> List[Dict[str, Any]]:
+        """Discover all ``$expand`` navigation properties from a table.
+
+        Returns entries for each outgoing lookup (single-valued navigation
+        property).  Each entry contains the exact PascalCase navigation
+        property name needed for ``$expand`` and ``@odata.bind``, plus
+        the target entity set name.
+
+        :param table: Schema name of the table (e.g. ``"contact"``).
+        :type table: :class:`str`
+
+        :return: List of dicts, each with:
+
+            - ``nav_property`` -- PascalCase navigation property for $expand
+            - ``target_table`` -- target entity logical name
+            - ``target_entity_set`` -- target entity set (for @odata.bind)
+            - ``lookup_attribute`` -- the lookup column logical name
+            - ``relationship`` -- relationship schema name
+
+        :rtype: list[dict[str, typing.Any]]
+
+        Example::
+
+            expands = client.query.odata_expands("contact")
+            for e in expands:
+                print(f"expand={e['nav_property']}  -> {e['target_table']}")
+
+            # Use in a query
+            e = next(e for e in expands if e['target_table'] == 'account')
+            for page in client.records.get("contact",
+                                           select=["fullname"],
+                                           expand=[e['nav_property']]):
+                ...
+        """
+        table_lower = table.lower()
+        rels = self._client.tables.list_table_relationships(table)
+
+        result: List[Dict[str, Any]] = []
+        for r in rels:
+            ref_entity = (r.get("ReferencingEntity") or "").lower()
+            if ref_entity != table_lower:
+                continue
+            nav_prop = r.get("ReferencingEntityNavigationPropertyName", "")
+            target = r.get("ReferencedEntity", "")
+            lookup_attr = r.get("ReferencingAttribute", "")
+            schema = r.get("SchemaName", "")
+            if not nav_prop or not target:
+                continue
+
+            # Resolve entity set name for @odata.bind
+            target_set = ""
+            try:
+                with self._client._scoped_odata() as od:
+                    target_set = od._entity_set_from_schema_name(target)
+            except Exception:
+                pass
+
+            result.append(
+                {
+                    "nav_property": nav_prop,
+                    "target_table": target,
+                    "target_entity_set": target_set,
+                    "lookup_attribute": lookup_attr,
+                    "relationship": schema,
+                }
+            )
+
+        result.sort(key=lambda x: (x["target_table"], x["nav_property"]))
+        return result
+
+    # -------------------------------------------------------- odata_expand
+
+    def odata_expand(
+        self,
+        from_table: str,
+        to_table: str,
+    ) -> str:
+        """Return the navigation property name to ``$expand`` from one table to another.
+
+        Discovers via relationship metadata. Returns the exact PascalCase
+        string for the ``expand=`` parameter.
+
+        :param from_table: Schema name of the source table (e.g. ``"contact"``).
+        :type from_table: :class:`str`
+        :param to_table: Schema name of the target table (e.g. ``"account"``).
+        :type to_table: :class:`str`
+
+        :return: The navigation property name (PascalCase).
+        :rtype: :class:`str`
+
+        :raises ValueError: If no navigation property found for the target.
+
+        Example::
+
+            nav = client.query.odata_expand("contact", "account")
+            # Returns e.g. "parentcustomerid_account"
+            for page in client.records.get("contact",
+                                           select=["fullname"],
+                                           expand=[nav],
+                                           top=5):
+                for r in page:
+                    acct = r.get(nav) or {}
+                    print(f"{r['fullname']} -> {acct.get('name', 'N/A')}")
+        """
+        to_lower = to_table.lower()
+        expands = self.odata_expands(from_table)
+        match = [e for e in expands if e["target_table"].lower() == to_lower]
+        if not match:
+            raise ValueError(
+                f"No navigation property found from '{from_table}' to "
+                f"'{to_table}'. Use client.query.odata_expands('{from_table}') "
+                f"to see available targets."
+            )
+        return match[0]["nav_property"]
+
+    # --------------------------------------------------------- odata_bind
+
+    def odata_bind(
+        self,
+        from_table: str,
+        to_table: str,
+        target_id: str,
+    ) -> Dict[str, str]:
+        """Build an ``@odata.bind`` entry for setting a lookup field.
+
+        Auto-discovers the navigation property name and entity set name
+        from metadata.  Returns a single-entry dict that can be merged
+        into a create or update payload.
+
+        :param from_table: Schema name of the entity being created/updated.
+        :type from_table: :class:`str`
+        :param to_table: Schema name of the target entity the lookup points to.
+        :type to_table: :class:`str`
+        :param target_id: GUID of the target record.
+        :type target_id: :class:`str`
+
+        :return: A dict like ``{"NavProp@odata.bind": "/entityset(guid)"}``.
+        :rtype: dict[str, str]
+
+        :raises ValueError: If no relationship found between the tables.
+
+        Example::
+
+            # Instead of manually constructing:
+            #   {"parentcustomerid_account@odata.bind": "/accounts(guid)"}
+            # Just do:
+            bind = client.query.odata_bind("contact", "account", acct_id)
+            client.records.create("contact", {
+                "firstname": "Jane",
+                "lastname": "Doe",
+                **bind,
+            })
+        """
+        to_lower = to_table.lower()
+        expands = self.odata_expands(from_table)
+        match = [e for e in expands if e["target_table"].lower() == to_lower and e["target_entity_set"]]
+        if not match:
+            raise ValueError(
+                f"No relationship found from '{from_table}' to '{to_table}'. "
+                f"Use client.query.odata_expands('{from_table}') to see options."
+            )
+
+        e = match[0]
+        key = f"{e['nav_property']}@odata.bind"
+        value = f"/{e['target_entity_set']}({target_id})"
+        return {key: value}

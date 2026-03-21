@@ -675,5 +675,234 @@ class TestSqlJoin(unittest.TestCase):
         self.assertIn("c.ownerid = su.systemuserid", result)
 
 
+# ===================================================================
+# OData Helper Tests
+# ===================================================================
+
+
+class TestOdataSelect(unittest.TestCase):
+    """Tests for client.query.odata_select()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_returns_list_of_strings(self):
+        self.client._odata._list_columns.return_value = [
+            {
+                "LogicalName": "accountid",
+                "AttributeType": "Uniqueidentifier",
+                "IsPrimaryId": True,
+                "IsPrimaryName": False,
+                "DisplayName": {},
+            },
+            {
+                "LogicalName": "name",
+                "AttributeType": "String",
+                "IsPrimaryId": False,
+                "IsPrimaryName": True,
+                "DisplayName": {},
+            },
+        ]
+        result = self.client.query.odata_select("account")
+        self.assertIsInstance(result, list)
+        self.assertIn("accountid", result)
+        self.assertIn("name", result)
+
+    def test_result_usable_in_records_get(self):
+        """odata_select returns list that matches records.get(select=) format."""
+        self.client._odata._list_columns.return_value = [
+            {
+                "LogicalName": "name",
+                "AttributeType": "String",
+                "IsPrimaryId": False,
+                "IsPrimaryName": True,
+                "DisplayName": {},
+            },
+        ]
+        cols = self.client.query.odata_select("account")
+        self.assertEqual(cols, ["name"])
+
+
+class TestOdataExpands(unittest.TestCase):
+    """Tests for client.query.odata_expands()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def _mock_rels(self, rels):
+        self.client._odata._list_table_relationships.return_value = rels
+
+    def _mock_entity_set(self, name):
+        self.client._odata._entity_set_from_schema_name.return_value = name
+
+    def test_outgoing_lookups(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                    "SchemaName": "contact_customer_accounts",
+                },
+            ]
+        )
+        self._mock_entity_set("accounts")
+        expands = self.client.query.odata_expands("contact")
+        self.assertEqual(len(expands), 1)
+        e = expands[0]
+        self.assertEqual(e["nav_property"], "parentcustomerid_account")
+        self.assertEqual(e["target_table"], "account")
+        self.assertEqual(e["target_entity_set"], "accounts")
+        self.assertEqual(e["lookup_attribute"], "parentcustomerid")
+
+    def test_ignores_incoming_rels(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "ReferencingEntityNavigationPropertyName": "customerid_account",
+                    "SchemaName": "opp_customer",
+                },
+            ]
+        )
+        expands = self.client.query.odata_expands("account")
+        self.assertEqual(len(expands), 0)
+
+    def test_polymorphic_returns_multiple(self):
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "ReferencingEntityNavigationPropertyName": "customerid_account",
+                    "SchemaName": "opp_customer_accounts",
+                },
+                {
+                    "ReferencingEntity": "opportunity",
+                    "ReferencingAttribute": "customerid",
+                    "ReferencedEntity": "contact",
+                    "ReferencedAttribute": "contactid",
+                    "ReferencingEntityNavigationPropertyName": "customerid_contact",
+                    "SchemaName": "opp_customer_contacts",
+                },
+            ]
+        )
+        self._mock_entity_set("accounts")
+        expands = self.client.query.odata_expands("opportunity")
+        self.assertEqual(len(expands), 2)
+        nav_props = {e["nav_property"] for e in expands}
+        self.assertEqual(nav_props, {"customerid_account", "customerid_contact"})
+
+
+class TestOdataExpand(unittest.TestCase):
+    """Tests for client.query.odata_expand()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_returns_nav_property(self):
+        self.client._odata._list_table_relationships.return_value = [
+            {
+                "ReferencingEntity": "contact",
+                "ReferencingAttribute": "parentcustomerid",
+                "ReferencedEntity": "account",
+                "ReferencedAttribute": "accountid",
+                "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                "SchemaName": "contact_customer_accounts",
+            },
+        ]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        result = self.client.query.odata_expand("contact", "account")
+        self.assertEqual(result, "parentcustomerid_account")
+
+    def test_no_relationship_raises(self):
+        self.client._odata._list_table_relationships.return_value = []
+        with self.assertRaises(ValueError) as ctx:
+            self.client.query.odata_expand("contact", "nonexistent")
+        self.assertIn("No navigation property", str(ctx.exception))
+
+    def test_case_insensitive_target(self):
+        self.client._odata._list_table_relationships.return_value = [
+            {
+                "ReferencingEntity": "contact",
+                "ReferencingAttribute": "ownerid",
+                "ReferencedEntity": "systemuser",
+                "ReferencedAttribute": "systemuserid",
+                "ReferencingEntityNavigationPropertyName": "ownerid_systemuser",
+                "SchemaName": "contact_owner",
+            },
+        ]
+        self.client._odata._entity_set_from_schema_name.return_value = "systemusers"
+        result = self.client.query.odata_expand("contact", "SystemUser")
+        self.assertEqual(result, "ownerid_systemuser")
+
+
+class TestOdataBind(unittest.TestCase):
+    """Tests for client.query.odata_bind()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_returns_bind_dict(self):
+        self.client._odata._list_table_relationships.return_value = [
+            {
+                "ReferencingEntity": "contact",
+                "ReferencingAttribute": "parentcustomerid",
+                "ReferencedEntity": "account",
+                "ReferencedAttribute": "accountid",
+                "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                "SchemaName": "contact_customer_accounts",
+            },
+        ]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+        guid = "12345678-1234-1234-1234-123456789abc"
+        result = self.client.query.odata_bind("contact", "account", guid)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(len(result), 1)
+        key = list(result.keys())[0]
+        self.assertEqual(key, "parentcustomerid_account@odata.bind")
+        self.assertEqual(result[key], f"/accounts({guid})")
+
+    def test_no_relationship_raises(self):
+        self.client._odata._list_table_relationships.return_value = []
+        with self.assertRaises(ValueError):
+            self.client.query.odata_bind("contact", "nonexistent", "guid")
+
+    def test_usable_in_create_payload(self):
+        """Result can be merged into a create payload via **spread."""
+        self.client._odata._list_table_relationships.return_value = [
+            {
+                "ReferencingEntity": "contact",
+                "ReferencingAttribute": "parentcustomerid",
+                "ReferencedEntity": "account",
+                "ReferencedAttribute": "accountid",
+                "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                "SchemaName": "contact_customer_accounts",
+            },
+        ]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+        bind = self.client.query.odata_bind("contact", "account", "some-guid")
+        payload = {"firstname": "Jane", "lastname": "Doe", **bind}
+        self.assertIn("parentcustomerid_account@odata.bind", payload)
+        self.assertEqual(payload["firstname"], "Jane")
+
+
 if __name__ == "__main__":
     unittest.main()
