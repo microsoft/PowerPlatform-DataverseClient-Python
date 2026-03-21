@@ -95,9 +95,24 @@ class QueryOperations:
     def sql(self, sql: str) -> List[Record]:
         """Execute a read-only SQL query using the Dataverse Web API.
 
-        The SQL query must follow the supported subset: a single SELECT
-        statement with optional WHERE, TOP (integer literal), ORDER BY (column
-        names only), and a simple table alias after FROM.
+        The Dataverse SQL endpoint supports a broad subset of T-SQL::
+
+            SELECT / SELECT DISTINCT / SELECT TOP N (0-5000)
+            FROM table [alias]
+            INNER JOIN / LEFT JOIN (multi-table, up to 6+ tables)
+            WHERE (=, !=, >, <, >=, <=, LIKE, IN, NOT IN, IS NULL,
+                   IS NOT NULL, BETWEEN, AND, OR, nested parentheses)
+            GROUP BY column
+            ORDER BY column [ASC|DESC]
+            OFFSET n ROWS FETCH NEXT m ROWS ONLY
+            COUNT(*), SUM(), AVG(), MIN(), MAX()
+
+        ``SELECT *`` is automatically expanded into explicit column names
+        by the SDK (the server rejects ``*`` directly).
+
+        Not supported: subqueries, CTE, HAVING, UNION, RIGHT/FULL/CROSS
+        JOIN, CASE, COALESCE, window functions, string/date/math functions,
+        INSERT/UPDATE/DELETE. For writes, use ``client.records`` methods.
 
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
@@ -110,20 +125,25 @@ class QueryOperations:
             If ``sql`` is not a string or is empty.
 
         Example:
-            Basic SQL query::
+            Basic query::
 
                 rows = client.query.sql(
-                    "SELECT TOP 10 accountid, name FROM account "
-                    "WHERE name LIKE 'C%' ORDER BY name"
+                    "SELECT TOP 10 name FROM account ORDER BY name"
                 )
-                for row in rows:
-                    print(row["name"])
 
-            Query with alias::
+            JOIN with aggregation::
 
                 rows = client.query.sql(
-                    "SELECT a.name, a.telephone1 FROM account AS a "
-                    "WHERE a.statecode = 0"
+                    "SELECT a.name, COUNT(c.contactid) as cnt "
+                    "FROM account a "
+                    "JOIN contact c ON a.accountid = c.parentcustomerid "
+                    "GROUP BY a.name"
+                )
+
+            SELECT * (auto-expanded by SDK)::
+
+                rows = client.query.sql(
+                    "SELECT * FROM account"
                 )
         """
         with self._client._scoped_odata() as od:

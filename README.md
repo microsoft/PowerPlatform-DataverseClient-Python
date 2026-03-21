@@ -269,6 +269,14 @@ client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
 
 # Delete records by passing a Series of GUIDs
 client.dataframe.delete("account", new_accounts["accountid"])
+
+# SQL query directly to DataFrame (supports JOINs, aggregates, GROUP BY)
+df = client.dataframe.sql(
+    "SELECT a.name, COUNT(c.contactid) as contacts "
+    "FROM account a "
+    "JOIN contact c ON a.accountid = c.parentcustomerid "
+    "GROUP BY a.name"
+)
 ```
 
 ### Query data
@@ -372,14 +380,30 @@ results = (client.query.builder("account")
            .execute())
 ```
 
-**SQL queries** provide an alternative read-only query syntax:
+**SQL queries** provide an alternative read-only query syntax with support for
+JOINs, aggregates, GROUP BY, DISTINCT, and OFFSET FETCH pagination:
 
 ```python
+# Basic query
 results = client.query.sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
 )
-for record in results:
-    print(record["name"])
+
+# JOINs and aggregates work
+results = client.query.sql(
+    "SELECT a.name, COUNT(c.contactid) as cnt "
+    "FROM account a "
+    "JOIN contact c ON a.accountid = c.parentcustomerid "
+    "GROUP BY a.name"
+)
+
+# SELECT * is auto-expanded by the SDK
+results = client.query.sql("SELECT * FROM account")
+
+# SQL results directly as a DataFrame
+df = client.dataframe.sql(
+    "SELECT name, revenue FROM account ORDER BY revenue DESC"
+)
 ```
 
 **Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string:

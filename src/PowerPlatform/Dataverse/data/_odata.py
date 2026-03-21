@@ -13,6 +13,7 @@ import time
 import re
 import json
 import uuid
+import warnings
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
@@ -27,6 +28,7 @@ from ..core._error_codes import (
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_SQL_WRITE_BLOCKED,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -825,6 +827,126 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 yield [x for x in items if isinstance(x, dict)]
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
+    # ----------------------- SELECT * detection -----------------------
+    _SELECT_STAR_RE = re.compile(
+        r"\bSELECT\b(\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?)\*\s",
+        re.IGNORECASE,
+    )
+
+    # ----------------------- SQL guardrail patterns --------------------
+    _SQL_WRITE_RE = re.compile(
+        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        re.IGNORECASE,
+    )
+    _SQL_HAS_TOP_RE = re.compile(r"\bTOP\s+\d+", re.IGNORECASE)
+    _SQL_HAS_OFFSET_RE = re.compile(r"\bOFFSET\s+\d+\s+ROWS\b", re.IGNORECASE)
+    _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
+    _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
+        r"\bFROM\s+[A-Za-z0-9_]+\s+[A-Za-z0-9_]+\s*,\s*[A-Za-z0-9_]+",
+        re.IGNORECASE,
+    )
+    _SQL_DEFAULT_TOP = 5000
+
+    def _expand_select_star(self, sql: str, table: str) -> str:
+        """Replace ``SELECT *`` with explicit column names.
+
+        When the Dataverse SQL endpoint receives ``SELECT *`` it returns
+        an error ("SELECT * is not supported").  This helper resolves all
+        columns via ``_list_columns`` and rewrites the query so the user
+        never has to know the server limitation.
+        """
+        if not self._SELECT_STAR_RE.search(sql):
+            return sql
+
+        cols = self._list_columns(
+            table,
+            select=["LogicalName"],
+            filter="AttributeType ne 'Virtual'",
+        )
+        col_names = sorted({c["LogicalName"] for c in cols if "LogicalName" in c})
+        if not col_names:
+            return sql  # Fallback: let the server decide
+        col_list = ", ".join(col_names)
+        return self._SELECT_STAR_RE.sub(lambda m: f"SELECT{m.group(1)}{col_list} ", sql, count=1)
+
+    def _sql_guardrails(self, sql: str) -> str:
+        """Apply safety guardrails to a SQL query before sending to the server.
+
+        Checks performed (in order):
+
+        1. **Block write statements** -- ``INSERT``, ``UPDATE``, ``DELETE``,
+           ``DROP``, ``TRUNCATE``, ``ALTER``, ``CREATE``, ``EXEC``, ``GRANT``,
+           ``REVOKE``, ``BULK`` are rejected with ``ValidationError``.
+        2. **Auto-inject TOP** -- if the query has no ``TOP`` or ``OFFSET``
+           clause, ``TOP 5000`` is injected after ``SELECT`` (or after
+           ``DISTINCT``) and a ``UserWarning`` is emitted so the caller
+           knows the result set was capped.
+        3. **Warn on leading-wildcard LIKE** -- ``LIKE '%...'`` patterns
+           force full table scans and hurt shared database performance.
+        4. **Warn on implicit cross joins** -- ``FROM a, b`` (comma syntax)
+           produces cartesian products.
+
+        :param sql: The SQL string (already stripped).
+        :return: Possibly-rewritten SQL string.
+        :raises ValidationError: If the SQL contains a write statement.
+        """
+        # 1. Block writes
+        if self._SQL_WRITE_RE.search(sql):
+            raise ValidationError(
+                "SQL endpoint is read-only. Use client.records or "
+                "client.dataframe for write operations "
+                "(INSERT/UPDATE/DELETE are not supported).",
+                subcode=VALIDATION_SQL_WRITE_BLOCKED,
+            )
+
+        # 2. Auto-inject TOP if missing
+        if not self._SQL_HAS_TOP_RE.search(sql) and not self._SQL_HAS_OFFSET_RE.search(sql):
+            # Inject TOP 5000 after SELECT [DISTINCT]
+            def _inject_top(m):
+                return f"{m.group(0)}TOP {self._SQL_DEFAULT_TOP} "
+
+            sql_new = re.sub(
+                r"\bSELECT(\s+DISTINCT)?\s",
+                _inject_top,
+                sql,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            if sql_new != sql:
+                warnings.warn(
+                    f"Query has no TOP or OFFSET clause. "
+                    f"SDK auto-injected TOP {self._SQL_DEFAULT_TOP} to prevent "
+                    f"unbounded result sets. Add an explicit TOP or "
+                    f"OFFSET...FETCH to suppress this warning.",
+                    UserWarning,
+                    stacklevel=4,
+                )
+                sql = sql_new
+
+        # 3. Warn on leading-wildcard LIKE
+        if self._SQL_LEADING_WILDCARD_RE.search(sql):
+            warnings.warn(
+                "Query contains a leading-wildcard LIKE pattern "
+                "(e.g. LIKE '%value'). This forces a full table scan "
+                "and may degrade performance on large tables. "
+                "Prefer trailing wildcards (LIKE 'value%') when possible.",
+                UserWarning,
+                stacklevel=4,
+            )
+
+        # 4. Warn on implicit cross joins
+        if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
+            warnings.warn(
+                "Query appears to use an implicit cross join "
+                "(FROM table1, table2). This produces a cartesian product "
+                "and may return excessive rows. Use explicit JOIN...ON "
+                "syntax instead.",
+                UserWarning,
+                stacklevel=4,
+            )
+
+        return sql
+
     # --------------------------- SQL Custom API -------------------------
     def _query_sql(self, sql: str) -> list[dict[str, Any]]:
         """Execute a read-only SQL SELECT using the Dataverse Web API ``?sql=`` capability.
@@ -839,7 +961,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :raises MetadataError: If logical table name resolution fails.
 
         .. note::
-           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client extracts the logical table name, resolves the entity set (metadata cached), then issues the request. Only a constrained SELECT subset is supported by the platform.
+           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client
+           extracts the logical table name, resolves the entity set (metadata
+           cached), then issues the request.  ``SELECT *`` is automatically
+           expanded into explicit column names because the server blocks it.
         """
         if not isinstance(sql, str):
             raise ValidationError("sql must be a string", subcode=VALIDATION_SQL_NOT_STRING)
@@ -849,6 +974,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         # Extract logical table name via helper (robust to identifiers ending with 'from')
         logical = self._extract_logical_table(sql)
+
+        # Auto-expand SELECT * into explicit column names
+        sql = self._expand_select_star(sql, logical)
+
+        # Apply safety guardrails (block writes, auto-inject TOP, warn on risky patterns)
+        sql = self._sql_guardrails(sql)
 
         entity_set = self._entity_set_from_schema_name(logical)
         # Issue GET /{entity_set}?sql=<query>

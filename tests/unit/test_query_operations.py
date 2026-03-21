@@ -55,6 +55,108 @@ class TestQueryOperations(unittest.TestCase):
         self.assertIsInstance(result, list)
         self.assertEqual(result, [])
 
+    def test_sql_join(self):
+        """sql() should handle JOIN SQL and return Record objects."""
+        raw_rows = [
+            {"name": "Contoso", "fullname": "John Doe"},
+            {"name": "Fabrikam", "fullname": "Jane Smith"},
+        ]
+        self.client._odata._query_sql.return_value = raw_rows
+
+        result = self.client.query.sql(
+            "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
+        )
+
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], Record)
+        self.assertEqual(result[0]["name"], "Contoso")
+        self.assertEqual(result[0]["fullname"], "John Doe")
+
+    def test_sql_aggregate(self):
+        """sql() should handle aggregate results."""
+        self.client._odata._query_sql.return_value = [{"cnt": 42}]
+
+        result = self.client.query.sql("SELECT COUNT(*) as cnt FROM account")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["cnt"], 42)
+
+    def test_sql_group_by(self):
+        """sql() should handle GROUP BY results."""
+        raw = [
+            {"statecode": 0, "cnt": 100},
+            {"statecode": 1, "cnt": 5},
+        ]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql("SELECT statecode, COUNT(*) as cnt FROM account GROUP BY statecode")
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["statecode"], 0)
+        self.assertEqual(result[0]["cnt"], 100)
+
+    def test_sql_distinct(self):
+        """sql() should handle DISTINCT results."""
+        raw = [{"name": "Contoso"}, {"name": "Fabrikam"}]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql("SELECT DISTINCT name FROM account")
+
+        self.assertEqual(len(result), 2)
+
+    def test_sql_polymorphic_owner_join(self):
+        """sql() should handle polymorphic lookup JOINs (ownerid -> systemuser)."""
+        raw = [
+            {"name": "Contoso", "owner_name": "Admin User"},
+        ]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql(
+            "SELECT a.name, su.fullname as owner_name "
+            "FROM account a "
+            "JOIN systemuser su ON a._ownerid_value = su.systemuserid"
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["owner_name"], "Admin User")
+
+    def test_sql_audit_trail_multi_join(self):
+        """sql() should handle multi-JOIN for audit trail (createdby + modifiedby)."""
+        raw = [
+            {"name": "Contoso", "created_by": "User A", "modified_by": "User B"},
+        ]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql(
+            "SELECT a.name, creator.fullname as created_by, modifier.fullname as modified_by "
+            "FROM account a "
+            "JOIN systemuser creator ON a._createdby_value = creator.systemuserid "
+            "JOIN systemuser modifier ON a._modifiedby_value = modifier.systemuserid"
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["created_by"], "User A")
+
+    def test_sql_offset_fetch(self):
+        """sql() should handle OFFSET FETCH pagination SQL."""
+        raw = [{"name": "Page2-Row1"}]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql("SELECT name FROM account ORDER BY name OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY")
+
+        self.assertEqual(len(result), 1)
+        self.client._odata._query_sql.assert_called_once()
+
+    def test_sql_select_star(self):
+        """sql() should handle SELECT * (auto-expanded by _query_sql)."""
+        raw = [{"accountid": "1", "name": "Contoso", "revenue": 1000}]
+        self.client._odata._query_sql.return_value = raw
+
+        result = self.client.query.sql("SELECT * FROM account")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "Contoso")
+
     # ----------------------------------------------------------------- builder
 
     def test_builder_returns_query_builder(self):
