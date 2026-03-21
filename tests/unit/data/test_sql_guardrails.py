@@ -81,78 +81,37 @@ class TestBlockWriteStatements:
 
 
 # ===================================================================
-# 2. Auto-inject TOP when missing
+# 2. Server enforces TOP 5000 (no client-side injection needed)
 # ===================================================================
 
 
-class TestAutoInjectTop:
-    """Queries without TOP or OFFSET should get TOP 5000 injected."""
+class TestNoTopInjection:
+    """Verify the SDK does NOT inject TOP -- server handles the 5000 cap."""
 
-    def test_no_top_injects_top_5000(self):
+    def test_no_top_passes_through_unchanged(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails("SELECT name FROM account")
-            assert len(w) >= 1
-            assert "TOP 5000" in str(w[0].message)
-        assert "TOP 5000" in result
+        sql = "SELECT name FROM account"
+        result = c._sql_guardrails(sql)
+        assert result == sql
+        assert "TOP" not in result
 
     def test_existing_top_not_modified(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails("SELECT TOP 100 name FROM account")
-            top_warnings = [x for x in w if "TOP" in str(x.message)]
-            assert len(top_warnings) == 0
+        result = c._sql_guardrails("SELECT TOP 100 name FROM account")
         assert "TOP 100" in result
-        assert "TOP 5000" not in result
 
-    def test_existing_offset_not_modified(self):
+    def test_offset_passes_through(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails(
-                "SELECT name FROM account ORDER BY name " "OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
-            )
-            top_warnings = [x for x in w if "TOP" in str(x.message)]
-            assert len(top_warnings) == 0
-        assert "TOP 5000" not in result
+        sql = "SELECT name FROM account ORDER BY name OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
+        result = c._sql_guardrails(sql)
+        assert result == sql
 
-    def test_distinct_gets_top_after_select_distinct(self):
+    def test_join_without_top_not_modified(self):
         c = _client()
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
-            result = c._sql_guardrails("SELECT DISTINCT name FROM account")
-        assert "SELECT DISTINCT TOP 5000" in result or "SELECT DISTINCT TOP 5000" in result.upper()
-
-    def test_count_star_gets_top(self):
-        c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails("SELECT COUNT(*) FROM account")
-            assert any("TOP 5000" in str(x.message) for x in w)
-        assert "TOP 5000" in result
-
-    def test_join_without_top_gets_top(self):
-        c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails(
-                "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
-            )
-            assert any("TOP 5000" in str(x.message) for x in w)
-        assert "TOP 5000" in result
-
-    def test_join_with_top_not_modified(self):
-        c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = c._sql_guardrails(
-                "SELECT TOP 10 a.name FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
-            )
-            top_warnings = [x for x in w if "TOP" in str(x.message)]
-            assert len(top_warnings) == 0
-        assert "TOP 10" in result
+        sql = "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
+        result = c._sql_guardrails(sql)
+        assert result == sql
+        assert "TOP" not in result
 
 
 # ===================================================================
@@ -232,7 +191,52 @@ class TestImplicitCrossJoinWarning:
 
 
 # ===================================================================
-# 5. Integration: _query_sql applies guardrails
+# 5. SELECT * with JOIN warning (from _expand_select_star)
+# ===================================================================
+
+
+class TestSelectStarJoinWarning:
+    """SELECT * with JOIN should warn that only first table columns are used."""
+
+    def test_select_star_with_join_warns(self):
+        c = _client()
+        c._list_columns = MagicMock(return_value=[{"LogicalName": "name"}, {"LogicalName": "accountid"}])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            c._expand_select_star(
+                "SELECT * FROM account a JOIN contact c ON a.accountid = c.parentcustomerid",
+                "account",
+            )
+            join_warnings = [x for x in w if "JOIN" in str(x.message)]
+            assert len(join_warnings) == 1
+            assert "first table only" in str(join_warnings[0].message)
+
+    def test_select_star_no_join_no_warning(self):
+        c = _client()
+        c._list_columns = MagicMock(return_value=[{"LogicalName": "name"}])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            c._expand_select_star("SELECT * FROM account", "account")
+            join_warnings = [x for x in w if "JOIN" in str(x.message)]
+            assert len(join_warnings) == 0
+
+    def test_no_star_with_join_no_warning(self):
+        c = _client()
+        c._list_columns = MagicMock()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            c._expand_select_star(
+                "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid",
+                "account",
+            )
+            # _list_columns not called (no star), so no JOIN warning
+            c._list_columns.assert_not_called()
+            join_warnings = [x for x in w if "JOIN" in str(x.message)]
+            assert len(join_warnings) == 0
+
+
+# ===================================================================
+# 6. Integration: _query_sql applies guardrails
 # ===================================================================
 
 
@@ -246,7 +250,8 @@ class TestQuerySqlGuardrailIntegration:
             c._query_sql("DELETE FROM account WHERE name = 'x'")
         c._request.assert_not_called()
 
-    def test_top_injected_in_server_request(self):
+    def test_no_top_injection_in_server_request(self):
+        """Server manages the 5000 cap -- SDK should not inject TOP."""
         c = _client()
         c._entity_set_from_schema_name = MagicMock(return_value="accounts")
         mock_response = MagicMock()
@@ -254,14 +259,14 @@ class TestQuerySqlGuardrailIntegration:
         mock_response.status_code = 200
         c._request = MagicMock(return_value=mock_response)
 
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
-            c._query_sql("SELECT name FROM account")
+        c._query_sql("SELECT name FROM account")
 
         call_args = c._request.call_args
         sent_params = call_args[1].get("params", {})
         sent_sql = sent_params.get("sql", "")
-        assert "TOP 5000" in sent_sql
+        # SDK should NOT inject TOP 5000
+        assert "TOP 5000" not in sent_sql
+        assert sent_sql == "SELECT name FROM account"
 
     def test_explicit_top_preserved_in_server_request(self):
         c = _client()
@@ -277,4 +282,3 @@ class TestQuerySqlGuardrailIntegration:
         sent_params = call_args[1].get("params", {})
         sent_sql = sent_params.get("sql", "")
         assert "TOP 50" in sent_sql
-        assert "TOP 5000" not in sent_sql

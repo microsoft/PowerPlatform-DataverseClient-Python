@@ -838,14 +838,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
         re.IGNORECASE,
     )
-    _SQL_HAS_TOP_RE = re.compile(r"\bTOP\s+\d+", re.IGNORECASE)
-    _SQL_HAS_OFFSET_RE = re.compile(r"\bOFFSET\s+\d+\s+ROWS\b", re.IGNORECASE)
     _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
     _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
         r"\bFROM\s+[A-Za-z0-9_]+\s+[A-Za-z0-9_]+\s*,\s*[A-Za-z0-9_]+",
         re.IGNORECASE,
     )
-    _SQL_DEFAULT_TOP = 5000
+    _SQL_HAS_JOIN_RE = re.compile(r"\bJOIN\b", re.IGNORECASE)
 
     def _expand_select_star(self, sql: str, table: str) -> str:
         """Replace ``SELECT *`` with explicit column names.
@@ -854,9 +852,25 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         an error ("SELECT * is not supported").  This helper resolves all
         columns via ``_list_columns`` and rewrites the query so the user
         never has to know the server limitation.
+
+        For JOIN queries, the expansion only includes columns from the first
+        (FROM) table.  A warning is emitted so the user knows to specify
+        columns explicitly for multi-table queries.
         """
         if not self._SELECT_STAR_RE.search(sql):
             return sql
+
+        # Warn on SELECT * with JOINs -- expansion uses only the FROM table
+        if self._SQL_HAS_JOIN_RE.search(sql):
+            warnings.warn(
+                "SELECT * with JOIN: the SDK expands * using columns from "
+                "the first table only. Columns from joined tables will not "
+                "be included. Specify columns explicitly for JOINs "
+                "(e.g. SELECT a.name, c.fullname FROM account a "
+                "JOIN contact c ON ...).",
+                UserWarning,
+                stacklevel=4,
+            )
 
         cols = self._list_columns(
             table,
@@ -877,14 +891,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         1. **Block write statements** -- ``INSERT``, ``UPDATE``, ``DELETE``,
            ``DROP``, ``TRUNCATE``, ``ALTER``, ``CREATE``, ``EXEC``, ``GRANT``,
            ``REVOKE``, ``BULK`` are rejected with ``ValidationError``.
-        2. **Auto-inject TOP** -- if the query has no ``TOP`` or ``OFFSET``
-           clause, ``TOP 5000`` is injected after ``SELECT`` (or after
-           ``DISTINCT``) and a ``UserWarning`` is emitted so the caller
-           knows the result set was capped.
-        3. **Warn on leading-wildcard LIKE** -- ``LIKE '%...'`` patterns
+        2. **Warn on leading-wildcard LIKE** -- ``LIKE '%...'`` patterns
            force full table scans and hurt shared database performance.
-        4. **Warn on implicit cross joins** -- ``FROM a, b`` (comma syntax)
+        3. **Warn on implicit cross joins** -- ``FROM a, b`` (comma syntax)
            produces cartesian products.
+
+        .. note::
+           The server enforces a 5000-row maximum per query and blocks
+           ``SELECT *`` directly.  The SDK handles ``SELECT *`` via
+           ``_expand_select_star``.  No client-side TOP injection is needed
+           because the server already caps results.
 
         :param sql: The SQL string (already stripped).
         :return: Possibly-rewritten SQL string.
@@ -899,31 +915,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 subcode=VALIDATION_SQL_WRITE_BLOCKED,
             )
 
-        # 2. Auto-inject TOP if missing
-        if not self._SQL_HAS_TOP_RE.search(sql) and not self._SQL_HAS_OFFSET_RE.search(sql):
-            # Inject TOP 5000 after SELECT [DISTINCT]
-            def _inject_top(m):
-                return f"{m.group(0)}TOP {self._SQL_DEFAULT_TOP} "
-
-            sql_new = re.sub(
-                r"\bSELECT(\s+DISTINCT)?\s",
-                _inject_top,
-                sql,
-                count=1,
-                flags=re.IGNORECASE,
-            )
-            if sql_new != sql:
-                warnings.warn(
-                    f"Query has no TOP or OFFSET clause. "
-                    f"SDK auto-injected TOP {self._SQL_DEFAULT_TOP} to prevent "
-                    f"unbounded result sets. Add an explicit TOP or "
-                    f"OFFSET...FETCH to suppress this warning.",
-                    UserWarning,
-                    stacklevel=4,
-                )
-                sql = sql_new
-
-        # 3. Warn on leading-wildcard LIKE
+        # 2. Warn on leading-wildcard LIKE
         if self._SQL_LEADING_WILDCARD_RE.search(sql):
             warnings.warn(
                 "Query contains a leading-wildcard LIKE pattern "
@@ -934,7 +926,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 stacklevel=4,
             )
 
-        # 4. Warn on implicit cross joins
+        # 3. Warn on implicit cross joins
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
             warnings.warn(
                 "Query appears to use an implicit cross join "
