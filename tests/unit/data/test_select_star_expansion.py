@@ -4,7 +4,7 @@
 """Unit tests for SELECT * auto-expansion in _query_sql."""
 
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 

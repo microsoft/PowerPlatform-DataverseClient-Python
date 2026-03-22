@@ -723,13 +723,13 @@ class TableOperations:
         :type table: :class:`str`
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData ``$filter`` expression.  For example,
             ``"AttributeType eq 'String'"`` returns only string columns.
         :type filter: :class:`str` or None
 
         :return: List of raw attribute metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict[str, typing.Any]]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table is not found.
@@ -774,10 +774,10 @@ class TableOperations:
         :type filter: :class:`str` or None
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
         :return: List of raw relationship metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict[str, typing.Any]]
 
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
@@ -827,9 +827,9 @@ class TableOperations:
             ``$select``.  Values are passed as-is (PascalCase).
         :type select: :class:`list` of :class:`str` or None
 
-        :return: Combined list of one-to-many and many-to-many relationship
-            metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :return: Combined list of one-to-many, many-to-one, and many-to-many
+            relationship metadata dictionaries.
+        :rtype: list[dict[str, typing.Any]]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table is not found.

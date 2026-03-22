@@ -837,12 +837,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
     # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
-        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
-        re.IGNORECASE,
+        r"^\s*(?:/\*.*?\*/\s*|--[^\n]*\n\s*)*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        re.IGNORECASE | re.DOTALL,
     )
     _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
     _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
-        r"\bFROM\s+[A-Za-z0-9_]+\s+[A-Za-z0-9_]+\s*,\s*[A-Za-z0-9_]+",
+        r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
         re.IGNORECASE,
     )
     _SQL_HAS_JOIN_RE = re.compile(r"\bJOIN\b", re.IGNORECASE)
@@ -1048,7 +1048,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         # Auto-expand SELECT * into explicit column names
         sql = self._expand_select_star(sql, logical)
 
-        # Apply safety guardrails (block writes, auto-inject TOP, warn on risky patterns)
+        # Apply safety guardrails (block unsupported syntax, warn on risky patterns)
         sql = self._sql_guardrails(sql)
 
         entity_set = self._entity_set_from_schema_name(logical)

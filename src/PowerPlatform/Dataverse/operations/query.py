@@ -99,7 +99,7 @@ class QueryOperations:
 
             SELECT / SELECT DISTINCT / SELECT TOP N (0-5000)
             FROM table [alias]
-            INNER JOIN / LEFT JOIN (multi-table, up to 6+ tables)
+            INNER JOIN / LEFT JOIN (multi-table, no depth limit)
             WHERE (=, !=, >, <, >=, <=, LIKE, IN, NOT IN, IS NULL,
                    IS NOT NULL, BETWEEN, AND, OR, nested parentheses)
             GROUP BY column
@@ -481,8 +481,8 @@ class QueryOperations:
             try:
                 with self._client._scoped_odata() as od:
                     target_set = od._entity_set_from_schema_name(target)
-            except Exception:
-                pass
+            except (KeyError, AttributeError, ValueError):
+                pass  # Entity set resolution failed; target_set stays empty
 
             result.append(
                 {
