@@ -559,7 +559,7 @@ rels = client.tables.list_relationships()
 for rel in rels:
     print(f"{rel['SchemaName']} ({rel.get('@odata.type')})")
 
-# List relationships for a specific table (one-to-many + many-to-many)
+# List relationships for a specific table (one-to-many + many-to-one + many-to-many)
 account_rels = client.tables.list_table_relationships("account")
 for rel in account_rels:
     print(f"{rel['SchemaName']} -> {rel.get('@odata.type')}")

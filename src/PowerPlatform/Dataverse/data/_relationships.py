@@ -198,8 +198,8 @@ class _RelationshipOperationsMixin:
             ``$select``.  Values are passed as-is (PascalCase).
         :type select: ``list[str]`` or ``None``
 
-        :return: Combined list of one-to-many and many-to-many relationship
-            metadata dictionaries (may be empty).
+        :return: Combined list of one-to-many, many-to-one, and many-to-many
+            relationship metadata dictionaries (may be empty).
         :rtype: ``list[dict[str, Any]]``
 
         :raises MetadataError: If the table is not found.
