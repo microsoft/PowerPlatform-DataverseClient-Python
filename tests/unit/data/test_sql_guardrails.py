@@ -75,9 +75,97 @@ class TestBlockWriteStatements:
 
     def test_select_with_delete_in_where_not_blocked(self):
         c = _client()
-        # "DELETE" appearing in a WHERE value should not trigger the guard
         result = c._sql_guardrails("SELECT TOP 10 name FROM account WHERE name = 'DELETE ME'")
         assert "SELECT" in result
+
+
+# ===================================================================
+# 1b. Block server-rejected SQL patterns (save round-trip)
+# ===================================================================
+
+
+class TestBlockServerRejectedPatterns:
+    """Block SQL patterns the server rejects, to save network round-trip."""
+
+    @pytest.mark.parametrize(
+        "sql,match_text",
+        [
+            ("SELECT a.name FROM account a CROSS JOIN contact c", "Unsupported JOIN"),
+            (
+                "SELECT a.name FROM account a RIGHT JOIN contact c ON a.accountid = c.parentcustomerid",
+                "Unsupported JOIN",
+            ),
+            (
+                "SELECT a.name FROM account a RIGHT OUTER JOIN contact c ON a.accountid = c.parentcustomerid",
+                "Unsupported JOIN",
+            ),
+            (
+                "SELECT a.name FROM account a FULL OUTER JOIN contact c ON a.accountid = c.parentcustomerid",
+                "Unsupported JOIN",
+            ),
+            (
+                "SELECT a.name FROM account a FULL JOIN contact c ON a.accountid = c.parentcustomerid",
+                "Unsupported JOIN",
+            ),
+        ],
+    )
+    def test_unsupported_joins_blocked(self, sql, match_text):
+        c = _client()
+        with pytest.raises(ValidationError, match=match_text):
+            c._sql_guardrails(sql)
+
+    def test_inner_join_allowed(self):
+        c = _client()
+        result = c._sql_guardrails(
+            "SELECT TOP 5 a.name FROM account a " "INNER JOIN contact c ON a.accountid = c.parentcustomerid"
+        )
+        assert "INNER JOIN" in result
+
+    def test_left_join_allowed(self):
+        c = _client()
+        result = c._sql_guardrails(
+            "SELECT TOP 5 a.name FROM account a " "LEFT JOIN contact c ON a.accountid = c.parentcustomerid"
+        )
+        assert "LEFT JOIN" in result
+
+    def test_union_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="UNION"):
+            c._sql_guardrails("SELECT name FROM account UNION SELECT fullname FROM contact")
+
+    def test_union_all_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="UNION"):
+            c._sql_guardrails("SELECT name FROM account UNION ALL SELECT fullname FROM contact")
+
+    def test_having_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="HAVING"):
+            c._sql_guardrails("SELECT name, COUNT(*) FROM account GROUP BY name HAVING COUNT(*) > 1")
+
+    def test_cte_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="CTE"):
+            c._sql_guardrails("WITH cte AS (SELECT name FROM account) SELECT * FROM cte")
+
+    def test_subquery_in_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="Subquer"):
+            c._sql_guardrails("SELECT name FROM account WHERE accountid IN (SELECT accountid FROM account)")
+
+    def test_subquery_exists_blocked(self):
+        c = _client()
+        with pytest.raises(ValidationError, match="Subquer"):
+            c._sql_guardrails(
+                "SELECT name FROM account a WHERE EXISTS "
+                "(SELECT 1 FROM contact c WHERE c.parentcustomerid = a.accountid)"
+            )
+
+    def test_subquery_in_values_not_blocked(self):
+        """IN with literal values is fine -- only IN (SELECT ...) is blocked."""
+        c = _client()
+        result = c._sql_guardrails("SELECT name FROM account WHERE name IN ('A', 'B', 'C')")
+        assert "IN" in result
 
 
 # ===================================================================

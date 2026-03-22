@@ -30,6 +30,7 @@ from ..core._error_codes import (
     VALIDATION_SQL_EMPTY,
     VALIDATION_SQL_WRITE_BLOCKED,
     VALIDATION_SQL_CROSS_JOIN_BLOCKED,
+    VALIDATION_SQL_UNSUPPORTED_SYNTAX,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -845,6 +846,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         re.IGNORECASE,
     )
     _SQL_HAS_JOIN_RE = re.compile(r"\bJOIN\b", re.IGNORECASE)
+    # Server-blocked SQL patterns (save the round-trip by catching early)
+    _SQL_UNSUPPORTED_JOIN_RE = re.compile(
+        r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
+        re.IGNORECASE,
+    )
+    _SQL_UNION_RE = re.compile(r"\bUNION\b", re.IGNORECASE)
+    _SQL_HAVING_RE = re.compile(r"\bHAVING\b", re.IGNORECASE)
+    _SQL_CTE_RE = re.compile(r"^\s*WITH\b", re.IGNORECASE)
+    _SQL_SUBQUERY_RE = re.compile(
+        r"\bIN\s*\(\s*SELECT\b|\bEXISTS\s*\(\s*SELECT\b|\(\s*SELECT\b.*\bFROM\b",
+        re.IGNORECASE,
+    )
 
     def _expand_select_star(self, sql: str, table: str) -> str:
         """Replace ``SELECT *`` with explicit column names.
@@ -887,26 +900,33 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     def _sql_guardrails(self, sql: str) -> str:
         """Apply safety guardrails to a SQL query before sending to the server.
 
-        Checks performed (in order):
+        Checks split into two categories:
 
-        1. **Block write statements** -- ``INSERT``, ``UPDATE``, ``DELETE``,
-           ``DROP``, ``TRUNCATE``, ``ALTER``, ``CREATE``, ``EXEC``, ``GRANT``,
-           ``REVOKE``, ``BULK`` are rejected with ``ValidationError``.
-        2. **Warn on leading-wildcard LIKE** -- ``LIKE '%...'`` patterns
-           force full table scans and hurt shared database performance.
-        3. **Warn on implicit cross joins** -- ``FROM a, b`` (comma syntax)
-           produces cartesian products.
+        **Blocked** (``ValidationError`` -- saves a server round-trip):
 
-        .. note::
-           The server enforces a 5000-row maximum per query and blocks
-           ``SELECT *`` directly.  The SDK handles ``SELECT *`` via
-           ``_expand_select_star``.  No client-side TOP injection is needed
-           because the server already caps results.
+        1. Write statements (INSERT/UPDATE/DELETE/DROP/etc.)
+        2. CROSS JOIN, RIGHT JOIN, FULL OUTER JOIN (server rejects these)
+        3. UNION / UNION ALL (server rejects)
+        4. HAVING clause (server rejects)
+        5. CTE / WITH clause (server rejects)
+        6. Subqueries -- IN (SELECT ...), EXISTS (SELECT ...) (server rejects)
+
+        **Warned** (``UserWarning`` -- query still executes):
+
+        7. Leading-wildcard LIKE (full table scan)
+        8. Implicit cross join FROM a, b (cartesian product)
+
+        All blocked patterns are also blocked by the server, but catching
+        them here saves the network round-trip and provides clearer error
+        messages. To bypass a specific check (e.g., if the server adds
+        support in the future), all checks are in this single method.
 
         :param sql: The SQL string (already stripped).
-        :return: Possibly-rewritten SQL string.
-        :raises ValidationError: If the SQL contains a write statement.
+        :return: The SQL string (unchanged unless rewritten).
+        :raises ValidationError: If the SQL contains a blocked pattern.
         """
+        # --- BLOCKED (save server round-trip) ---
+
         # 1. Block writes
         if self._SQL_WRITE_RE.search(sql):
             raise ValidationError(
@@ -916,7 +936,53 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 subcode=VALIDATION_SQL_WRITE_BLOCKED,
             )
 
-        # 2. Warn on leading-wildcard LIKE
+        # 2. Block unsupported JOIN types
+        m = self._SQL_UNSUPPORTED_JOIN_RE.search(sql)
+        if m:
+            raise ValidationError(
+                f"Unsupported JOIN type: '{m.group(0).strip()}'. "
+                "Only INNER JOIN and LEFT JOIN are supported by the "
+                "Dataverse SQL endpoint.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 3. Block UNION
+        if self._SQL_UNION_RE.search(sql):
+            raise ValidationError(
+                "UNION is not supported by the Dataverse SQL endpoint. "
+                "Execute separate queries and combine results in Python "
+                "(e.g. pd.concat([df1, df2])).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 4. Block HAVING
+        if self._SQL_HAVING_RE.search(sql):
+            raise ValidationError(
+                "HAVING is not supported by the Dataverse SQL endpoint. "
+                "Use WHERE to filter before GROUP BY instead.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 5. Block CTE / WITH
+        if self._SQL_CTE_RE.search(sql):
+            raise ValidationError(
+                "CTE (WITH ... AS) is not supported by the Dataverse SQL "
+                "endpoint. Use separate queries and combine in Python.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 6. Block subqueries
+        if self._SQL_SUBQUERY_RE.search(sql):
+            raise ValidationError(
+                "Subqueries are not supported by the Dataverse SQL "
+                "endpoint. Use separate SQL calls and combine results "
+                "in Python (e.g. step 1: get IDs, step 2: WHERE IN).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # --- WARNED (query still executes) ---
+
+        # 7. Warn on leading-wildcard LIKE
         if self._SQL_LEADING_WILDCARD_RE.search(sql):
             warnings.warn(
                 "Query contains a leading-wildcard LIKE pattern "
@@ -927,8 +993,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 stacklevel=4,
             )
 
-        # 3. Warn on implicit cross joins (server allows these but they
-        # produce cartesian products that can stress shared DB resources)
+        # 8. Warn on implicit cross joins (server allows but risky)
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
             warnings.warn(
                 "Query uses an implicit cross join (FROM table1, table2). "
