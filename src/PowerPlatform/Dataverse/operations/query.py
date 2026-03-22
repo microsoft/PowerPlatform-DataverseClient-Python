@@ -193,7 +193,15 @@ class QueryOperations:
 
         raw = self._client.tables.list_columns(
             table,
-            select=["LogicalName", "SchemaName", "AttributeType", "IsPrimaryId", "IsPrimaryName", "DisplayName"],
+            select=[
+                "LogicalName",
+                "SchemaName",
+                "AttributeType",
+                "IsPrimaryId",
+                "IsPrimaryName",
+                "DisplayName",
+                "AttributeOf",
+            ],
             filter="AttributeType ne 'Virtual'",
         )
         result: List[Dict[str, Any]] = []
@@ -202,6 +210,10 @@ class QueryOperations:
             if not name:
                 continue
             if not include_system and any(name.endswith(s) for s in _SYSTEM_SUFFIXES):
+                continue
+            # Skip computed display-name columns (AttributeOf is set, meaning
+            # they are auto-generated from a lookup column)
+            if c.get("AttributeOf"):
                 continue
             # Extract display label
             label = ""
