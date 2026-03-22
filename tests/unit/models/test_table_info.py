@@ -158,6 +158,7 @@ class TestColumnInfoFromApiResponse(unittest.TestCase):
         raw = {
             "SchemaName": "new_Price",
             "LogicalName": "new_price",
+            "AttributeType": "Decimal",
             "AttributeTypeName": {"Value": "DecimalType"},
             "IsPrimaryName": False,
             "RequiredLevel": {"Value": "None"},
@@ -168,9 +169,10 @@ class TestColumnInfoFromApiResponse(unittest.TestCase):
         col = ColumnInfo.from_api_response(raw)
         self.assertEqual(col.schema_name, "new_Price")
         self.assertEqual(col.logical_name, "new_price")
-        self.assertEqual(col.type, "DecimalType")
-        self.assertFalse(col.is_primary)
-        self.assertFalse(col.is_required)
+        self.assertEqual(col.attribute_type, "Decimal")
+        self.assertEqual(col.attribute_type_name, "DecimalType")
+        self.assertFalse(col.is_primary_name)
+        self.assertEqual(col.required_level, "None")
         self.assertEqual(col.display_name, "Price")
         self.assertEqual(col.description, "Product price")
 
@@ -182,7 +184,7 @@ class TestColumnInfoFromApiResponse(unittest.TestCase):
             "RequiredLevel": {"Value": "ApplicationRequired"},
         }
         col = ColumnInfo.from_api_response(raw)
-        self.assertTrue(col.is_required)
+        self.assertEqual(col.required_level, "ApplicationRequired")
 
     def test_missing_nested_labels(self):
         raw = {"SchemaName": "x", "LogicalName": "x"}
