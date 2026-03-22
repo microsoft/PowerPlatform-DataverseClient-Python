@@ -864,10 +864,12 @@ def _run_examples(client):
         # ==============================================================
         # 28. Deep JOINs (5-8 tables)
         # ==============================================================
-        heading(28, "Deep JOINs (5-8 Tables) -- Built-In Tables")
+        heading(28, "Deep JOINs (5+ Tables) -- No Depth Limit")
         print(
-            "SQL JOINs support at least 8 tables with no server depth limit.\n"
-            "Performance stays consistent (~0.7s for 8-table JOINs)."
+            "SQL JOINs have no server-imposed depth limit (tested up to 15\n"
+            "tables). Each JOIN uses indexed foreign key lookups, so\n"
+            "performance stays consistent. Most real-world queries use\n"
+            "2-4 tables; deeper JOINs are available when needed."
         )
 
         sql = (
@@ -999,7 +1001,7 @@ def _run_examples(client):
 +-------------------------------+------------------------+------------------------+
 | Read data                     | YES                    | YES                    |
 | Write data                    | NO (read-only)         | YES (create/update/del)|
-| JOIN depth                    | 15+ tables (no limit)  | $expand 10-level max   |
+| JOIN depth                    | No limit (tested 15)   | $expand 10-level max   |
 | JOIN types                    | INNER, LEFT            | $expand (single-valued)|
 | Aggregates (COUNT, SUM, etc.) | YES (server-side)      | Limited ($apply)       |
 | GROUP BY                      | YES (server-side)      | Via $apply (complex)   |
@@ -1070,9 +1072,54 @@ When to use OData (records.get):
             print(f"  OData $expand: error ({odata_time:.2f}s): {e}")
 
         # ==============================================================
-        # 32. Summary
+        # 32. Anti-Patterns & Best Practices
         # ==============================================================
-        heading(32, "Summary -- SQL Capabilities Reference")
+        heading(32, "IMPORTANT: Anti-Patterns & Best Practices")
+        print("""
+=== ANTI-PATTERNS (avoid these -- they hurt shared database performance) ===
+
+1. CARTESIAN PRODUCTS (FROM table1, table2 without ON)
+   BAD:  SELECT a.name, c.fullname FROM account a, contact c
+   WHY:  Produces rows_a * rows_b intermediate rows. With 5000-row tables,
+         that's 25 MILLION rows the server must process before capping at 5000.
+   FIX:  Always use explicit JOIN with ON clause.
+
+2. LEADING-WILDCARD LIKE (LIKE '%value')
+   BAD:  SELECT name FROM account WHERE name LIKE '%corp'
+   WHY:  Forces a FULL TABLE SCAN -- cannot use indexes. On tables with
+         millions of rows, this monopolizes shared database resources and
+         slows down OTHER users' queries on the same database.
+   FIX:  Use trailing wildcards: LIKE 'corp%' (uses indexes efficiently).
+         If you must search mid-string, add TOP to limit scan scope.
+
+3. NO FILTER ON LARGE SYSTEM TABLES
+   BAD:  SELECT name FROM role
+   WHY:  System tables (role, asyncoperation, sdkmessageprocessingstep)
+         can have 5000+ rows. Unfiltered queries return max rows.
+   FIX:  Always add WHERE filters and TOP when querying system tables.
+
+4. SELECT * ON WIDE TABLES
+   BAD:  SELECT * FROM account  (307 columns!)
+   WHY:  The SDK auto-expands * into all 260+ non-virtual columns.
+         Every column is transferred over the network.
+   FIX:  List only the columns you need: SELECT name, revenue FROM account
+
+5. DEEP JOINS WITHOUT TOP
+   OK:   SELECT TOP 100 a.name, ... FROM account a JOIN ... (15 tables)
+   BAD:  SELECT a.name, ... FROM account a JOIN ... (15 tables, no TOP)
+   WHY:  Deep JOINs are safe with proper FK relationships and TOP.
+         Without TOP, the server processes up to 5000 rows across all joins.
+   FIX:  Always include TOP N for multi-table JOINs.
+
+The SDK's guardrails automatically warn on patterns #1 and #2.
+The server enforces a 5000-row cap on all queries (pattern #3 and #5).
+Pattern #4 is handled by the SDK's SELECT * auto-expansion.
+""")
+
+        # ==============================================================
+        # 33. Summary
+        # ==============================================================
+        heading(33, "Summary -- SQL Capabilities Reference")
         print("""
 +-------------------------------+----------+----------------------------------------+
 | Feature                       | SQL      | Notes / SDK Fallback                   |
@@ -1125,7 +1172,7 @@ SQL-First Workflow (no OData knowledge needed):
 """)
 
     finally:
-        heading(33, "Cleanup")
+        heading(34, "Cleanup")
         for tbl in [child_table, parent_table]:
             log_call(f"client.tables.delete('{tbl}')")
             try:
