@@ -402,8 +402,9 @@ class TestListTableRelationships(unittest.TestCase):
         return r
 
     def test_uses_one_to_many_and_many_to_many_urls(self):
-        """Test that both OneToMany and ManyToMany URLs are queried."""
+        """Test that OneToMany, ManyToOne, and ManyToMany URLs are queried."""
         self.client._mock_request.side_effect = [
+            self._make_response([]),
             self._make_response([]),
             self._make_response([]),
         ]
@@ -411,13 +412,16 @@ class TestListTableRelationships(unittest.TestCase):
         self.client._list_table_relationships("account")
 
         calls = self.client._mock_request.call_args_list
-        self.assertEqual(len(calls), 2)
-        self.assertIn("OneToManyRelationships", calls[0][0][1])
-        self.assertIn("ManyToManyRelationships", calls[1][0][1])
+        self.assertEqual(len(calls), 3)
+        urls = [call[0][1] for call in calls]
+        self.assertTrue(any("OneToManyRelationships" in u for u in urls))
+        self.assertTrue(any("ManyToOneRelationships" in u for u in urls))
+        self.assertTrue(any("ManyToManyRelationships" in u for u in urls))
 
     def test_uses_metadata_id_in_urls(self):
-        """Test that the entity MetadataId is used in both URLs."""
+        """Test that the entity MetadataId is used in all three URLs."""
         self.client._mock_request.side_effect = [
+            self._make_response([]),
             self._make_response([]),
             self._make_response([]),
         ]
@@ -425,27 +429,31 @@ class TestListTableRelationships(unittest.TestCase):
         self.client._list_table_relationships("account")
 
         calls = self.client._mock_request.call_args_list
-        self.assertIn("ent-guid-1", calls[0][0][1])
-        self.assertIn("ent-guid-1", calls[1][0][1])
+        for call in calls:
+            self.assertIn("ent-guid-1", call[0][1])
 
     def test_combines_one_to_many_and_many_to_many_results(self):
-        """Test that results from both sub-requests are combined."""
+        """Test that results from all three sub-requests are combined."""
         one_to_many = [{"SchemaName": "rel_1tm", "MetadataId": "r1"}]
-        many_to_many = [{"SchemaName": "rel_mtm", "MetadataId": "r2"}]
+        many_to_one = [{"SchemaName": "rel_mt1", "MetadataId": "r2"}]
+        many_to_many = [{"SchemaName": "rel_mtm", "MetadataId": "r3"}]
         self.client._mock_request.side_effect = [
             self._make_response(one_to_many),
+            self._make_response(many_to_one),
             self._make_response(many_to_many),
         ]
 
         result = self.client._list_table_relationships("account")
 
-        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result), 3)
         self.assertEqual(result[0]["SchemaName"], "rel_1tm")
-        self.assertEqual(result[1]["SchemaName"], "rel_mtm")
+        self.assertEqual(result[1]["SchemaName"], "rel_mt1")
+        self.assertEqual(result[2]["SchemaName"], "rel_mtm")
 
     def test_filter_param_is_forwarded(self):
-        """Test that $filter is sent to both sub-requests."""
+        """Test that $filter is sent to all three sub-requests."""
         self.client._mock_request.side_effect = [
+            self._make_response([]),
             self._make_response([]),
             self._make_response([]),
         ]
@@ -458,8 +466,9 @@ class TestListTableRelationships(unittest.TestCase):
             self.assertEqual(params["$filter"], "IsManaged eq false")
 
     def test_select_param_is_forwarded(self):
-        """Test that $select is sent to both sub-requests."""
+        """Test that $select is sent to all three sub-requests."""
         self.client._mock_request.side_effect = [
+            self._make_response([]),
             self._make_response([]),
             self._make_response([]),
         ]

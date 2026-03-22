@@ -184,8 +184,9 @@ class _RelationshipOperationsMixin:
     ) -> List[Dict[str, Any]]:
         """List all relationships for a specific table.
 
-        Issues ``GET EntityDefinitions({MetadataId})/OneToManyRelationships``
-        and ``GET EntityDefinitions({MetadataId})/ManyToManyRelationships``,
+        Issues ``GET EntityDefinitions({MetadataId})/OneToManyRelationships``,
+        ``GET EntityDefinitions({MetadataId})/ManyToOneRelationships``, and
+        ``GET EntityDefinitions({MetadataId})/ManyToManyRelationships``,
         then combines the results.
 
         :param table_schema_name: Schema name of the table (e.g. ``"account"``).
@@ -222,12 +223,14 @@ class _RelationshipOperationsMixin:
             params["$select"] = ",".join(select)
 
         one_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/OneToManyRelationships"
+        many_to_one_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToOneRelationships"
         many_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToManyRelationships"
 
         r1 = self._request("get", one_to_many_url, headers=self._headers(), params=params)
-        r2 = self._request("get", many_to_many_url, headers=self._headers(), params=params)
+        r2 = self._request("get", many_to_one_url, headers=self._headers(), params=params)
+        r3 = self._request("get", many_to_many_url, headers=self._headers(), params=params)
 
-        return r1.json().get("value", []) + r2.json().get("value", [])
+        return r1.json().get("value", []) + r2.json().get("value", []) + r3.json().get("value", [])
 
     def _extract_id_from_header(self, header_value: Optional[str]) -> Optional[str]:
         """
