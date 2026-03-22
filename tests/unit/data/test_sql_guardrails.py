@@ -78,6 +78,19 @@ class TestBlockWriteStatements:
         result = c._sql_guardrails("SELECT TOP 10 name FROM account WHERE name = 'DELETE ME'")
         assert "SELECT" in result
 
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "/* comment */ DELETE FROM account",
+            "-- line comment\nDELETE FROM account",
+            "/* multi\nline */ DROP TABLE account",
+        ],
+    )
+    def test_comment_prefixed_writes_blocked(self, sql):
+        c = _client()
+        with pytest.raises(ValidationError, match="read-only"):
+            c._sql_guardrails(sql)
+
 
 # ===================================================================
 # 1b. Block server-rejected SQL patterns (save round-trip)

@@ -839,9 +839,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
     # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
-        r"^\s*(?:/\*.*?\*/\s*|--[^\n]*\n\s*)*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
-        re.IGNORECASE | re.DOTALL,
+        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        re.IGNORECASE,
     )
+    _SQL_COMMENT_RE = re.compile(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/|--[^\n]*", re.DOTALL)
     _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
     _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
         r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
@@ -929,8 +930,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         # --- BLOCKED (save server round-trip) ---
 
-        # 1. Block writes
-        if self._SQL_WRITE_RE.search(sql):
+        # 1. Block writes (strip SQL comments first to catch comment-prefixed writes)
+        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
+        if self._SQL_WRITE_RE.search(sql_no_comments):
             raise ValidationError(
                 "SQL endpoint is read-only. Use client.records or "
                 "client.dataframe for write operations "
@@ -1035,8 +1037,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         sql = sql.strip()
 
         # Block write statements FIRST (before table extraction, since
-        # UPDATE/INSERT/DELETE don't have FROM clauses)
-        if self._SQL_WRITE_RE.search(sql):
+        # UPDATE/INSERT/DELETE don't have FROM clauses).
+        # Strip SQL comments to catch e.g. /**/DELETE or --\\nDELETE.
+        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
+        if self._SQL_WRITE_RE.search(sql_no_comments):
             raise ValidationError(
                 "SQL endpoint is read-only. Use client.records or "
                 "client.dataframe for write operations "
