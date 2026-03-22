@@ -927,15 +927,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 stacklevel=4,
             )
 
-        # 3. Block implicit cross joins
+        # 3. Warn on implicit cross joins (server allows these but they
+        # produce cartesian products that can stress shared DB resources)
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
-            raise ValidationError(
-                "Implicit cross join detected (FROM table1, table2). "
+            warnings.warn(
+                "Query uses an implicit cross join (FROM table1, table2). "
                 "This produces a cartesian product that can generate "
                 "millions of intermediate rows and degrade shared database "
                 "performance. Use explicit JOIN...ON syntax instead: "
                 "FROM table1 a JOIN table2 b ON a.column = b.column",
-                subcode=VALIDATION_SQL_CROSS_JOIN_BLOCKED,
+                UserWarning,
+                stacklevel=4,
             )
 
         return sql
