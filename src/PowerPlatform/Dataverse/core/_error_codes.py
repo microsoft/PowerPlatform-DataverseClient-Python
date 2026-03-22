@@ -9,6 +9,8 @@ different types of failures, including HTTP errors, validation errors,
 SQL parsing errors, and metadata operation errors.
 """
 
+__all__ = []
+
 # HTTP subcode constants
 HTTP_400 = "http_400"
 HTTP_401 = "http_401"

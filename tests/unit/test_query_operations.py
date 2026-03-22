@@ -491,6 +491,32 @@ class TestSqlColumns(unittest.TestCase):
         cols = self.client.query.sql_columns("account")
         self.assertEqual(cols, [])
 
+    def test_excludes_attribute_of_columns(self):
+        """Columns with AttributeOf set (computed display names) should be excluded."""
+        self._mock_columns(
+            [
+                {
+                    "LogicalName": "name",
+                    "AttributeType": "String",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": True,
+                    "DisplayName": {},
+                },
+                {
+                    "LogicalName": "createdbyname",
+                    "AttributeType": "String",
+                    "IsPrimaryId": False,
+                    "IsPrimaryName": False,
+                    "DisplayName": {},
+                    "AttributeOf": "createdby",
+                },
+            ]
+        )
+        cols = self.client.query.sql_columns("account")
+        names = [c["name"] for c in cols]
+        self.assertIn("name", names)
+        self.assertNotIn("createdbyname", names)
+
 
 class TestSqlSelect(unittest.TestCase):
     """Tests for client.query.sql_select()."""

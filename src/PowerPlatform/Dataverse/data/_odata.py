@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+__all__ = []
+
 from typing import Any, Dict, Optional, List, Union, Iterable, Callable
 from enum import Enum
 from dataclasses import dataclass, field
@@ -116,7 +118,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
         """Convert all strings in a list to lowercase for case-insensitive column names.
 
-        Used for $select, $orderby, $expand parameters where column names must be lowercase.
+        Used for $select and $orderby parameters where column names must be lowercase.
         """
         if not items:
             return items
@@ -556,8 +558,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     ) -> Optional[str]:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 

@@ -825,7 +825,7 @@ class TableOperations:
         :type filter: :class:`str` or None
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
         :return: Combined list of one-to-many, many-to-one, and many-to-many
             relationship metadata dictionaries.
