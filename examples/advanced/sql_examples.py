@@ -408,22 +408,21 @@ def _run_examples(client):
         # 13. INNER JOIN
         # ==============================================================
         heading(13, "SQL -- INNER JOIN")
-        print("Use the lookup column's logical name (e.g. _new_teamid_value).")
+        print("Use the lookup attribute's logical name (e.g. new_teamid) for JOINs.")
 
-        child_cols = backoff(lambda: client.tables.list_columns(child_table, select=["LogicalName", "AttributeType"]))
-        lookup_col = "_new_teamid_value"
-        for c in child_cols:
-            ln = c.get("LogicalName", "")
-            if "teamid" in ln.lower() and ln.startswith("_"):
-                lookup_col = ln
-                break
-        print(f"[INFO] Lookup column: {lookup_col}")
-
-        sql = (
-            f"SELECT t.new_code, tk.new_title, tk.new_hours "
-            f"FROM {child_table} tk "
-            f"INNER JOIN {parent_table} t ON tk.{lookup_col} = t.{parent_id_col}"
+        # Use sql_join() to auto-discover the relationship and build
+        # the JOIN clause with proper aliases.
+        lookup_col = "new_teamid"  # Lookup logical name, NOT _..._value
+        join_clause = client.query.sql_join(
+            from_table=child_table,
+            to_table=parent_table,
+            from_alias="tk",
+            to_alias="t",
         )
+        print(f"[INFO] Lookup column: {lookup_col}")
+        print(f"[INFO] Generated JOIN: {join_clause}")
+
+        sql = f"SELECT t.new_code, tk.new_title, tk.new_hours " f"FROM {child_table} tk " f"{join_clause}"
         log_call('client.query.sql("...INNER JOIN...")')
         try:
             results = backoff(lambda: client.query.sql(sql))
@@ -443,7 +442,7 @@ def _run_examples(client):
             f"SELECT t.new_code, tk.new_title "
             f"FROM {parent_table} t "
             f"LEFT JOIN {child_table} tk ON t.{parent_id_col} = tk.{lookup_col}"
-        )
+        )  # lookup_col = logical name, NOT _..._value
         log_call('client.query.sql("...LEFT JOIN...")')
         try:
             results = backoff(lambda: client.query.sql(sql))
@@ -459,7 +458,7 @@ def _run_examples(client):
             f"SELECT t.new_code, COUNT(tk.new_sqldemotaskid) as task_count, "
             f"SUM(tk.new_hours) as total_hours "
             f"FROM {parent_table} t "
-            f"JOIN {child_table} tk ON t.{parent_id_col} = tk.{lookup_col} "
+            f"JOIN {child_table} tk ON t.{parent_id_col} = tk.{lookup_col} "  # logical name
             f"GROUP BY t.new_code"
         )
         log_call('client.query.sql("...JOIN...GROUP BY...")')

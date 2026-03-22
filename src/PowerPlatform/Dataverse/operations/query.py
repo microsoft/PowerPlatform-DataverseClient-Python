@@ -292,6 +292,13 @@ class QueryOperations:
 
         :rtype: list[dict[str, typing.Any]]
 
+        .. note::
+
+            The ``join_clause`` value references the source table by its
+            **full name** (e.g. ``ON contact.col = ...``), so the FROM
+            clause must also use the unaliased table name.  For queries
+            that need aliases, use :meth:`sql_join` instead.
+
         Example::
 
             joins = client.query.sql_joins("contact")
@@ -299,9 +306,9 @@ class QueryOperations:
                 print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
                 print(f"  {j['join_clause']}")
 
-            # Use in a query
+            # Use in a query (no alias on the FROM table)
             j = next(j for j in joins if j['target'] == 'account')
-            sql = f"SELECT TOP 10 c.fullname, a.name FROM contact c {j['join_clause']}"
+            sql = f"SELECT TOP 10 contact.fullname, a.name FROM contact {j['join_clause']}"
         """
         table_lower = table.lower()
         rels = self._client.tables.list_table_relationships(table)

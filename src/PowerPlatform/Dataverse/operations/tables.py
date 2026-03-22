@@ -813,9 +813,10 @@ class TableOperations:
     ) -> List[Dict[str, Any]]:
         """List all relationships for a specific table.
 
-        Combines one-to-many and many-to-many relationships for the given
-        table by querying both
-        ``EntityDefinitions({id})/OneToManyRelationships`` and
+        Combines one-to-many, many-to-one, and many-to-many relationships
+        for the given table by querying
+        ``EntityDefinitions({id})/OneToManyRelationships``,
+        ``EntityDefinitions({id})/ManyToOneRelationships``, and
         ``EntityDefinitions({id})/ManyToManyRelationships``.
 
         :param table: Schema name of the table (e.g. ``"account"``).
