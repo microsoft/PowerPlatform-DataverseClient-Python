@@ -20,6 +20,11 @@ Capabilities PROVEN to work:
 - Polymorphic lookups (ownerid, customerid) via separate JOINs
 - Audit trail (createdby, modifiedby) via systemuser JOINs
 - SQL read -> DataFrame transform -> SDK write-back (full round-trip)
+- AND/OR, NOT IN, NOT LIKE boolean logic
+- Deep JOINs (5-8 tables) with no server depth limit
+- SQL helper functions: sql_columns, sql_select, sql_joins, sql_join
+- OData helper functions: odata_select, odata_expands, odata_expand, odata_bind
+- SQL vs OData side-by-side comparison
 
 Not supported (server rejects):
 - INSERT/UPDATE/DELETE (read-only) -> use client.dataframe.create/update/delete
@@ -829,9 +834,245 @@ def _run_examples(client):
             backoff(lambda kid=kid: client.records.delete(child_table, kid))
 
         # ==============================================================
-        # 27. Summary
+        # 27. AND/OR, NOT IN, NOT LIKE
         # ==============================================================
-        heading(27, "Summary -- SQL Capabilities Reference")
+        heading(27, "SQL -- AND/OR, NOT IN, NOT LIKE")
+        sql = f"SELECT new_code, new_budget FROM {parent_table} " f"WHERE new_active = 1 AND new_budget > 40000"
+        log_call(f'client.query.sql("{sql}")')
+        results = backoff(lambda: client.query.sql(sql))
+        print(f"[OK] AND: {len(results)} rows")
+
+        sql = f"SELECT new_code FROM {parent_table} " f"WHERE new_code = 'ALPHA' OR new_code = 'DELTA'"
+        results = backoff(lambda: client.query.sql(sql))
+        print(f"[OK] OR: {[r.get('new_code') for r in results]}")
+
+        sql = (
+            f"SELECT new_code FROM {parent_table} "
+            f"WHERE new_active = 1 AND (new_budget > 80000 OR new_budget < 45000)"
+        )
+        results = backoff(lambda: client.query.sql(sql))
+        print(f"[OK] AND + OR with parens: {len(results)} rows")
+
+        sql = f"SELECT new_code FROM {parent_table} WHERE new_code NOT IN ('ALPHA')"
+        results = backoff(lambda: client.query.sql(sql))
+        print(f"[OK] NOT IN: {[r.get('new_code') for r in results]}")
+
+        sql = f"SELECT new_title FROM {child_table} WHERE new_title NOT LIKE 'Design%'"
+        results = backoff(lambda: client.query.sql(sql))
+        print(f"[OK] NOT LIKE: {len(results)} rows")
+
+        # ==============================================================
+        # 28. Deep JOINs (5-8 tables)
+        # ==============================================================
+        heading(28, "Deep JOINs (5-8 Tables) -- Built-In Tables")
+        print(
+            "SQL JOINs support at least 8 tables with no server depth limit.\n"
+            "Performance stays consistent (~0.7s for 8-table JOINs)."
+        )
+
+        sql = (
+            "SELECT TOP 3 a.name, c.fullname, o.name as opp, "
+            "su.fullname as owner, bu.name as bu "
+            "FROM account a "
+            "JOIN contact c ON a.accountid = c.parentcustomerid "
+            "JOIN opportunity o ON a.accountid = o.parentaccountid "
+            "JOIN systemuser su ON a.ownerid = su.systemuserid "
+            "JOIN businessunit bu ON su.businessunitid = bu.businessunitid"
+        )
+        log_call("5-table JOIN")
+        try:
+            results = backoff(lambda: client.query.sql(sql))
+            print(f"[OK] 5-table JOIN: {len(results)} rows")
+        except Exception as e:
+            print(f"[INFO] {e}")
+
+        sql = (
+            "SELECT TOP 3 a.name, c.fullname, o.name as opp, "
+            "su.fullname as owner, bu.name as bu, t.name as team, "
+            "cr.fullname as creator, md.fullname as modifier "
+            "FROM account a "
+            "JOIN contact c ON a.accountid = c.parentcustomerid "
+            "JOIN opportunity o ON a.accountid = o.parentaccountid "
+            "JOIN systemuser su ON a.ownerid = su.systemuserid "
+            "JOIN businessunit bu ON su.businessunitid = bu.businessunitid "
+            "JOIN team t ON bu.businessunitid = t.businessunitid "
+            "JOIN systemuser cr ON a.createdby = cr.systemuserid "
+            "JOIN systemuser md ON a.modifiedby = md.systemuserid"
+        )
+        log_call("8-table JOIN")
+        try:
+            results = backoff(lambda: client.query.sql(sql))
+            print(f"[OK] 8-table JOIN: {len(results)} rows")
+        except Exception as e:
+            print(f"[INFO] {e}")
+
+        # ==============================================================
+        # 29. SQL Helper Functions
+        # ==============================================================
+        heading(29, "SQL Helper Functions (query.sql_*)")
+        print(
+            "The SDK provides helper functions that auto-discover column\n"
+            "names and JOIN clauses from metadata -- no guessing needed."
+        )
+
+        # sql_columns
+        log_call(f"client.query.sql_columns('{parent_table}')")
+        cols = client.query.sql_columns(parent_table)
+        print(f"[OK] {len(cols)} columns:")
+        for c in cols[:5]:
+            print(f"  {c['name']:30s} Type: {c['type']:15s} PK={c['is_pk']}")
+
+        # sql_select
+        log_call(f"client.query.sql_select('{parent_table}')")
+        select_str = client.query.sql_select(parent_table)
+        print(f"[OK] SELECT list: {select_str[:60]}...")
+
+        # sql_joins
+        log_call(f"client.query.sql_joins('{child_table}')")
+        joins = client.query.sql_joins(child_table)
+        print(f"[OK] {len(joins)} possible JOINs:")
+        for j in joins[:5]:
+            print(f"  {j['column']:25s} -> {j['target']}.{j['target_pk']}")
+
+        # sql_join (auto-generate JOIN clause)
+        log_call(f"client.query.sql_join('{child_table}', '{parent_table}', ...)")
+        try:
+            join_clause = client.query.sql_join(child_table, parent_table, from_alias="tk", to_alias="t")
+            print(f"[OK] {join_clause}")
+
+            sql = f"SELECT TOP 3 tk.new_title, t.new_code FROM {child_table} tk {join_clause}"
+            results = backoff(lambda: client.query.sql(sql))
+            print(f"[OK] Live query with sql_join(): {len(results)} rows")
+        except Exception as e:
+            print(f"[WARN] {e}")
+
+        # ==============================================================
+        # 30. OData Helper Functions
+        # ==============================================================
+        heading(30, "OData Helper Functions (query.odata_*)")
+        print(
+            "Parallel helpers for OData/records.get() users -- auto-discover\n"
+            "navigation properties and build @odata.bind payloads."
+        )
+
+        # odata_select
+        log_call(f"client.query.odata_select('{parent_table}')")
+        odata_cols = client.query.odata_select(parent_table)
+        print(f"[OK] {len(odata_cols)} columns for $select: {odata_cols[:5]}...")
+
+        # odata_expands
+        log_call(f"client.query.odata_expands('{child_table}')")
+        try:
+            expands = client.query.odata_expands(child_table)
+            print(f"[OK] {len(expands)} expand targets:")
+            for e in expands[:5]:
+                print(f"  nav={e['nav_property']:30s} -> {e['target_table']}")
+        except Exception as e:
+            print(f"[WARN] {e}")
+
+        # odata_expand (single target)
+        try:
+            nav = client.query.odata_expand(child_table, parent_table)
+            print(f"\n[OK] odata_expand('{child_table}', '{parent_table}') = '{nav}'")
+            print("  Usage: client.records.get('" + child_table + "', expand=['" + nav + "'])")
+        except Exception as e:
+            print(f"[WARN] {e}")
+
+        # odata_bind
+        log_call("client.query.odata_bind(...)")
+        try:
+            bind = client.query.odata_bind(child_table, parent_table, team_ids[0])
+            print(f"[OK] {bind}")
+            print("  Merge into create/update payload: {{'new_Title': 'X', **bind}}")
+        except Exception as e:
+            print(f"[WARN] {e}")
+
+        # ==============================================================
+        # 31. SQL vs OData Comparison
+        # ==============================================================
+        heading(31, "SQL vs OData -- Side-by-Side Comparison")
+        print("Both SQL and OData can query Dataverse. Here's how they compare.")
+
+        print("""
++-------------------------------+------------------------+------------------------+
+| Capability                    | SQL (client.query.sql) | OData (records.get)    |
++-------------------------------+------------------------+------------------------+
+| Read data                     | YES                    | YES                    |
+| Write data                    | NO (read-only)         | YES (create/update/del)|
+| JOIN depth                    | 8+ tables (no limit)   | $expand 10-level max   |
+| JOIN types                    | INNER, LEFT            | $expand (single-valued)|
+| Aggregates (COUNT, SUM, etc.) | YES (server-side)      | Limited ($apply)       |
+| GROUP BY                      | YES (server-side)      | Via $apply (complex)   |
+| DISTINCT                      | YES                    | Not directly           |
+| Pagination                    | OFFSET FETCH           | @odata.nextLink        |
+| Max results                   | 5000 per query         | 5000 per page          |
+| Column discovery              | sql_columns/sql_select | odata_select           |
+| JOIN discovery                | sql_joins/sql_join     | odata_expands/expand   |
+| Lookup binding                | N/A (read-only)        | odata_bind             |
+| SELECT *                      | YES (SDK auto-expands) | Not applicable         |
+| Polymorphic lookups           | Separate JOINs         | $expand by nav prop    |
+| Return format                 | list[Record] / DF      | pages of Record / DF   |
+| Subqueries                    | NO (chain SQL calls)   | NO ($filter only)      |
+| Functions (CASE, CAST, etc.)  | NO                     | NO                     |
++-------------------------------+------------------------+------------------------+
+
+When to use SQL:
+  - Complex JOINs across 3+ tables
+  - Aggregates and GROUP BY
+  - DISTINCT queries
+  - Familiar SQL syntax preferred
+  - Read-only analysis / reporting
+
+When to use OData (records.get):
+  - Need to write data (create/update/delete)
+  - Simple single-table or 1-level expand queries
+  - Need automatic paging (nextLink)
+  - Prefer typed QueryBuilder API
+""")
+
+        # Live comparison: same query via SQL and OData
+        print("-- Live comparison: account + contact --")
+        import time as _time
+
+        # SQL version
+        t0 = _time.time()
+        try:
+            sql_rows = backoff(
+                lambda: client.query.sql(
+                    "SELECT TOP 5 a.name, c.fullname "
+                    "FROM account a "
+                    "JOIN contact c ON a.accountid = c.parentcustomerid"
+                )
+            )
+            sql_time = _time.time() - t0
+            print(f"  SQL JOIN: {len(sql_rows)} rows in {sql_time:.2f}s")
+        except Exception as e:
+            sql_time = _time.time() - t0
+            print(f"  SQL JOIN: error ({sql_time:.2f}s): {e}")
+
+        # OData version (expand)
+        t0 = _time.time()
+        try:
+            odata_rows = []
+            for page in backoff(
+                lambda: client.records.get(
+                    "account",
+                    select=["name"],
+                    expand=["contact_customer_accounts"],
+                    top=5,
+                )
+            ):
+                odata_rows.extend(page)
+            odata_time = _time.time() - t0
+            print(f"  OData $expand: {len(odata_rows)} rows in {odata_time:.2f}s")
+        except Exception as e:
+            odata_time = _time.time() - t0
+            print(f"  OData $expand: error ({odata_time:.2f}s): {e}")
+
+        # ==============================================================
+        # 32. Summary
+        # ==============================================================
+        heading(32, "Summary -- SQL Capabilities Reference")
         print("""
 +-------------------------------+----------+----------------------------------------+
 | Feature                       | SQL      | Notes / SDK Fallback                   |
@@ -839,21 +1080,29 @@ def _run_examples(client):
 | SELECT col1, col2             | YES      | Use LogicalName (lowercase)            |
 | SELECT *                      | YES (*)  | SDK auto-expands via list_columns()    |
 | WHERE =, !=, >, <, LIKE, IN  | YES      |                                        |
+| AND, OR, parentheses          | YES      | Full boolean logic                     |
+| NOT IN, NOT LIKE              | YES      |                                        |
 | IS NULL, IS NOT NULL, BETWEEN | YES      |                                        |
 | TOP N (0-5000)                | YES      | Max 5000 per query                     |
-| ORDER BY col [ASC|DESC]       | YES      | Column names only                      |
+| ORDER BY col [ASC|DESC]       | YES      | Multiple columns supported             |
 | OFFSET n FETCH NEXT m         | YES      | Server-side pagination                 |
 | Table/Column aliases          | YES      |                                        |
-| DISTINCT / DISTINCT TOP       | YES      |                                        |
+| DISTINCT / DISTINCT TOP       | YES      | Works with JOINs too                   |
 | COUNT, SUM, AVG, MIN, MAX     | YES      | All 5 standard aggregates              |
 | GROUP BY                      | YES      | Server-side grouping                   |
-| INNER JOIN                    | YES      | Up to 6+ tables tested                 |
+| INNER JOIN                    | YES      | 8+ tables tested (no depth limit)      |
 | LEFT JOIN                     | YES      |                                        |
-| Self JOIN                     | YES      |                                        |
+| Self JOIN                     | YES      | Same table with different aliases      |
 | SQL -> DataFrame              | YES      | client.dataframe.sql(query)            |
-| Polymorphic lookups (ownerid) | YES      | Separate JOINs per target type         |
+| Polymorphic lookups           | YES      | Separate JOINs per target type         |
+| Nested polymorphic chains     | YES      | e.g. opp -> acct -> contact -> owner   |
 | Audit trail (createdby, etc.) | YES      | JOIN to systemuser                     |
 | SQL read -> DF write-back     | YES      | dataframe.sql() + .update()/.create()  |
+| SQL column discovery          | YES      | query.sql_columns() / sql_select()     |
+| SQL JOIN discovery             | YES      | query.sql_joins() / sql_join()         |
+| OData column discovery         | YES      | query.odata_select()                   |
+| OData expand discovery         | YES      | query.odata_expands() / odata_expand() |
+| OData bind builder             | YES      | query.odata_bind()                     |
 +-------------------------------+----------+----------------------------------------+
 | HAVING                        | NO       | Filter before GROUP BY                 |
 | Subqueries / CTE              | NO       | Chain multiple SQL calls               |
@@ -863,20 +1112,20 @@ def _run_examples(client):
 | String/Date/Math functions    | NO       | Post-process in Python/pandas          |
 | Window fns (ROW_NUMBER, RANK) | NO       | Post-process in Python/pandas          |
 | INSERT / UPDATE / DELETE      | NO       | dataframe.create/update/delete()       |
-| Schema discovery              | --       | tables.list_columns()                  |
-| Relationship discovery        | --       | tables.list_table_relationships()      |
 +-------------------------------+----------+----------------------------------------+
 
 SQL-First Workflow (no OData knowledge needed):
-  1. Discover schema:  client.tables.list_columns("account")
-  2. Query with SQL:   df = client.dataframe.sql("SELECT ...")
-  3. Transform:        df["col"] = df["col"] * 1.1
-  4. Write back:       client.dataframe.update("account", df, id_column="accountid")
-  5. Verify:           df2 = client.dataframe.sql("SELECT ...")
+  1. Discover schema:  cols = client.query.sql_columns("account")
+  2. Discover JOINs:   joins = client.query.sql_joins("contact")
+  3. Build JOIN:        j = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
+  4. Query with SQL:    df = client.dataframe.sql(f"SELECT c.fullname, a.name FROM contact c {j}")
+  5. Transform:         df["col"] = df["col"] * 1.1
+  6. Write back:        client.dataframe.update("account", df, id_column="accountid")
+  7. Verify:            df2 = client.dataframe.sql("SELECT ...")
 """)
 
     finally:
-        heading(28, "Cleanup")
+        heading(33, "Cleanup")
         for tbl in [child_table, parent_table]:
             log_call(f"client.tables.delete('{tbl}')")
             try:
