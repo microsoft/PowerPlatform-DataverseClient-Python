@@ -999,7 +999,7 @@ def _run_examples(client):
 +-------------------------------+------------------------+------------------------+
 | Read data                     | YES                    | YES                    |
 | Write data                    | NO (read-only)         | YES (create/update/del)|
-| JOIN depth                    | 8+ tables (no limit)   | $expand 10-level max   |
+| JOIN depth                    | 15+ tables (no limit)  | $expand 10-level max   |
 | JOIN types                    | INNER, LEFT            | $expand (single-valued)|
 | Aggregates (COUNT, SUM, etc.) | YES (server-side)      | Limited ($apply)       |
 | GROUP BY                      | YES (server-side)      | Via $apply (complex)   |
@@ -1079,7 +1079,7 @@ When to use OData (records.get):
 +-------------------------------+----------+----------------------------------------+
 | SELECT col1, col2             | YES      | Use LogicalName (lowercase)            |
 | SELECT *                      | YES (*)  | SDK auto-expands via list_columns()    |
-| WHERE =, !=, >, <, LIKE, IN  | YES      |                                        |
+| WHERE =, !=, >, <, LIKE, IN   | YES      |                                        |
 | AND, OR, parentheses          | YES      | Full boolean logic                     |
 | NOT IN, NOT LIKE              | YES      |                                        |
 | IS NULL, IS NOT NULL, BETWEEN | YES      |                                        |
@@ -1090,7 +1090,7 @@ When to use OData (records.get):
 | DISTINCT / DISTINCT TOP       | YES      | Works with JOINs too                   |
 | COUNT, SUM, AVG, MIN, MAX     | YES      | All 5 standard aggregates              |
 | GROUP BY                      | YES      | Server-side grouping                   |
-| INNER JOIN                    | YES      | 8+ tables tested (no depth limit)      |
+| INNER JOIN                    | YES      | 15+ tables tested (no depth limit)     |
 | LEFT JOIN                     | YES      |                                        |
 | Self JOIN                     | YES      | Same table with different aliases      |
 | SQL -> DataFrame              | YES      | client.dataframe.sql(query)            |
@@ -1099,10 +1099,10 @@ When to use OData (records.get):
 | Audit trail (createdby, etc.) | YES      | JOIN to systemuser                     |
 | SQL read -> DF write-back     | YES      | dataframe.sql() + .update()/.create()  |
 | SQL column discovery          | YES      | query.sql_columns() / sql_select()     |
-| SQL JOIN discovery             | YES      | query.sql_joins() / sql_join()         |
-| OData column discovery         | YES      | query.odata_select()                   |
-| OData expand discovery         | YES      | query.odata_expands() / odata_expand() |
-| OData bind builder             | YES      | query.odata_bind()                     |
+| SQL JOIN discovery            | YES      | query.sql_joins() / sql_join()         |
+| OData column discovery        | YES      | query.odata_select()                   |
+| OData expand discovery        | YES      | query.odata_expands() / odata_expand() |
+| OData bind builder            | YES      | query.odata_bind()                     |
 +-------------------------------+----------+----------------------------------------+
 | HAVING                        | NO       | Filter before GROUP BY                 |
 | Subqueries / CTE              | NO       | Chain multiple SQL calls               |
