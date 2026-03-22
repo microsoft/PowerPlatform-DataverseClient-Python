@@ -964,6 +964,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
 
+        # Block write statements FIRST (before table extraction, since
+        # UPDATE/INSERT/DELETE don't have FROM clauses)
+        if self._SQL_WRITE_RE.search(sql):
+            raise ValidationError(
+                "SQL endpoint is read-only. Use client.records or "
+                "client.dataframe for write operations "
+                "(INSERT/UPDATE/DELETE are not supported).",
+                subcode=VALIDATION_SQL_WRITE_BLOCKED,
+            )
+
         # Extract logical table name via helper (robust to identifiers ending with 'from')
         logical = self._extract_logical_table(sql)
 
