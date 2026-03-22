@@ -156,38 +156,30 @@ class TestLeadingWildcardWarning:
 
 
 # ===================================================================
-# 4. Warn on implicit cross joins
+# 4. Block implicit cross joins
 # ===================================================================
 
 
-class TestImplicitCrossJoinWarning:
-    """FROM a, b (comma syntax) should emit a UserWarning."""
+class TestImplicitCrossJoinBlocked:
+    """FROM a, b (comma syntax) must be blocked with ValidationError."""
 
-    def test_comma_join_warns(self):
+    def test_comma_join_raises(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
+        with pytest.raises(ValidationError, match="cross join"):
             c._sql_guardrails("SELECT TOP 10 a.name, c.fullname FROM account a, contact c")
-            cross_warnings = [x for x in w if "cross join" in str(x.message).lower()]
-            assert len(cross_warnings) == 1
 
-    def test_explicit_join_no_warning(self):
+    def test_explicit_join_not_blocked(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            c._sql_guardrails(
-                "SELECT TOP 10 a.name FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
-            )
-            cross_warnings = [x for x in w if "cross join" in str(x.message).lower()]
-            assert len(cross_warnings) == 0
+        # Should NOT raise
+        result = c._sql_guardrails(
+            "SELECT TOP 10 a.name FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
+        )
+        assert "JOIN" in result
 
-    def test_single_table_no_warning(self):
+    def test_single_table_not_blocked(self):
         c = _client()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            c._sql_guardrails("SELECT TOP 10 name FROM account")
-            cross_warnings = [x for x in w if "cross join" in str(x.message).lower()]
-            assert len(cross_warnings) == 0
+        result = c._sql_guardrails("SELECT TOP 10 name FROM account")
+        assert "SELECT" in result
 
 
 # ===================================================================

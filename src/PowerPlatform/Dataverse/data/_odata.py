@@ -29,6 +29,7 @@ from ..core._error_codes import (
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
     VALIDATION_SQL_WRITE_BLOCKED,
+    VALIDATION_SQL_CROSS_JOIN_BLOCKED,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -926,15 +927,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 stacklevel=4,
             )
 
-        # 3. Warn on implicit cross joins
+        # 3. Block implicit cross joins
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
-            warnings.warn(
-                "Query appears to use an implicit cross join "
-                "(FROM table1, table2). This produces a cartesian product "
-                "and may return excessive rows. Use explicit JOIN...ON "
-                "syntax instead.",
-                UserWarning,
-                stacklevel=4,
+            raise ValidationError(
+                "Implicit cross join detected (FROM table1, table2). "
+                "This produces a cartesian product that can generate "
+                "millions of intermediate rows and degrade shared database "
+                "performance. Use explicit JOIN...ON syntax instead: "
+                "FROM table1 a JOIN table2 b ON a.column = b.column",
+                subcode=VALIDATION_SQL_CROSS_JOIN_BLOCKED,
             )
 
         return sql
