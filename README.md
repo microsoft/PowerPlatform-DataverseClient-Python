@@ -269,6 +269,14 @@ client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
 
 # Delete records by passing a Series of GUIDs
 client.dataframe.delete("account", new_accounts["accountid"])
+
+# SQL query directly to DataFrame (supports JOINs, aggregates, GROUP BY)
+df = client.dataframe.sql(
+    "SELECT a.name, COUNT(c.contactid) as contacts "
+    "FROM account a "
+    "JOIN contact c ON a.accountid = c.parentcustomerid "
+    "GROUP BY a.name"
+)
 ```
 
 ### Query data
@@ -372,19 +380,68 @@ results = (client.query.builder("account")
            .execute())
 ```
 
-**SQL queries** provide an alternative read-only query syntax:
+**SQL queries** provide an alternative read-only query syntax with support for
+JOINs, aggregates, GROUP BY, DISTINCT, and OFFSET FETCH pagination:
 
 ```python
+# Basic query
 results = client.query.sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
 )
-for record in results:
-    print(record["name"])
+
+# JOINs and aggregates work
+results = client.query.sql(
+    "SELECT a.name, COUNT(c.contactid) as cnt "
+    "FROM account a "
+    "JOIN contact c ON a.accountid = c.parentcustomerid "
+    "GROUP BY a.name"
+)
+
+# SELECT * is auto-expanded by the SDK
+results = client.query.sql("SELECT * FROM account")
+
+# SQL results directly as a DataFrame
+df = client.dataframe.sql(
+    "SELECT name, revenue FROM account ORDER BY revenue DESC"
+)
+
+# SQL helpers: discover columns and JOINs from metadata
+cols = client.query.sql_select("account")  # "accountid, name, revenue, ..."
+join = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
+# Returns: "JOIN account a ON c.parentcustomerid = a.accountid"
+
+# Build queries using helpers -- no OData knowledge needed
+sql = f"SELECT TOP 10 c.fullname, a.name FROM contact c {join}"
+df = client.dataframe.sql(sql)
+
+# Discover all possible JOINs from a table (including polymorphic)
+joins = client.query.sql_joins("opportunity")
+for j in joins:
+    print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
 ```
 
-**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string:
+**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string. The SDK provides helpers to eliminate the most error-prone parts:
 
 ```python
+# Discover columns for $select (returns list ready for select= parameter)
+cols = client.query.odata_select("account")
+for page in client.records.get("account", select=cols, top=10):
+    ...
+
+# Discover $expand navigation properties (auto-resolves PascalCase names)
+nav = client.query.odata_expand("contact", "account")
+# Returns: "parentcustomerid_account"
+for page in client.records.get("contact", select=["fullname"], expand=[nav], top=5):
+    for r in page:
+        acct = r.get(nav) or {}
+        print(f"{r['fullname']} -> {acct.get('name')}")
+
+# Build @odata.bind for lookup fields (no manual name construction)
+bind = client.query.odata_bind("contact", "account", account_id)
+# Returns: {"parentcustomerid_account@odata.bind": "/accounts(guid)"}
+client.records.create("contact", {"firstname": "Jane", **bind})
+
+# Raw OData query with manual parameters
 for page in client.records.get(
     "account",
     select=["name"],
@@ -432,6 +489,18 @@ client.tables.add_columns("new_Product", {"new_Category": "string"})
 
 # Remove columns
 client.tables.remove_columns("new_Product", ["new_Category"])
+
+# List all columns (attributes) for a table to discover schema
+columns = client.tables.list_columns("account")
+for col in columns:
+    print(f"{col['LogicalName']} ({col.get('AttributeType')})")
+
+# List only specific properties
+columns = client.tables.list_columns(
+    "account",
+    select=["LogicalName", "SchemaName", "AttributeType"],
+    filter="AttributeType eq 'String'",
+)
 
 # Clean up
 client.tables.delete("new_Product")
@@ -484,6 +553,16 @@ print(f"Created M:N relationship: {result['relationship_schema_name']}")
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
     print(f"Found: {rel['SchemaName']}")
+
+# List all relationships
+rels = client.tables.list_relationships()
+for rel in rels:
+    print(f"{rel['SchemaName']} ({rel.get('@odata.type')})")
+
+# List relationships for a specific table (one-to-many + many-to-one + many-to-many)
+account_rels = client.tables.list_table_relationships("account")
+for rel in account_rels:
+    print(f"{rel['SchemaName']} -> {rel.get('@odata.type')}")
 
 # Delete a relationship
 client.tables.delete_relationship(result['relationship_id'])

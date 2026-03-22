@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+__all__ = []
+
 from typing import Any, Dict, Optional, List, Union, Iterable, Callable
 from enum import Enum
 from dataclasses import dataclass, field
@@ -13,6 +15,7 @@ import time
 import re
 import json
 import uuid
+import warnings
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
@@ -27,6 +30,8 @@ from ..core._error_codes import (
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_SQL_WRITE_BLOCKED,
+    VALIDATION_SQL_UNSUPPORTED_SYNTAX,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -112,7 +117,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
         """Convert all strings in a list to lowercase for case-insensitive column names.
 
-        Used for $select, $orderby, $expand parameters where column names must be lowercase.
+        Used for $select and $orderby parameters where column names must be lowercase.
         """
         if not items:
             return items
@@ -552,8 +557,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     ) -> Optional[str]:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
@@ -825,6 +830,186 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 yield [x for x in items if isinstance(x, dict)]
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
+    # ----------------------- SELECT * detection -----------------------
+    _SELECT_STAR_RE = re.compile(
+        r"\bSELECT\b(\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?)\*\s",
+        re.IGNORECASE,
+    )
+
+    # ----------------------- SQL guardrail patterns --------------------
+    _SQL_WRITE_RE = re.compile(
+        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        re.IGNORECASE,
+    )
+    _SQL_COMMENT_RE = re.compile(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/|--[^\n]*", re.DOTALL)
+    _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
+    _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
+        r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
+        re.IGNORECASE,
+    )
+    _SQL_HAS_JOIN_RE = re.compile(r"\bJOIN\b", re.IGNORECASE)
+    # Server-blocked SQL patterns (save the round-trip by catching early)
+    _SQL_UNSUPPORTED_JOIN_RE = re.compile(
+        r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
+        re.IGNORECASE,
+    )
+    _SQL_UNION_RE = re.compile(r"\bUNION\b", re.IGNORECASE)
+    _SQL_HAVING_RE = re.compile(r"\bHAVING\b", re.IGNORECASE)
+    _SQL_CTE_RE = re.compile(r"^\s*WITH\b", re.IGNORECASE)
+    _SQL_SUBQUERY_RE = re.compile(
+        r"\bIN\s*\(\s*SELECT\b|\bEXISTS\s*\(\s*SELECT\b|\(\s*SELECT\b.*\bFROM\b",
+        re.IGNORECASE,
+    )
+
+    def _expand_select_star(self, sql: str, table: str) -> str:
+        """Replace ``SELECT *`` with explicit column names.
+
+        When the Dataverse SQL endpoint receives ``SELECT *`` it returns
+        an error ("SELECT * is not supported").  This helper resolves all
+        columns via ``_list_columns`` and rewrites the query so the user
+        never has to know the server limitation.
+
+        For JOIN queries, the expansion only includes columns from the first
+        (FROM) table.  A warning is emitted so the user knows to specify
+        columns explicitly for multi-table queries.
+        """
+        if not self._SELECT_STAR_RE.search(sql):
+            return sql
+
+        # Warn on SELECT * with JOINs -- expansion uses only the FROM table
+        if self._SQL_HAS_JOIN_RE.search(sql):
+            warnings.warn(
+                "SELECT * with JOIN: the SDK expands * using columns from "
+                "the first table only. Columns from joined tables will not "
+                "be included. Specify columns explicitly for JOINs "
+                "(e.g. SELECT a.name, c.fullname FROM account a "
+                "JOIN contact c ON ...).",
+                UserWarning,
+                stacklevel=4,
+            )
+
+        cols = self._list_columns(
+            table,
+            select=["LogicalName"],
+            filter="AttributeType ne 'Virtual'",
+        )
+        col_names = sorted({c["LogicalName"] for c in cols if "LogicalName" in c})
+        if not col_names:
+            return sql  # Fallback: let the server decide
+        col_list = ", ".join(col_names)
+        return self._SELECT_STAR_RE.sub(lambda m: f"SELECT{m.group(1)}{col_list} ", sql, count=1)
+
+    def _sql_guardrails(self, sql: str) -> str:
+        """Apply safety guardrails to a SQL query before sending to the server.
+
+        Checks split into two categories:
+
+        **Blocked** (``ValidationError`` -- saves a server round-trip):
+
+        1. Write statements (INSERT/UPDATE/DELETE/DROP/etc.)
+        2. CROSS JOIN, RIGHT JOIN, FULL OUTER JOIN (server rejects these)
+        3. UNION / UNION ALL (server rejects)
+        4. HAVING clause (server rejects)
+        5. CTE / WITH clause (server rejects)
+        6. Subqueries -- IN (SELECT ...), EXISTS (SELECT ...) (server rejects)
+
+        **Warned** (``UserWarning`` -- query still executes):
+
+        7. Leading-wildcard LIKE (full table scan)
+        8. Implicit cross join FROM a, b (cartesian product)
+
+        All blocked patterns are also blocked by the server, but catching
+        them here saves the network round-trip and provides clearer error
+        messages. To bypass a specific check (e.g., if the server adds
+        support in the future), all checks are in this single method.
+
+        :param sql: The SQL string (already stripped).
+        :return: The SQL string (unchanged unless rewritten).
+        :raises ValidationError: If the SQL contains a blocked pattern.
+        """
+        # --- BLOCKED (save server round-trip) ---
+
+        # 1. Block writes (strip SQL comments first to catch comment-prefixed writes)
+        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
+        if self._SQL_WRITE_RE.search(sql_no_comments):
+            raise ValidationError(
+                "SQL endpoint is read-only. Use client.records or "
+                "client.dataframe for write operations "
+                "(INSERT/UPDATE/DELETE are not supported).",
+                subcode=VALIDATION_SQL_WRITE_BLOCKED,
+            )
+
+        # 2. Block unsupported JOIN types
+        m = self._SQL_UNSUPPORTED_JOIN_RE.search(sql)
+        if m:
+            raise ValidationError(
+                f"Unsupported JOIN type: '{m.group(0).strip()}'. "
+                "Only INNER JOIN and LEFT JOIN are supported by the "
+                "Dataverse SQL endpoint.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 3. Block UNION
+        if self._SQL_UNION_RE.search(sql):
+            raise ValidationError(
+                "UNION is not supported by the Dataverse SQL endpoint. "
+                "Execute separate queries and combine results in Python "
+                "(e.g. pd.concat([df1, df2])).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 4. Block HAVING
+        if self._SQL_HAVING_RE.search(sql):
+            raise ValidationError(
+                "HAVING is not supported by the Dataverse SQL endpoint. "
+                "Use WHERE to filter before GROUP BY instead.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 5. Block CTE / WITH
+        if self._SQL_CTE_RE.search(sql):
+            raise ValidationError(
+                "CTE (WITH ... AS) is not supported by the Dataverse SQL "
+                "endpoint. Use separate queries and combine in Python.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 6. Block subqueries
+        if self._SQL_SUBQUERY_RE.search(sql):
+            raise ValidationError(
+                "Subqueries are not supported by the Dataverse SQL "
+                "endpoint. Use separate SQL calls and combine results "
+                "in Python (e.g. step 1: get IDs, step 2: WHERE IN).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # --- WARNED (query still executes) ---
+
+        # 7. Warn on leading-wildcard LIKE
+        if self._SQL_LEADING_WILDCARD_RE.search(sql):
+            warnings.warn(
+                "Query contains a leading-wildcard LIKE pattern "
+                "(e.g. LIKE '%value'). This forces a full table scan "
+                "and may degrade performance on large tables. "
+                "Prefer trailing wildcards (LIKE 'value%') when possible.",
+                UserWarning,
+                stacklevel=4,
+            )
+
+        # 8. Warn on implicit cross joins (server allows but risky)
+        if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
+            warnings.warn(
+                "Query uses an implicit cross join (FROM table1, table2). "
+                "This produces a cartesian product that can generate "
+                "millions of intermediate rows and degrade shared database "
+                "performance. Use explicit JOIN...ON syntax instead: "
+                "FROM table1 a JOIN table2 b ON a.column = b.column",
+                UserWarning,
+                stacklevel=4,
+            )
+
+        return sql
+
     # --------------------------- SQL Custom API -------------------------
     def _query_sql(self, sql: str) -> list[dict[str, Any]]:
         """Execute a read-only SQL SELECT using the Dataverse Web API ``?sql=`` capability.
@@ -839,7 +1024,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :raises MetadataError: If logical table name resolution fails.
 
         .. note::
-           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client extracts the logical table name, resolves the entity set (metadata cached), then issues the request. Only a constrained SELECT subset is supported by the platform.
+           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client
+           extracts the logical table name, resolves the entity set (metadata
+           cached), then issues the request.  ``SELECT *`` is automatically
+           expanded into explicit column names because the server blocks it.
         """
         if not isinstance(sql, str):
             raise ValidationError("sql must be a string", subcode=VALIDATION_SQL_NOT_STRING)
@@ -847,8 +1035,26 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
 
+        # Block write statements FIRST (before table extraction, since
+        # UPDATE/INSERT/DELETE don't have FROM clauses).
+        # Strip SQL comments to catch e.g. /**/DELETE or --\\nDELETE.
+        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
+        if self._SQL_WRITE_RE.search(sql_no_comments):
+            raise ValidationError(
+                "SQL endpoint is read-only. Use client.records or "
+                "client.dataframe for write operations "
+                "(INSERT/UPDATE/DELETE are not supported).",
+                subcode=VALIDATION_SQL_WRITE_BLOCKED,
+            )
+
         # Extract logical table name via helper (robust to identifiers ending with 'from')
         logical = self._extract_logical_table(sql)
+
+        # Auto-expand SELECT * into explicit column names
+        sql = self._expand_select_star(sql, logical)
+
+        # Apply safety guardrails (block unsupported syntax, warn on risky patterns)
+        sql = self._sql_guardrails(sql)
 
         entity_set = self._entity_set_from_schema_name(logical)
         # Issue GET /{entity_set}?sql=<query>
@@ -1051,6 +1257,50 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if isinstance(item, dict):
                 return item
         return None
+
+    def _list_columns(
+        self,
+        table_schema_name: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all attribute (column) definitions for a table.
+
+        Issues ``GET EntityDefinitions({MetadataId})/Attributes`` with optional
+        ``$select`` and ``$filter`` query parameters.
+
+        :param table_schema_name: Schema name of the table
+            (e.g. ``"account"`` or ``"new_Product"``).
+        :type table_schema_name: ``str``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: ``list[str]`` or ``None``
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"AttributeType eq 'String'"`` returns only string columns.
+        :type filter: ``str`` or ``None``
+
+        :return: List of raw attribute metadata dictionaries (may be empty).
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table is not found.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        metadata_id = ent["MetadataId"]
+        url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
+        params: Dict[str, str] = {}
+        if select:
+            params["$select"] = ",".join(select)
+        if filter:
+            params["$filter"] = filter
+        r = self._request("get", url, params=params)
+        return r.json().get("value", [])
 
     def _wait_for_attribute_visibility(
         self,

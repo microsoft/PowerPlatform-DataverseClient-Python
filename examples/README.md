@@ -40,6 +40,19 @@ Deep-dive into production-ready patterns and specialized functionality:
   - Column metadata management and multi-language support  
   - Interactive cleanup and best practices
 
+- **`sql_examples.py`** - **SQL QUERY END-TO-END** 🔍
+  - Schema discovery before writing SQL (list_columns, list_relationships)
+  - Full SQL capabilities: SELECT, WHERE, TOP, ORDER BY, LIKE, IN, BETWEEN
+  - JOINs (INNER, LEFT, multi-table), GROUP BY, DISTINCT, aggregates
+  - OFFSET FETCH for server-side pagination
+  - SELECT * auto-expansion (SDK rewrites for server compatibility)
+  - Polymorphic lookups via SQL (ownerid, customerid, createdby)
+  - SQL read -> DataFrame transform -> SDK write-back (full round-trip)
+  - SQL-driven bulk create, update, and delete patterns
+  - SQL to DataFrame via `client.dataframe.sql()`
+  - Limitations with SDK fallbacks (writes, subqueries, functions)
+  - Complete reference table: SQL vs SDK method mapping
+
 - **`file_upload.py`** - **FILE OPERATIONS** 📎
   - File upload to Dataverse file columns with chunking
   - Advanced file handling patterns
@@ -68,6 +81,9 @@ python examples/basic/functional_testing.py
 ```bash
 # Comprehensive walkthrough with production patterns
 python examples/advanced/walkthrough.py
+
+# SQL queries end-to-end with SDK fallbacks for unsupported operations
+python examples/advanced/sql_examples.py
 ```
 
 ## 🎯 Quick Start Recommendations
@@ -75,6 +91,7 @@ python examples/advanced/walkthrough.py
 - **New to the SDK?** → Start with `examples/basic/installation_example.py`
 - **Need to test/validate?** → Use `examples/basic/functional_testing.py`  
 - **Want to see all features?** → Run `examples/advanced/walkthrough.py`
+- **Using SQL queries?** → Run `examples/advanced/sql_examples.py`
 - **Building production apps?** → Study patterns in `examples/advanced/walkthrough.py`
 
 ## 📋 Prerequisites
