@@ -1102,7 +1102,16 @@ When to use OData (records.get):
    BAD:  SELECT * FROM account  (307 columns!)
    WHY:  The SDK auto-expands * into all 260+ non-virtual columns.
          Every column is transferred over the network.
+   NOTE: With JOINs, SELECT * only expands the FIRST (FROM) table's
+         columns -- joined table columns will NOT be included.
+         Example: SELECT * FROM account a JOIN contact c ON ...
+         expands to account columns only; contact columns are missing.
    FIX:  List only the columns you need: SELECT name, revenue FROM account
+         Or use the SDK helper:
+           cols = client.query.sql_select("account")
+           sql = f"SELECT TOP 10 {{cols}} FROM account"
+         For JOINs, always specify columns from each table explicitly:
+           SELECT a.name, c.fullname FROM account a JOIN contact c ON ...
 
 5. DEEP JOINS WITHOUT TOP
    OK:   SELECT TOP 100 a.name, ... FROM account a JOIN ... (15 tables)
@@ -1111,9 +1120,14 @@ When to use OData (records.get):
          Without TOP, the server processes up to 5000 rows across all joins.
    FIX:  Always include TOP N for multi-table JOINs.
 
-The SDK's guardrails automatically warn on patterns #1 and #2.
-The server enforces a 5000-row cap on all queries (pattern #3 and #5).
-Pattern #4 is handled by the SDK's SELECT * auto-expansion.
+SDK guardrails:
+  - Patterns #1 (writes) and unsupported syntax (CROSS/RIGHT/FULL JOIN,
+    UNION, HAVING, CTE, subqueries) -> ValidationError (blocked).
+  - Pattern #2 (cartesian FROM a, b) and #4 (SELECT * + JOIN)
+    -> UserWarning (advisory).
+  - Server enforces 5000-row cap on all queries (#3, #5).
+  - Use sql_columns() or sql_select() to discover valid column names.
+  - Use sql_joins() or sql_join() to discover valid JOIN clauses.
 """)
 
         # ==============================================================
