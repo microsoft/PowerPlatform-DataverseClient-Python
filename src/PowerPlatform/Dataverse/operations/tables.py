@@ -477,10 +477,10 @@ class TableOperations:
             ``["LogicalName", "SchemaName", "DisplayName"]``).
             When ``None`` (the default) or an empty list, all properties are
             returned.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
         :return: List of EntityDefinition metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict]
 
         Example::
 
@@ -519,7 +519,7 @@ class TableOperations:
         :type columns: :class:`dict`
 
         :return: Schema names of the columns that were created.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist.
@@ -549,10 +549,10 @@ class TableOperations:
         :param columns: Column schema name or list of column schema names to
             remove. Must include the customization prefix (e.g.
             ``"new_TestColumn"``).
-        :type columns: :class:`str` or :class:`list` of :class:`str`
+        :type columns: str or list[str]
 
         :return: Schema names of the columns that were removed.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table or a specified column does not exist.
@@ -876,7 +876,7 @@ class TableOperations:
         :type key_name: :class:`str`
         :param columns: List of column logical names that compose the key
             (e.g. ``["new_productcode"]``).
-        :type columns: :class:`list` of :class:`str`
+        :type columns: list[str]
         :param display_name: Display name for the key. Defaults to
             ``key_name`` if not provided.
         :type display_name: :class:`str` or None
@@ -924,7 +924,7 @@ class TableOperations:
 
         :return: List of alternate key metadata objects. May be empty if no
             alternate keys are defined.
-        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+        :rtype: list[~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist.

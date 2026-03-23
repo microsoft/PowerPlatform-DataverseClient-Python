@@ -291,6 +291,156 @@ class TestListTables(unittest.TestCase):
         self.assertIn("list of property names", str(ctx.exception))
 
 
+class TestCreate(unittest.TestCase):
+    """Unit tests for _ODataClient._create."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        # Mock response with OData-EntityId header containing a GUID
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000001)"
+        }
+        self.od._request.return_value = mock_resp
+
+    def _post_call(self):
+        """Return the single POST call args from _request."""
+        post_calls = [c for c in self.od._request.call_args_list if c.args[0] == "post"]
+        self.assertEqual(len(post_calls), 1, "expected exactly one POST call")
+        return post_calls[0]
+
+    def test_record_keys_lowercased(self):
+        """Regular record field names are lowercased before sending."""
+        self.od._create("accounts", "account", {"Name": "Contoso", "AccountNumber": "ACC-001"})
+        call = self._post_call()
+        payload = call.kwargs["json"]
+        self.assertIn("name", payload)
+        self.assertIn("accountnumber", payload)
+        self.assertNotIn("Name", payload)
+        self.assertNotIn("AccountNumber", payload)
+
+    def test_odata_bind_keys_preserve_case(self):
+        """@odata.bind keys preserve navigation property casing in _create."""
+        self.od._create(
+            "new_tickets",
+            "new_ticket",
+            {
+                "new_name": "Ticket 1",
+                "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
+                "new_AgentId@odata.bind": "/systemusers(00000000-0000-0000-0000-000000000002)",
+            },
+        )
+        call = self._post_call()
+        payload = call.kwargs["json"]
+        self.assertIn("new_name", payload)
+        self.assertIn("new_CustomerId@odata.bind", payload)
+        self.assertIn("new_AgentId@odata.bind", payload)
+        self.assertNotIn("new_customerid@odata.bind", payload)
+        self.assertNotIn("new_agentid@odata.bind", payload)
+
+    def test_returns_guid_from_odata_entity_id(self):
+        """_create returns the GUID from the OData-EntityId header."""
+        result = self.od._create("accounts", "account", {"name": "Contoso"})
+        self.assertEqual(result, "00000000-0000-0000-0000-000000000001")
+
+    def test_returns_guid_from_odata_entity_id_uppercase(self):
+        """_create returns the GUID from the OData-EntityID header (uppercase D)."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "OData-EntityID": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000002)"
+        }
+        self.od._request.return_value = mock_resp
+        result = self.od._create("accounts", "account", {"name": "Contoso"})
+        self.assertEqual(result, "00000000-0000-0000-0000-000000000002")
+
+    def test_returns_guid_from_location_header_fallback(self):
+        """_create falls back to Location header when OData-EntityId is absent."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "Location": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000003)"
+        }
+        self.od._request.return_value = mock_resp
+        result = self.od._create("accounts", "account", {"name": "Contoso"})
+        self.assertEqual(result, "00000000-0000-0000-0000-000000000003")
+
+    def test_raises_runtime_error_when_no_guid_in_headers(self):
+        """_create raises RuntimeError when neither header contains a GUID."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {}
+        mock_resp.status_code = 204
+        self.od._request.return_value = mock_resp
+        with self.assertRaises(RuntimeError):
+            self.od._create("accounts", "account", {"name": "Contoso"})
+
+    def test_issues_post_to_entity_set_url(self):
+        """_create issues a POST request to the entity set URL."""
+        self.od._create("accounts", "account", {"name": "Contoso"})
+        call = self._post_call()
+        self.assertIn("/accounts", call.args[1])
+
+
+class TestUpdate(unittest.TestCase):
+    """Unit tests for _ODataClient._update."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        # _update needs _entity_set_from_schema_name to resolve entity set
+        self.od._entity_set_from_schema_name = MagicMock(return_value="new_tickets")
+
+    def _patch_call(self):
+        """Return the single PATCH call args from _request."""
+        patch_calls = [c for c in self.od._request.call_args_list if c.args[0] == "patch"]
+        self.assertEqual(len(patch_calls), 1, "expected exactly one PATCH call")
+        return patch_calls[0]
+
+    def test_record_keys_lowercased(self):
+        """Regular field names are lowercased in _update."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"New_Status": 100000001})
+        call = self._patch_call()
+        payload = call.kwargs["json"]
+        self.assertIn("new_status", payload)
+        self.assertNotIn("New_Status", payload)
+
+    def test_odata_bind_keys_preserve_case(self):
+        """@odata.bind keys preserve navigation property casing in _update."""
+        self.od._update(
+            "new_ticket",
+            "00000000-0000-0000-0000-000000000001",
+            {
+                "new_status": 100000001,
+                "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000002)",
+            },
+        )
+        call = self._patch_call()
+        payload = call.kwargs["json"]
+        self.assertIn("new_status", payload)
+        self.assertIn("new_CustomerId@odata.bind", payload)
+        self.assertNotIn("new_customerid@odata.bind", payload)
+
+    def test_sends_if_match_star_header(self):
+        """PATCH request includes If-Match: * header."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        call = self._patch_call()
+        headers = call.kwargs.get("headers", {})
+        self.assertEqual(headers.get("If-Match"), "*")
+
+    def test_url_formats_bare_guid(self):
+        """PATCH URL wraps a bare GUID in parentheses."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        call = self._patch_call()
+        self.assertIn("(00000000-0000-0000-0000-000000000001)", call.args[1])
+
+    def test_returns_none(self):
+        """_update always returns None."""
+        result = self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        self.assertIsNone(result)
+
+    def test_resolves_entity_set_from_schema_name(self):
+        """_update delegates entity set resolution to _entity_set_from_schema_name."""
+        self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"new_status": 1})
+        self.od._entity_set_from_schema_name.assert_called_once_with("new_ticket")
+
+
 class TestUpsert(unittest.TestCase):
     """Unit tests for _ODataClient._upsert."""
 
@@ -334,6 +484,45 @@ class TestUpsert(unittest.TestCase):
         payload = call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertNotIn("Name", payload)
+
+    def test_odata_bind_keys_preserve_case(self):
+        """@odata.bind keys must preserve PascalCase for navigation property."""
+        self.od._upsert(
+            "accounts",
+            "account",
+            {"accountnumber": "ACC-001"},
+            {
+                "Name": "Contoso",
+                "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
+            },
+        )
+        call = self._patch_call()
+        payload = call.kwargs["json"]
+        # Regular field is lowercased
+        self.assertIn("name", payload)
+        # @odata.bind key preserves original casing
+        self.assertIn("new_CustomerId@odata.bind", payload)
+        self.assertNotIn("new_customerid@odata.bind", payload)
+
+    def test_convert_labels_skips_odata_keys(self):
+        """_convert_labels_to_ints should skip @odata.bind keys (no metadata lookup)."""
+        # Patch _optionset_map to track calls
+        calls = []
+        original = self.od._optionset_map
+
+        def tracking_optionset_map(table, attr):
+            calls.append(attr)
+            return original(table, attr)
+
+        self.od._optionset_map = tracking_optionset_map
+        record = {
+            "name": "Contoso",
+            "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
+            "@odata.type": "Microsoft.Dynamics.CRM.account",
+        }
+        self.od._convert_labels_to_ints("account", record)
+        # Only "name" should be checked, not the @odata keys
+        self.assertEqual(calls, ["name"])
 
     def test_returns_none(self):
         """_upsert always returns None."""

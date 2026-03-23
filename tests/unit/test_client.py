@@ -126,6 +126,8 @@ class TestDataverseClient(unittest.TestCase):
             top=10,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
         self.assertEqual(len(results), 1)
         self.assertEqual(len(results[0]), 2)

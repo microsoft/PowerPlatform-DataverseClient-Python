@@ -197,6 +197,8 @@ class TestRecordOperations(unittest.TestCase):
             top=50,
             expand=["primarycontactid"],
             page_size=25,
+            count=False,
+            include_annotations=None,
         )
 
     # ------------------------------------------------------------------ upsert
