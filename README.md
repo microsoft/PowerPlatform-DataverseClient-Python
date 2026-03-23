@@ -24,7 +24,8 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Basic CRUD operations](#basic-crud-operations)
   - [Bulk operations](#bulk-operations)
   - [Upsert operations](#upsert-operations)
-  - [Query data](#query-data)
+  - [DataFrame operations](#dataframe-operations)
+  - [Query data](#query-data) *(QueryBuilder, SQL, raw OData)*
   - [FetchXML queries](#fetchxml-queries)
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
@@ -37,10 +38,12 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 - **🔄 CRUD Operations**: Create, read, update, and delete records with support for bulk operations and automatic retry
 - **⚡ True Bulk Operations**: Automatically uses Dataverse's native `CreateMultiple`, `UpdateMultiple`, `UpsertMultiple`, and `BulkDelete` Web API operations for maximum performance and transactional integrity
+- **🔍 Fluent QueryBuilder**: Type-safe query construction with method chaining, composable filter expressions, and automatic OData generation
 - **📊 SQL Queries**: Execute read-only SQL queries via the Dataverse Web API `?sql=` parameter
 - **📋 FetchXML Queries**: Execute FetchXML queries with automatic paging cookie handling via `client.query.fetchxml()`
 - **🏗️ Table Management**: Create, inspect, and delete custom tables and columns programmatically
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
+- **🐼 DataFrame Support**: Pandas wrappers for all CRUD operations, returning DataFrames and Series
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
@@ -116,7 +119,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 |---------|-------------|
 | **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
 | **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
-| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (query & search), `client.tables` (metadata), and `client.files` (file uploads) |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), and `client.files` (file uploads) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -234,43 +237,166 @@ client.records.upsert("account", [
 ])
 ```
 
-### Query data
+### DataFrame operations
+
+The SDK provides pandas wrappers for all CRUD operations via the `client.dataframe` namespace, using DataFrames and Series for input and output.
 
 ```python
-# SQL query (read-only)
+import pandas as pd
+
+# Query records as a single DataFrame
+df = client.dataframe.get("account", filter="statecode eq 0", select=["name", "telephone1"])
+print(f"Found {len(df)} accounts")
+
+# Limit results with top for large tables
+df = client.dataframe.get("account", select=["name"], top=100)
+
+# Fetch a single record as a one-row DataFrame
+df = client.dataframe.get("account", record_id=account_id, select=["name"])
+
+# Create records from a DataFrame (returns a Series of GUIDs)
+new_accounts = pd.DataFrame([
+    {"name": "Contoso", "telephone1": "555-0100"},
+    {"name": "Fabrikam", "telephone1": "555-0200"},
+])
+new_accounts["accountid"] = client.dataframe.create("account", new_accounts)
+
+# Update records from a DataFrame (id_column identifies the GUID column)
+new_accounts["telephone1"] = ["555-0199", "555-0299"]
+client.dataframe.update("account", new_accounts, id_column="accountid")
+
+# Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
+df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
+client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
+
+# Delete records by passing a Series of GUIDs
+client.dataframe.delete("account", new_accounts["accountid"])
+```
+
+### Query data
+
+The **QueryBuilder** is the recommended way to query records. It provides a fluent, type-safe interface that generates correct OData queries automatically — no need to remember OData filter syntax.
+
+```python
+# Fluent query builder (recommended)
+for record in (client.query.builder("account")
+               .select("name", "revenue")
+               .filter_eq("statecode", 0)
+               .filter_gt("revenue", 1000000)
+               .order_by("revenue", descending=True)
+               .top(100)
+               .page_size(50)
+               .execute()):
+    print(f"{record['name']}: {record['revenue']}")
+```
+
+The QueryBuilder handles value formatting, column name casing, and OData syntax automatically. All filter methods are discoverable via IDE autocomplete:
+
+```python
+# Get results as a pandas DataFrame (consolidates all pages)
+df = (client.query.builder("account")
+      .select("name", "telephone1")
+      .filter_eq("statecode", 0)
+      .top(100)
+      .to_dataframe())
+print(f"Got {len(df)} accounts")
+```
+
+```python
+# Comparison filters
+query = (client.query.builder("contact")
+         .filter_eq("statecode", 0)          # statecode eq 0
+         .filter_gt("revenue", 1000000)      # revenue gt 1000000
+         .filter_contains("name", "Corp")    # contains(name, 'Corp')
+         .filter_in("statecode", [0, 1])     # Microsoft.Dynamics.CRM.In(...)
+         .filter_between("revenue", 100000, 500000)  # (revenue ge 100000 and revenue le 500000)
+         .filter_null("telephone1")          # telephone1 eq null
+         )
+```
+
+For complex logic (OR, NOT, grouping), use the composable expression tree with `where()`:
+
+```python
+from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in, between
+
+# OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
+for record in (client.query.builder("account")
+               .select("name", "revenue")
+               .where((eq("statecode", 0) | eq("statecode", 1))
+                      & gt("revenue", 100000))
+               .execute()):
+    print(record["name"])
+
+# NOT, between, and in operators
+for record in (client.query.builder("account")
+               .where(~eq("statecode", 2))                  # NOT inactive
+               .where(between("revenue", 100000, 500000))    # revenue in range
+               .execute()):
+    print(record["name"])
+```
+
+**Formatted values and annotations** -- request localized labels, currency symbols, and display names:
+
+```python
+# Get formatted values (choice labels, currency, lookup names)
+for record in (client.query.builder("account")
+               .select("name", "statecode", "revenue")
+               .include_formatted_values()
+               .execute()):
+    status = record["statecode@OData.Community.Display.V1.FormattedValue"]
+    print(f"{record['name']}: {status}")
+```
+
+**Nested expand with options** -- expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
+
+```python
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+# Expand related tasks with filtering and sorting
+for record in (client.query.builder("account")
+               .select("name")
+               .expand(ExpandOption("Account_Tasks")
+                       .select("subject", "createdon")
+                       .filter("contains(subject,'Task')")
+                       .order_by("createdon", descending=True)
+                       .top(5))
+               .execute()):
+    print(record["name"], record.get("Account_Tasks"))
+```
+
+**Record count** -- include `$count=true` in the request:
+
+```python
+# Request count alongside results
+results = (client.query.builder("account")
+           .filter_eq("statecode", 0)
+           .count()
+           .execute())
+```
+
+**SQL queries** provide an alternative read-only query syntax:
+
+```python
 results = client.query.sql(
     "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
 )
 for record in results:
     print(record["name"])
+```
 
-# OData query with paging
-# Note: filter and expand parameters are case sensitive
+**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string:
+
+```python
 for page in client.records.get(
     "account",
-    select=["accountid", "name"],  # select is case-insensitive (automatically lowercased)
-    filter="statecode eq 0",       # filter must use lowercase logical names (not transformed)
+    select=["name"],
+    filter="statecode eq 0",  # Raw OData: column names must be lowercase
+    expand=["primarycontactid"],  # Navigation properties are case-sensitive
     top=100,
 ):
     for record in page:
         print(record["name"])
-
-# Query with navigation property expansion (case-sensitive!)
-for page in client.records.get(
-    "account",
-    select=["name"],
-    expand=["primarycontactid"],  # Navigation property names are case-sensitive
-    filter="statecode eq 0",      # Column names must be lowercase logical names
-):
-    for account in page:
-        contact = account.get("primarycontactid", {})
-        print(f"{account['name']} - Contact: {contact.get('fullname', 'N/A')}")
 ```
-
-> **Important**: When using `filter` and `expand` parameters:
-> - **`filter`**: Column names must use exact lowercase logical names (e.g., `"statecode eq 0"`, not `"StateCode eq 0"`)
-> - **`expand`**: Navigation property names are case-sensitive and must match the exact server names
-> - **`select`** and **`orderby`**: Case-insensitive; automatically converted to lowercase
 
 ### FetchXML queries
 

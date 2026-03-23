@@ -108,10 +108,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Dataverse LogicalNames for attributes are stored lowercase, but users may
         provide PascalCase names (matching SchemaName). This normalizes the input.
+
+        Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
+        preserved as-is because the navigation property portion before ``@``
+        must retain its original casing (case-sensitive navigation property name).  The OData
+        parser validates ``@odata.bind`` property names **case-sensitively**
+        against the entity's declared navigation properties, so lowercasing
+        these keys causes ``400 - undeclared property`` errors.
         """
         if not isinstance(record, dict):
             return record
-        return {k.lower() if isinstance(k, str) else k: v for k, v in record.items()}
+        return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
@@ -732,7 +739,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         params = {}
         if select:
             # Lowercase column names for case-insensitive matching
-            params["$select"] = ",".join(select)
+            params["$select"] = ",".join(self._lowercase_list(select))
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         url = f"{self.api}/{entity_set}{self._format_key(key)}"
         r = self._request("get", url, params=params)
@@ -747,6 +754,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
@@ -764,16 +773,25 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type expand: ``list[str]`` | ``None``
         :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
         :type page_size: ``int`` | ``None``
+        :param count: If ``True``, adds ``$count=true`` to include a total record count in the response.
+        :type count: ``bool``
+        :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: ``str`` | ``None``
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
         """
 
         extra_headers: Dict[str, str] = {}
+        prefer_parts: List[str] = []
         if page_size is not None:
             ps = int(page_size)
             if ps > 0:
-                extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
+                prefer_parts.append(f"odata.maxpagesize={ps}")
+        if include_annotations:
+            prefer_parts.append(f'odata.include-annotations="{include_annotations}"')
+        if prefer_parts:
+            extra_headers["Prefer"] = ",".join(prefer_parts)
 
         def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             headers = extra_headers if extra_headers else None
@@ -800,6 +818,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             params["$expand"] = ",".join(expand)
         if top is not None:
             params["$top"] = int(top)
+        if count:
+            params["$count"] = "true"
 
         data = _do_request(base_url, params=params)
         items = data.get("value") if isinstance(data, dict) else None
@@ -1175,7 +1195,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         logical_lower = table_schema_name.lower()
         logical_escaped = self._escape_odata_quotes(logical_lower)
         params = {
-            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
+            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
         r = self._request("get", url, params=params, headers=headers)
@@ -1542,6 +1562,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         for k, v in list(out.items()):
             if not isinstance(v, str) or not v.strip():
                 continue
+            # Skip OData annotations — they are not attribute names
+            if isinstance(k, str) and "@odata." in k:
+                continue
             mapping = self._optionset_map(table_schema_name, k)
             if not mapping:
                 continue
@@ -1657,6 +1680,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": ent.get("LogicalName"),
             "entity_set_name": ent.get("EntitySetName"),
             "metadata_id": ent.get("MetadataId"),
+            "primary_name_attribute": ent.get("PrimaryNameAttribute"),
+            "primary_id_attribute": ent.get("PrimaryIdAttribute"),
             "columns_created": [],
         }
 
@@ -1901,6 +1926,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": metadata.get("LogicalName"),
             "entity_set_name": metadata.get("EntitySetName"),
             "metadata_id": metadata.get("MetadataId"),
+            "primary_name_attribute": metadata.get("PrimaryNameAttribute"),
+            "primary_id_attribute": metadata.get("PrimaryIdAttribute"),
             "columns_created": created_cols,
         }
 

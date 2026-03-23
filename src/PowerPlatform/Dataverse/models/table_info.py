@@ -97,9 +97,9 @@ class TableInfo:
     :param description: Table description.
     :type description: :class:`str` or None
     :param columns: Column metadata (when retrieved).
-    :type columns: :class:`list` of :class:`ColumnInfo` or None
+    :type columns: list[ColumnInfo] or None
     :param columns_created: Column schema names created with the table.
-    :type columns_created: :class:`list` of :class:`str` or None
+    :type columns_created: list[str] or None
 
     Example::
 
@@ -112,6 +112,8 @@ class TableInfo:
     logical_name: str = ""
     entity_set_name: str = ""
     metadata_id: str = ""
+    primary_name_attribute: Optional[str] = None
+    primary_id_attribute: Optional[str] = None
     display_name: Optional[str] = None
     description: Optional[str] = None
     columns: Optional[List[ColumnInfo]] = field(default=None, repr=False)
@@ -123,6 +125,8 @@ class TableInfo:
         "table_logical_name": "logical_name",
         "entity_set_name": "entity_set_name",
         "metadata_id": "metadata_id",
+        "primary_name_attribute": "primary_name_attribute",
+        "primary_id_attribute": "primary_id_attribute",
         "columns_created": "columns_created",
     }
 
@@ -187,6 +191,8 @@ class TableInfo:
             logical_name=data.get("table_logical_name", ""),
             entity_set_name=data.get("entity_set_name", ""),
             metadata_id=data.get("metadata_id", ""),
+            primary_name_attribute=data.get("primary_name_attribute"),
+            primary_id_attribute=data.get("primary_id_attribute"),
             columns_created=data.get("columns_created"),
         )
 
@@ -213,6 +219,8 @@ class TableInfo:
             logical_name=response_data.get("LogicalName", ""),
             entity_set_name=response_data.get("EntitySetName", ""),
             metadata_id=response_data.get("MetadataId", ""),
+            primary_name_attribute=response_data.get("PrimaryNameAttribute"),
+            primary_id_attribute=response_data.get("PrimaryIdAttribute"),
             display_name=display_name,
             description=description,
         )
@@ -233,7 +241,7 @@ class AlternateKeyInfo:
     :param schema_name: Key schema name.
     :type schema_name: :class:`str`
     :param key_attributes: List of column logical names that compose the key.
-    :type key_attributes: :class:`list` of :class:`str`
+    :type key_attributes: list[str]
     :param status: Index creation status (``"Active"``, ``"Pending"``, ``"InProgress"``, ``"Failed"``).
     :type status: :class:`str`
     """
