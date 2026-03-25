@@ -647,6 +647,18 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertIn('"name"', call_url)
         self.assertIn('"industrycode"', call_url)
 
+    def test_check_missing_attribute_type_cached_as_non_picklist(self):
+        """Attribute with missing AttributeType in response is cached as non-picklist."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"value": [{"LogicalName": "customfield"}]}  # no AttributeType key
+        self.od._request.return_value = mock_resp
+
+        self.od._check_attribute_types("account", ["customfield"])
+
+        entry = self.od._picklist_label_cache.get(("account", "customfield"))
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["map"], {})
+
     # ---- _optionset_map ----
 
     def test_optionset_returns_none_for_empty_table(self):
@@ -1098,6 +1110,15 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertEqual(result["name"], "Contoso")
         # 1 batch (only industrycode) + 1 optionset fetch
         self.assertEqual(self.od._request.call_count, 2)
+
+    def test_convert_batch_failure_propagates(self):
+        """Server error during batch type-check propagates to caller."""
+        from PowerPlatform.Dataverse.core.errors import HttpError
+
+        self.od._request.side_effect = HttpError("Server Error", status_code=500)
+
+        with self.assertRaises(HttpError):
+            self.od._convert_labels_to_ints("account", {"name": "Contoso"})
 
     def test_convert_single_picklist_makes_two_api_calls(self):
         """Single picklist field (cold cache): 1 batch + 1 optionset = 2 total."""
