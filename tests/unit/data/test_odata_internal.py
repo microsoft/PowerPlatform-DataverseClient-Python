@@ -1083,9 +1083,7 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.od._picklist_label_cache[("account", "name")] = {"map": {}, "ts": time.time()}
 
         batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]
-        }
+        batch_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
         options_resp = MagicMock()
         options_resp.text = "{}"
         options_resp.json.return_value = {
@@ -1104,9 +1102,7 @@ class TestPicklistLabelResolution(unittest.TestCase):
     def test_convert_single_picklist_makes_two_api_calls(self):
         """Single picklist field (cold cache): 1 batch + 1 optionset = 2 total."""
         batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]
-        }
+        batch_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
         options_resp = MagicMock()
         options_resp.text = "{}"
         options_resp.json.return_value = {

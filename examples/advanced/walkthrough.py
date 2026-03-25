@@ -450,7 +450,9 @@ def _run_walkthrough(client):
     updated_label = backoff(lambda: client.records.get(table_name, label_id))
     print(f"[OK] Updated record with string label 'Low' for new_Priority")
     print(f"  new_Priority stored as integer: {updated_label.get('new_priority')}")
-    print(f"  new_Priority@FormattedValue: {updated_label.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
+    print(
+        f"  new_Priority@FormattedValue: {updated_label.get('new_priority@OData.Community.Display.V1.FormattedValue')}"
+    )
 
     # ============================================================================
     # 11. COLUMN MANAGEMENT

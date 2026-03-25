@@ -1235,7 +1235,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     def _check_attribute_types(self, table_schema_name: str, attr_logicals: List[str]) -> None:
         """Batch-check AttributeType for multiple attributes in one API call.
 
-        Uses an OData ``or`` filter to check all given attributes at once.
+        Uses ``Microsoft.Dynamics.CRM.In`` to check all given attributes at once.
         Non-picklist attributes (and attributes not found) are cached with an
         empty map.  Picklist attributes are cached with ``{"type": "Picklist"}``
         so that ``_optionset_map`` knows to fetch their options.
@@ -1243,12 +1243,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not attr_logicals:
             return
         table_esc = self._escape_odata_quotes(table_schema_name.lower())
-        quoted_values = ",".join(
-            f'"{self._escape_odata_quotes(a.lower())}"' for a in attr_logicals
-        )
-        attr_filter = (
-            f"Microsoft.Dynamics.CRM.In(PropertyName='LogicalName',PropertyValues=[{quoted_values}])"
-        )
+        quoted_values = ",".join(f'"{self._escape_odata_quotes(a.lower())}"' for a in attr_logicals)
+        attr_filter = f"Microsoft.Dynamics.CRM.In(PropertyName='LogicalName',PropertyValues=[{quoted_values}])"
         url = (
             f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')/Attributes"
             f"?$filter={attr_filter}&$select=LogicalName,AttributeType"
@@ -1342,7 +1338,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         If attribute isn't a picklist or label not found, value left unchanged.
 
         Performance: collects all string-valued fields with a cold cache and
-        issues a single batch type-check using the OData ``in`` operator
+        issues a single batch type-check using ``Microsoft.Dynamics.CRM.In``
         before resolving individual picklist options.
         """
         resolved_record = record.copy()
