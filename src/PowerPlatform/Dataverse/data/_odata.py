@@ -1216,18 +1216,75 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
+    def _request_metadata_with_retry(self, method: str, url: str, **kwargs):
+        """Fetch metadata with retries on transient 404 responses."""
+        max_attempts = 5
+        backoff_seconds = 0.4
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self._request(method, url, **kwargs)
+            except HttpError as err:
+                if getattr(err, "status_code", None) == 404:
+                    if attempt < max_attempts:
+                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+                        continue
+                    raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
+                raise
+        raise RuntimeError(f"Metadata request failed: {url}")
+
+    def _check_attribute_types(self, table_schema_name: str, attr_logicals: List[str]) -> None:
+        """Batch-check AttributeType for multiple attributes in one API call.
+
+        Uses an OData ``or`` filter to check all given attributes at once.
+        Non-picklist attributes (and attributes not found) are cached with an
+        empty map.  Picklist attributes are cached with ``{"type": "Picklist"}``
+        so that ``_optionset_map`` knows to fetch their options.
+        """
+        if not attr_logicals:
+            return
+        table_esc = self._escape_odata_quotes(table_schema_name.lower())
+        quoted_values = ",".join(
+            f'"{self._escape_odata_quotes(a.lower())}"' for a in attr_logicals
+        )
+        attr_filter = (
+            f"Microsoft.Dynamics.CRM.In(PropertyName='LogicalName',PropertyValues=[{quoted_values}])"
+        )
+        url = (
+            f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')/Attributes"
+            f"?$filter={attr_filter}&$select=LogicalName,AttributeType"
+        )
+        r = self._request_metadata_with_retry("get", url)
+        body = r.json()
+        items = body.get("value", []) if isinstance(body, dict) else []
+        now = time.time()
+        found: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            ln = item.get("LogicalName", "").lower()
+            atype = item.get("AttributeType", "")
+            found.add(ln)
+            if atype not in ("Picklist", "PickList"):
+                cache_key = (self._normalize_cache_key(table_schema_name), ln)
+                self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
+            else:
+                cache_key = (self._normalize_cache_key(table_schema_name), ln)
+                self._picklist_label_cache[cache_key] = {"type": "Picklist", "ts": now}
+        # Attributes not in the response don't exist on the table -- cache them too
+        for a in attr_logicals:
+            if a.lower() not in found:
+                cache_key = (self._normalize_cache_key(table_schema_name), a.lower())
+                self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
+
     def _optionset_map(self, table_schema_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
         """Build or return cached mapping of normalized label -> value for a picklist attribute.
 
         Returns empty dict if attribute is not a picklist or has no options. Returns None only
         for invalid inputs or unexpected metadata parse failures.
-
-        Notes
-        -----
-        - This method calls the Web API twice per attribute so it could have perf impact when there are lots of columns on the entity.
         """
         if not table_schema_name or not attr_logical:
             return None
+
         # Normalize cache key for case-insensitive lookups
         cache_key = (self._normalize_cache_key(table_schema_name), self._normalize_cache_key(attr_logical))
         now = time.time()
@@ -1239,64 +1296,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         attr_esc = self._escape_odata_quotes(attr_logical.lower())
         table_schema_name_esc = self._escape_odata_quotes(table_schema_name.lower())
 
-        # Step 1: lightweight fetch (no expand) to determine attribute type
-        url_type = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes"
-            f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
-        )
-        # Retry on 404 (metadata not yet published) before surfacing the error.
-        r_type = None
-        max_attempts = 5
-        backoff_seconds = 0.4
-        for attempt in range(1, max_attempts + 1):
-            try:
-                r_type = self._request("get", url_type)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < max_attempts:
-                        # Exponential backoff: 0.4s, 0.8s, 1.6s, 3.2s
-                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
-                        continue
-                    raise RuntimeError(
-                        f"Picklist attribute metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_type is None:
-            raise RuntimeError("Failed to retrieve attribute metadata due to repeated request failures.")
-
-        body_type = r_type.json()
-        items = body_type.get("value", []) if isinstance(body_type, dict) else []
-        if not items:
-            return None
-        attr_md = items[0]
-        if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
-            self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
-            return {}
-
-        # Step 2: fetch with expand only now that we know it's a picklist
-        # Need to cast to the derived PicklistAttributeMetadata type; OptionSet is not a nav on base AttributeMetadata.
+        # Fetch OptionSet values for this picklist attribute
         cast_url = (
             f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes(LogicalName='{attr_esc}')/"
             "Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)"
         )
-        # Step 2 fetch with retries: expanded OptionSet (cast form first)
-        r_opts = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                r_opts = self._request("get", cast_url)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < max_attempts:
-                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
-                        continue
-                    raise RuntimeError(
-                        f"Picklist OptionSet metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_opts is None:
-            raise RuntimeError("Failed to retrieve picklist OptionSet metadata due to repeated request failures.")
+        r_opts = self._request_metadata_with_retry("get", cast_url)
 
         attr_full = {}
         try:
@@ -1335,22 +1340,54 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
         If attribute isn't a picklist or label not found, value left unchanged.
+
+        Performance: collects all string-valued fields with a cold cache and
+        issues a single batch type-check using the OData ``in`` operator
+        before resolving individual picklist options.
         """
-        out = record.copy()
-        for k, v in list(out.items()):
+        resolved_record = record.copy()
+        # Collect candidate string-valued attribute names
+        candidates: List[str] = []
+        for k, v in resolved_record.items():
             if not isinstance(v, str) or not v.strip():
                 continue
-            # Skip OData annotations — they are not attribute names
             if isinstance(k, str) and "@odata." in k:
+                continue
+            candidates.append(k)
+        if not candidates:
+            return resolved_record
+
+        # Determine which candidates need a type-check (not yet cached)
+        now = time.time()
+        uncached_attrs: List[str] = []
+        for attr in candidates:
+            cache_key = (self._normalize_cache_key(table_schema_name), self._normalize_cache_key(attr))
+            entry = self._picklist_label_cache.get(cache_key)
+            if not (
+                isinstance(entry, dict)
+                and "map" in entry
+                and (now - entry.get("ts", 0)) < self._picklist_cache_ttl_seconds
+            ):
+                uncached_attrs.append(attr)
+
+        # Batch type-check uncached attributes in one API call
+        if uncached_attrs:
+            self._check_attribute_types(table_schema_name, uncached_attrs)
+
+        # Only call _optionset_map for picklists
+        for k in candidates:
+            cache_key = (self._normalize_cache_key(table_schema_name), self._normalize_cache_key(k))
+            entry = self._picklist_label_cache.get(cache_key)
+            if not (isinstance(entry, dict) and (entry.get("type") == "Picklist" or entry.get("map"))):
                 continue
             mapping = self._optionset_map(table_schema_name, k)
             if not mapping:
                 continue
-            norm = self._normalize_picklist_label(v)
+            norm = self._normalize_picklist_label(resolved_record[k])
             val = mapping.get(norm)
             if val is not None:
-                out[k] = val
-        return out
+                resolved_record[k] = val
+        return resolved_record
 
     def _attribute_payload(
         self, column_schema_name: str, dtype: Any, *, is_primary_name: bool = False
