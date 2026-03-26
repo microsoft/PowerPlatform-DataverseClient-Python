@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
@@ -506,23 +506,24 @@ class TestUpsert(unittest.TestCase):
 
     def test_convert_labels_skips_odata_keys(self):
         """_convert_labels_to_ints should skip @odata.bind keys (no metadata lookup)."""
-        # Patch _check_attribute_types to track which attrs are type-checked
-        checked_attrs = []
-        original_check = self.od._check_attribute_types
+        import time
 
-        def tracking_check(table, attrs):
-            checked_attrs.extend(attrs)
-            return original_check(table, attrs)
+        # Pre-populate cache so no API call needed
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time(),
+            "picklists": {},
+        }
 
-        self.od._check_attribute_types = tracking_check
         record = {
             "name": "Contoso",
             "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
             "@odata.type": "Microsoft.Dynamics.CRM.account",
         }
-        self.od._convert_labels_to_ints("account", record)
-        # Only "name" should be type-checked, not the @odata keys
-        self.assertEqual(checked_attrs, ["name"])
+        result = self.od._convert_labels_to_ints("account", record)
+        # @odata keys must be left unchanged
+        self.assertEqual(result["new_CustomerId@odata.bind"], "/contacts(00000000-0000-0000-0000-000000000001)")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.account")
+        self.assertEqual(result["name"], "Contoso")
 
     def test_returns_none(self):
         """_upsert always returns None."""
@@ -533,255 +534,141 @@ class TestUpsert(unittest.TestCase):
 class TestPicklistLabelResolution(unittest.TestCase):
     """Tests for picklist label-to-integer resolution.
 
-    Covers _check_attribute_types, _optionset_map, _request_metadata_with_retry,
+    Covers _bulk_fetch_picklists, _request_metadata_with_retry,
     _convert_labels_to_ints, and their integration through _create / _update / _upsert.
+
+    Cache structure (nested):
+        _picklist_label_cache = {
+            "table_key": {"ts": epoch, "picklists": {"attr": {norm_label: int}}}
+        }
     """
 
     def setUp(self):
         self.od = _make_odata_client()
 
-    # ---- _check_attribute_types ----
+    # ---- Helper to build a bulk-fetch API response ----
+    @staticmethod
+    def _bulk_response(*picklists):
+        """Build a mock response for _bulk_fetch_picklists.
 
-    def test_check_caches_non_picklist_as_empty_map(self):
-        """Non-picklist attributes are cached as {"map": {}}."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": [{"LogicalName": "name", "AttributeType": "String"}]}
-        self.od._request.return_value = mock_resp
+        Each picklist is (logical_name, [(value, label), ...]).
+        """
+        items = []
+        for ln, options in picklists:
+            opts = [{"Value": val, "Label": {"LocalizedLabels": [{"Label": lab}]}} for val, lab in options]
+            items.append({"LogicalName": ln, "OptionSet": {"Options": opts}})
+        resp = MagicMock()
+        resp.json.return_value = {"value": items}
+        return resp
 
-        self.od._check_attribute_types("account", ["name"])
+    # ---- _bulk_fetch_picklists ----
 
-        entry = self.od._picklist_label_cache.get(("account", "name"))
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry["map"], {})
-        self.assertIn("ts", entry)
+    def test_bulk_fetch_populates_nested_cache(self):
+        """Bulk fetch stores picklists in nested {table: {ts, picklists: {...}}} format."""
+        import time
 
-    def test_check_caches_picklist_with_type_marker(self):
-        """Picklist attributes are cached as {"type": "Picklist"}."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["industrycode"])
-
-        entry = self.od._picklist_label_cache.get(("account", "industrycode"))
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry.get("type"), "Picklist")
-        self.assertNotIn("map", entry)
-
-    def test_check_caches_missing_attrs_as_empty_map(self):
-        """Attributes not in the API response are cached as non-picklist."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": []}
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["nonexistent"])
-
-        entry = self.od._picklist_label_cache.get(("account", "nonexistent"))
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry["map"], {})
-
-    def test_check_handles_mixed_types(self):
-        """Batch with both picklist and non-picklist attributes caches correctly."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-                {"LogicalName": "telephone1", "AttributeType": "String"},
-            ]
-        }
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["name", "industrycode", "telephone1"])
-
-        self.assertEqual(self.od._picklist_label_cache[("account", "name")]["map"], {})
-        self.assertEqual(
-            self.od._picklist_label_cache[("account", "industrycode")].get("type"),
-            "Picklist",
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Technology"), (12, "Consulting")]),
         )
-        self.assertEqual(self.od._picklist_label_cache[("account", "telephone1")]["map"], {})
+        self.od._request.return_value = resp
 
-    def test_check_empty_list_does_nothing(self):
-        """Empty attr list should not make any API call."""
-        self.od._check_attribute_types("account", [])
-        self.od._request.assert_not_called()
+        self.od._bulk_fetch_picklists("account")
 
-    def test_check_case_insensitive_cache_keys(self):
-        """Cache keys are normalized to lowercase."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("Account", ["IndustryCode"])
-
-        self.assertIn(("account", "industrycode"), self.od._picklist_label_cache)
-
-    def test_check_makes_single_api_call(self):
-        """Batch should result in exactly one API call regardless of attr count."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "a", "AttributeType": "String"},
-                {"LogicalName": "b", "AttributeType": "Picklist"},
-                {"LogicalName": "c", "AttributeType": "Integer"},
-            ]
-        }
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["a", "b", "c"])
-
-        self.assertEqual(self.od._request.call_count, 1)
-        call_url = self.od._request.call_args.args[1]
-        self.assertIn("Microsoft.Dynamics.CRM.In(", call_url)
-
-    def test_check_uses_crm_in_function_in_url(self):
-        """Batch URL uses Microsoft.Dynamics.CRM.In function with quoted values."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": []}
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["name", "industrycode"])
-
-        call_url = self.od._request.call_args.args[1]
-        self.assertIn("Microsoft.Dynamics.CRM.In(PropertyName='LogicalName'", call_url)
-        self.assertIn('"name"', call_url)
-        self.assertIn('"industrycode"', call_url)
-
-    def test_check_missing_attribute_type_cached_as_non_picklist(self):
-        """Attribute with missing AttributeType in response is cached as non-picklist."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"value": [{"LogicalName": "customfield"}]}  # no AttributeType key
-        self.od._request.return_value = mock_resp
-
-        self.od._check_attribute_types("account", ["customfield"])
-
-        entry = self.od._picklist_label_cache.get(("account", "customfield"))
+        entry = self.od._picklist_label_cache.get("account")
         self.assertIsNotNone(entry)
-        self.assertEqual(entry["map"], {})
+        self.assertIn("ts", entry)
+        self.assertIn("picklists", entry)
+        self.assertEqual(entry["picklists"]["industrycode"], {"technology": 6, "consulting": 12})
 
-    # ---- _optionset_map ----
+    def test_bulk_fetch_multiple_picklists(self):
+        """Multiple picklist attributes are all stored under the same table entry."""
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Technology")]),
+            ("statuscode", [(1, "Active"), (2, "Inactive")]),
+        )
+        self.od._request.return_value = resp
 
-    def test_optionset_returns_none_for_empty_table(self):
-        """_optionset_map returns None for empty table name."""
-        self.assertIsNone(self.od._optionset_map("", "industrycode"))
+        self.od._bulk_fetch_picklists("account")
 
-    def test_optionset_returns_none_for_empty_attr(self):
-        """_optionset_map returns None for empty attribute name."""
-        self.assertIsNone(self.od._optionset_map("account", ""))
+        picklists = self.od._picklist_label_cache["account"]["picklists"]
+        self.assertEqual(picklists["industrycode"], {"technology": 6})
+        self.assertEqual(picklists["statuscode"], {"active": 1, "inactive": 2})
 
-    def test_optionset_returns_cached_map(self):
-        """Warm cache hit returns the map without API calls."""
+    def test_bulk_fetch_no_picklists_caches_empty(self):
+        """Table with no picklist attributes gets cached with empty picklists dict."""
+        resp = MagicMock()
+        resp.json.return_value = {"value": []}
+        self.od._request.return_value = resp
+
+        self.od._bulk_fetch_picklists("account")
+
+        entry = self.od._picklist_label_cache.get("account")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["picklists"], {})
+
+    def test_bulk_fetch_skips_when_cache_fresh(self):
+        """Warm cache within TTL should skip the API call."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": time.time(),
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
-        result = self.od._optionset_map("account", "industrycode")
-        self.assertEqual(result, {"technology": 6})
+        self.od._bulk_fetch_picklists("account")
         self.od._request.assert_not_called()
 
-    def test_optionset_type_marker_triggers_fetch(self):
-        """type=Picklist entry does not count as a cache hit -- should fetch options."""
+    def test_bulk_fetch_refreshes_when_cache_expired(self):
+        """Expired cache should trigger a new API call."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "type": "Picklist",
-            "ts": time.time(),
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time() - 7200,  # 2 hours ago, beyond 1h TTL
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        self.od._request.return_value = mock_resp
+        resp = self._bulk_response(("industrycode", [(6, "Tech"), (12, "Consulting")]))
+        self.od._request.return_value = resp
 
-        result = self.od._optionset_map("account", "industrycode")
-        self.assertEqual(result, {"tech": 6})
+        self.od._bulk_fetch_picklists("account")
         self.od._request.assert_called_once()
+        self.assertEqual(
+            self.od._picklist_label_cache["account"]["picklists"]["industrycode"],
+            {"tech": 6, "consulting": 12},
+        )
 
-    def test_optionset_fetches_via_picklist_cast_url(self):
-        """API call uses the PicklistAttributeMetadata cast segment."""
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {"OptionSet": {"Options": []}}
-        self.od._request.return_value = mock_resp
+    def test_bulk_fetch_case_insensitive_table_key(self):
+        """Table key is normalized to lowercase."""
+        resp = self._bulk_response(("industrycode", [(6, "Tech")]))
+        self.od._request.return_value = resp
 
-        self.od._optionset_map("account", "industrycode")
+        self.od._bulk_fetch_picklists("Account")
+
+        self.assertIn("account", self.od._picklist_label_cache)
+        self.assertNotIn("Account", self.od._picklist_label_cache)
+
+    def test_bulk_fetch_uses_picklist_cast_url(self):
+        """API call uses PicklistAttributeMetadata cast segment."""
+        resp = self._bulk_response()
+        self.od._request.return_value = resp
+
+        self.od._bulk_fetch_picklists("account")
 
         call_url = self.od._request.call_args.args[1]
         self.assertIn("PicklistAttributeMetadata", call_url)
-        self.assertIn("industrycode", call_url)
+        self.assertIn("OptionSet", call_url)
 
-    def test_optionset_multiple_options_parsed(self):
-        """Multiple options are all captured in the returned mapping."""
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {
-            "OptionSet": {
-                "Options": [
-                    {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Active"}]}},
-                    {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Inactive"}]}},
-                    {"Value": 3, "Label": {"LocalizedLabels": [{"Label": "Suspended"}]}},
-                ]
-            }
-        }
-        self.od._request.return_value = mock_resp
+    def test_bulk_fetch_makes_single_api_call(self):
+        """Bulk fetch uses exactly one API call regardless of picklist count."""
+        resp = self._bulk_response(
+            ("a", [(1, "X")]),
+            ("b", [(2, "Y")]),
+            ("c", [(3, "Z")]),
+        )
+        self.od._request.return_value = resp
 
-        result = self.od._optionset_map("account", "statuscode")
-        self.assertEqual(result, {"active": 1, "inactive": 2, "suspended": 3})
-
-    def test_optionset_caches_resolved_map_with_ts(self):
-        """After fetching, the resolved map is stored in cache with a timestamp."""
-        import time
-
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        self.od._request.return_value = mock_resp
-
-        before = time.time()
-        self.od._optionset_map("account", "industrycode")
-        after = time.time()
-
-        entry = self.od._picklist_label_cache[("account", "industrycode")]
-        self.assertEqual(entry["map"], {"tech": 6})
-        self.assertGreaterEqual(entry["ts"], before)
-        self.assertLessEqual(entry["ts"], after)
-
-    def test_optionset_returns_none_on_malformed_json(self):
-        """_optionset_map returns None when response JSON is unparseable."""
-        mock_resp = MagicMock()
-        mock_resp.text = "not json"
-        mock_resp.json.side_effect = ValueError("No JSON")
-        self.od._request.return_value = mock_resp
-
-        result = self.od._optionset_map("account", "industrycode")
-        self.assertIsNone(result)
-
-    def test_optionset_returns_none_when_options_not_list(self):
-        """_optionset_map returns None when OptionSet.Options is not a list."""
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {"OptionSet": {"Options": "not-a-list"}}
-        self.od._request.return_value = mock_resp
-
-        result = self.od._optionset_map("account", "industrycode")
-        self.assertIsNone(result)
-
-    def test_optionset_returns_empty_dict_when_no_options(self):
-        """_optionset_map returns {} when Options list is empty."""
-        mock_resp = MagicMock()
-        mock_resp.text = "{}"
-        mock_resp.json.return_value = {"OptionSet": {"Options": []}}
-        self.od._request.return_value = mock_resp
-
-        result = self.od._optionset_map("account", "industrycode")
-        self.assertEqual(result, {})
+        self.od._bulk_fetch_picklists("account")
+        self.assertEqual(self.od._request.call_count, 1)
 
     # ---- _request_metadata_with_retry ----
 
@@ -794,7 +681,8 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertIs(result, mock_resp)
         self.assertEqual(self.od._request.call_count, 1)
 
-    def test_retry_retries_on_404(self):
+    @patch("PowerPlatform.Dataverse.data._odata.time.sleep")
+    def test_retry_retries_on_404(self, mock_sleep):
         """Should retry on 404 and succeed on later attempt."""
         from PowerPlatform.Dataverse.core.errors import HttpError
 
@@ -805,8 +693,10 @@ class TestPicklistLabelResolution(unittest.TestCase):
         result = self.od._request_metadata_with_retry("get", "https://example.com/test")
         self.assertIs(result, mock_resp)
         self.assertEqual(self.od._request.call_count, 2)
+        mock_sleep.assert_called_once()
 
-    def test_retry_raises_after_max_attempts(self):
+    @patch("PowerPlatform.Dataverse.data._odata.time.sleep")
+    def test_retry_raises_after_max_attempts(self, mock_sleep):
         """Should raise RuntimeError after all retries exhausted."""
         from PowerPlatform.Dataverse.core.errors import HttpError
 
@@ -816,6 +706,7 @@ class TestPicklistLabelResolution(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             self.od._request_metadata_with_retry("get", "https://example.com/test")
         self.assertIn("404", str(ctx.exception))
+        self.assertTrue(mock_sleep.called)
 
     def test_retry_does_not_retry_non_404(self):
         """Non-404 errors should be raised immediately without retry."""
@@ -830,7 +721,7 @@ class TestPicklistLabelResolution(unittest.TestCase):
 
     # ---- _convert_labels_to_ints ----
 
-    def test_convert_no_string_values_skips_batch(self):
+    def test_convert_no_string_values_skips_fetch(self):
         """Record with no string values should not trigger any API call."""
         record = {"quantity": 5, "amount": 99.99, "completed": False}
         result = self.od._convert_labels_to_ints("account", record)
@@ -851,32 +742,34 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.od._request.assert_not_called()
 
     def test_convert_odata_keys_skipped(self):
-        """@odata.bind keys must not be type-checked or resolved."""
-        checked = []
-        orig = self.od._check_attribute_types
+        """@odata.bind keys must not be resolved."""
+        import time
 
-        def track(table, attrs):
-            checked.extend(attrs)
-            return orig(table, attrs)
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time(),
+            "picklists": {},
+        }
 
-        self.od._check_attribute_types = track
         record = {
             "name": "Contoso",
             "new_CustomerId@odata.bind": "/contacts(guid)",
             "@odata.type": "Microsoft.Dynamics.CRM.account",
         }
-        self.od._convert_labels_to_ints("account", record)
-        self.assertEqual(checked, ["name"])
+        result = self.od._convert_labels_to_ints("account", record)
+        # @odata keys left unchanged
+        self.assertEqual(result["new_CustomerId@odata.bind"], "/contacts(guid)")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.account")
 
     def test_convert_warm_cache_no_api_calls(self):
-        """Second call with same fields should make zero API calls."""
+        """Warm cache should resolve labels without any API calls."""
         import time
 
         now = time.time()
-        self.od._picklist_label_cache[("account", "name")] = {"map": {}, "ts": now}
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": now,
+            "picklists": {
+                "industrycode": {"technology": 6},
+            },
         }
 
         record = {"name": "Contoso", "industrycode": "Technology"}
@@ -887,67 +780,40 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.od._request.assert_not_called()
 
     def test_convert_resolves_picklist_label_to_int(self):
-        """Full flow: batch identifies picklist, optionset_map fetches options, label resolved."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-            ]
-        }
-        options_resp = MagicMock()
-        options_resp.text = '{"OptionSet": ...}'
-        options_resp.json.return_value = {
-            "OptionSet": {
-                "Options": [
-                    {
-                        "Value": 6,
-                        "Label": {"LocalizedLabels": [{"Label": "Technology", "LanguageCode": 1033}]},
-                    }
-                ]
-            }
-        }
-        self.od._request.side_effect = [batch_resp, options_resp]
+        """Full flow: bulk fetch returns picklists, label resolved to int."""
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Technology")]),
+        )
+        self.od._request.return_value = resp
 
         record = {"name": "Contoso", "industrycode": "Technology"}
         result = self.od._convert_labels_to_ints("account", record)
 
         self.assertEqual(result["industrycode"], 6)
         self.assertEqual(result["name"], "Contoso")
-        self.assertEqual(self.od._request.call_count, 2)
+        # Single bulk fetch call
+        self.assertEqual(self.od._request.call_count, 1)
 
-    def test_convert_non_picklist_skips_optionset_map(self):
-        """Non-picklist fields should not trigger _optionset_map calls."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "telephone1", "AttributeType": "String"},
-            ]
-        }
-        self.od._request.return_value = batch_resp
-
-        optionset_calls = []
-        orig_map = self.od._optionset_map
-
-        def tracking_map(table, attr):
-            optionset_calls.append(attr)
-            return orig_map(table, attr)
-
-        self.od._optionset_map = tracking_map
+    def test_convert_non_picklist_leaves_string_unchanged(self):
+        """Non-picklist string fields are left as strings (no picklist entry in cache)."""
+        resp = self._bulk_response()  # no picklists on table
+        self.od._request.return_value = resp
 
         record = {"name": "Contoso", "telephone1": "555-0100"}
-        self.od._convert_labels_to_ints("account", record)
+        result = self.od._convert_labels_to_ints("account", record)
 
-        self.assertEqual(optionset_calls, [])
+        self.assertEqual(result["name"], "Contoso")
+        self.assertEqual(result["telephone1"], "555-0100")
 
     def test_convert_unmatched_label_left_unchanged(self):
         """If a picklist label doesn't match any option, value stays as string."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6, "consulting": 12},
+        self.od._picklist_label_cache["account"] = {
             "ts": time.time(),
+            "picklists": {
+                "industrycode": {"technology": 6, "consulting": 12},
+            },
         }
 
         record = {"industrycode": "UnknownIndustry"}
@@ -958,9 +824,9 @@ class TestPicklistLabelResolution(unittest.TestCase):
         """_convert_labels_to_ints must return a copy, not mutate the input."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": time.time(),
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
         original = {"industrycode": "Technology"}
@@ -969,83 +835,29 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertEqual(result["industrycode"], 6)
         self.assertEqual(original["industrycode"], "Technology")
 
-    def test_convert_only_batches_uncached_attrs(self):
-        """Warm-cached attrs should not be included in the batch call."""
-        import time
-
-        self.od._picklist_label_cache[("account", "name")] = {
-            "map": {},
-            "ts": time.time(),
-        }
-
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        self.od._request.side_effect = [batch_resp, options_resp]
-
-        record = {"name": "Contoso", "industrycode": "Tech"}
-        result = self.od._convert_labels_to_ints("account", record)
-
-        batch_call_url = self.od._request.call_args_list[0].args[1]
-        self.assertIn("industrycode", batch_call_url)
-        self.assertNotIn("'name'", batch_call_url)
-        self.assertEqual(result["industrycode"], 6)
-
     def test_convert_multiple_picklists_in_one_record(self):
         """Multiple picklist fields in the same record are all resolved."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-                {"LogicalName": "statuscode", "AttributeType": "Picklist"},
-            ]
-        }
-        industry_resp = MagicMock()
-        industry_resp.text = "{}"
-        industry_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        status_resp = MagicMock()
-        status_resp.text = "{}"
-        status_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Active"}]}}]}
-        }
-        self.od._request.side_effect = [batch_resp, industry_resp, status_resp]
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Tech")]),
+            ("statuscode", [(1, "Active")]),
+        )
+        self.od._request.return_value = resp
 
         record = {"industrycode": "Tech", "statuscode": "Active"}
         result = self.od._convert_labels_to_ints("account", record)
 
         self.assertEqual(result["industrycode"], 6)
         self.assertEqual(result["statuscode"], 1)
-        # 1 batch + 2 optionset fetches
-        self.assertEqual(self.od._request.call_count, 3)
+        # Single bulk fetch call
+        self.assertEqual(self.od._request.call_count, 1)
 
     def test_convert_mixed_picklists_and_non_picklists(self):
-        """2 picklists + 2 non-picklist strings: 1 batch + 2 optionset = 3 calls."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-                {"LogicalName": "description", "AttributeType": "Memo"},
-                {"LogicalName": "statuscode", "AttributeType": "Picklist"},
-            ]
-        }
-        industry_resp = MagicMock()
-        industry_resp.text = "{}"
-        industry_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        status_resp = MagicMock()
-        status_resp.text = "{}"
-        status_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Active"}]}}]}
-        }
-        self.od._request.side_effect = [batch_resp, industry_resp, status_resp]
+        """Picklists resolved, non-picklist strings left unchanged, 1 API call."""
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Tech")]),
+            ("statuscode", [(1, "Active")]),
+        )
+        self.od._request.return_value = resp
 
         record = {
             "name": "Contoso",
@@ -1059,26 +871,18 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertEqual(result["statuscode"], 1)
         self.assertEqual(result["name"], "Contoso")
         self.assertEqual(result["description"], "A company")
-        # 1 batch + 2 optionset fetches (non-picklists don't trigger optionset)
-        self.assertEqual(self.od._request.call_count, 3)
+        self.assertEqual(self.od._request.call_count, 1)
 
     def test_convert_all_non_picklist_makes_one_api_call(self):
-        """All non-picklist string fields: 1 batch call, 0 optionset = 1 total."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "description", "AttributeType": "Memo"},
-                {"LogicalName": "telephone1", "AttributeType": "String"},
-            ]
-        }
-        self.od._request.return_value = batch_resp
+        """All non-picklist string fields: 1 bulk fetch call, labels unchanged."""
+        resp = self._bulk_response()  # no picklists
+        self.od._request.return_value = resp
 
         record = {"name": "Contoso", "description": "A company", "telephone1": "555-0100"}
-        self.od._convert_labels_to_ints("account", record)
+        result = self.od._convert_labels_to_ints("account", record)
 
-        # Only the batch type-check, no optionset fetches
         self.assertEqual(self.od._request.call_count, 1)
+        self.assertEqual(result["name"], "Contoso")
 
     def test_convert_no_string_values_makes_zero_api_calls(self):
         """All non-string values: 0 API calls total."""
@@ -1087,32 +891,8 @@ class TestPicklistLabelResolution(unittest.TestCase):
 
         self.assertEqual(self.od._request.call_count, 0)
 
-    def test_convert_partial_cache_only_batches_uncached(self):
-        """1 cached non-picklist + 1 uncached picklist: 1 batch + 1 optionset = 2 calls."""
-        import time
-
-        # Pre-cache "name" as non-picklist
-        self.od._picklist_label_cache[("account", "name")] = {"map": {}, "ts": time.time()}
-
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        self.od._request.side_effect = [batch_resp, options_resp]
-
-        record = {"name": "Contoso", "industrycode": "Tech"}
-        result = self.od._convert_labels_to_ints("account", record)
-
-        self.assertEqual(result["industrycode"], 6)
-        self.assertEqual(result["name"], "Contoso")
-        # 1 batch (only industrycode) + 1 optionset fetch
-        self.assertEqual(self.od._request.call_count, 2)
-
-    def test_convert_batch_failure_propagates(self):
-        """Server error during batch type-check propagates to caller."""
+    def test_convert_bulk_fetch_failure_propagates(self):
+        """Server error during bulk fetch propagates to caller."""
         from PowerPlatform.Dataverse.core.errors import HttpError
 
         self.od._request.side_effect = HttpError("Server Error", status_code=500)
@@ -1120,30 +900,24 @@ class TestPicklistLabelResolution(unittest.TestCase):
         with self.assertRaises(HttpError):
             self.od._convert_labels_to_ints("account", {"name": "Contoso"})
 
-    def test_convert_single_picklist_makes_two_api_calls(self):
-        """Single picklist field (cold cache): 1 batch + 1 optionset = 2 total."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {"value": [{"LogicalName": "industrycode", "AttributeType": "Picklist"}]}
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]}
-        }
-        self.od._request.side_effect = [batch_resp, options_resp]
+    def test_convert_single_picklist_makes_one_api_call(self):
+        """Single picklist field (cold cache): 1 bulk fetch total."""
+        resp = self._bulk_response(("industrycode", [(6, "Tech")]))
+        self.od._request.return_value = resp
 
         record = {"industrycode": "Tech"}
         result = self.od._convert_labels_to_ints("account", record)
 
         self.assertEqual(result["industrycode"], 6)
-        self.assertEqual(self.od._request.call_count, 2)
+        self.assertEqual(self.od._request.call_count, 1)
 
     def test_convert_integer_values_passed_through(self):
         """Integer values (already resolved) are left unchanged."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": time.time(),
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
         record = {"industrycode": 6, "name": "Contoso"}
@@ -1154,43 +928,232 @@ class TestPicklistLabelResolution(unittest.TestCase):
         """Picklist label matching is case-insensitive."""
         import time
 
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": time.time(),
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
         record = {"industrycode": "TECHNOLOGY"}
         result = self.od._convert_labels_to_ints("account", record)
         self.assertEqual(result["industrycode"], 6)
 
+    def test_convert_second_call_same_table_no_api(self):
+        """Second convert call for same table uses cached bulk fetch, no API call."""
+        resp = self._bulk_response(("industrycode", [(6, "Tech")]))
+        self.od._request.return_value = resp
+
+        self.od._convert_labels_to_ints("account", {"industrycode": "Tech"})
+        self.assertEqual(self.od._request.call_count, 1)
+
+        # Second call -- cache warm
+        self.od._request.reset_mock()
+        result = self.od._convert_labels_to_ints("account", {"industrycode": "Tech"})
+        self.assertEqual(result["industrycode"], 6)
+        self.od._request.assert_not_called()
+
+    def test_convert_different_tables_separate_fetches(self):
+        """Different tables each get their own bulk fetch."""
+        resp1 = self._bulk_response(("industrycode", [(6, "Tech")]))
+        resp2 = self._bulk_response(("new_status", [(100, "Open")]))
+        self.od._request.side_effect = [resp1, resp2]
+
+        r1 = self.od._convert_labels_to_ints("account", {"industrycode": "Tech"})
+        r2 = self.od._convert_labels_to_ints("new_ticket", {"new_status": "Open"})
+
+        self.assertEqual(r1["industrycode"], 6)
+        self.assertEqual(r2["new_status"], 100)
+        self.assertEqual(self.od._request.call_count, 2)
+
+    def test_convert_only_odata_and_non_strings_skips_fetch(self):
+        """Record with only @odata keys and non-string values should skip fetch entirely."""
+        record = {
+            "@odata.type": "Microsoft.Dynamics.CRM.account",
+            "new_CustomerId@odata.bind": "/contacts(guid)",
+            "quantity": 5,
+            "active": True,
+        }
+        result = self.od._convert_labels_to_ints("account", record)
+        self.assertEqual(result, record)
+        self.od._request.assert_not_called()
+
+    def test_convert_partial_picklist_match(self):
+        """Some picklists match, some don't -- matched ones resolved, unmatched left as string."""
+        import time
+
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time(),
+            "picklists": {
+                "industrycode": {"technology": 6, "consulting": 12},
+                "statuscode": {"active": 1, "inactive": 2},
+            },
+        }
+
+        record = {"industrycode": "Technology", "statuscode": "UnknownStatus"}
+        result = self.od._convert_labels_to_ints("account", record)
+
+        self.assertEqual(result["industrycode"], 6)
+        self.assertEqual(result["statuscode"], "UnknownStatus")
+
+    def test_convert_mixed_int_and_label_in_same_record(self):
+        """One picklist already int, another is a label string -- only label resolved."""
+        import time
+
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time(),
+            "picklists": {
+                "industrycode": {"technology": 6},
+                "statuscode": {"active": 1},
+            },
+        }
+
+        record = {"industrycode": 6, "statuscode": "Active"}
+        result = self.od._convert_labels_to_ints("account", record)
+
+        self.assertEqual(result["industrycode"], 6)
+        self.assertEqual(result["statuscode"], 1)
+
+    def test_convert_same_label_different_picklists(self):
+        """Same label text in two different picklist columns resolves to different values."""
+        import time
+
+        self.od._picklist_label_cache["new_ticket"] = {
+            "ts": time.time(),
+            "picklists": {
+                "new_priority": {"high": 3},
+                "new_severity": {"high": 100},
+            },
+        }
+
+        record = {"new_priority": "High", "new_severity": "High"}
+        result = self.od._convert_labels_to_ints("new_ticket", record)
+
+        self.assertEqual(result["new_priority"], 3)
+        self.assertEqual(result["new_severity"], 100)
+
+    def test_convert_picklist_with_empty_options(self):
+        """Picklist attribute with zero defined options: label stays as string."""
+        import time
+
+        self.od._picklist_label_cache["account"] = {
+            "ts": time.time(),
+            "picklists": {
+                "customcode": {},  # picklist exists but has no options
+            },
+        }
+
+        record = {"customcode": "SomeValue"}
+        result = self.od._convert_labels_to_ints("account", record)
+        self.assertEqual(result["customcode"], "SomeValue")
+
+    def test_convert_full_realistic_record(self):
+        """Realistic record: mix of strings, ints, bools, @odata keys, and picklists."""
+        resp = self._bulk_response(
+            ("industrycode", [(6, "Technology"), (12, "Consulting")]),
+            ("statuscode", [(1, "Active"), (2, "Inactive")]),
+        )
+        self.od._request.return_value = resp
+
+        record = {
+            "name": "Contoso Ltd",
+            "industrycode": "Technology",
+            "statuscode": "Active",
+            "revenue": 1000000,
+            "telephone1": "555-0100",
+            "emailaddress1": "info@contoso.com",
+            "new_completed": True,
+            "new_quantity": 42,
+            "description": "A technology company",
+            "@odata.type": "Microsoft.Dynamics.CRM.account",
+            "new_CustomerId@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)",
+        }
+        result = self.od._convert_labels_to_ints("account", record)
+
+        # Picklists resolved
+        self.assertEqual(result["industrycode"], 6)
+        self.assertEqual(result["statuscode"], 1)
+        # Non-picklist strings unchanged
+        self.assertEqual(result["name"], "Contoso Ltd")
+        self.assertEqual(result["telephone1"], "555-0100")
+        self.assertEqual(result["emailaddress1"], "info@contoso.com")
+        self.assertEqual(result["description"], "A technology company")
+        # Non-strings unchanged
+        self.assertEqual(result["revenue"], 1000000)
+        self.assertEqual(result["new_completed"], True)
+        self.assertEqual(result["new_quantity"], 42)
+        # @odata keys unchanged
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.account")
+        self.assertEqual(
+            result["new_CustomerId@odata.bind"],
+            "/contacts(00000000-0000-0000-0000-000000000001)",
+        )
+        self.assertEqual(self.od._request.call_count, 1)
+
+    def test_bulk_fetch_skips_malformed_items(self):
+        """Bulk fetch ignores items that aren't dicts or lack LogicalName."""
+        resp = MagicMock()
+        resp.json.return_value = {
+            "value": [
+                "not-a-dict",
+                {"LogicalName": "", "OptionSet": {"Options": []}},
+                {
+                    "LogicalName": "industrycode",
+                    "OptionSet": {"Options": [{"Value": 6, "Label": {"LocalizedLabels": [{"Label": "Tech"}]}}]},
+                },
+                {"no_logical_name_key": True},
+            ]
+        }
+        self.od._request.return_value = resp
+
+        self.od._bulk_fetch_picklists("account")
+
+        picklists = self.od._picklist_label_cache["account"]["picklists"]
+        self.assertEqual(len(picklists), 1)
+        self.assertEqual(picklists["industrycode"], {"tech": 6})
+
+    def test_bulk_fetch_first_label_wins_for_same_value(self):
+        """When multiple localized labels exist, first label wins via setdefault."""
+        resp = MagicMock()
+        resp.json.return_value = {
+            "value": [
+                {
+                    "LogicalName": "industrycode",
+                    "OptionSet": {
+                        "Options": [
+                            {
+                                "Value": 6,
+                                "Label": {
+                                    "LocalizedLabels": [
+                                        {"Label": "Technology"},
+                                        {"Label": "Technologie"},
+                                    ]
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        self.od._request.return_value = resp
+
+        self.od._bulk_fetch_picklists("account")
+
+        picklists = self.od._picklist_label_cache["account"]["picklists"]
+        # Both labels should be present, mapping to the same value
+        self.assertEqual(picklists["industrycode"]["technology"], 6)
+        self.assertEqual(picklists["industrycode"]["technologie"], 6)
+
     # ---- Integration: through _create ----
 
     def test_create_resolves_picklist_in_payload(self):
         """_create resolves a picklist label to its integer in the POST payload."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "name", "AttributeType": "String"},
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-            ]
-        }
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {
-                "Options": [
-                    {
-                        "Value": 6,
-                        "Label": {"LocalizedLabels": [{"Label": "Technology", "LanguageCode": 1033}]},
-                    }
-                ]
-            }
-        }
+        bulk_resp = self._bulk_response(
+            ("industrycode", [(6, "Technology")]),
+        )
         post_resp = MagicMock()
         post_resp.headers = {
             "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/accounts(00000000-0000-0000-0000-000000000001)"
         }
-        self.od._request.side_effect = [batch_resp, options_resp, post_resp]
+        self.od._request.side_effect = [bulk_resp, post_resp]
 
         result = self.od._create("accounts", "account", {"name": "Contoso", "industrycode": "Technology"})
         self.assertEqual(result, "00000000-0000-0000-0000-000000000001")
@@ -1199,16 +1162,15 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertEqual(payload["industrycode"], 6)
         self.assertEqual(payload["name"], "Contoso")
 
-    def test_create_warm_cache_skips_batch(self):
+    def test_create_warm_cache_skips_fetch(self):
         """_create with warm cache makes only the POST call."""
         import time
 
         now = time.time()
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": now,
+            "picklists": {"industrycode": {"technology": 6}},
         }
-        self.od._picklist_label_cache[("account", "name")] = {"map": {}, "ts": now}
 
         post_resp = MagicMock()
         post_resp.headers = {
@@ -1228,26 +1190,11 @@ class TestPicklistLabelResolution(unittest.TestCase):
         """_update resolves a picklist label to its integer in the PATCH payload."""
         self.od._entity_set_from_schema_name = MagicMock(return_value="new_tickets")
 
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "new_status", "AttributeType": "Picklist"},
-            ]
-        }
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {
-                "Options": [
-                    {
-                        "Value": 100000001,
-                        "Label": {"LocalizedLabels": [{"Label": "In Progress", "LanguageCode": 1033}]},
-                    }
-                ]
-            }
-        }
+        bulk_resp = self._bulk_response(
+            ("new_status", [(100000001, "In Progress")]),
+        )
         patch_resp = MagicMock()
-        self.od._request.side_effect = [batch_resp, options_resp, patch_resp]
+        self.od._request.side_effect = [bulk_resp, patch_resp]
 
         self.od._update(
             "new_ticket",
@@ -1258,14 +1205,14 @@ class TestPicklistLabelResolution(unittest.TestCase):
         payload = patch_calls[0].kwargs["json"]
         self.assertEqual(payload["new_status"], 100000001)
 
-    def test_update_warm_cache_skips_batch(self):
+    def test_update_warm_cache_skips_fetch(self):
         """_update with warm cache makes only the PATCH call."""
         import time
 
         self.od._entity_set_from_schema_name = MagicMock(return_value="new_tickets")
-        self.od._picklist_label_cache[("new_ticket", "new_status")] = {
-            "map": {"in progress": 100000001},
+        self.od._picklist_label_cache["new_ticket"] = {
             "ts": time.time(),
+            "picklists": {"new_status": {"in progress": 100000001}},
         }
 
         self.od._update(
@@ -1282,27 +1229,11 @@ class TestPicklistLabelResolution(unittest.TestCase):
 
     def test_upsert_resolves_picklist_in_payload(self):
         """_upsert resolves a picklist label to its integer in the PATCH payload."""
-        batch_resp = MagicMock()
-        batch_resp.json.return_value = {
-            "value": [
-                {"LogicalName": "industrycode", "AttributeType": "Picklist"},
-                {"LogicalName": "name", "AttributeType": "String"},
-            ]
-        }
-        options_resp = MagicMock()
-        options_resp.text = "{}"
-        options_resp.json.return_value = {
-            "OptionSet": {
-                "Options": [
-                    {
-                        "Value": 6,
-                        "Label": {"LocalizedLabels": [{"Label": "Technology", "LanguageCode": 1033}]},
-                    }
-                ]
-            }
-        }
+        bulk_resp = self._bulk_response(
+            ("industrycode", [(6, "Technology")]),
+        )
         patch_resp = MagicMock()
-        self.od._request.side_effect = [batch_resp, options_resp, patch_resp]
+        self.od._request.side_effect = [bulk_resp, patch_resp]
 
         self.od._upsert(
             "accounts",
@@ -1315,15 +1246,14 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.assertEqual(payload["industrycode"], 6)
         self.assertEqual(payload["name"], "Contoso")
 
-    def test_upsert_warm_cache_skips_batch(self):
+    def test_upsert_warm_cache_skips_fetch(self):
         """_upsert with warm cache makes only the PATCH call."""
         import time
 
         now = time.time()
-        self.od._picklist_label_cache[("account", "name")] = {"map": {}, "ts": now}
-        self.od._picklist_label_cache[("account", "industrycode")] = {
-            "map": {"technology": 6},
+        self.od._picklist_label_cache["account"] = {
             "ts": now,
+            "picklists": {"industrycode": {"technology": 6}},
         }
 
         self.od._upsert(
