@@ -530,5 +530,39 @@ class TestUpsert(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestAttributePayload(unittest.TestCase):
+    """Unit tests for _ODataClient._attribute_payload."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+
+    def test_memo_type(self):
+        """'memo' should produce MemoAttributeMetadata with MaxLength 4000."""
+        result = self.od._attribute_payload("new_Notes", "memo")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(result["SchemaName"], "new_Notes")
+        self.assertEqual(result["MaxLength"], 4000)
+        self.assertEqual(result["FormatName"], {"Value": "Text"})
+        self.assertNotIn("IsPrimaryName", result)
+
+    def test_multiline_alias(self):
+        """'multiline' should produce identical payload to 'memo'."""
+        memo_result = self.od._attribute_payload("new_Description", "memo")
+        multiline_result = self.od._attribute_payload("new_Description", "multiline")
+        self.assertEqual(multiline_result, memo_result)
+
+    def test_string_type(self):
+        """'string' should produce StringAttributeMetadata with MaxLength 200."""
+        result = self.od._attribute_payload("new_Title", "string")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.StringAttributeMetadata")
+        self.assertEqual(result["MaxLength"], 200)
+        self.assertEqual(result["FormatName"], {"Value": "Text"})
+
+    def test_unsupported_type_returns_none(self):
+        """An unknown type string should return None."""
+        result = self.od._attribute_payload("new_Col", "unknown_type")
+        self.assertIsNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()

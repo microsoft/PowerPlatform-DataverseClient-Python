@@ -402,6 +402,7 @@ for page in client.records.get(
 # Create a custom table, including the customization prefix value in the schema names for the table and columns.
 table_info = client.tables.create("new_Product", {
     "new_Code": "string",
+    "new_Description": "memo",
     "new_Price": "decimal",
     "new_Active": "bool"
 })
@@ -587,7 +588,7 @@ For optimal performance in production environments:
 ### Limitations
 
 - SQL queries are **read-only** and support a limited subset of SQL syntax
-- Create Table supports a limited number of column types (string, int, decimal, bool, datetime, picklist)
+- Create Table supports the following column types: string, memo, int, decimal, float, bool, datetime, file, and picklist (Enum subclass)
 - File uploads are limited by Dataverse file size restrictions (default 128MB per file)
 
 ## Contributing
