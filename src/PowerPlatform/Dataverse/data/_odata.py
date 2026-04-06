@@ -1380,7 +1380,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
-                "MaxLength": 1048576,
+                "MaxLength": 4000,
                 "FormatName": {"Value": "Text"},
                 "ImeMode": "Auto",
             }

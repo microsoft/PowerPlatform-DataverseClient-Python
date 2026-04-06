@@ -537,11 +537,11 @@ class TestAttributePayload(unittest.TestCase):
         self.od = _make_odata_client()
 
     def test_memo_type(self):
-        """'memo' should produce MemoAttributeMetadata with MaxLength 1048576."""
+        """'memo' should produce MemoAttributeMetadata with MaxLength 4000."""
         result = self.od._attribute_payload("new_Notes", "memo")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
         self.assertEqual(result["SchemaName"], "new_Notes")
-        self.assertEqual(result["MaxLength"], 1048576)
+        self.assertEqual(result["MaxLength"], 4000)
         self.assertEqual(result["FormatName"], {"Value": "Text"})
         self.assertNotIn("IsPrimaryName", result)
 

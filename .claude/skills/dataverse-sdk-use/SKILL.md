@@ -249,7 +249,7 @@ table_info = client.tables.create(
 #### Supported Column Types
 Types on the same line map to the same exact format under the hood
 - `"string"` or `"text"` - Single line of text
-- `"memo"` or `"multiline"` - Multiple lines of text (up to 1,048,576 characters)
+- `"memo"` or `"multiline"` - Multiple lines of text (4000 character default, up to 1,048,576)
 - `"int"` or `"integer"` - Whole number
 - `"decimal"` or `"money"` - Decimal number
 - `"float"` or `"double"` - Floating point number
