@@ -22,12 +22,12 @@ def _make_odata_client() -> _ODataClient:
 
 def _mock_response(json_data=None, text="", status_code=200, headers=None):
     """Create a mock HTTP response."""
-    r = MagicMock()
-    r.status_code = status_code
-    r.text = text or (str(json_data) if json_data else "")
-    r.json.return_value = json_data or {}
-    r.headers = headers or {}
-    return r
+    response = MagicMock()
+    response.status_code = status_code
+    response.text = text or (str(json_data) if json_data else "")
+    response.json.return_value = json_data or {}
+    response.headers = headers or {}
+    return response
 
 
 def _entity_def_response(entity_set_name="accounts", primary_id="accountid", metadata_id="meta-001"):
@@ -1931,6 +1931,7 @@ class TestFlushCache(unittest.TestCase):
         """_flush_cache raises ValidationError for None kind."""
         with self.assertRaises(ValidationError):
             self.od._flush_cache(None)
+
 
 
 class TestPicklistLabelResolution(unittest.TestCase):
