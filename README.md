@@ -29,6 +29,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Table management](#table-management)
   - [Relationship management](#relationship-management)
   - [File operations](#file-operations)
+  - [Batch operations](#batch-operations)
 - [Next steps](#next-steps)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -43,6 +44,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **🔗 Relationship Management**: Create one-to-many and many-to-many relationships between tables with full metadata control
 - **🐼 DataFrame Support**: Pandas wrappers for all CRUD operations, returning DataFrames and Series
 - **📎 File Operations**: Upload files to Dataverse file columns with automatic chunking for large files
+- **📦 Batch Operations**: Send multiple CRUD, table metadata, and SQL query operations in a single HTTP request with optional transactional changesets
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
 
@@ -115,9 +117,9 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 | Concept | Description |
 |---------|-------------|
-| **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, and `files` namespaces |
+| **DataverseClient** | Main entry point; provides `records`, `query`, `tables`, `files`, and `batch` namespaces |
 | **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
-| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), and `client.files` (file uploads) |
+| **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (QueryBuilder & SQL), `client.tables` (metadata), `client.files` (file uploads), and `client.batch` (batch requests) |
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
@@ -513,6 +515,90 @@ client.files.upload(
 )
 ```
 
+### Batch operations
+
+Use `client.batch` to send multiple operations in one HTTP request. The batch namespace mirrors `client.records`, `client.tables`, and `client.query`.
+
+```python
+# Build a batch request and add operations
+batch = client.batch.new()
+batch.records.create("account", {"name": "Contoso"})
+batch.records.create("account", [{"name": "Fabrikam"}, {"name": "Woodgrove"}])
+batch.records.update("account", account_id, {"telephone1": "555-0100"})
+batch.records.delete("account", old_id)
+batch.records.get("account", account_id, select=["name"])
+
+result = batch.execute()
+for item in result.responses:
+    if item.is_success:
+        print(f"[OK] {item.status_code} entity_id={item.entity_id}")
+    else:
+        print(f"[ERR] {item.status_code}: {item.error_message}")
+```
+
+**Transactional changeset** — all operations in a changeset succeed or roll back together:
+
+```python
+batch = client.batch.new()
+with batch.changeset() as cs:
+    lead_ref = cs.records.create("lead", {"firstname": "Ada"})
+    contact_ref = cs.records.create("contact", {"firstname": "Ada"})
+    cs.records.create("account", {
+        "name": "Babbage & Co.",
+        "originatingleadid@odata.bind": lead_ref,
+        "primarycontactid@odata.bind": contact_ref,
+    })
+result = batch.execute()
+print(f"Created {len(result.entity_ids)} records atomically")
+```
+
+**Table metadata and SQL queries in a batch:**
+
+```python
+batch = client.batch.new()
+batch.tables.create("new_Product", {"new_Price": "decimal", "new_InStock": "bool"})
+batch.tables.add_columns("new_Product", {"new_Rating": "int"})
+batch.tables.get("new_Product")
+batch.query.sql("SELECT TOP 5 name FROM account")
+
+result = batch.execute()
+```
+
+**Continue on error** — attempt all operations even when one fails:
+
+```python
+result = batch.execute(continue_on_error=True)
+print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+for item in result.failed:
+    print(f"[ERR] {item.status_code}: {item.error_message}")
+```
+
+**DataFrame integration** -- feed pandas DataFrames directly into a batch:
+
+```python
+import pandas as pd
+
+batch = client.batch.new()
+
+# Create records from a DataFrame
+df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+batch.dataframe.create("account", df)
+
+# Update records from a DataFrame
+updates = pd.DataFrame([
+    {"accountid": id1, "telephone1": "555-0100"},
+    {"accountid": id2, "telephone1": "555-0200"},
+])
+batch.dataframe.update("account", updates, id_column="accountid")
+
+# Delete records from a Series
+batch.dataframe.delete("account", pd.Series([id1, id2]))
+
+result = batch.execute()
+```
+
+For a complete example see [examples/advanced/batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py).
+
 ## Next steps
 
 ### More sample code
@@ -527,6 +613,7 @@ Explore our comprehensive examples in the [`examples/`](https://github.com/micro
 - **[Complete Walkthrough](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/walkthrough.py)** - Full feature demonstration with production patterns
 - **[Relationship Management](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py)** - Create and manage table relationships
 - **[File Upload](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/file_upload.py)** - Upload files to Dataverse file columns
+- **[Batch Operations](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py)** - Send multiple operations in a single request with changesets
 
 📖 See the [examples README](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for detailed guidance and learning progression.
 
