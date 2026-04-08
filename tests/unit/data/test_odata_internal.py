@@ -1933,7 +1933,6 @@ class TestFlushCache(unittest.TestCase):
             self.od._flush_cache(None)
 
 
-
 class TestPicklistLabelResolution(unittest.TestCase):
     """Tests for picklist label-to-integer resolution.
 
