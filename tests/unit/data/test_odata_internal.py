@@ -647,7 +647,7 @@ class TestCreateMultiple(unittest.TestCase):
             [{"@odata.type": "Microsoft.Dynamics.CRM.account", "name": "Test"}],
         )
         post_calls = [c for c in self.od._request.call_args_list if c.args[0] == "post"]
-        target = post_calls[0].kwargs["json"]["Targets"][0]
+        target = json.loads(post_calls[0].kwargs["data"])["Targets"][0]
         self.assertEqual(target["@odata.type"], "Microsoft.Dynamics.CRM.account")
 
     def test_body_not_dict_returns_empty_list(self):
@@ -704,6 +704,7 @@ class TestPrimaryIdAttr(unittest.TestCase):
 
     def test_cache_miss_resolves_via_entity_set_lookup(self):
         """Cache miss triggers entity set lookup and populates primary ID cache."""
+
         def mock_entity_set(table_schema_name):
             cache_key = table_schema_name.lower()
             self.od._logical_to_entityset_cache[cache_key] = "accounts"
@@ -716,6 +717,7 @@ class TestPrimaryIdAttr(unittest.TestCase):
 
     def test_cache_miss_no_primary_id_raises_runtime_error(self):
         """Cache miss with no PrimaryIdAttribute in metadata raises RuntimeError."""
+
         def mock_entity_set_no_pid(table_schema_name):
             cache_key = table_schema_name.lower()
             self.od._logical_to_entityset_cache[cache_key] = "accounts"
@@ -820,11 +822,9 @@ class TestUpdateMultiple(unittest.TestCase):
     def test_odata_type_already_present_not_overridden(self):
         """If all records have @odata.type, it is preserved."""
         self.od._request.return_value = _mock_response()
-        records = [
-            {"@odata.type": "Microsoft.Dynamics.CRM.CustomType", "accountid": "id-1", "name": "A"}
-        ]
+        records = [{"@odata.type": "Microsoft.Dynamics.CRM.CustomType", "accountid": "id-1", "name": "A"}]
         self.od._update_multiple("accounts", "account", records)
-        payload = self.od._request.call_args.kwargs["json"]
+        payload = json.loads(self.od._request.call_args.kwargs["data"])
         self.assertEqual(payload["Targets"][0]["@odata.type"], "Microsoft.Dynamics.CRM.CustomType")
 
     def test_posts_to_update_multiple_endpoint(self):
@@ -839,7 +839,7 @@ class TestUpdateMultiple(unittest.TestCase):
         """_update_multiple sends {"Targets": [...]} with @odata.type injected per record."""
         self.od._request.return_value = _mock_response()
         self.od._update_multiple("accounts", "account", [{"accountid": "id-1", "name": "X"}])
-        payload = self.od._request.call_args.kwargs["json"]
+        payload = json.loads(self.od._request.call_args.kwargs["data"])
         self.assertIn("Targets", payload)
         self.assertEqual(len(payload["Targets"]), 1)
         self.assertIn("@odata.type", payload["Targets"][0])
@@ -866,15 +866,13 @@ class TestDelete(unittest.TestCase):
 
     def test_posts_bulk_delete_payload(self):
         """_delete_multiple issues POST to BulkDelete with correct payload."""
-        self.od._request.return_value = _mock_response(
-            json_data={"JobId": "job-001"}, text='{"JobId": "job-001"}'
-        )
+        self.od._request.return_value = _mock_response(json_data={"JobId": "job-001"}, text='{"JobId": "job-001"}')
         result = self.od._delete_multiple("account", ["id-1", "id-2"])
         self.assertEqual(result, "job-001")
         call_args = self.od._request.call_args
         self.assertEqual(call_args.args[0], "post")
         self.assertIn("BulkDelete", call_args.args[1])
-        payload = call_args.kwargs["json"]
+        payload = json.loads(call_args.kwargs["data"])
         self.assertIn("QuerySet", payload)
         self.assertIn("JobName", payload)
         query = payload["QuerySet"][0]
@@ -1149,6 +1147,7 @@ class TestCreateEntity(unittest.TestCase):
 
     def _setup_entity_creation(self, get_response=None):
         """Mock _request: POST returns 201, GET returns entity definition."""
+
         def side_effect(method, url, **kwargs):
             if method == "post":
                 return _mock_response(status_code=201)
@@ -1324,6 +1323,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_empty_enum_raises_value_error(self):
         """_enum_optionset_payload raises ValueError for enum with no members."""
+
         class EmptyEnum(Enum):
             pass
 
@@ -1333,6 +1333,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_int_key_in_labels_resolved_to_member_name(self):
         """__labels__ with int keys (matching enum values) are resolved to member names."""
+
         class Status(Enum):
             Active = 1
             Inactive = 2
@@ -1343,6 +1344,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_enum_member_object_as_labels_key(self):
         """__labels__ with enum member objects as keys resolves member name."""
+
         class Status(Enum):
             Active = 1
             Inactive = 2
@@ -1359,6 +1361,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_int_key_not_matching_any_member_raises_value_error(self):
         """__labels__ with int key not matching any member raises ValueError."""
+
         class Status(Enum):
             Active = 1
 
@@ -1369,6 +1372,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_duplicate_enum_values_raises_value_error(self):
         """_enum_optionset_payload raises ValueError when two members share the same int value."""
+
         # Python treats second definition as an alias; __members__ exposes both names
         class Status(Enum):
             Active = 1
@@ -1380,6 +1384,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
 
     def test_non_int_enum_value_raises_value_error(self):
         """_enum_optionset_payload raises ValueError for enum member with a non-int value."""
+
         class Status(Enum):
             Active = "active"
 
@@ -1552,7 +1557,10 @@ class TestOptionSetMap(unittest.TestCase):
             json_data={
                 "OptionSet": {
                     "Options": [
-                        {"Value": "not-an-int", "Label": {"LocalizedLabels": [{"Label": "Active", "LanguageCode": 1033}]}},
+                        {
+                            "Value": "not-an-int",
+                            "Label": {"LocalizedLabels": [{"Label": "Active", "LanguageCode": 1033}]},
+                        },
                         {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Inactive", "LanguageCode": 1033}]}},
                     ]
                 }
@@ -1623,53 +1631,66 @@ class TestAttributePayloadDtypes(unittest.TestCase):
         self.od = _make_odata_client()
 
     def test_int_dtype(self):
+        """'int' produces IntegerAttributeMetadata."""
         result = self.od._attribute_payload("new_Count", "int")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
 
     def test_integer_dtype_alias(self):
+        """'integer' is an alias for 'int'."""
         result = self.od._attribute_payload("new_Count", "integer")
         self.assertIn("Integer", result["@odata.type"])
 
     def test_decimal_dtype(self):
+        """'decimal' produces DecimalAttributeMetadata."""
         result = self.od._attribute_payload("new_Price", "decimal")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DecimalAttributeMetadata")
 
     def test_money_dtype_alias(self):
+        """'money' is an alias for 'decimal'."""
         result = self.od._attribute_payload("new_Revenue", "money")
         self.assertIn("Decimal", result["@odata.type"])
 
     def test_float_dtype(self):
+        """'float' produces DoubleAttributeMetadata."""
         result = self.od._attribute_payload("new_Score", "float")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DoubleAttributeMetadata")
 
     def test_double_dtype_alias(self):
+        """'double' is an alias for 'float'."""
         result = self.od._attribute_payload("new_Score", "double")
         self.assertIn("Double", result["@odata.type"])
 
     def test_datetime_dtype(self):
+        """'datetime' produces DateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata")
 
     def test_date_dtype_alias(self):
+        """'date' is an alias for 'datetime'."""
         result = self.od._attribute_payload("new_BirthDate", "date")
         self.assertIn("DateTime", result["@odata.type"])
 
     def test_bool_dtype(self):
+        """'bool' produces BooleanAttributeMetadata."""
         result = self.od._attribute_payload("new_IsActive", "bool")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.BooleanAttributeMetadata")
 
     def test_boolean_dtype_alias(self):
+        """'boolean' is an alias for 'bool'."""
         result = self.od._attribute_payload("new_IsActive", "boolean")
         self.assertIn("Boolean", result["@odata.type"])
 
     def test_file_dtype(self):
+        """'file' produces FileAttributeMetadata."""
         result = self.od._attribute_payload("new_Attachment", "file")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.FileAttributeMetadata")
 
     def test_unsupported_dtype_returns_none(self):
+        """Unrecognized dtype string returns None."""
         self.assertIsNone(self.od._attribute_payload("new_Unknown", "unsupported_type"))
 
     def test_non_string_dtype_raises_value_error(self):
+        """Non-string dtype raises ValueError."""
         with self.assertRaises(ValueError):
             self.od._attribute_payload("new_Field", 42)  # type: ignore[arg-type]
 
@@ -1916,9 +1937,11 @@ class TestCreateColumns(unittest.TestCase):
         with self.assertRaises(MetadataError):
             self.od._create_columns("new_NonExistent", {"new_Col": "string"})
 
-    def test_unsupported_column_type_raises_value_error(self):
-        """_create_columns raises ValueError for unsupported column type."""
-        with self.assertRaises(ValueError):
+    def test_unsupported_column_type_raises_validation_error(self):
+        """Raises ValidationError for unsupported column type."""
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
             self.od._create_columns("new_Test", {"new_Col": "unsupported"})
 
     def test_picklist_column_flushes_cache(self):
@@ -1995,7 +2018,11 @@ class TestDeleteColumns(unittest.TestCase):
     def test_picklist_column_deletion_flushes_cache(self):
         """_delete_columns flushes picklist cache when a picklist column is deleted."""
         self.od._get_attribute_metadata = MagicMock(
-            return_value={"MetadataId": "attr-001", "LogicalName": "new_status", "@odata.type": "PicklistAttributeMetadata"}
+            return_value={
+                "MetadataId": "attr-001",
+                "LogicalName": "new_status",
+                "@odata.type": "PicklistAttributeMetadata",
+            }
         )
         self.od._flush_cache = MagicMock(return_value=0)
         self.od._delete_columns("new_Test", "new_Status")
