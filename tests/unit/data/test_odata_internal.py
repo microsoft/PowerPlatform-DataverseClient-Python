@@ -670,6 +670,21 @@ class TestPicklistLabelResolution(unittest.TestCase):
         self.od._bulk_fetch_picklists("account")
         self.assertEqual(self.od._request.call_count, 1)
 
+    def test_bulk_fetch_stress_large_workload(self):
+        """Bulk fetch correctly parses a response with a large number of picklist attributes."""
+        num_picklists = 5000
+        picklists = [(f"new_pick{i}", [(100000000 + j, f"Option {j}") for j in range(4)]) for i in range(num_picklists)]
+        resp = self._bulk_response(*picklists)
+        self.od._request.return_value = resp
+
+        self.od._bulk_fetch_picklists("account")
+
+        self.assertEqual(self.od._request.call_count, 1)
+        cached = self.od._picklist_label_cache["account"]["picklists"]
+        self.assertEqual(len(cached), num_picklists)
+        self.assertEqual(cached["new_pick0"]["option 0"], 100000000)
+        self.assertEqual(cached[f"new_pick{num_picklists - 1}"]["option 3"], 100000003)
+
     # ---- _request_metadata_with_retry ----
 
     def test_retry_succeeds_on_first_try(self):

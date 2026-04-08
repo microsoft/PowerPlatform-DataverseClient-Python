@@ -1229,7 +1229,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                         continue
                     raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
                 raise
-        raise RuntimeError(f"Metadata request failed: {url}")
 
     def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
         """Fetch all picklist attributes and their options for a table in one API call.
@@ -1237,6 +1236,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         Uses collection-level PicklistAttributeMetadata cast to retrieve every picklist
         attribute on the table, including its OptionSet options. Populates the nested
         cache so that ``_convert_labels_to_ints`` resolves labels without further API calls.
+        The Dataverse metadata API does not page results.
         """
         table_key = self._normalize_cache_key(table_schema_name)
         now = time.time()
