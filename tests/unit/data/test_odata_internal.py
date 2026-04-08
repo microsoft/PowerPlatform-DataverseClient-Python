@@ -1,9 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import json
 import unittest
 from unittest.mock import MagicMock
 
+from PowerPlatform.Dataverse.core.errors import ValidationError
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -179,9 +181,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables()
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$filter"], "IsPrivate eq false")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$filter=IsPrivate eq false", url)
 
     def test_filter_combined_with_default(self):
         """_list_tables(filter=...) combines user filter with IsPrivate eq false."""
@@ -189,12 +190,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(filter="SchemaName eq 'Account'")
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(
-            params["$filter"],
-            "IsPrivate eq false and (SchemaName eq 'Account')",
-        )
+        url = self.od._request.call_args[0][1]
+        self.assertIn("IsPrivate eq false and (SchemaName eq 'Account')", url)
 
     def test_filter_none_same_as_no_filter(self):
         """_list_tables(filter=None) is equivalent to _list_tables()."""
@@ -202,9 +199,9 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(filter=None)
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$filter"], "IsPrivate eq false")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$filter=IsPrivate eq false", url)
+        self.assertNotIn("and", url)
 
     def test_returns_value_list(self):
         """_list_tables returns the 'value' array from the response."""
@@ -222,9 +219,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["LogicalName", "SchemaName", "DisplayName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "LogicalName,SchemaName,DisplayName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=LogicalName,SchemaName,DisplayName", url)
 
     def test_select_none_omits_query_param(self):
         """_list_tables(select=None) does not add $select to params."""
@@ -232,9 +228,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=None)
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertNotIn("$select", params)
+        url = self.od._request.call_args[0][1]
+        self.assertNotIn("$select", url)
 
     def test_select_empty_list_omits_query_param(self):
         """_list_tables(select=[]) does not add $select (empty list is falsy)."""
@@ -242,9 +237,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=[])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertNotIn("$select", params)
+        url = self.od._request.call_args[0][1]
+        self.assertNotIn("$select", url)
 
     def test_select_preserves_case(self):
         """_list_tables does not lowercase select values (PascalCase preserved)."""
@@ -252,9 +246,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["EntitySetName", "LogicalName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "EntitySetName,LogicalName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=EntitySetName,LogicalName", url)
 
     def test_select_with_filter(self):
         """_list_tables with both select and filter sends both params."""
@@ -265,13 +258,9 @@ class TestListTables(unittest.TestCase):
         )
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(
-            params["$filter"],
-            "IsPrivate eq false and (SchemaName eq 'Account')",
-        )
-        self.assertEqual(params["$select"], "LogicalName,SchemaName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("IsPrivate eq false and (SchemaName eq 'Account')", url)
+        self.assertIn("$select=LogicalName,SchemaName", url)
 
     def test_select_single_property(self):
         """_list_tables(select=[...]) with a single property works correctly."""
@@ -279,9 +268,8 @@ class TestListTables(unittest.TestCase):
         self.od._list_tables(select=["LogicalName"])
 
         self.od._request.assert_called_once()
-        call_kwargs = self.od._request.call_args
-        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
-        self.assertEqual(params["$select"], "LogicalName")
+        url = self.od._request.call_args[0][1]
+        self.assertIn("$select=LogicalName", url)
 
     def test_select_bare_string_raises_type_error(self):
         """_list_tables(select='LogicalName') raises TypeError for bare str."""
@@ -313,7 +301,7 @@ class TestCreate(unittest.TestCase):
         """Regular record field names are lowercased before sending."""
         self.od._create("accounts", "account", {"Name": "Contoso", "AccountNumber": "ACC-001"})
         call = self._post_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertIn("accountnumber", payload)
         self.assertNotIn("Name", payload)
@@ -331,7 +319,7 @@ class TestCreate(unittest.TestCase):
             },
         )
         call = self._post_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_name", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertIn("new_AgentId@odata.bind", payload)
@@ -397,7 +385,7 @@ class TestUpdate(unittest.TestCase):
         """Regular field names are lowercased in _update."""
         self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"New_Status": 100000001})
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_status", payload)
         self.assertNotIn("New_Status", payload)
 
@@ -412,7 +400,7 @@ class TestUpdate(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("new_status", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertNotIn("new_customerid@odata.bind", payload)
@@ -481,7 +469,7 @@ class TestUpsert(unittest.TestCase):
         """Record field names are lowercased before sending."""
         self.od._upsert("accounts", "account", {"accountnumber": "ACC-001"}, {"Name": "Contoso"})
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertNotIn("Name", payload)
 
@@ -497,7 +485,7 @@ class TestUpsert(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
         # Regular field is lowercased
         self.assertIn("name", payload)
         # @odata.bind key preserves original casing
@@ -562,6 +550,86 @@ class TestAttributePayload(unittest.TestCase):
         """An unknown type string should return None."""
         result = self.od._attribute_payload("new_Col", "unknown_type")
         self.assertIsNone(result)
+
+
+class TestBuildUpsertMultiple(unittest.TestCase):
+    """Unit tests for _ODataClient._build_upsert_multiple (batch deferred build)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+
+    def _targets(self, alt_keys, records):
+        import json
+
+        req = self.od._build_upsert_multiple("accounts", "account", alt_keys, records)
+        return json.loads(req.body)["Targets"]
+
+    def test_payload_excludes_alternate_key_fields(self):
+        """Alternate key fields must NOT appear in the request body (only in @odata.id)."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"name": "Contoso"}],
+        )
+        self.assertEqual(len(targets), 1)
+        target = targets[0]
+        self.assertNotIn("accountnumber", target)
+        self.assertIn("name", target)
+        self.assertIn("@odata.id", target)
+        self.assertIn("accountnumber", target["@odata.id"])
+
+    def test_payload_allows_matching_key_field_in_record(self):
+        """If user passes matching key field in record with same value, it passes through to body."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"accountnumber": "ACC-001", "name": "Contoso"}],
+        )
+        target = targets[0]
+        self.assertIn("name", target)
+        self.assertIn("@odata.id", target)
+        self.assertIn("accountnumber", target["@odata.id"])
+
+    def test_odata_type_added_when_absent(self):
+        """@odata.type is injected when not provided by caller."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}],
+            [{"name": "Contoso"}],
+        )
+        self.assertIn("@odata.type", targets[0])
+        self.assertEqual(targets[0]["@odata.type"], "Microsoft.Dynamics.CRM.account")
+
+    def test_multiple_targets_all_have_odata_id(self):
+        """Each target in a multi-item call gets its own @odata.id."""
+        targets = self._targets(
+            [{"accountnumber": "ACC-001"}, {"accountnumber": "ACC-002"}],
+            [{"name": "Contoso"}, {"name": "Fabrikam"}],
+        )
+        self.assertEqual(len(targets), 2)
+        self.assertIn("ACC-001", targets[0]["@odata.id"])
+        self.assertIn("ACC-002", targets[1]["@odata.id"])
+
+    def test_conflicting_key_field_raises(self):
+        """Raises when a record field contradicts its alternate key value."""
+        with self.assertRaises(ValidationError) as ctx:
+            self.od._build_upsert_multiple(
+                "accounts",
+                "account",
+                [{"accountnumber": "ACC-001"}],
+                [{"accountnumber": "ACC-WRONG", "name": "Contoso"}],
+            )
+        self.assertIn("accountnumber", str(ctx.exception))
+
+    def test_mismatched_lengths_raises(self):
+        """Raises when alternate_keys and records lengths differ."""
+        with self.assertRaises(ValidationError):
+            self.od._build_upsert_multiple("accounts", "account", [{"accountnumber": "ACC-001"}], [])
+
+    def test_url_contains_upsert_multiple_action(self):
+        """POST URL targets the UpsertMultiple bound action."""
+        req = self.od._build_upsert_multiple(
+            "accounts", "account", [{"accountnumber": "ACC-001"}], [{"name": "Contoso"}]
+        )
+        self.assertIn("UpsertMultiple", req.url)
+        self.assertEqual(req.method, "POST")
 
 
 if __name__ == "__main__":
