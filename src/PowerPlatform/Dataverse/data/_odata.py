@@ -171,8 +171,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
-        # Picklist label cache: (normalized_table_schema_name, normalized_attribute) -> {'map': {...}, 'ts': epoch_seconds}
-        self._picklist_label_cache = {}
+        self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
 
     @contextmanager
@@ -1134,141 +1133,118 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
-    def _optionset_map(self, table_schema_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
-        """Build or return cached mapping of normalized label -> value for a picklist attribute.
-
-        Returns empty dict if attribute is not a picklist or has no options. Returns None only
-        for invalid inputs or unexpected metadata parse failures.
-
-        Notes
-        -----
-        - This method calls the Web API twice per attribute so it could have perf impact when there are lots of columns on the entity.
-        """
-        if not table_schema_name or not attr_logical:
-            return None
-        # Normalize cache key for case-insensitive lookups
-        cache_key = (self._normalize_cache_key(table_schema_name), self._normalize_cache_key(attr_logical))
-        now = time.time()
-        entry = self._picklist_label_cache.get(cache_key)
-        if isinstance(entry, dict) and "map" in entry and (now - entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
-            return entry["map"]
-
-        # LogicalNames in Dataverse are stored in lowercase, so we need to lowercase for filters
-        attr_esc = self._escape_odata_quotes(attr_logical.lower())
-        table_schema_name_esc = self._escape_odata_quotes(table_schema_name.lower())
-
-        # Step 1: lightweight fetch (no expand) to determine attribute type
-        url_type = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes"
-            f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
-        )
-        # Retry on 404 (metadata not yet published) before surfacing the error.
-        r_type = None
+    def _request_metadata_with_retry(self, method: str, url: str, **kwargs):
+        """Fetch metadata with retries on transient errors."""
         max_attempts = 5
         backoff_seconds = 0.4
         for attempt in range(1, max_attempts + 1):
             try:
-                r_type = self._request("get", url_type)
-                break
+                return self._request(method, url, **kwargs)
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
                     if attempt < max_attempts:
-                        # Exponential backoff: 0.4s, 0.8s, 1.6s, 3.2s
                         time.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
-                    raise RuntimeError(
-                        f"Picklist attribute metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
+                    raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
                 raise
-        if r_type is None:
-            raise RuntimeError("Failed to retrieve attribute metadata due to repeated request failures.")
 
-        body_type = r_type.json()
-        items = body_type.get("value", []) if isinstance(body_type, dict) else []
-        if not items:
-            return None
-        attr_md = items[0]
-        if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
-            self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
-            return {}
+    def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
+        """Fetch all picklist attributes and their options for a table in one API call.
 
-        # Step 2: fetch with expand only now that we know it's a picklist
-        # Need to cast to the derived PicklistAttributeMetadata type; OptionSet is not a nav on base AttributeMetadata.
-        cast_url = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes(LogicalName='{attr_esc}')/"
-            "Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)"
+        Uses collection-level PicklistAttributeMetadata cast to retrieve every picklist
+        attribute on the table, including its OptionSet options. Populates the nested
+        cache so that ``_convert_labels_to_ints`` resolves labels without further API calls.
+        The Dataverse metadata API does not page results.
+        """
+        table_key = self._normalize_cache_key(table_schema_name)
+        now = time.time()
+        table_entry = self._picklist_label_cache.get(table_key)
+        if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
+            return
+
+        table_esc = self._escape_odata_quotes(table_schema_name.lower())
+        url = (
+            f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
+            f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+            f"?$select=LogicalName&$expand=OptionSet($select=Options)"
         )
-        # Step 2 fetch with retries: expanded OptionSet (cast form first)
-        r_opts = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                r_opts = self._request("get", cast_url)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < max_attempts:
-                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
-                        continue
-                    raise RuntimeError(
-                        f"Picklist OptionSet metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_opts is None:
-            raise RuntimeError("Failed to retrieve picklist OptionSet metadata due to repeated request failures.")
+        response = self._request_metadata_with_retry("get", url)
+        body = response.json()
+        items = body.get("value", []) if isinstance(body, dict) else []
 
-        attr_full = {}
-        try:
-            attr_full = r_opts.json() if r_opts.text else {}
-        except ValueError:
-            return None
-        option_set = attr_full.get("OptionSet") or {}
-        options = option_set.get("Options") if isinstance(option_set, dict) else None
-        if not isinstance(options, list):
-            return None
-        mapping: Dict[str, int] = {}
-        for opt in options:
-            if not isinstance(opt, dict):
+        picklists: Dict[str, Dict[str, int]] = {}
+        for item in items:
+            if not isinstance(item, dict):
                 continue
-            val = opt.get("Value")
-            if not isinstance(val, int):
+            ln = item.get("LogicalName", "").lower()
+            if not ln:
                 continue
-            label_def = opt.get("Label") or {}
-            locs = label_def.get("LocalizedLabels")
-            if isinstance(locs, list):
-                for loc in locs:
-                    if isinstance(loc, dict):
-                        lab = loc.get("Label")
-                        if isinstance(lab, str) and lab.strip():
-                            normalized = self._normalize_picklist_label(lab)
-                            mapping.setdefault(normalized, val)
-        if mapping:
-            self._picklist_label_cache[cache_key] = {"map": mapping, "ts": now}
-            return mapping
-        # No options available
-        self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
-        return {}
+            option_set = item.get("OptionSet") or {}
+            options = option_set.get("Options") if isinstance(option_set, dict) else None
+            mapping: Dict[str, int] = {}
+            if isinstance(options, list):
+                for opt in options:
+                    if not isinstance(opt, dict):
+                        continue
+                    val = opt.get("Value")
+                    if not isinstance(val, int):
+                        continue
+                    label_def = opt.get("Label") or {}
+                    locs = label_def.get("LocalizedLabels")
+                    if isinstance(locs, list):
+                        for loc in locs:
+                            if isinstance(loc, dict):
+                                lab = loc.get("Label")
+                                if isinstance(lab, str) and lab.strip():
+                                    normalized = self._normalize_picklist_label(lab)
+                                    mapping.setdefault(normalized, val)
+            picklists[ln] = mapping
+
+        self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
 
     def _convert_labels_to_ints(self, table_schema_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
         If attribute isn't a picklist or label not found, value left unchanged.
+
+        On first encounter of a table, bulk-fetches all picklist attributes and
+        their options in a single API call, then resolves labels from the warm cache.
         """
-        out = record.copy()
-        for k, v in list(out.items()):
+        resolved_record = record.copy()
+
+        # Check if there are any string-valued candidates worth resolving
+        has_candidates = any(
+            isinstance(v, str) and v.strip() and isinstance(k, str) and "@odata." not in k
+            for k, v in resolved_record.items()
+        )
+        if not has_candidates:
+            return resolved_record
+
+        # Bulk-fetch all picklists for this table (1 API call, cached for TTL)
+        self._bulk_fetch_picklists(table_schema_name)
+
+        # Resolve labels from the nested cache
+        table_key = self._normalize_cache_key(table_schema_name)
+        table_entry = self._picklist_label_cache.get(table_key)
+        if not isinstance(table_entry, dict):
+            return resolved_record
+        picklists = table_entry.get("picklists", {})
+
+        for k, v in resolved_record.items():
             if not isinstance(v, str) or not v.strip():
                 continue
-            # Skip OData annotations — they are not attribute names
             if isinstance(k, str) and "@odata." in k:
                 continue
-            mapping = self._optionset_map(table_schema_name, k)
-            if not mapping:
+            attr_key = self._normalize_cache_key(k)
+            mapping = picklists.get(attr_key)
+            if not isinstance(mapping, dict) or not mapping:
                 continue
             norm = self._normalize_picklist_label(v)
             val = mapping.get(norm)
             if val is not None:
-                out[k] = val
-        return out
+                resolved_record[k] = val
+        return resolved_record
 
     def _attribute_payload(
         self, column_schema_name: str, dtype: Any, *, is_primary_name: bool = False

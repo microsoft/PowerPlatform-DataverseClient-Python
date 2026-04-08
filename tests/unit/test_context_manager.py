@@ -158,7 +158,7 @@ class TestCloseMethod(unittest.TestCase):
         odata = client._get_odata()
         odata._logical_to_entityset_cache["test"] = "value"
         odata._logical_primaryid_cache["test"] = "value"
-        odata._picklist_label_cache[("test", "attr")] = {"map": {}, "ts": 0}
+        odata._picklist_label_cache["test"] = {"ts": 0, "picklists": {"attr": {}}}
 
         client.close()
 
