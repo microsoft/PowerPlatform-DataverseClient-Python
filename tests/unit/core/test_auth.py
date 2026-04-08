@@ -14,8 +14,12 @@ class TestAuthManager(unittest.TestCase):
 
     def test_non_token_credential_raises(self):
         """_AuthManager raises TypeError when credential does not implement TokenCredential."""
-        with self.assertRaises(TypeError):
+        with self.assertRaises(TypeError) as ctx:
             _AuthManager("not-a-credential")
+        self.assertEqual(
+            str(ctx.exception),
+            "credential must implement azure.core.credentials.TokenCredential.",
+        )
 
     def test_acquire_token_returns_token_pair(self):
         """_acquire_token calls get_token and returns a _TokenPair with scope and token."""
@@ -29,4 +33,3 @@ class TestAuthManager(unittest.TestCase):
         self.assertIsInstance(result, _TokenPair)
         self.assertEqual(result.resource, "https://org.crm.dynamics.com/.default")
         self.assertEqual(result.access_token, "my-access-token")
-

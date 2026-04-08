@@ -182,8 +182,6 @@ def test_correlation_id_shared_inside_call_scope():
     assert h1["x-ms-correlation-id"] == h2["x-ms-correlation-id"]
 
 
-# --- ValidationError / SQLParseError / HttpError optional fields ---
-
 def test_validation_error_instantiates():
     """ValidationError can be raised and carries the correct code."""
     from PowerPlatform.Dataverse.core.errors import ValidationError

@@ -49,7 +49,7 @@ class TestHttpClientTimeout(unittest.TestCase):
             _, kwargs = mock_req.call_args
             self.assertEqual(kwargs["timeout"], 30.0)
 
-    def test_explicit_timeout_in_kwargs_is_not_overridden(self):
+    def test_explicit_timeout_kwarg_takes_precedence(self):
         """If timeout is already in kwargs it is passed through unchanged."""
         client = _HttpClient(retries=1, timeout=30.0)
         with patch("requests.request", return_value=self._make_response()) as mock_req:
@@ -66,7 +66,7 @@ class TestHttpClientRequester(unittest.TestCase):
         resp.status_code = 200
         return resp
 
-    def test_uses_requests_request_when_no_session(self):
+    def test_uses_direct_request_without_session(self):
         """Without a session, _request uses requests.request directly."""
         client = _HttpClient(retries=1)
         with patch("requests.request", return_value=self._make_response()) as mock_req:

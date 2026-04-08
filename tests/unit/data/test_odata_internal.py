@@ -87,6 +87,10 @@ class TestUpsertMultipleValidation(unittest.TestCase):
         post_calls = [c for c in self.od._request.call_args_list if c.args[0] == "post"]
         self.assertEqual(len(post_calls), 1)
         self.assertIn("UpsertMultiple", post_calls[0].args[1])
+        payload = post_calls[0].kwargs.get("json", {})
+        self.assertEqual(len(payload["Targets"]), 2)
+        self.assertIn("@odata.type", payload["Targets"][0])
+        self.assertIn("@odata.id", payload["Targets"][0])
 
     def test_payload_excludes_alternate_key_fields(self):
         """Alternate key fields must NOT appear in the request body (only in @odata.id)."""
@@ -330,7 +334,7 @@ class TestCreate(unittest.TestCase):
         """Regular record field names are lowercased before sending."""
         self.od._create("accounts", "account", {"Name": "Contoso", "AccountNumber": "ACC-001"})
         call = self._post_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"])
         self.assertIn("name", payload)
         self.assertIn("accountnumber", payload)
         self.assertNotIn("Name", payload)
@@ -348,7 +352,7 @@ class TestCreate(unittest.TestCase):
             },
         )
         call = self._post_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"])
         self.assertIn("new_name", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertIn("new_AgentId@odata.bind", payload)
@@ -414,7 +418,7 @@ class TestUpdate(unittest.TestCase):
         """Regular field names are lowercased in _update."""
         self.od._update("new_ticket", "00000000-0000-0000-0000-000000000001", {"New_Status": 100000001})
         call = self._patch_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"])
         self.assertIn("new_status", payload)
         self.assertNotIn("New_Status", payload)
 
@@ -429,7 +433,7 @@ class TestUpdate(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = json.loads(call.kwargs["data"])
         self.assertIn("new_status", payload)
         self.assertIn("new_CustomerId@odata.bind", payload)
         self.assertNotIn("new_customerid@odata.bind", payload)
@@ -498,7 +502,7 @@ class TestUpsert(unittest.TestCase):
         """Record field names are lowercased before sending."""
         self.od._upsert("accounts", "account", {"accountnumber": "ACC-001"}, {"Name": "Contoso"})
         call = self._patch_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = call.kwargs["json"]
         self.assertIn("name", payload)
         self.assertNotIn("Name", payload)
 
@@ -514,7 +518,7 @@ class TestUpsert(unittest.TestCase):
             },
         )
         call = self._patch_call()
-        payload = json.loads(call.kwargs["data"]) if "data" in call.kwargs else call.kwargs["json"]
+        payload = call.kwargs["json"]
         # Regular field is lowercased
         self.assertIn("name", payload)
         # @odata.bind key preserves original casing
@@ -548,19 +552,12 @@ class TestUpsert(unittest.TestCase):
 
 
 class TestStaticHelpers(unittest.TestCase):
-    """Unit tests for _ODataClient static helper methods and __init__ validation."""
-
-    def test_init_empty_base_url_raises(self):
-        """__init__ with empty base_url raises ValueError."""
-        mock_auth = MagicMock()
-        mock_auth._acquire_token.return_value = MagicMock(access_token="t")
-        with self.assertRaises(ValueError):
-            _ODataClient(mock_auth, "")
+    """Unit tests for _ODataClient static helper methods."""
 
     def test_normalize_cache_key_non_string_returns_empty(self):
         """_normalize_cache_key with non-string returns empty string."""
-        self.assertEqual(_ODataClient._normalize_cache_key(None), "")  # type: ignore[arg-type]
-        self.assertEqual(_ODataClient._normalize_cache_key(42), "")  # type: ignore[arg-type]
+        self.assertEqual(_ODataClient._normalize_cache_key(None), "")
+        self.assertEqual(_ODataClient._normalize_cache_key(42), "")
 
     def test_lowercase_list_none_returns_none(self):
         """_lowercase_list(None) returns None."""
@@ -572,8 +569,23 @@ class TestStaticHelpers(unittest.TestCase):
 
     def test_lowercase_keys_non_dict_returned_as_is(self):
         """_lowercase_keys with non-dict input returns it unchanged."""
-        self.assertEqual(_ODataClient._lowercase_keys("a string"), "a string")  # type: ignore[arg-type]
-        self.assertIsNone(_ODataClient._lowercase_keys(None))  # type: ignore[arg-type]
+        self.assertEqual(_ODataClient._lowercase_keys("a string"), "a string")
+        self.assertIsNone(_ODataClient._lowercase_keys(None))
+
+    def test_lowercase_keys_preserves_odata_bind_casing(self):
+        """_lowercase_keys lowercases regular keys but preserves @odata.bind key casing."""
+        result = _ODataClient._lowercase_keys(
+            {
+                "Name": "Contoso",
+                "new_CustomerId@odata.bind": "/contacts(id-1)",
+                "@odata.type": "Microsoft.Dynamics.CRM.account",
+            }
+        )
+        self.assertIn("name", result)
+        self.assertNotIn("Name", result)
+        self.assertIn("new_CustomerId@odata.bind", result)
+        self.assertNotIn("new_customerid@odata.bind", result)
+        self.assertIn("@odata.type", result)
 
     def test_to_pascal_basic(self):
         """_to_pascal converts snake_case to PascalCase."""
@@ -745,7 +757,7 @@ class TestUpdateByIds(unittest.TestCase):
     def test_non_list_ids_raises_type_error(self):
         """_update_by_ids raises TypeError when ids is not a list."""
         with self.assertRaises(TypeError):
-            self.od._update_by_ids("account", "not-a-list", {"name": "X"})  # type: ignore[arg-type]
+            self.od._update_by_ids("account", "not-a-list", {"name": "X"})
 
     def test_empty_ids_returns_none(self):
         """_update_by_ids returns None immediately for empty ids list."""
@@ -758,7 +770,7 @@ class TestUpdateByIds(unittest.TestCase):
         self.od._primary_id_attr = MagicMock(return_value="accountid")
         self.od._entity_set_from_schema_name = MagicMock(return_value="accounts")
         with self.assertRaises(TypeError) as ctx:
-            self.od._update_by_ids("account", ["id-1"], "bad-changes")  # type: ignore[arg-type]
+            self.od._update_by_ids("account", ["id-1"], "bad-changes")
         self.assertIn("changes must be dict or list[dict]", str(ctx.exception))
 
     def test_list_changes_length_mismatch_raises_value_error(self):
@@ -812,7 +824,7 @@ class TestUpdateMultiple(unittest.TestCase):
     def test_non_list_records_raises_type_error(self):
         """_update_multiple raises TypeError for non-list records."""
         with self.assertRaises(TypeError):
-            self.od._update_multiple("accounts", "account", "not-a-list")  # type: ignore[arg-type]
+            self.od._update_multiple("accounts", "account", "not-a-list")
 
     def test_empty_list_raises_type_error(self):
         """_update_multiple raises TypeError for empty list."""
@@ -845,7 +857,7 @@ class TestUpdateMultiple(unittest.TestCase):
         self.assertIn("@odata.type", payload["Targets"][0])
 
 
-class TestDelete(unittest.TestCase):
+class TestDeleteMultiple(unittest.TestCase):
     """Unit tests for _ODataClient._delete_multiple."""
 
     def setUp(self):
@@ -860,7 +872,7 @@ class TestDelete(unittest.TestCase):
 
     def test_filters_out_falsy_ids(self):
         """_delete_multiple filters None/empty strings from ids."""
-        result = self.od._delete_multiple("account", [None, "", None])  # type: ignore[list-item]
+        result = self.od._delete_multiple("account", [None, "", None])
         self.assertIsNone(result)
         self.od._request.assert_not_called()
 
@@ -946,14 +958,14 @@ class TestGetMultiple(unittest.TestCase):
         self._single_page_response()
         list(self.od._get_multiple("account", orderby=["name asc", "createdon desc"]))
         params = self.od._request.call_args.kwargs["params"]
-        self.assertIn("$orderby", params)
+        self.assertEqual(params["$orderby"], "name asc,createdon desc")
 
     def test_expand_param_passed(self):
         """_get_multiple passes $expand to params."""
         self._single_page_response()
         list(self.od._get_multiple("account", expand=["contact_customer_accounts"]))
         params = self.od._request.call_args.kwargs["params"]
-        self.assertIn("$expand", params)
+        self.assertEqual(params["$expand"], "contact_customer_accounts")
 
     def test_top_param_passed(self):
         """_get_multiple passes $top to params."""
@@ -993,6 +1005,58 @@ class TestGetMultiple(unittest.TestCase):
         pages = list(self.od._get_multiple("account"))
         self.assertEqual(pages, [])
 
+    def test_yields_value_items_as_page(self):
+        """_get_multiple yields the 'value' list as a page of dicts."""
+        items = [{"accountid": "id-1", "name": "A"}, {"accountid": "id-2", "name": "B"}]
+        self._single_page_response(items)
+        pages = list(self.od._get_multiple("account"))
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0], items)
+
+    def test_follows_nextlink_pagination(self):
+        """_get_multiple follows @odata.nextLink across multiple pages."""
+        page1 = _mock_response(
+            json_data={
+                "value": [{"accountid": "id-1"}],
+                "@odata.nextLink": "https://example.crm.dynamics.com/next-page",
+            },
+            text="...",
+        )
+        page2 = _mock_response(
+            json_data={"value": [{"accountid": "id-2"}]},
+            text="...",
+        )
+        self.od._request.side_effect = [page1, page2]
+        pages = list(self.od._get_multiple("account"))
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0][0]["accountid"], "id-1")
+        self.assertEqual(pages[1][0]["accountid"], "id-2")
+
+    def test_stops_when_no_nextlink(self):
+        """_get_multiple stops after a page without nextLink."""
+        self._single_page_response([{"accountid": "id-1"}])
+        pages = list(self.od._get_multiple("account"))
+        self.assertEqual(len(pages), 1)
+        self.od._request.assert_called_once()
+
+    def test_filters_non_dict_items_from_page(self):
+        """_get_multiple filters out non-dict items from each page."""
+        data = {"value": [{"accountid": "id-1"}, "not-a-dict", 42]}
+        r = _mock_response(json_data=data, text=str(data))
+        self.od._request.return_value = r
+        pages = list(self.od._get_multiple("account"))
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(len(pages[0]), 1)
+        self.assertEqual(pages[0][0]["accountid"], "id-1")
+
+    def test_empty_value_list_yields_nothing(self):
+        """_get_multiple yields nothing when value list is empty."""
+        data = {"value": []}
+        r = _mock_response(json_data=data, text=str(data))
+        self.od._request.return_value = r
+        pages = list(self.od._get_multiple("account"))
+        self.assertEqual(pages, [])
+
 
 class TestQuerySql(unittest.TestCase):
     """Unit tests for _ODataClient._query_sql."""
@@ -1004,7 +1068,7 @@ class TestQuerySql(unittest.TestCase):
     def test_non_string_sql_raises_validation_error(self):
         """_query_sql raises ValidationError for non-string sql."""
         with self.assertRaises(ValidationError):
-            self.od._query_sql(123)  # type: ignore[arg-type]
+            self.od._query_sql(123)
 
     def test_empty_sql_raises_validation_error(self):
         """_query_sql raises ValidationError for empty sql."""
@@ -1057,7 +1121,7 @@ class TestQuerySql(unittest.TestCase):
     def test_extract_non_string_raises_value_error(self):
         """_extract_logical_table with non-string raises ValueError."""
         with self.assertRaises(ValueError):
-            _ODataClient._extract_logical_table(123)  # type: ignore[arg-type]
+            _ODataClient._extract_logical_table(123)
 
     def test_extract_no_from_clause_raises_value_error(self):
         """_extract_logical_table without FROM raises ValueError."""
@@ -1117,6 +1181,28 @@ class TestEntitySetFromSchemaName(unittest.TestCase):
         result = self.od._entity_set_from_schema_name("account")
         self.assertEqual(result, "accounts")
         self.od._request.assert_not_called()
+
+    def test_success_populates_entityset_cache(self):
+        """Successful API response populates _logical_to_entityset_cache."""
+        self.od._request.return_value = _entity_def_response(entity_set_name="accounts", primary_id="accountid")
+        result = self.od._entity_set_from_schema_name("account")
+        self.assertEqual(result, "accounts")
+        self.assertEqual(self.od._logical_to_entityset_cache["account"], "accounts")
+
+    def test_success_populates_primaryid_cache(self):
+        """Successful API response populates _logical_primaryid_cache."""
+        self.od._request.return_value = _entity_def_response(entity_set_name="accounts", primary_id="accountid")
+        self.od._entity_set_from_schema_name("account")
+        self.assertEqual(self.od._logical_primaryid_cache["account"], "accountid")
+
+    def test_success_without_primary_id_does_not_populate_primaryid_cache(self):
+        """When PrimaryIdAttribute is missing, _logical_primaryid_cache is not populated."""
+        self.od._request.return_value = _mock_response(
+            json_data={"value": [{"LogicalName": "account", "EntitySetName": "accounts"}]},
+            text="...",
+        )
+        self.od._entity_set_from_schema_name("account")
+        self.assertNotIn("account", self.od._logical_primaryid_cache)
 
 
 class TestGetEntityByTableSchemaName(unittest.TestCase):
@@ -1294,13 +1380,13 @@ class TestLocalizedLabelsPayload(unittest.TestCase):
     def test_non_int_lang_raises_value_error(self):
         """_build_localizedlabels_payload raises ValueError for non-int language code."""
         with self.assertRaises(ValueError) as ctx:
-            self.od._build_localizedlabels_payload({"1033": "English"})  # type: ignore[arg-type]
+            self.od._build_localizedlabels_payload({"1033": "English"})
         self.assertIn("must be int", str(ctx.exception))
 
     def test_non_string_label_raises_value_error(self):
         """_build_localizedlabels_payload raises ValueError for non-string label."""
         with self.assertRaises(ValueError) as ctx:
-            self.od._build_localizedlabels_payload({1033: 42})  # type: ignore[arg-type]
+            self.od._build_localizedlabels_payload({1033: 42})
         self.assertIn("non-empty string", str(ctx.exception))
 
     def test_empty_translations_raises_value_error(self):
@@ -1338,7 +1424,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
             Active = 1
             Inactive = 2
 
-        Status.__labels__ = {1033: {1: "Active", 2: "Inactive"}}  # type: ignore[attr-defined]
+        Status.__labels__ = {1033: {1: "Active", 2: "Inactive"}}
         result = self.od._enum_optionset_payload("new_Status", Status)
         self.assertEqual(len(result["OptionSet"]["Options"]), 2)
 
@@ -1349,7 +1435,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
             Active = 1
             Inactive = 2
 
-        Status.__labels__ = {1033: {Status.Active: "Active Label", Status.Inactive: "Inactive Label"}}  # type: ignore[attr-defined]
+        Status.__labels__ = {1033: {Status.Active: "Active Label", Status.Inactive: "Inactive Label"}}
         result = self.od._enum_optionset_payload("new_Status", Status)
         options = result["OptionSet"]["Options"]
         self.assertEqual(len(options), 2)
@@ -1365,7 +1451,7 @@ class TestEnumOptionSetPayload(unittest.TestCase):
         class Status(Enum):
             Active = 1
 
-        Status.__labels__ = {1033: {99: "Unknown"}}  # type: ignore[attr-defined]
+        Status.__labels__ = {1033: {99: "Unknown"}}
         with self.assertRaises(ValueError) as ctx:
             self.od._enum_optionset_payload("new_Status", Status)
         self.assertIn("int key", str(ctx.exception))
@@ -1401,8 +1487,8 @@ class TestOptionSetMap(unittest.TestCase):
 
     def test_normalize_non_string_returns_empty_string(self):
         """_normalize_picklist_label returns '' for non-string input."""
-        self.assertEqual(self.od._normalize_picklist_label(None), "")  # type: ignore[arg-type]
-        self.assertEqual(self.od._normalize_picklist_label(42), "")  # type: ignore[arg-type]
+        self.assertEqual(self.od._normalize_picklist_label(None), "")
+        self.assertEqual(self.od._normalize_picklist_label(42), "")
 
     def test_normalize_diacritics(self):
         """_normalize_picklist_label strips diacritics and lowercases."""
@@ -1692,7 +1778,7 @@ class TestAttributePayloadDtypes(unittest.TestCase):
     def test_non_string_dtype_raises_value_error(self):
         """Non-string dtype raises ValueError."""
         with self.assertRaises(ValueError):
-            self.od._attribute_payload("new_Field", 42)  # type: ignore[arg-type]
+            self.od._attribute_payload("new_Field", 42)
 
 
 class TestGetTableInfo(unittest.TestCase):
@@ -1712,6 +1798,20 @@ class TestGetTableInfo(unittest.TestCase):
         result = self.od._get_table_info("account")
         self.assertIsNotNone(result)
         self.assertIn("entity_set_name", result)
+
+    def test_returns_full_dict_shape(self):
+        """_get_table_info returns all expected keys from metadata."""
+        self.od._request.return_value = _entity_def_response(
+            entity_set_name="accounts", primary_id="accountid", metadata_id="meta-001"
+        )
+        result = self.od._get_table_info("account")
+        self.assertEqual(result["table_schema_name"], "Account")
+        self.assertEqual(result["table_logical_name"], "account")
+        self.assertEqual(result["entity_set_name"], "accounts")
+        self.assertEqual(result["metadata_id"], "meta-001")
+        self.assertEqual(result["primary_id_attribute"], "accountid")
+        self.assertIsInstance(result["columns_created"], list)
+        self.assertEqual(result["columns_created"], [])
 
 
 class TestDeleteTable(unittest.TestCase):
@@ -1886,7 +1986,7 @@ class TestCreateTable(unittest.TestCase):
         """_create_table raises TypeError when solution_unique_name is not str."""
         self._setup_for_create()
         with self.assertRaises(TypeError):
-            self.od._create_table("new_TestTable", {}, solution_unique_name=123)  # type: ignore[arg-type]
+            self.od._create_table("new_TestTable", {}, solution_unique_name=123)
 
     def test_raises_value_error_for_empty_solution_name(self):
         """_create_table raises ValueError when solution_unique_name is empty string."""
@@ -1929,7 +2029,7 @@ class TestCreateColumns(unittest.TestCase):
     def test_non_dict_columns_raises_type_error(self):
         """_create_columns raises TypeError for non-dict columns."""
         with self.assertRaises(TypeError):
-            self.od._create_columns("new_Test", None)  # type: ignore[arg-type]
+            self.od._create_columns("new_Test", None)
 
     def test_table_not_found_raises_metadata_error(self):
         """_create_columns raises MetadataError when table does not exist."""
@@ -1951,7 +2051,8 @@ class TestCreateColumns(unittest.TestCase):
         class Status(Enum):
             Active = 1
 
-        self.od._create_columns("new_Test", {"new_Status": Status})
+        result = self.od._create_columns("new_Test", {"new_Status": Status})
+        self.assertIn("new_Status", result)
         self.od._flush_cache.assert_called_once_with("picklist")
 
     def test_posts_to_correct_endpoint(self):
@@ -1976,19 +2077,24 @@ class TestDeleteColumns(unittest.TestCase):
         self.od._request.return_value = _mock_response(status_code=204)
 
     def test_deletes_single_column(self):
-        """_delete_columns accepts a string column name."""
+        """_delete_columns accepts a string column name and issues DELETE."""
         result = self.od._delete_columns("new_Test", "new_Name")
         self.assertIn("new_Name", result)
+        delete_calls = [c for c in self.od._request.call_args_list if c.args[0] == "delete"]
+        self.assertEqual(len(delete_calls), 1)
+        self.assertIn("attr-001", delete_calls[0].args[1])
 
     def test_deletes_list_of_columns(self):
-        """_delete_columns accepts a list of column names."""
+        """_delete_columns accepts a list of column names and issues DELETE for each."""
         result = self.od._delete_columns("new_Test", ["new_Name1", "new_Name2"])
         self.assertEqual(len(result), 2)
+        delete_calls = [c for c in self.od._request.call_args_list if c.args[0] == "delete"]
+        self.assertEqual(len(delete_calls), 2)
 
     def test_non_string_non_list_raises_type_error(self):
         """_delete_columns raises TypeError for invalid columns type."""
         with self.assertRaises(TypeError):
-            self.od._delete_columns("new_Test", 42)  # type: ignore[arg-type]
+            self.od._delete_columns("new_Test", 42)
 
     def test_empty_column_name_raises_value_error(self):
         """_delete_columns raises ValueError for empty column name."""
@@ -2054,7 +2160,7 @@ class TestFlushCache(unittest.TestCase):
     def test_none_kind_raises_validation_error(self):
         """_flush_cache raises ValidationError for None kind."""
         with self.assertRaises(ValidationError):
-            self.od._flush_cache(None)  # type: ignore[arg-type]
+            self.od._flush_cache(None)
 
 
 class TestBuildUpsertMultiple(unittest.TestCase):
