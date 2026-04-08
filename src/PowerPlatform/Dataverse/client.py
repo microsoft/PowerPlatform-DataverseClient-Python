@@ -19,6 +19,7 @@ from .operations.records import RecordOperations
 from .operations.query import QueryOperations
 from .operations.files import FileOperations
 from .operations.tables import TableOperations
+from .operations.batch import BatchOperations
 
 
 class DataverseClient:
@@ -62,6 +63,7 @@ class DataverseClient:
     - ``client.tables`` -- table and column metadata management
     - ``client.files`` -- file upload operations
     - ``client.dataframe`` -- pandas DataFrame wrappers for record CRUD
+    - ``client.batch`` -- batch multiple operations into a single HTTP request
 
     The client supports Python's context manager protocol for automatic resource
     cleanup and HTTP connection pooling:
@@ -109,6 +111,7 @@ class DataverseClient:
         self.tables = TableOperations(self)
         self.files = FileOperations(self)
         self.dataframe = DataFrameOperations(self)
+        self.batch = BatchOperations(self)
 
     def _get_odata(self) -> _ODataClient:
         """

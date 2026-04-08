@@ -18,15 +18,26 @@ import importlib.resources as ir
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from urllib.parse import quote as _url_quote
+
 from ..core._http import _HttpClient
 from ._upload import _FileUploadMixin
 from ._relationships import _RelationshipOperationsMixin
+from ..models.relationship import (
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    CascadeConfiguration,
+)
+from ..models.labels import Label, LocalizedLabel
+from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ..core.errors import *
+from ._raw_request import _RawRequest
 from ..core._error_codes import (
     _http_subcode,
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_UNSUPPORTED_COLUMN_TYPE,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -274,6 +285,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             is_transient=is_transient,
         )
 
+    def _execute_raw(self, req: _RawRequest, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES):
+        """Execute a ``_RawRequest`` and return the HTTP response.
+
+        Encodes the pre-serialised body (if present) as UTF-8 and merges any
+        per-request headers into the standard OData header set.
+        """
+        kwargs: Dict[str, Any] = {}
+        if req.body is not None:
+            kwargs["data"] = req.body.encode("utf-8")
+        if req.headers:
+            kwargs["headers"] = req.headers
+        return self._request(req.method.lower(), req.url, expected=expected, **kwargs)
+
     # --- CRUD Internal functions ---
     def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
         """Create a single record and return its GUID.
@@ -291,12 +315,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         .. note::
            Relies on ``OData-EntityId`` (canonical) or ``Location`` response header. No response body parsing is performed. Raises ``RuntimeError`` if neither header contains a GUID.
         """
-        # Lowercase all keys to match Dataverse LogicalName expectations
-        record = self._lowercase_keys(record)
-        record = self._convert_labels_to_ints(table_schema_name, record)
-        url = f"{self.api}/{entity_set}"
-        r = self._request("post", url, json=record)
-
+        r = self._execute_raw(self._build_create(entity_set, table_schema_name, record))
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
             m = _GUID_RE.search(ent_loc)
@@ -330,25 +349,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
-        need_logical = any("@odata.type" not in r for r in records)
-        # @odata.type uses LogicalName (lowercase)
-        logical_name = table_schema_name.lower()
-        enriched: List[Dict[str, Any]] = []
-        for r in records:
-            # Lowercase all keys to match Dataverse LogicalName expectations
-            r = self._lowercase_keys(r)
-            r = self._convert_labels_to_ints(table_schema_name, r)
-            if "@odata.type" in r or not need_logical:
-                enriched.append(r)
-            else:
-                nr = r.copy()
-                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
-                enriched.append(nr)
-        payload = {"Targets": enriched}
-        # Bound action form: POST {entity_set}/Microsoft.Dynamics.CRM.CreateMultiple
-        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple"
-        # The action currently returns only Ids; no need to request representation.
-        r = self._request("post", url, json=payload)
+        r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, records))
         try:
             body = r.json() if r.text else {}
         except ValueError:
@@ -562,50 +563,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         targets = [rid for rid in ids if rid]
         if not targets:
             return None
-        value_objects = [{"Value": rid, "Type": "System.Guid"} for rid in targets]
-
-        pk_attr = self._primary_id_attr(table_schema_name)
-        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-        job_label = f"Bulk delete {table_schema_name} records @ {timestamp}"
-
-        # EntityName must use lowercase LogicalName
-        logical_name = table_schema_name.lower()
-
-        query = {
-            "@odata.type": "Microsoft.Dynamics.CRM.QueryExpression",
-            "EntityName": logical_name,
-            "ColumnSet": {
-                "@odata.type": "Microsoft.Dynamics.CRM.ColumnSet",
-                "AllColumns": False,
-                "Columns": [],
-            },
-            "Criteria": {
-                "@odata.type": "Microsoft.Dynamics.CRM.FilterExpression",
-                "FilterOperator": "And",
-                "Conditions": [
-                    {
-                        "@odata.type": "Microsoft.Dynamics.CRM.ConditionExpression",
-                        "AttributeName": pk_attr,
-                        "Operator": "In",
-                        "Values": value_objects,
-                    }
-                ],
-            },
-        }
-
-        payload = {
-            "JobName": job_label,
-            "SendEmailNotification": False,
-            "ToRecipients": [],
-            "CCRecipients": [],
-            "RecurrencePattern": "",
-            "StartDateTime": timestamp,
-            "QuerySet": [query],
-        }
-
-        url = f"{self.api}/BulkDelete"
-        response = self._request("post", url, json=payload, expected=(200, 202, 204))
-
+        response = self._execute_raw(
+            self._build_delete_multiple(table_schema_name, targets),
+            expected=(200, 202, 204),
+        )
         job_id = None
         try:
             body = response.json() if response.text else {}
@@ -613,7 +574,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             body = {}
         if isinstance(body, dict):
             job_id = body.get("JobId")
-
         return job_id
 
     def _format_key(self, key: str) -> str:
@@ -645,12 +605,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :return: ``None``
         :rtype: ``None``
         """
-        # Lowercase all keys to match Dataverse LogicalName expectations
-        data = self._lowercase_keys(data)
-        data = self._convert_labels_to_ints(table_schema_name, data)
-        entity_set = self._entity_set_from_schema_name(table_schema_name)
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = self._request("patch", url, headers={"If-Match": "*"}, json=data)
+        self._execute_raw(self._build_update(table_schema_name, key, data))
 
     def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
@@ -672,27 +627,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
-
-        # Determine whether we need logical name resolution (@odata.type missing in any payload)
-        need_logical = any("@odata.type" not in r for r in records)
-        # @odata.type uses LogicalName (lowercase)
-        logical_name = table_schema_name.lower()
-        enriched: List[Dict[str, Any]] = []
-        for r in records:
-            # Lowercase all keys to match Dataverse LogicalName expectations
-            r = self._lowercase_keys(r)
-            r = self._convert_labels_to_ints(table_schema_name, r)
-            if "@odata.type" in r or not need_logical:
-                enriched.append(r)
-            else:
-                nr = r.copy()
-                nr["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
-                enriched.append(nr)
-
-        payload = {"Targets": enriched}
-        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple"
-        r = self._request("post", url, json=payload)
-        # Intentionally ignore response content: no stable contract for IDs across environments.
+        self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, records))
         return None
 
     def _delete(self, table_schema_name: str, key: str) -> None:
@@ -706,9 +641,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :return: ``None``
         :rtype: ``None``
         """
-        entity_set = self._entity_set_from_schema_name(table_schema_name)
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        self._request("delete", url, headers={"If-Match": "*"})
+        self._execute_raw(self._build_delete(table_schema_name, key))
 
     def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> Dict[str, Any]:
         """Retrieve a single record.
@@ -723,14 +656,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :return: Retrieved record dictionary (may be empty if no selected attributes).
         :rtype: ``dict[str, Any]``
         """
-        params = {}
-        if select:
-            # Lowercase column names for case-insensitive matching
-            params["$select"] = ",".join(self._lowercase_list(select))
-        entity_set = self._entity_set_from_schema_name(table_schema_name)
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = self._request("get", url, params=params)
-        return r.json()
+        return self._execute_raw(self._build_get(table_schema_name, key, select=select)).json()
 
     def _get_multiple(
         self,
@@ -845,15 +771,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not sql.strip():
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
-
-        # Extract logical table name via helper (robust to identifiers ending with 'from')
-        logical = self._extract_logical_table(sql)
-
-        entity_set = self._entity_set_from_schema_name(logical)
-        # Issue GET /{entity_set}?sql=<query>
-        url = f"{self.api}/{entity_set}"
-        params = {"sql": sql}
-        r = self._request("get", url, params=params)
+        r = self._execute_raw(self._build_sql(sql))
         try:
             body = r.json()
         except ValueError:
@@ -1466,19 +1384,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         :raises HttpError: If the metadata request fails.
         """
-        url = f"{self.api}/EntityDefinitions"
-        base_filter = "IsPrivate eq false"
-        if filter:
-            combined_filter = f"{base_filter} and ({filter})"
-        else:
-            combined_filter = base_filter
-        params: Dict[str, str] = {"$filter": combined_filter}
-        if select is not None and isinstance(select, str):
-            raise TypeError("select must be a list of property names, not a bare string")
-        if select:
-            params["$select"] = ",".join(select)
-        r = self._request("get", url, params=params)
-        return r.json().get("value", [])
+        return self._execute_raw(self._build_list_entities(filter=filter, select=select)).json().get("value", [])
 
     def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name.
@@ -1498,9 +1404,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 f"Table '{table_schema_name}' not found.",
                 subcode=METADATA_TABLE_NOT_FOUND,
             )
-        metadata_id = ent["MetadataId"]
-        url = f"{self.api}/EntityDefinitions({metadata_id})"
-        r = self._request("delete", url)
+        self._execute_raw(self._build_delete_entity(ent["MetadataId"]))
 
     # ------------------- Alternate key metadata helpers -------------------
 
@@ -1720,17 +1624,21 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         needs_picklist_flush = False
 
         for column_name, column_type in columns.items():
-            payload = self._attribute_payload(column_name, column_type)
-            if not payload:
-                raise ValueError(f"Unsupported column type '{column_type}' for '{column_name}'.")
-
-            url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
-            self._request("post", url, json=payload)
-
-            created.append(column_name)
-
-            if "OptionSet" in payload:
+            attr = self._attribute_payload(column_name, column_type)
+            if not attr:
+                raise ValidationError(
+                    f"Unsupported column type '{column_type}' for column '{column_name}'.",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
+                )
+            if "OptionSet" in attr:
                 needs_picklist_flush = True
+            req = _RawRequest(
+                method="POST",
+                url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes",
+                body=json.dumps(attr, ensure_ascii=False),
+            )
+            self._execute_raw(req)
+            created.append(column_name)
 
         if needs_picklist_flush:
             self._flush_cache("picklist")
@@ -1794,8 +1702,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not attr_metadata_id:
                 raise RuntimeError(f"Metadata incomplete for column '{column_name}' (missing MetadataId).")
 
-            attr_url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes({attr_metadata_id})"
-            self._request("delete", attr_url, headers={"If-Match": "*"})
+            self._execute_raw(self._build_delete_column(metadata_id, attr_metadata_id))
 
             attr_type = attr_meta.get("@odata.type") or attr_meta.get("AttributeType")
             if isinstance(attr_type, str):
@@ -1809,6 +1716,475 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             self._flush_cache("picklist")
 
         return deleted
+
+    # ---------------------- _build_* methods (no HTTP) ---------------
+
+    def _build_create(
+        self,
+        entity_set: str,
+        table: str,
+        data: Dict[str, Any],
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record POST request without sending it."""
+        body = self._lowercase_keys(data)
+        body = self._convert_labels_to_ints(table, body)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}",
+            body=json.dumps(body, ensure_ascii=False),
+            content_id=content_id,
+        )
+
+    def _build_create_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build a CreateMultiple POST request without sending it."""
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
+        logical_name = table.lower()
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    def _build_update(
+        self,
+        table: str,
+        record_id: str,
+        changes: Dict[str, Any],
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record PATCH request without sending it.
+
+        ``record_id`` may be a ``"$n"`` content-ID reference; in that case the
+        URL is the reference itself (resolved server-side within a changeset).
+        """
+        body = self._lowercase_keys(changes)
+        body = self._convert_labels_to_ints(table, body)
+        if record_id.startswith("$"):
+            url = record_id
+        else:
+            entity_set = self._entity_set_from_schema_name(table)
+            url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    def _build_update_multiple_from_records(
+        self,
+        entity_set: str,
+        table: str,
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build an UpdateMultiple POST request from pre-assembled records.
+
+        Each record must already contain the primary key attribute. This helper
+        is shared by :meth:`_update_multiple` (which pre-assembles records) and
+        :meth:`_build_update_multiple` (which assembles from ids + changes).
+        """
+        logical_name = table.lower()
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    def _build_update_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        ids: List[str],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
+    ) -> _RawRequest:
+        """Build an UpdateMultiple POST request without sending it."""
+        pk_attr = self._primary_id_attr(table)
+        if isinstance(changes, dict):
+            records = [{pk_attr: rid, **changes} for rid in ids]
+        elif isinstance(changes, list):
+            if len(changes) != len(ids):
+                raise ValidationError(
+                    "ids and changes lists must have equal length for paired update.",
+                    subcode="ids_changes_length_mismatch",
+                )
+            records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
+        else:
+            raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
+        return self._build_update_multiple_from_records(entity_set, table, records)
+
+    def _build_upsert(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_key: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> _RawRequest:
+        """Build a single-record PATCH upsert request without sending it.
+
+        Unlike :meth:`_build_update`, no ``If-Match: *`` header is added so the
+        server creates the record when it does not yet exist.
+        """
+        body = self._lowercase_keys(record)
+        body = self._convert_labels_to_ints(table, body)
+        key_str = self._build_alternate_key_str(alternate_key)
+        url = f"{self.api}/{entity_set}({key_str})"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+        )
+
+    def _build_upsert_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_keys: List[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build an UpsertMultiple POST request without sending it."""
+        if len(alternate_keys) != len(records):
+            raise ValidationError(
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})",
+                subcode="upsert_length_mismatch",
+            )
+        logical_name = table.lower()
+        targets: List[Dict[str, Any]] = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = self._convert_labels_to_ints(table, record_processed)
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
+            if conflicting:
+                raise ValidationError(
+                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}",
+                    subcode="upsert_key_conflict",
+                )
+            if "@odata.type" not in record_processed:
+                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            key_str = self._build_alternate_key_str(alt_key)
+            record_processed["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(record_processed)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
+            body=json.dumps({"Targets": targets}, ensure_ascii=False),
+        )
+
+    def _build_delete(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record DELETE request without sending it.
+
+        ``record_id`` may be a ``"$n"`` content-ID reference.
+        """
+        if record_id.startswith("$"):
+            url = record_id
+        else:
+            entity_set = self._entity_set_from_schema_name(table)
+            url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        return _RawRequest(
+            method="DELETE",
+            url=url,
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    def _build_delete_multiple(self, table: str, ids: List[str]) -> _RawRequest:
+        """Build a BulkDelete POST request without sending it."""
+        pk_attr = self._primary_id_attr(table)
+        logical_name = table.lower()
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        payload = {
+            "JobName": f"Bulk delete {table} records @ {timestamp}",
+            "SendEmailNotification": False,
+            "ToRecipients": [],
+            "CCRecipients": [],
+            "RecurrencePattern": "",
+            "StartDateTime": timestamp,
+            "QuerySet": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.QueryExpression",
+                    "EntityName": logical_name,
+                    "ColumnSet": {
+                        "@odata.type": "Microsoft.Dynamics.CRM.ColumnSet",
+                        "AllColumns": False,
+                        "Columns": [],
+                    },
+                    "Criteria": {
+                        "@odata.type": "Microsoft.Dynamics.CRM.FilterExpression",
+                        "FilterOperator": "And",
+                        "Conditions": [
+                            {
+                                "@odata.type": "Microsoft.Dynamics.CRM.ConditionExpression",
+                                "AttributeName": pk_attr,
+                                "Operator": "In",
+                                "Values": [{"Value": rid, "Type": "System.Guid"} for rid in ids],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/BulkDelete",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    def _build_get(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> _RawRequest:
+        """Build a single-record GET request without sending it."""
+        entity_set = self._entity_set_from_schema_name(table)
+        url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        if select:
+            url += "?$select=" + ",".join(self._lowercase_list(select))
+        return _RawRequest(method="GET", url=url)
+
+    def _build_create_entity(
+        self,
+        table: str,
+        columns: Dict[str, Any],
+        solution: Optional[str] = None,
+        primary_column: Optional[str] = None,
+    ) -> _RawRequest:
+        """Build an EntityDefinitions POST request without sending it."""
+        if primary_column:
+            primary_attr = primary_column
+        else:
+            primary_attr = f"{table.split('_', 1)[0]}_Name" if "_" in table else "new_Name"
+        attributes = [self._attribute_payload(primary_attr, "string", is_primary_name=True)]
+        for col_name, dtype in columns.items():
+            attr = self._attribute_payload(col_name, dtype)
+            if not attr:
+                raise ValidationError(
+                    f"Unsupported column type '{dtype}' for column '{col_name}'.",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
+                )
+            attributes.append(attr)
+        body = {
+            "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
+            "SchemaName": table,
+            "DisplayName": self._label(table),
+            "DisplayCollectionName": self._label(table + "s"),
+            "Description": self._label(f"Custom entity for {table}"),
+            "OwnershipType": "UserOwned",
+            "HasActivities": False,
+            "HasNotes": True,
+            "IsActivity": False,
+            "Attributes": attributes,
+        }
+        url = f"{self.api}/EntityDefinitions"
+        if solution:
+            url += f"?SolutionUniqueName={solution}"
+        return _RawRequest(
+            method="POST",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+        )
+
+    def _build_delete_entity(self, metadata_id: str) -> _RawRequest:
+        """Build an EntityDefinitions DELETE request without sending it."""
+        return _RawRequest(
+            method="DELETE",
+            url=f"{self.api}/EntityDefinitions({metadata_id})",
+            headers={"If-Match": "*"},
+        )
+
+    def _build_get_entity(self, table: str) -> _RawRequest:
+        """Build an EntityDefinitions GET request without sending it."""
+        logical = self._escape_odata_quotes(table.lower())
+        return _RawRequest(
+            method="GET",
+            url=(
+                f"{self.api}/EntityDefinitions"
+                f"?$select=MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute"
+                f"&$filter=LogicalName eq '{logical}'"
+            ),
+        )
+
+    def _build_list_entities(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> _RawRequest:
+        """Build an EntityDefinitions list GET request without sending it."""
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and ({filter})"
+        else:
+            combined_filter = base_filter
+        url = f"{self.api}/EntityDefinitions?$filter={combined_filter}"
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            url += "&$select=" + ",".join(select)
+        return _RawRequest(method="GET", url=url)
+
+    def _build_create_column(
+        self,
+        entity_metadata_id: str,
+        col_name: str,
+        dtype: Any,
+    ) -> _RawRequest:
+        """Build an Attributes POST request for one column without sending it."""
+        attr = self._attribute_payload(col_name, dtype)
+        if not attr:
+            raise ValidationError(
+                f"Unsupported column type '{dtype}' for column '{col_name}'.",
+                subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
+            )
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes",
+            body=json.dumps(attr, ensure_ascii=False),
+        )
+
+    def _build_delete_column(
+        self,
+        entity_metadata_id: str,
+        col_metadata_id: str,
+    ) -> _RawRequest:
+        """Build an Attributes DELETE request for one column without sending it."""
+        return _RawRequest(
+            method="DELETE",
+            url=f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes({col_metadata_id})",
+            headers={"If-Match": "*"},
+        )
+
+    @staticmethod
+    def _build_lookup_field_models(
+        referencing_table: str,
+        lookup_field_name: str,
+        referenced_table: str,
+        *,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        required: bool = False,
+        cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
+        language_code: int = 1033,
+    ) -> tuple:
+        """Build a (lookup, relationship) pair for a lookup field creation.
+
+        Returns ``(LookupAttributeMetadata, OneToManyRelationshipMetadata)``.
+        Used by both the batch resolver and ``TableOperations.create_lookup_field``
+        to avoid duplicating the metadata assembly logic.
+        """
+        lookup = LookupAttributeMetadata(
+            schema_name=lookup_field_name,
+            display_name=Label(
+                localized_labels=[
+                    LocalizedLabel(
+                        label=display_name or referenced_table,
+                        language_code=language_code,
+                    )
+                ]
+            ),
+            required_level="ApplicationRequired" if required else "None",
+        )
+        if description:
+            lookup.description = Label(
+                localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
+            )
+        rel_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
+        relationship = OneToManyRelationshipMetadata(
+            schema_name=rel_name,
+            referenced_entity=referenced_table,
+            referencing_entity=referencing_table,
+            referenced_attribute=f"{referenced_table}id",
+            cascade_configuration=CascadeConfiguration(delete=cascade_delete),
+        )
+        return lookup, relationship
+
+    def _build_create_relationship(
+        self,
+        body: Dict[str, Any],
+        *,
+        solution: Optional[str] = None,
+    ) -> _RawRequest:
+        """Build a RelationshipDefinitions POST request without sending it."""
+        headers: Dict[str, str] = {}
+        if solution:
+            headers["MSCRM.SolutionUniqueName"] = solution
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/RelationshipDefinitions",
+            body=json.dumps(body, ensure_ascii=False),
+            headers=headers or None,
+        )
+
+    def _build_delete_relationship(self, relationship_id: str) -> _RawRequest:
+        """Build a RelationshipDefinitions DELETE request without sending it."""
+        return _RawRequest(
+            method="DELETE",
+            url=f"{self.api}/RelationshipDefinitions({relationship_id})",
+            headers={"If-Match": "*"},
+        )
+
+    def _build_get_relationship(self, schema_name: str) -> _RawRequest:
+        """Build a RelationshipDefinitions GET request without sending it."""
+        escaped = self._escape_odata_quotes(schema_name)
+        return _RawRequest(
+            method="GET",
+            url=f"{self.api}/RelationshipDefinitions?$filter=SchemaName eq '{escaped}'",
+        )
+
+    def _build_sql(self, sql: str) -> _RawRequest:
+        """Build a SQL query GET request without sending it.
+
+        Resolves the entity set from the table name in the SQL statement via
+        :meth:`_extract_logical_table`, then embeds the SQL as a URL-encoded
+        ``?sql=`` query parameter.
+
+        Uses ``urllib.parse.quote`` (``%20`` for spaces) rather than
+        ``urllib.parse.urlencode`` (``+`` for spaces).  Both are accepted by
+        Dataverse and ``%20`` is the canonical RFC 3986 encoding for query-
+        string values.
+
+        :param sql: SELECT statement (non-empty string; caller is responsible
+            for validation).
+        """
+        logical = self._extract_logical_table(sql)
+        entity_set = self._entity_set_from_schema_name(logical)
+        return _RawRequest(
+            method="GET",
+            url=f"{self.api}/{entity_set}?sql={_url_quote(sql, safe='')}",
+        )
 
     # ---------------------- Cache maintenance -------------------------
     def _flush_cache(
