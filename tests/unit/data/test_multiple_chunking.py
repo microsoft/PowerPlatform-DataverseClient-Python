@@ -2,16 +2,7 @@
 # Licensed under the MIT license.
 
 """Comprehensive tests for _create_multiple / _update_multiple / _upsert_multiple
-client-side chunking (issue #156).
-
-Coverage goals
---------------
-- Boundary conditions: 0, 1, BATCH-1, BATCH, BATCH+1, 2*BATCH, 2*BATCH+1 records
-- Chunk sizes: first chunk always full, last chunk carries the remainder
-- Payload correctness: each chunk sent to the right endpoint with the right records
-- ID aggregation: IDs from all chunks are collected in order
-- _update_by_ids: delegates correctly to _update_multiple (broadcast + paired)
-- Public API (records.create / records.update / records.upsert): delegates correctly
+client-side chunking.
 """
 
 import unittest
@@ -31,7 +22,6 @@ def _make_odata_client() -> _ODataClient:
     mock_auth._acquire_token.return_value = MagicMock(access_token="token")
     client = _ODataClient(mock_auth, "https://org.crm.dynamics.com")
     client._request = MagicMock()
-    # Skip picklist HTTP calls so _request counts reflect only batch POSTs
     client._convert_labels_to_ints = MagicMock(side_effect=lambda _t, r: r)
     return client
 
@@ -45,7 +35,7 @@ def _mock_create_response(ids):
 
 
 def _mock_update_response():
-    """Mock HTTP response for UpdateMultiple (no meaningful body)."""
+    """Mock HTTP response for UpdateMultiple."""
     resp = MagicMock()
     resp.text = ""
     return resp
@@ -80,27 +70,27 @@ class TestCreateMultipleBoundaries(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_one_record_single_request(self):
-        """Single record → one request, one ID returned."""
+        """Single record produces one request and one ID returned."""
         result = self._run(1, [_mock_create_response(["id-0"])])
         self.od._execute_raw.assert_called_once()
         self.assertEqual(result, ["id-0"])
 
     def test_batch_minus_one_single_request(self):
-        """B-1 records fit in one chunk."""
+        """_MULTIPLE_BATCH_SIZE-1 records fit in one chunk."""
         ids = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE - 1)]
         result = self._run(_MULTIPLE_BATCH_SIZE - 1, [_mock_create_response(ids)])
         self.od._execute_raw.assert_called_once()
         self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE - 1)
 
     def test_exact_batch_size_single_request(self):
-        """Exactly _MULTIPLE_BATCH_SIZE records → one chunk, one request."""
+        """Exactly _MULTIPLE_BATCH_SIZE records produces one chunk and one request."""
         ids = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
         result = self._run(_MULTIPLE_BATCH_SIZE, [_mock_create_response(ids)])
         self.od._execute_raw.assert_called_once()
         self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE)
 
     def test_batch_plus_one_two_requests(self):
-        """B+1 records → two chunks, two requests."""
+        """_MULTIPLE_BATCH_SIZE+1 records produces two chunks and two requests."""
         ids1 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
         ids2 = ["id-last"]
         result = self._run(_MULTIPLE_BATCH_SIZE + 1, [_mock_create_response(ids1), _mock_create_response(ids2)])
@@ -108,7 +98,7 @@ class TestCreateMultipleBoundaries(unittest.TestCase):
         self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE + 1)
 
     def test_two_full_batches(self):
-        """2*_MULTIPLE_BATCH_SIZE records → two full chunks."""
+        """2*_MULTIPLE_BATCH_SIZE records produces two full chunks."""
         ids1 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
         ids2 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE, 2 * _MULTIPLE_BATCH_SIZE)]
         result = self._run(2 * _MULTIPLE_BATCH_SIZE, [_mock_create_response(ids1), _mock_create_response(ids2)])
@@ -116,7 +106,7 @@ class TestCreateMultipleBoundaries(unittest.TestCase):
         self.assertEqual(len(result), 2 * _MULTIPLE_BATCH_SIZE)
 
     def test_two_batches_plus_one(self):
-        """2*_MULTIPLE_BATCH_SIZE+1 records → three chunks."""
+        """2*_MULTIPLE_BATCH_SIZE+1 records produces three chunks."""
         se = [_mock_create_response([f"id-{j}" for j in range(_MULTIPLE_BATCH_SIZE)]) for _ in range(2)]
         se.append(_mock_create_response(["id-extra"]))
         result = self._run(2 * _MULTIPLE_BATCH_SIZE + 1, se)
@@ -131,11 +121,6 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         self.od = _make_odata_client()
         self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
 
-    def _captured_targets(self, call_index):
-        """Return the Targets list from the _build_create_multiple payload for a given call."""
-        # _execute_raw is called with the result of _build_create_multiple, which
-        # we can't easily inspect without going deeper. Instead, patch _build_create_multiple.
-        return None  # handled in test below
 
     def test_first_chunk_has_batch_size_records(self):
         """The first chunk sent to the server has exactly _MULTIPLE_BATCH_SIZE records."""
@@ -510,6 +495,36 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
             [{"accountid": "id-1", "name": "A"}, {"accountid": "id-2", "name": "B"}],
         )
 
+    def test_empty_ids_returns_none_without_delegating(self):
+        """Empty ids list returns immediately without calling _update_multiple."""
+        result = self.od._update_by_ids("account", [], {"name": "X"})
+        self.assertIsNone(result)
+        self.od._update_multiple.assert_not_called()
+
+    def test_non_list_ids_raises_type_error(self):
+        """Non-list ids raises TypeError before any delegation."""
+        with self.assertRaises(TypeError):
+            self.od._update_by_ids("account", "id-1", {"name": "X"})  # type: ignore
+        self.od._update_multiple.assert_not_called()
+
+    def test_changes_non_dict_non_list_raises_type_error(self):
+        """changes that is neither dict nor list raises TypeError."""
+        with self.assertRaises(TypeError):
+            self.od._update_by_ids("account", ["id-1"], "invalid")  # type: ignore
+        self.od._update_multiple.assert_not_called()
+
+    def test_changes_list_length_mismatch_raises_value_error(self):
+        """Paired changes list with different length from ids raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._update_by_ids("account", ["id-1", "id-2"], [{"name": "A"}])
+        self.od._update_multiple.assert_not_called()
+
+    def test_changes_list_non_dict_element_raises_type_error(self):
+        """Non-dict element in paired changes list raises TypeError."""
+        with self.assertRaises(TypeError):
+            self.od._update_by_ids("account", ["id-1", "id-2"], [{"name": "A"}, "bad"])  # type: ignore
+        self.od._update_multiple.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Public API: records.create / records.update / records.upsert
@@ -565,6 +580,14 @@ class TestPublicUpdateDelegation(unittest.TestCase):
         ops.update("account", ["id-1", "id-2"], {"name": "X"})
         mock_odata._update_by_ids.assert_called_once_with(
             "account", ["id-1", "id-2"], {"name": "X"}
+        )
+
+    def test_list_paired_delegates_to_update_by_ids(self):
+        """Paired list-of-patches passes through to _update_by_ids unchanged."""
+        ops, mock_odata = _make_records_client()
+        ops.update("account", ["id-1", "id-2"], [{"name": "A"}, {"name": "B"}])
+        mock_odata._update_by_ids.assert_called_once_with(
+            "account", ["id-1", "id-2"], [{"name": "A"}, {"name": "B"}]
         )
 
     def test_single_delegates_to_update(self):

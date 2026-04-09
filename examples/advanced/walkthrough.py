@@ -241,10 +241,41 @@ def _run_walkthrough(client):
     print(f"[OK] Updated {len(ids)} records to new_Completed=True")
 
     # ============================================================================
-    # 6. PAGING DEMO
+    # 6. LARGE BATCH (AUTO-CHUNKING)
+    # The SDK automatically splits lists > 1,000 records into sequential chunks,
+    # each dispatched as a separate CreateMultiple / UpdateMultiple / UpsertMultiple
+    # request. No manual pre-splitting needed.
+    # Note: chunked operations are NOT atomic — a failure mid-way leaves earlier
+    # chunks applied.
     # ============================================================================
     print("\n" + "=" * 80)
-    print("6. Paging Demo")
+    print("6. Large Batch (Auto-Chunking)")
+    print("=" * 80)
+
+    LARGE_BATCH_SIZE = 1200  # spans 2 chunks: first 1000 + remaining 200
+    log_call(f"client.records.create('{table_name}', [{LARGE_BATCH_SIZE} records])  # auto-chunked")
+    large_batch_records = [
+        {
+            "new_Title": f"Batch item {i}",
+            "new_Quantity": i % 100,
+            "new_Amount": float(i),
+            "new_Completed": False,
+            "new_Priority": Priority.LOW,
+        }
+        for i in range(LARGE_BATCH_SIZE)
+    ]
+    large_batch_ids = backoff(lambda: client.records.create(table_name, large_batch_records))
+    print(f"[OK] Created {len(large_batch_ids)} records across 2 auto-chunks (1000 + 200)")
+
+    log_call(f"client.records.update('{table_name}', [{LARGE_BATCH_SIZE} IDs], {{...}})  # auto-chunked")
+    backoff(lambda: client.records.update(table_name, large_batch_ids, {"new_Completed": True}))
+    print(f"[OK] Updated {len(large_batch_ids)} records across 2 auto-chunks")
+
+    # ============================================================================
+    # 7. PAGING DEMO
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("7. Paging Demo")
     print("=" * 80)
 
     # Create 20 records for paging
@@ -271,41 +302,10 @@ def _run_walkthrough(client):
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
     # ============================================================================
-    # 6b. LARGE BATCH (AUTO-CHUNKING)
-    # The SDK automatically splits lists > 1,000 records into sequential chunks,
-    # each dispatched as a separate CreateMultiple / UpdateMultiple / UpsertMultiple
-    # request. No manual pre-splitting needed.
-    # Note: chunked operations are NOT atomic — a failure mid-way leaves earlier
-    # chunks applied.
+    # 8. QUERYBUILDER - FLUENT QUERIES
     # ============================================================================
     print("\n" + "=" * 80)
-    print("6b. Large Batch (Auto-Chunking)")
-    print("=" * 80)
-
-    LARGE_BATCH_SIZE = 1200  # spans 2 chunks: first 1000 + remaining 200
-    log_call(f"client.records.create('{table_name}', [{LARGE_BATCH_SIZE} records])  # auto-chunked")
-    large_batch_records = [
-        {
-            "new_Title": f"Batch item {i}",
-            "new_Quantity": i % 100,
-            "new_Amount": float(i),
-            "new_Completed": False,
-            "new_Priority": Priority.LOW,
-        }
-        for i in range(LARGE_BATCH_SIZE)
-    ]
-    large_batch_ids = backoff(lambda: client.records.create(table_name, large_batch_records))
-    print(f"[OK] Created {len(large_batch_ids)} records across 2 auto-chunks (1000 + 200)")
-
-    log_call(f"client.records.update('{table_name}', [{LARGE_BATCH_SIZE} IDs], {{...}})  # auto-chunked")
-    backoff(lambda: client.records.update(table_name, large_batch_ids, {"new_Completed": True}))
-    print(f"[OK] Updated {len(large_batch_ids)} records across 2 auto-chunks")
-
-    # ============================================================================
-    # 7. QUERYBUILDER - FLUENT QUERIES
-    # ============================================================================
-    print("\n" + "=" * 80)
-    print("7. QueryBuilder - Fluent Queries")
+    print("8. QueryBuilder - Fluent Queries")
     print("=" * 80)
 
     # Basic fluent query: active records sorted by amount (flat iteration)
@@ -411,10 +411,10 @@ def _run_walkthrough(client):
         print("  (empty DataFrame)")
 
     # ============================================================================
-    # 8. EXPAND (NAVIGATION PROPERTIES)
+    # 9. EXPAND (NAVIGATION PROPERTIES)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("8. Expand (Navigation Properties)")
+    print("9. Expand (Navigation Properties)")
     print("=" * 80)
 
     # Simple expand: fetch accounts with their primary contact in one request
@@ -452,10 +452,10 @@ def _run_walkthrough(client):
         print(f"[SKIP] Nested expand demo skipped: {e}")
 
     # ============================================================================
-    # 9. SQL QUERY
+    # 10. SQL QUERY
     # ============================================================================
     print("\n" + "=" * 80)
-    print("9. SQL Query")
+    print("10. SQL Query")
     print("=" * 80)
 
     log_call(f"client.query.sql('SELECT new_title, new_quantity FROM {table_name} WHERE new_completed = 1')")
@@ -469,10 +469,10 @@ def _run_walkthrough(client):
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
     # ============================================================================
-    # 10. PICKLIST LABEL CONVERSION
+    # 11. PICKLIST LABEL CONVERSION
     # ============================================================================
     print("\n" + "=" * 80)
-    print("10. Picklist Label Conversion")
+    print("11. Picklist Label Conversion")
     print("=" * 80)
 
     log_call(f"client.records.create('{table_name}', {{'new_Priority': 'High'}})")
@@ -500,10 +500,10 @@ def _run_walkthrough(client):
     )
 
     # ============================================================================
-    # 11. COLUMN MANAGEMENT
+    # 12. COLUMN MANAGEMENT
     # ============================================================================
     print("\n" + "=" * 80)
-    print("11. Column Management")
+    print("12. Column Management")
     print("=" * 80)
 
     log_call(f"client.tables.add_columns('{table_name}', {{'new_Tags': 'string'}})")
@@ -516,10 +516,10 @@ def _run_walkthrough(client):
     print(f"[OK] Deleted column: new_Tags")
 
     # ============================================================================
-    # 12. DELETE OPERATIONS
+    # 13. DELETE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("12. Delete Operations")
+    print("13. Delete Operations")
     print("=" * 80)
 
     # Single delete
@@ -534,10 +534,10 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 13. BATCH OPERATIONS
+    # 14. BATCH OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("13. Batch Operations")
+    print("14. Batch Operations")
     print("=" * 80)
 
     # Batch create: send 2 creates in a single POST $batch
@@ -612,10 +612,10 @@ def _run_walkthrough(client):
     print(f"[OK] Batch delete: {len(result.succeeded)} records deleted in one HTTP request")
 
     # ============================================================================
-    # 14. CLEANUP
+    # 15. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("14. Cleanup")
+    print("15. Cleanup")
     print("=" * 80)
 
     log_call(f"client.tables.delete('{table_name}')")
@@ -645,8 +645,8 @@ def _run_walkthrough(client):
     print("  [OK] Single and multiple record creation")
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
-    print("  [OK] Paging through large result sets")
     print("  [OK] Large batch auto-chunking (1,200 records split into 2 chunks)")
+    print("  [OK] Paging through large result sets")
     print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where, to_dataframe)")
     print("  [OK] Expand navigation properties (simple + nested ExpandOption)")
     print("  [OK] SQL queries")
