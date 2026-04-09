@@ -1568,10 +1568,6 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_Attachment", "file")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.FileAttributeMetadata")
 
-    def test_unsupported_dtype_returns_none(self):
-        """Unrecognized dtype string returns None."""
-        self.assertIsNone(self.od._attribute_payload("new_Unknown", "unsupported_type"))
-
     def test_non_string_dtype_raises_value_error(self):
         """Non-string dtype raises ValueError."""
         with self.assertRaises(ValueError):
@@ -1598,6 +1594,11 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.StringAttributeMetadata")
         self.assertEqual(result["MaxLength"], 200)
         self.assertEqual(result["FormatName"], {"Value": "Text"})
+
+    def test_unsupported_type_returns_none(self):
+        """An unknown type string should return None."""
+        result = self.od._attribute_payload("new_Col", "unknown_type")
+        self.assertIsNone(result)
 
 
 class TestGetTableInfo(unittest.TestCase):
