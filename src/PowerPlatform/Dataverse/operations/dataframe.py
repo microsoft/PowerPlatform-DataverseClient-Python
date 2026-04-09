@@ -177,6 +177,13 @@ class DataFrameOperations:
         :raises ValueError: If ``records`` is empty or the number of returned
             IDs does not match the number of input rows.
 
+        .. tip::
+            For DataFrames with more than 1,000 rows, the underlying
+            ``CreateMultiple`` call is split into sequential chunks. This is
+            **not atomic** — if a later chunk fails, earlier rows are already
+            committed. Callers that require atomicity should limit DataFrames
+            to ≤ 1,000 rows per call.
+
         Example:
             Create records from a DataFrame::
 
@@ -246,6 +253,13 @@ class DataFrameOperations:
             are skipped, the method returns without making an API call. When
             ``clear_nulls`` is ``True``, NaN/None values become explicit nulls, so
             rows are never skipped.
+
+        .. tip::
+            For DataFrames with more than 1,000 rows, the underlying
+            ``UpdateMultiple`` call is split into sequential chunks. This is
+            **not atomic** — if a later chunk fails, earlier rows are already
+            committed. Callers that require atomicity should limit DataFrames
+            to ≤ 1,000 rows per call.
 
         Example:
             Update records with different values per row::
