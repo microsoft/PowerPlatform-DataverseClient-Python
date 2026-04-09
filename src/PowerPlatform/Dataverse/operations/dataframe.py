@@ -182,7 +182,8 @@ class DataFrameOperations:
             1,000-row chunks before sending to ``CreateMultiple``. You do not
             need to pre-split large DataFrames. Note that chunked operations
             are **not atomic** — a failure mid-way may leave earlier chunks
-            applied.
+            applied. Callers that require atomicity should limit input to
+            ≤ 1,000 rows.
 
         Example:
             Create records from a DataFrame::
@@ -259,7 +260,8 @@ class DataFrameOperations:
             1,000-row chunks before sending to ``UpdateMultiple`` (or a single
             PATCH for one row). You do not need to pre-split large DataFrames.
             Note that chunked operations are **not atomic** — a failure
-            mid-way may leave earlier chunks applied.
+            mid-way may leave earlier chunks applied. Callers that require
+            atomicity should limit input to ≤ 1,000 rows.
 
         Example:
             Update records with different values per row::

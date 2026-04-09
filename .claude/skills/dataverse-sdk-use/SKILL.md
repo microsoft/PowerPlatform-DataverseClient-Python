@@ -25,7 +25,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.batch` -- batch multiple operations into a single HTTP request
 
 ### Bulk Operations
-The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()`, or `upsert()` for automatic bulk processing; for `delete()`, set `use_bulk_delete=True`. Lists exceeding 1,000 records are automatically split into sequential 1,000-record chunks — no manual pre-splitting needed. Operations across chunks are **not atomic**: a failure mid-way may leave earlier chunks applied.
+The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()`, or `upsert()` for automatic bulk processing; for `delete()`, set `use_bulk_delete=True`. Lists exceeding 1,000 records are automatically split into sequential 1,000-record chunks — no manual pre-splitting needed. Operations across chunks are **not atomic**: a failure mid-way may leave earlier chunks applied. Callers that require atomicity should limit their input to ≤ 1,000 records.
 
 ### Paging
 - Control page size with `page_size` parameter

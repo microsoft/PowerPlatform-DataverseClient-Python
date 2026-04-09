@@ -77,6 +77,12 @@ class RecordOperations:
 
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
+        .. note::
+            Lists exceeding 1,000 records are automatically split into
+            sequential chunks. This is **not atomic** — a failure mid-way
+            may leave earlier chunks applied. Callers that require atomicity
+            should limit input to ≤ 1,000 records.
+
         Example:
             Create a single record::
 
@@ -134,6 +140,12 @@ class RecordOperations:
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes``
             does not match the expected pattern.
+
+        .. note::
+            Lists exceeding 1,000 IDs are automatically split into sequential
+            chunks. This is **not atomic** — a failure mid-way may leave
+            earlier chunks applied. Callers that require atomicity should
+            limit input to ≤ 1,000 IDs.
 
         Example:
             Single update::
@@ -485,6 +497,12 @@ class RecordOperations:
         :raises TypeError: If ``items`` is not a non-empty list, or if any element is
             neither a :class:`~PowerPlatform.Dataverse.models.upsert.UpsertItem` nor a
             dict with ``"alternate_key"`` and ``"record"`` keys.
+
+        .. note::
+            Lists exceeding 1,000 items are automatically split into
+            sequential chunks. This is **not atomic** — a failure mid-way
+            may leave earlier chunks applied. Callers that require atomicity
+            should limit input to ≤ 1,000 items.
 
         Example:
             Upsert a single record using ``UpsertItem``::
