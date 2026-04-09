@@ -16,20 +16,27 @@ from PowerPlatform.Dataverse.data._batch import (
     _RecordGet,
     _RecordUpdate,
     _RecordUpsert,
+    _TableCreate,
+    _TableDelete,
     _TableGet,
     _TableList,
+    _TableAddColumns,
+    _TableRemoveColumns,
+    _TableCreateOneToMany,
+    _TableCreateManyToMany,
+    _TableDeleteRelationship,
+    _TableGetRelationship,
+    _TableCreateLookupField,
     _QuerySql,
     _extract_boundary,
     _raise_top_level_batch_error,
-    _split_multipart,
     _parse_mime_part,
     _parse_http_response_part,
     _CRLF,
 )
-from PowerPlatform.Dataverse.core.errors import HttpError
+from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
-from PowerPlatform.Dataverse.models.batch import BatchItemResponse
 
 
 def _make_od():
@@ -389,10 +396,34 @@ class TestBatchSizeLimit(unittest.TestCase):
         client = _BatchClient(od)
 
         items = [_RecordGet(table="account", record_id=f"guid-{i}") for i in range(1001)]
-        from PowerPlatform.Dataverse.core.errors import ValidationError
-
         with self.assertRaises(ValidationError):
             client.execute(items)
+
+
+class TestContinueOnError(unittest.TestCase):
+    """execute() sends Prefer: odata.continue-on-error when requested."""
+
+    def setUp(self):
+        self.od = _make_od()
+        self.od._build_get.return_value = _RawRequest(method="GET", url="https://x/accounts(g)")
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Type": 'multipart/mixed; boundary="batch_x"'}
+        mock_resp.status_code = 200
+        mock_resp.text = "--batch_x\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n\r\n--batch_x--"
+        self.od._request.return_value = mock_resp
+        self.client = _BatchClient(self.od)
+
+    def test_continue_on_error_header_sent(self):
+        """Prefer: odata.continue-on-error header is included when continue_on_error=True."""
+        self.client.execute([_RecordGet(table="account", record_id="guid-1")], continue_on_error=True)
+        _, kwargs = self.od._request.call_args
+        self.assertEqual(kwargs.get("headers", {}).get("Prefer"), "odata.continue-on-error")
+
+    def test_no_continue_on_error_header_by_default(self):
+        """Prefer header is absent when continue_on_error is not set."""
+        self.client.execute([_RecordGet(table="account", record_id="guid-1")])
+        _, kwargs = self.od._request.call_args
+        self.assertNotIn("Prefer", kwargs.get("headers", {}))
 
 
 class TestChangeSetInternal(unittest.TestCase):
@@ -626,6 +657,288 @@ class TestRaiseTopLevelBatchError(unittest.TestCase):
         resp.json.return_value = {"error": {"code": "0x0", "message": "Invalid batch"}}
         with self.assertRaises(HttpError):
             client._parse_batch_response(resp)
+
+
+class TestContinueOnError(unittest.TestCase):
+    """execute() sends Prefer: odata.continue-on-error when requested."""
+
+    def setUp(self):
+        self.od = _make_od()
+        self.od._build_get.return_value = _RawRequest(method="GET", url="https://x/accounts(g)")
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Type": 'multipart/mixed; boundary="batch_x"'}
+        mock_resp.status_code = 200
+        mock_resp.text = "--batch_x\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n\r\n--batch_x--"
+        self.od._request.return_value = mock_resp
+        self.client = _BatchClient(self.od)
+
+    def test_continue_on_error_header_sent(self):
+        self.client.execute([_RecordGet(table="account", record_id="guid-1")], continue_on_error=True)
+        _, kwargs = self.od._request.call_args
+        self.assertEqual(kwargs.get("headers", {}).get("Prefer"), "odata.continue-on-error")
+
+    def test_no_continue_on_error_header_by_default(self):
+        self.client.execute([_RecordGet(table="account", record_id="guid-1")])
+        _, kwargs = self.od._request.call_args
+        self.assertNotIn("Prefer", kwargs.get("headers", {}))
+
+
+class TestResolveItemDispatch(unittest.TestCase):
+    """_resolve_item() routes each intent type to the correct resolver."""
+
+    def _client_and_od(self):
+        od = _make_od()
+        client = _BatchClient(od)
+        return client, od
+
+    def test_dispatch_record_update(self):
+        """_resolve_item routes _RecordUpdate to _resolve_record_update."""
+        client, od = self._client_and_od()
+        od._build_update.return_value = MagicMock()
+        op = _RecordUpdate(table="account", ids="guid-1", changes={"name": "X"})
+        result = client._resolve_item(op)
+        od._build_update.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_record_delete(self):
+        """_resolve_item routes _RecordDelete to _resolve_record_delete."""
+        client, od = self._client_and_od()
+        od._build_delete.return_value = MagicMock()
+        op = _RecordDelete(table="account", ids="guid-1")
+        result = client._resolve_item(op)
+        od._build_delete.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_create(self):
+        """_resolve_item routes _TableCreate to _build_create_entity."""
+        client, od = self._client_and_od()
+        od._build_create_entity.return_value = MagicMock()
+        op = _TableCreate(table="new_Widget", columns={"new_name": str})
+        result = client._resolve_item(op)
+        od._build_create_entity.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_delete(self):
+        """_resolve_item routes _TableDelete, resolving MetadataId before calling _build_delete_entity."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._build_delete_entity.return_value = MagicMock()
+        op = _TableDelete(table="new_Widget")
+        result = client._resolve_item(op)
+        od._build_delete_entity.assert_called_once_with("meta-1")
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_get(self):
+        """_resolve_item routes _TableGet to _build_get_entity."""
+        client, od = self._client_and_od()
+        od._build_get_entity.return_value = MagicMock()
+        op = _TableGet(table="account")
+        result = client._resolve_item(op)
+        od._build_get_entity.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_list(self):
+        """_resolve_item routes _TableList to _build_list_entities."""
+        client, od = self._client_and_od()
+        od._build_list_entities.return_value = MagicMock()
+        op = _TableList()
+        result = client._resolve_item(op)
+        od._build_list_entities.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_add_columns(self):
+        """_resolve_item routes _TableAddColumns, emitting one request per column."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._build_create_column.return_value = MagicMock()
+        op = _TableAddColumns(table="account", columns={"new_col": str})
+        result = client._resolve_item(op)
+        od._build_create_column.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_remove_columns(self):
+        """_resolve_item routes _TableRemoveColumns, fetching attribute metadata before deleting."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._get_attribute_metadata.return_value = {"MetadataId": "attr-1"}
+        od._build_delete_column.return_value = MagicMock()
+        op = _TableRemoveColumns(table="account", columns="new_col")
+        result = client._resolve_item(op)
+        od._build_delete_column.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_create_one_to_many(self):
+        """_resolve_item routes _TableCreateOneToMany, merging lookup into relationship body."""
+        client, od = self._client_and_od()
+        od._build_create_relationship.return_value = MagicMock()
+        lookup = MagicMock()
+        lookup.to_dict.return_value = {}
+        relationship = MagicMock()
+        relationship.to_dict.return_value = {}
+        op = _TableCreateOneToMany(lookup=lookup, relationship=relationship)
+        result = client._resolve_item(op)
+        od._build_create_relationship.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_create_many_to_many(self):
+        """_resolve_item routes _TableCreateManyToMany to _build_create_relationship."""
+        client, od = self._client_and_od()
+        od._build_create_relationship.return_value = MagicMock()
+        relationship = MagicMock()
+        relationship.to_dict.return_value = {}
+        op = _TableCreateManyToMany(relationship=relationship)
+        result = client._resolve_item(op)
+        od._build_create_relationship.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_delete_relationship(self):
+        """_resolve_item routes _TableDeleteRelationship, passing relationship_id."""
+        client, od = self._client_and_od()
+        od._build_delete_relationship.return_value = MagicMock()
+        op = _TableDeleteRelationship(relationship_id="rel-guid-1")
+        result = client._resolve_item(op)
+        od._build_delete_relationship.assert_called_once_with("rel-guid-1")
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_get_relationship(self):
+        """_resolve_item routes _TableGetRelationship, passing schema_name."""
+        client, od = self._client_and_od()
+        od._build_get_relationship.return_value = MagicMock()
+        op = _TableGetRelationship(schema_name="new_account_contact")
+        result = client._resolve_item(op)
+        od._build_get_relationship.assert_called_once_with("new_account_contact")
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_table_create_lookup_field(self):
+        """_resolve_item routes _TableCreateLookupField, building lookup and relationship models."""
+        client, od = self._client_and_od()
+        lookup = MagicMock()
+        lookup.to_dict.return_value = {}
+        relationship = MagicMock()
+        relationship.to_dict.return_value = {}
+        od._build_lookup_field_models.return_value = (lookup, relationship)
+        od._build_create_relationship.return_value = MagicMock()
+        op = _TableCreateLookupField(
+            referencing_table="new_Widget",
+            lookup_field_name="new_accountid",
+            referenced_table="account",
+        )
+        result = client._resolve_item(op)
+        od._build_lookup_field_models.assert_called_once()
+        od._build_create_relationship.assert_called_once()
+        self.assertEqual(len(result), 1)
+
+    def test_dispatch_query_sql(self):
+        """_resolve_item routes _QuerySql to _build_sql, passing the SQL string."""
+        client, od = self._client_and_od()
+        od._build_sql.return_value = MagicMock()
+        op = _QuerySql(sql="SELECT name FROM account")
+        result = client._resolve_item(op)
+        od._build_sql.assert_called_once_with("SELECT name FROM account")
+        self.assertEqual(len(result), 1)
+
+
+class TestResolveOneChangeset(unittest.TestCase):
+    """_resolve_one() raises ValidationError when operation produces != 1 request."""
+
+    def test_multi_request_op_in_changeset_raises(self):
+        """use_bulk_delete=False with 2 ids produces 2 requests — not allowed in a changeset."""
+        od = _make_od()
+        client = _BatchClient(od)
+        od._build_delete.return_value = MagicMock()
+        op = _RecordDelete(table="account", ids=["guid-1", "guid-2"], use_bulk_delete=False)
+        with self.assertRaises(ValidationError):
+            client._resolve_one(op)
+
+
+class TestRequireEntityMetadata(unittest.TestCase):
+    """_require_entity_metadata raises MetadataError when table not found."""
+
+    def test_missing_entity_raises_metadata_error(self):
+        """MetadataError raised when _get_entity_by_table_schema_name returns None."""
+        od = _make_od()
+        od._get_entity_by_table_schema_name.return_value = None
+        client = _BatchClient(od)
+        with self.assertRaises(MetadataError):
+            client._require_entity_metadata("new_Missing")
+
+    def test_entity_without_metadata_id_raises(self):
+        """MetadataError raised when entity exists but has no MetadataId field."""
+        od = _make_od()
+        od._get_entity_by_table_schema_name.return_value = {"LogicalName": "new_missing"}
+        client = _BatchClient(od)
+        with self.assertRaises(MetadataError):
+            client._require_entity_metadata("new_Missing")
+
+    def test_valid_entity_returns_metadata_id(self):
+        """Returns MetadataId string when entity is found and has a MetadataId."""
+        od = _make_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-abc"}
+        client = _BatchClient(od)
+        result = client._require_entity_metadata("account")
+        self.assertEqual(result, "meta-abc")
+
+
+class TestTableRemoveColumnsResolver(unittest.TestCase):
+    """_resolve_table_remove_columns covers string input and missing column error."""
+
+    def _client_and_od(self):
+        od = _make_od()
+        client = _BatchClient(od)
+        return client, od
+
+    def test_single_string_column_resolved(self):
+        """A single string column name is accepted and resolved to one delete request."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._get_attribute_metadata.return_value = {"MetadataId": "attr-1"}
+        od._build_delete_column.return_value = MagicMock()
+        op = _TableRemoveColumns(table="account", columns="new_col")
+        result = client._resolve_table_remove_columns(op)
+        self.assertEqual(len(result), 1)
+
+    def test_missing_column_raises_metadata_error(self):
+        """MetadataError raised when attribute metadata is not found for the column."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._get_attribute_metadata.return_value = None
+        op = _TableRemoveColumns(table="account", columns="new_missing")
+        with self.assertRaises(MetadataError):
+            client._resolve_table_remove_columns(op)
+
+    def test_column_without_metadata_id_raises(self):
+        """MetadataError raised when attribute metadata exists but has no MetadataId."""
+        client, od = self._client_and_od()
+        od._get_entity_by_table_schema_name.return_value = {"MetadataId": "meta-1"}
+        od._get_attribute_metadata.return_value = {"AttributeType": "String"}
+        op = _TableRemoveColumns(table="account", columns="new_col")
+        with self.assertRaises(MetadataError):
+            client._resolve_table_remove_columns(op)
+
+
+class TestParseMimePartNoSeparator(unittest.TestCase):
+    """_parse_mime_part handles raw string with no blank-line separator."""
+
+    def test_no_double_newline_returns_empty_body(self):
+        """When raw part has no blank-line separator, headers are parsed and body is empty."""
+        raw = "Content-Type: application/http"
+        headers, body = _parse_mime_part(raw)
+        self.assertEqual(headers.get("content-type"), "application/http")
+        self.assertEqual(body, "")
+
+
+class TestParseHttpResponsePartMalformed(unittest.TestCase):
+    """_parse_http_response_part returns None for malformed status lines."""
+
+    def test_status_line_too_short_returns_none(self):
+        """Returns None when status line has fewer than 2 tokens (no status code)."""
+        result = _parse_http_response_part("HTTP/1.1\r\n\r\n", content_id=None)
+        self.assertIsNone(result)
+
+    def test_non_integer_status_code_returns_none(self):
+        """Returns None when status code token is not a valid integer."""
+        result = _parse_http_response_part("HTTP/1.1 XYZ OK\r\n\r\n", content_id=None)
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":
