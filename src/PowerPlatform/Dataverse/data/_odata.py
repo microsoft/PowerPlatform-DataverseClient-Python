@@ -825,6 +825,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         while next_link:
             # Guard 1: exact URL cycle (same next_link returned twice)
             if next_link in visited:
+                warnings.warn(
+                    f"SQL pagination stopped after {len(results)} rows — "
+                    "the Dataverse server returned the same nextLink URL twice, "
+                    "indicating an infinite pagination cycle. "
+                    "Returning the rows collected so far. "
+                    "To avoid pagination entirely, add a TOP clause to your query.",
+                    RuntimeWarning,
+                    stacklevel=4,
+                )
                 break
             visited.add(next_link)
             # Guard 2: server-side bug where pagingcookie does not advance between

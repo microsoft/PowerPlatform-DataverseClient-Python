@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Batch API: `client.batch` namespace for deferred-execution batch operations that pack multiple Dataverse Web API calls into a single `POST $batch` HTTP request (#129)
+- Batch DataFrame integration: `client.batch.dataframe` namespace with pandas DataFrame wrappers for batch operations (#129)
+- `client.records.upsert()` and `client.batch.records.upsert()` backed by the `UpsertMultiple` bound action with alternate-key support (#129)
+- QueryBuilder: `client.query.builder("table")` with a fluent API, 20+ chainable methods (`select`, `filter_eq`, `filter_contains`, `order_by`, `expand`, etc.), and composable filter expressions using Python operators (`&`, `|`, `~`) (#118)
+- Memo/multiline column type support: `"memo"` (or `"multiline"`) can now be passed as a column type in `client.tables.create()` and `client.tables.add_columns()` (#155)
+
+### Changed
+- Picklist label-to-integer resolution now uses a single bulk `PicklistAttributeMetadata` API call for the entire table instead of per-attribute requests, with a 1-hour TTL cache (#154)
+
 ### Fixed
 - `client.query.sql()` silently truncated results at 5,000 rows. The method now follows `@odata.nextLink` pagination and returns all matching rows (#157).
+- Alternate key fields were incorrectly merged into the `UpsertMultiple` request body, causing `400 Bad Request` on the create path (#129)
+- Docstring type annotations corrected for Microsoft Learn API reference compatibility (#153)
 
 ## [0.1.0b7] - 2026-03-17
 
@@ -96,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b7...HEAD
 [0.1.0b7]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b6...v0.1.0b7
 [0.1.0b6]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b5...v0.1.0b6
 [0.1.0b5]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b4...v0.1.0b5

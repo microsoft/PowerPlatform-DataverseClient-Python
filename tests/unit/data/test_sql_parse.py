@@ -225,8 +225,9 @@ def test_query_sql_mid_pagination_error_warns_and_returns_partial():
     assert result == [{"id": 1}]
 
 
-def test_query_sql_repeated_next_link_stops_pagination():
-    """If the server keeps returning the same @odata.nextLink the loop must not run forever."""
+def test_query_sql_repeated_next_link_warns_and_stops():
+    """If the server keeps returning the same @odata.nextLink a RuntimeWarning is emitted and
+    the loop stops without running forever."""
     client = _query_sql_client()
     # Both pages return the same next_link — simulates a server that re-executes the SQL
     repeating_body = {"value": [{"id": 1}], "@odata.nextLink": "https://org.example/page2"}
@@ -241,7 +242,8 @@ def test_query_sql_repeated_next_link_stops_pagination():
         patch.object(client, "_build_sql", return_value=MagicMock()),
         patch.object(client, "_request", return_value=resp2) as mock_req,
     ):
-        result = client._query_sql("SELECT id FROM account")
+        with pytest.warns(RuntimeWarning, match="pagination stopped"):
+            result = client._query_sql("SELECT id FROM account")
 
     # fetched page2 once, then detected the cycle and stopped
     mock_req.assert_called_once_with("get", "https://org.example/page2")
@@ -343,11 +345,11 @@ def _make_next_link(pagingcookie_inner: str, pagenumber: int = 2) -> str:
     from urllib.parse import quote as _url_quote
 
     skiptoken_xml = (
-        f'<cookie pagenumber="{pagenumber}" '
-        f'pagingcookie="{pagingcookie_inner}" '
-        f'istracking="False" />'
+        f'<cookie pagenumber="{pagenumber}" ' f'pagingcookie="{pagingcookie_inner}" ' f'istracking="False" />'
     )
-    return f"https://org.example/api/data/v9.2?$sql=SELECT%20name%20FROM%20account&$skiptoken={_url_quote(skiptoken_xml)}"
+    return (
+        f"https://org.example/api/data/v9.2?$sql=SELECT%20name%20FROM%20account&$skiptoken={_url_quote(skiptoken_xml)}"
+    )
 
 
 def test_extract_pagingcookie_returns_cookie_value():
