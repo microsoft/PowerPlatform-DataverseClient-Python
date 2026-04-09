@@ -7,6 +7,7 @@ import warnings
 
 import pytest
 from unittest.mock import MagicMock
+from urllib.parse import parse_qs, urlparse
 
 from PowerPlatform.Dataverse.core.errors import ValidationError
 from PowerPlatform.Dataverse.data._odata import _ODataClient
@@ -363,8 +364,8 @@ class TestQuerySqlGuardrailIntegration:
         c._query_sql("SELECT name FROM account")
 
         call_args = c._request.call_args
-        sent_params = call_args[1].get("params", {})
-        sent_sql = sent_params.get("sql", "")
+        sent_url = call_args[0][1]
+        sent_sql = parse_qs(urlparse(sent_url).query)["sql"][0]
         # SDK should NOT inject TOP 5000
         assert "TOP 5000" not in sent_sql
         assert sent_sql == "SELECT name FROM account"
@@ -380,6 +381,6 @@ class TestQuerySqlGuardrailIntegration:
         c._query_sql("SELECT TOP 50 name FROM account")
 
         call_args = c._request.call_args
-        sent_params = call_args[1].get("params", {})
-        sent_sql = sent_params.get("sql", "")
+        sent_url = call_args[0][1]
+        sent_sql = parse_qs(urlparse(sent_url).query)["sql"][0]
         assert "TOP 50" in sent_sql

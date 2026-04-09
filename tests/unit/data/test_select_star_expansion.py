@@ -5,6 +5,7 @@
 
 import pytest
 from unittest.mock import MagicMock
+from urllib.parse import parse_qs, urlparse
 
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
@@ -210,7 +211,8 @@ class TestQuerySqlSelectStarIntegration:
         c._list_columns.assert_called_once()
         # Verify the SQL sent to server has explicit columns, not *
         call_args = c._request.call_args
-        sent_sql = call_args[1]["params"]["sql"] if "params" in call_args[1] else call_args[0][2]["sql"]
+        sent_url = call_args[0][1]
+        sent_sql = parse_qs(urlparse(sent_url).query)["sql"][0]
         assert "*" not in sent_sql or "COUNT(*)" in sent_sql
         assert "accountid" in sent_sql
         assert "name" in sent_sql
