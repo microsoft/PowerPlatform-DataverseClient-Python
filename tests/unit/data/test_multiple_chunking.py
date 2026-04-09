@@ -239,26 +239,32 @@ class TestUpdateMultipleBoundaries(unittest.TestCase):
         return [{"accountid": f"id-{i}", "name": f"N{i}"} for i in range(n)]
 
     def test_one_record_single_request(self):
+        """Single record produces one request."""
         self.od._update_multiple("accounts", "account", self._records(1))
         self.od._execute_raw.assert_called_once()
 
     def test_batch_minus_one_single_request(self):
+        """_MULTIPLE_BATCH_SIZE-1 records fit in one chunk."""
         self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE - 1))
         self.od._execute_raw.assert_called_once()
 
     def test_exact_batch_single_request(self):
+        """Exactly _MULTIPLE_BATCH_SIZE records produces one chunk and one request."""
         self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE))
         self.od._execute_raw.assert_called_once()
 
     def test_batch_plus_one_two_requests(self):
+        """_MULTIPLE_BATCH_SIZE+1 records produces two chunks and two requests."""
         self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE + 1))
         self.assertEqual(self.od._execute_raw.call_count, 2)
 
     def test_two_full_batches(self):
+        """2*_MULTIPLE_BATCH_SIZE records produces two full chunks."""
         self.od._update_multiple("accounts", "account", self._records(2 * _MULTIPLE_BATCH_SIZE))
         self.assertEqual(self.od._execute_raw.call_count, 2)
 
     def test_two_batches_plus_one(self):
+        """2*_MULTIPLE_BATCH_SIZE+1 records produces three chunks."""
         self.od._update_multiple("accounts", "account", self._records(2 * _MULTIPLE_BATCH_SIZE + 1))
         self.assertEqual(self.od._execute_raw.call_count, 3)
 
@@ -310,16 +316,19 @@ class TestUpdateMultipleTypeValidation(unittest.TestCase):
         self.od._execute_raw = MagicMock(return_value=_mock_update_response())
 
     def test_empty_list_raises_type_error(self):
+        """Empty list raises TypeError before any HTTP call."""
         with self.assertRaises(TypeError):
             self.od._update_multiple("accounts", "account", [])
         self.od._execute_raw.assert_not_called()
 
     def test_non_list_raises_type_error(self):
+        """Non-list input raises TypeError before any HTTP call."""
         with self.assertRaises(TypeError):
             self.od._update_multiple("accounts", "account", {"accountid": "x"})  # type: ignore
         self.od._execute_raw.assert_not_called()
 
     def test_non_dict_element_raises_type_error(self):
+        """A non-dict element raises TypeError before any HTTP call."""
         with self.assertRaises(TypeError):
             self.od._update_multiple("accounts", "account", [{"accountid": "x"}, "bad"])
         self.od._execute_raw.assert_not_called()
@@ -346,29 +355,35 @@ class TestUpsertMultipleBoundaries(unittest.TestCase):
         self.od._request.return_value = MagicMock()
 
     def test_one_record_single_request(self):
+        """Single record produces one request."""
         self.od._upsert_multiple("accounts", "account", _alt_keys(1), _upsert_records(1))
         self.od._request.assert_called_once()
 
     def test_batch_minus_one_single_request(self):
+        """_MULTIPLE_BATCH_SIZE-1 records fit in one chunk."""
         n = _MULTIPLE_BATCH_SIZE - 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.od._request.assert_called_once()
 
     def test_exact_batch_single_request(self):
+        """Exactly _MULTIPLE_BATCH_SIZE records produces one chunk and one request."""
         self.od._upsert_multiple("accounts", "account", _alt_keys(_MULTIPLE_BATCH_SIZE), _upsert_records(_MULTIPLE_BATCH_SIZE))
         self.od._request.assert_called_once()
 
     def test_batch_plus_one_two_requests(self):
+        """_MULTIPLE_BATCH_SIZE+1 records produces two chunks and two requests."""
         n = _MULTIPLE_BATCH_SIZE + 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 2)
 
     def test_two_full_batches(self):
+        """2*_MULTIPLE_BATCH_SIZE records produces two full chunks."""
         n = 2 * _MULTIPLE_BATCH_SIZE
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 2)
 
     def test_two_batches_plus_one(self):
+        """2*_MULTIPLE_BATCH_SIZE+1 records produces three chunks."""
         n = 2 * _MULTIPLE_BATCH_SIZE + 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 3)
@@ -436,11 +451,13 @@ class TestUpsertMultipleValidationUnchanged(unittest.TestCase):
         self.od._request.return_value = MagicMock()
 
     def test_length_mismatch_raises_value_error(self):
+        """Mismatched alternate_keys and records lengths raise ValueError before any HTTP call."""
         with self.assertRaises(ValueError, msg="alternate_keys and records must have the same length"):
             self.od._upsert_multiple("accounts", "account", _alt_keys(3), _upsert_records(2))
         self.od._request.assert_not_called()
 
     def test_key_conflict_raises_value_error(self):
+        """Conflicting value for a key field in the record payload raises ValueError before any HTTP call."""
         with self.assertRaises(ValueError, msg="record payload conflicts with alternate_key"):
             self.od._upsert_multiple(
                 "accounts",
@@ -557,6 +574,7 @@ class TestPublicCreateDelegation(unittest.TestCase):
     """records.create delegates to _create_multiple for list input."""
 
     def test_list_delegates_to_create_multiple(self):
+        """List input routes to _create_multiple, not _create."""
         ops, mock_odata = _make_records_client()
         ops.create("account", [{"name": "A"}, {"name": "B"}])
         mock_odata._create_multiple.assert_called_once_with(
@@ -576,6 +594,7 @@ class TestPublicUpdateDelegation(unittest.TestCase):
     """records.update delegates to _update_by_ids for list input."""
 
     def test_list_delegates_to_update_by_ids(self):
+        """Broadcast list input routes to _update_by_ids, not _update."""
         ops, mock_odata = _make_records_client()
         ops.update("account", ["id-1", "id-2"], {"name": "X"})
         mock_odata._update_by_ids.assert_called_once_with(
