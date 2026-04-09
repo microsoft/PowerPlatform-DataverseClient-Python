@@ -85,7 +85,8 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
     if last:
         if attempts:
             print(
-                f"   [WARN] Backoff exhausted after " f"{max(attempts - 1, 0)} retry(s); waited {total_delay}s total."
+                f"   [WARN] Backoff exhausted after {max(attempts - 1, 0)} retry(s); waited {total_delay}s total."
+                f"\n   [ERROR] {last}"
             )
         raise last
 
@@ -174,15 +175,19 @@ def _run_examples(client):
     try:
         backoff(
             lambda: client.tables.create_lookup_field(
-                referencing_table=child_table,
+                referencing_table=child_table.lower(),
                 lookup_field_name="new_TeamId",
-                referenced_table=parent_table,
+                referenced_table=parent_table.lower(),
                 display_name="Team",
             )
         )
         print("[OK] Created lookup: new_TeamId on tasks -> teams")
-    except Exception:
-        print("[OK] Lookup already exists (or skipped)")
+    except Exception as e:
+        msg = str(e).lower()
+        if "already exists" in msg or "duplicate" in msg:
+            print("[OK] Lookup already exists (skipped)")
+        else:
+            raise
 
     log_call(f"client.records.create('{parent_table}', [...])")
     teams = [
@@ -282,7 +287,7 @@ def _run_examples(client):
         rels = backoff(
             lambda: client.tables.list_table_relationships(
                 child_table,
-                select=["SchemaName", "ReferencedEntity", "ReferencingEntity"],
+                select=["SchemaName"],
             )
         )
         print(f"[OK] Relationships on {child_table}: {len(rels)}")
