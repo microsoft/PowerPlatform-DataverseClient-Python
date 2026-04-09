@@ -605,33 +605,33 @@ class TestRequestErrorParsing(unittest.TestCase):
         self.client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
 
     def _make_raw_response(self, status_code, json_data=None, headers=None):
-        r = MagicMock()
-        r.status_code = status_code
-        r.text = "body"
-        r.json.return_value = json_data or {}
-        r.headers = headers or {}
-        return r
+        response = MagicMock()
+        response.status_code = status_code
+        response.text = "body"
+        response.json.return_value = json_data or {}
+        response.headers = headers or {}
+        return response
 
     def test_message_key_fallback_used_when_no_error_key(self):
         """_request uses 'message' key when 'error' key is absent."""
-        r = self._make_raw_response(400, json_data={"message": "Bad input received"})
-        self.client._raw_request = MagicMock(return_value=r)
+        response = self._make_raw_response(400, json_data={"message": "Bad input received"})
+        self.client._raw_request = MagicMock(return_value=response)
         with self.assertRaises(HttpError) as ctx:
             self.client._request("get", "http://example.com/test")
         self.assertIn("Bad input received", str(ctx.exception))
 
     def test_retry_after_non_int_not_stored_in_details(self):
         """Retry-After header that is non-numeric results in retry_after absent from details."""
-        r = self._make_raw_response(429, headers={"Retry-After": "not-a-number"})
-        self.client._raw_request = MagicMock(return_value=r)
+        response = self._make_raw_response(429, headers={"Retry-After": "not-a-number"})
+        self.client._raw_request = MagicMock(return_value=response)
         with self.assertRaises(HttpError) as ctx:
             self.client._request("get", "http://example.com/test")
         self.assertIsNone(ctx.exception.details.get("retry_after"))
 
     def test_retry_after_int_stored_in_details(self):
         """Retry-After header that is numeric is stored in exception details."""
-        r = self._make_raw_response(429, headers={"Retry-After": "30"})
-        self.client._raw_request = MagicMock(return_value=r)
+        response = self._make_raw_response(429, headers={"Retry-After": "30"})
+        self.client._raw_request = MagicMock(return_value=response)
         with self.assertRaises(HttpError) as ctx:
             self.client._request("get", "http://example.com/test")
         self.assertEqual(ctx.exception.details.get("retry_after"), 30)
@@ -665,48 +665,61 @@ class TestCreateMultiple(unittest.TestCase):
 
     def test_body_not_dict_returns_empty_list(self):
         """When response body is not a dict, returns empty list."""
-        r = _mock_response(text='["id1", "id2"]')
-        r.json.return_value = ["id1", "id2"]
-        self.od._request.return_value = r
+        response = _mock_response(text='["id1", "id2"]')
+        response.json.return_value = ["id1", "id2"]
+        self.od._request.return_value = response
         result = self.od._create_multiple("accounts", "account", [{"name": "A"}])
         self.assertEqual(result, [])
 
     def test_value_key_path_extracts_ids(self):
         """Falls back to 'value' key to extract IDs via heuristic."""
         long_guid = "a" * 32
-        r = _mock_response(
+        response = _mock_response(
             json_data={"value": [{"accountid": long_guid, "name": "Test"}]},
             text="...",
         )
-        self.od._request.return_value = r
+        self.od._request.return_value = response
         result = self.od._create_multiple("accounts", "account", [{"name": "Test"}])
         self.assertEqual(result, [long_guid])
 
     def test_value_key_with_non_dict_items_returns_empty(self):
         """'value' list with non-dict items returns empty list."""
-        r = _mock_response(json_data={"value": ["not-a-dict"]}, text="...")
-        self.od._request.return_value = r
+        response = _mock_response(json_data={"value": ["not-a-dict"]}, text="...")
+        self.od._request.return_value = response
         self.od._convert_labels_to_ints = MagicMock(side_effect=lambda _, rec: rec)
         result = self.od._create_multiple("accounts", "account", [{"name": "Test"}])
         self.assertEqual(result, [])
 
     def test_no_ids_or_value_key_returns_empty_list(self):
         """When body has neither 'Ids' nor 'value' keys, returns empty list."""
-        r = _mock_response(json_data={"something_else": "data"}, text="...")
-        self.od._request.return_value = r
+        response = _mock_response(json_data={"something_else": "data"}, text="...")
+        self.od._request.return_value = response
         self.od._convert_labels_to_ints = MagicMock(side_effect=lambda _, rec: rec)
         result = self.od._create_multiple("accounts", "account", [{"name": "Test"}])
         self.assertEqual(result, [])
 
     def test_value_parse_error_returns_empty_list(self):
         """ValueError in body.json() returns empty list."""
-        r = MagicMock()
-        r.text = "invalid json"
-        r.json.side_effect = ValueError("bad json")
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "invalid json"
+        response.json.side_effect = ValueError("bad json")
+        self.od._request.return_value = response
         self.od._convert_labels_to_ints = MagicMock(side_effect=lambda _, rec: rec)
         result = self.od._create_multiple("accounts", "account", [{"name": "Test"}])
         self.assertEqual(result, [])
+
+    def test_multiple_records_returns_all_ids(self):
+        """All IDs from the Ids response key are returned for multiple input records."""
+        self.od._request.return_value = _mock_response(
+            json_data={"Ids": ["id-1", "id-2", "id-3"]},
+            text='{"Ids": ["id-1", "id-2", "id-3"]}',
+        )
+        result = self.od._create_multiple(
+            "accounts",
+            "account",
+            [{"name": "A"}, {"name": "B"}, {"name": "C"}],
+        )
+        self.assertEqual(result, ["id-1", "id-2", "id-3"])
 
 
 class TestPrimaryIdAttr(unittest.TestCase):
@@ -857,6 +870,20 @@ class TestUpdateMultiple(unittest.TestCase):
         self.assertEqual(len(payload["Targets"]), 1)
         self.assertIn("@odata.type", payload["Targets"][0])
 
+    def test_multiple_records_all_in_targets(self):
+        """All records are included in the Targets payload for multiple inputs."""
+        self.od._request.return_value = _mock_response()
+        records = [
+            {"accountid": "id-1", "name": "A"},
+            {"accountid": "id-2", "name": "B"},
+            {"accountid": "id-3", "name": "C"},
+        ]
+        self.od._update_multiple("accounts", "account", records)
+        payload = json.loads(self.od._request.call_args.kwargs["data"])
+        self.assertEqual(len(payload["Targets"]), 3)
+        self.assertEqual(payload["Targets"][0]["accountid"], "id-1")
+        self.assertEqual(payload["Targets"][2]["accountid"], "id-3")
+
 
 class TestDeleteMultiple(unittest.TestCase):
     """Unit tests for _ODataClient._delete_multiple."""
@@ -905,10 +932,10 @@ class TestDeleteMultiple(unittest.TestCase):
 
     def test_handles_value_error_in_json_parsing(self):
         """_delete_multiple handles ValueError in response JSON parsing gracefully."""
-        r = MagicMock()
-        r.text = "invalid"
-        r.json.side_effect = ValueError
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "invalid"
+        response.json.side_effect = ValueError
+        self.od._request.return_value = response
         result = self.od._delete_multiple("account", ["id-1"])
         self.assertIsNone(result)
 
@@ -944,8 +971,8 @@ class TestGetMultiple(unittest.TestCase):
 
     def _single_page_response(self, items=None):
         data = {"value": items or [{"accountid": "id-1"}]}
-        r = _mock_response(json_data=data, text=str(data))
-        self.od._request.return_value = r
+        response = _mock_response(json_data=data, text=str(data))
+        self.od._request.return_value = response
 
     def test_filter_param_passed(self):
         """_get_multiple passes $filter to params."""
@@ -999,10 +1026,10 @@ class TestGetMultiple(unittest.TestCase):
 
     def test_value_error_in_json_returns_empty(self):
         """ValueError in page JSON parsing yields nothing."""
-        r = MagicMock()
-        r.text = "bad json"
-        r.json.side_effect = ValueError
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "bad json"
+        response.json.side_effect = ValueError
+        self.od._request.return_value = response
         pages = list(self.od._get_multiple("account"))
         self.assertEqual(pages, [])
 
@@ -1043,8 +1070,8 @@ class TestGetMultiple(unittest.TestCase):
     def test_filters_non_dict_items_from_page(self):
         """_get_multiple filters out non-dict items from each page."""
         data = {"value": [{"accountid": "id-1"}, "not-a-dict", 42]}
-        r = _mock_response(json_data=data, text=str(data))
-        self.od._request.return_value = r
+        response = _mock_response(json_data=data, text=str(data))
+        self.od._request.return_value = response
         pages = list(self.od._get_multiple("account"))
         self.assertEqual(len(pages), 1)
         self.assertEqual(len(pages[0]), 1)
@@ -1053,8 +1080,8 @@ class TestGetMultiple(unittest.TestCase):
     def test_empty_value_list_yields_nothing(self):
         """_get_multiple yields nothing when value list is empty."""
         data = {"value": []}
-        r = _mock_response(json_data=data, text=str(data))
-        self.od._request.return_value = r
+        response = _mock_response(json_data=data, text=str(data))
+        self.od._request.return_value = response
         pages = list(self.od._get_multiple("account"))
         self.assertEqual(pages, [])
 
@@ -1096,26 +1123,26 @@ class TestQuerySql(unittest.TestCase):
 
     def test_body_as_list_fallback(self):
         """_query_sql handles body being a list directly."""
-        r = _mock_response(text="...")
-        r.json.return_value = [{"name": "A"}, {"name": "B"}]
-        self.od._request.return_value = r
+        response = _mock_response(text="...")
+        response.json.return_value = [{"name": "A"}, {"name": "B"}]
+        self.od._request.return_value = response
         result = self.od._query_sql("SELECT name FROM account")
         self.assertEqual(len(result), 2)
 
     def test_value_error_in_json_returns_empty(self):
         """_query_sql returns empty list when JSON parsing fails."""
-        r = MagicMock()
-        r.text = "bad json"
-        r.json.side_effect = ValueError
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "bad json"
+        response.json.side_effect = ValueError
+        self.od._request.return_value = response
         result = self.od._query_sql("SELECT name FROM account")
         self.assertEqual(result, [])
 
     def test_unexpected_body_returns_empty(self):
         """_query_sql returns empty list for non-dict, non-list body."""
-        r = _mock_response(text="...")
-        r.json.return_value = "unexpected"
-        self.od._request.return_value = r
+        response = _mock_response(text="...")
+        response.json.return_value = "unexpected"
+        self.od._request.return_value = response
         result = self.od._query_sql("SELECT name FROM account")
         self.assertEqual(result, [])
 
@@ -1145,10 +1172,10 @@ class TestEntitySetFromSchemaName(unittest.TestCase):
 
     def test_json_value_error_in_response_treated_as_empty(self):
         """_entity_set_from_schema_name handles ValueError in JSON parsing."""
-        r = MagicMock()
-        r.text = "invalid json"
-        r.json.side_effect = ValueError
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "invalid json"
+        response.json.side_effect = ValueError
+        self.od._request.return_value = response
         with self.assertRaises(MetadataError):
             self.od._entity_set_from_schema_name("account")
 
@@ -1331,10 +1358,10 @@ class TestGetAttributeMetadata(unittest.TestCase):
 
     def test_value_error_in_json_returns_none(self):
         """_get_attribute_metadata returns None on JSON parse failure."""
-        r = MagicMock()
-        r.text = "bad json"
-        r.json.side_effect = ValueError
-        self.od._request.return_value = r
+        response = MagicMock()
+        response.text = "bad json"
+        response.json.side_effect = ValueError
+        self.od._request.return_value = response
         result = self.od._get_attribute_metadata("meta-001", "name")
         self.assertIsNone(result)
 
@@ -2374,11 +2401,11 @@ class TestPicklistLabelResolution(unittest.TestCase):
         resp2 = self._bulk_response(("new_status", [(100, "Open")]))
         self.od._request.side_effect = [resp1, resp2]
 
-        r1 = self.od._convert_labels_to_ints("account", {"industrycode": "Tech"})
-        r2 = self.od._convert_labels_to_ints("new_ticket", {"new_status": "Open"})
+        result1 = self.od._convert_labels_to_ints("account", {"industrycode": "Tech"})
+        result2 = self.od._convert_labels_to_ints("new_ticket", {"new_status": "Open"})
 
-        self.assertEqual(r1["industrycode"], 6)
-        self.assertEqual(r2["new_status"], 100)
+        self.assertEqual(result1["industrycode"], 6)
+        self.assertEqual(result2["new_status"], 100)
         self.assertEqual(self.od._request.call_count, 2)
 
     def test_convert_only_odata_and_non_strings_skips_fetch(self):
