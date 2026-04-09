@@ -175,9 +175,9 @@ def _run_examples(client):
     try:
         backoff(
             lambda: client.tables.create_lookup_field(
-                referencing_table=child_table.lower(),
+                referencing_table=child_table,
                 lookup_field_name="new_TeamId",
-                referenced_table=parent_table.lower(),
+                referenced_table=parent_table,
                 display_name="Team",
             )
         )
