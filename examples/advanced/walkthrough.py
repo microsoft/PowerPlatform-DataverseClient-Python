@@ -120,6 +120,7 @@ def _run_walkthrough(client):
             "new_Quantity": "int",
             "new_Amount": "decimal",
             "new_Completed": "bool",
+            "new_Notes": "memo",
             "new_Priority": Priority,
         }
         table_info = backoff(lambda: client.tables.create(table_name, columns))
@@ -140,6 +141,7 @@ def _run_walkthrough(client):
         "new_Quantity": 5,
         "new_Amount": 1250.50,
         "new_Completed": False,
+        "new_Notes": "This is a multiline memo field.\nIt supports longer text content.",
         "new_Priority": Priority.MEDIUM,
     }
     id1 = backoff(lambda: client.records.create(table_name, single_record))
@@ -192,6 +194,7 @@ def _run_walkthrough(client):
                 "new_quantity": record.get("new_quantity"),
                 "new_amount": record.get("new_amount"),
                 "new_completed": record.get("new_completed"),
+                "new_notes": record.get("new_notes"),
                 "new_priority": record.get("new_priority"),
                 "new_priority@FormattedValue": record.get("new_priority@OData.Community.Display.V1.FormattedValue"),
             },
@@ -218,9 +221,19 @@ def _run_walkthrough(client):
 
     # Single update
     log_call(f"client.records.update('{table_name}', '{id1}', {{...}})")
-    backoff(lambda: client.records.update(table_name, id1, {"new_Quantity": 100}))
+    backoff(
+        lambda: client.records.update(
+            table_name,
+            id1,
+            {
+                "new_Quantity": 100,
+                "new_Notes": "Updated memo field.\nNow with revised content across multiple lines.",
+            },
+        )
+    )
     updated = backoff(lambda: client.records.get(table_name, id1))
     print(f"[OK] Updated single record new_Quantity: {updated.get('new_quantity')}")
+    print(f"  new_Notes: {repr(updated.get('new_notes'))}")
 
     # Multiple update (broadcast same change)
     log_call(f"client.records.update('{table_name}', [{len(ids)} IDs], {{...}})")
@@ -462,14 +475,14 @@ def _run_walkthrough(client):
     print("11. Column Management")
     print("=" * 80)
 
-    log_call(f"client.tables.add_columns('{table_name}', {{'new_Notes': 'string'}})")
-    created_cols = backoff(lambda: client.tables.add_columns(table_name, {"new_Notes": "string"}))
+    log_call(f"client.tables.add_columns('{table_name}', {{'new_Tags': 'string'}})")
+    created_cols = backoff(lambda: client.tables.add_columns(table_name, {"new_Tags": "string"}))
     print(f"[OK] Added column: {created_cols[0]}")
 
     # Delete the column we just added
-    log_call(f"client.tables.remove_columns('{table_name}', ['new_Notes'])")
-    backoff(lambda: client.tables.remove_columns(table_name, ["new_Notes"]))
-    print(f"[OK] Deleted column: new_Notes")
+    log_call(f"client.tables.remove_columns('{table_name}', ['new_Tags'])")
+    backoff(lambda: client.tables.remove_columns(table_name, ["new_Tags"]))
+    print(f"[OK] Deleted column: new_Tags")
 
     # ============================================================================
     # 12. DELETE OPERATIONS

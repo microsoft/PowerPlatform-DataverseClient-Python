@@ -82,7 +82,8 @@ class TableOperations:
         :type table: :class:`str`
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
-            (or ``"text"``), ``"int"`` (or ``"integer"``), ``"decimal"``
+            (or ``"text"``), ``"memo"`` (or ``"multiline"``),
+            ``"int"`` (or ``"integer"``), ``"decimal"``
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses

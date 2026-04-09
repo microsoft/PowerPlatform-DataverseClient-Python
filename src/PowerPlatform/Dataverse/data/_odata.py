@@ -1368,6 +1368,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "FormatName": {"Value": "Text"},
                 "IsPrimaryName": bool(is_primary_name),
             }
+        if dtype_l in ("memo", "multiline"):
+            return {
+                "@odata.type": "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                "SchemaName": column_schema_name,
+                "DisplayName": self._label(label),
+                "RequiredLevel": {"Value": "None"},
+                "MaxLength": 4000,
+                "FormatName": {"Value": "Text"},
+                "ImeMode": "Auto",
+            }
         if dtype_l in ("int", "integer"):
             return {
                 "@odata.type": "Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
