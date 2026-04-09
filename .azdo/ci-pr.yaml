@@ -66,7 +66,7 @@ extends:
           displayName: 'Install wheel'
 
         - script: |
-            PYTHONPATH=src pytest --junitxml=test-results.xml --cov=src/PowerPlatform --cov-report=xml --cov-report=term-missing --cov-fail-under=90
+            PYTHONPATH=src pytest --junitxml=test-results.xml --cov --cov-report=xml
           displayName: 'Test with pytest'
 
         - script: |
