@@ -51,7 +51,6 @@ def _mock_update_response():
     return resp
 
 
-B = _MULTIPLE_BATCH_SIZE  # shorthand used throughout
 
 
 # ---------------------------------------------------------------------------
@@ -88,41 +87,41 @@ class TestCreateMultipleBoundaries(unittest.TestCase):
 
     def test_batch_minus_one_single_request(self):
         """B-1 records fit in one chunk."""
-        ids = [f"id-{i}" for i in range(B - 1)]
-        result = self._run(B - 1, [_mock_create_response(ids)])
+        ids = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE - 1)]
+        result = self._run(_MULTIPLE_BATCH_SIZE - 1, [_mock_create_response(ids)])
         self.od._execute_raw.assert_called_once()
-        self.assertEqual(len(result), B - 1)
+        self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE - 1)
 
     def test_exact_batch_size_single_request(self):
-        """Exactly B records → one chunk, one request."""
-        ids = [f"id-{i}" for i in range(B)]
-        result = self._run(B, [_mock_create_response(ids)])
+        """Exactly _MULTIPLE_BATCH_SIZE records → one chunk, one request."""
+        ids = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
+        result = self._run(_MULTIPLE_BATCH_SIZE, [_mock_create_response(ids)])
         self.od._execute_raw.assert_called_once()
-        self.assertEqual(len(result), B)
+        self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE)
 
     def test_batch_plus_one_two_requests(self):
         """B+1 records → two chunks, two requests."""
-        ids1 = [f"id-{i}" for i in range(B)]
+        ids1 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
         ids2 = ["id-last"]
-        result = self._run(B + 1, [_mock_create_response(ids1), _mock_create_response(ids2)])
+        result = self._run(_MULTIPLE_BATCH_SIZE + 1, [_mock_create_response(ids1), _mock_create_response(ids2)])
         self.assertEqual(self.od._execute_raw.call_count, 2)
-        self.assertEqual(len(result), B + 1)
+        self.assertEqual(len(result), _MULTIPLE_BATCH_SIZE + 1)
 
     def test_two_full_batches(self):
-        """2*B records → two full chunks."""
-        ids1 = [f"id-{i}" for i in range(B)]
-        ids2 = [f"id-{i}" for i in range(B, 2 * B)]
-        result = self._run(2 * B, [_mock_create_response(ids1), _mock_create_response(ids2)])
+        """2*_MULTIPLE_BATCH_SIZE records → two full chunks."""
+        ids1 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE)]
+        ids2 = [f"id-{i}" for i in range(_MULTIPLE_BATCH_SIZE, 2 * _MULTIPLE_BATCH_SIZE)]
+        result = self._run(2 * _MULTIPLE_BATCH_SIZE, [_mock_create_response(ids1), _mock_create_response(ids2)])
         self.assertEqual(self.od._execute_raw.call_count, 2)
-        self.assertEqual(len(result), 2 * B)
+        self.assertEqual(len(result), 2 * _MULTIPLE_BATCH_SIZE)
 
     def test_two_batches_plus_one(self):
-        """2*B+1 records → three chunks."""
-        se = [_mock_create_response([f"id-{j}" for j in range(B)]) for _ in range(2)]
+        """2*_MULTIPLE_BATCH_SIZE+1 records → three chunks."""
+        se = [_mock_create_response([f"id-{j}" for j in range(_MULTIPLE_BATCH_SIZE)]) for _ in range(2)]
         se.append(_mock_create_response(["id-extra"]))
-        result = self._run(2 * B + 1, se)
+        result = self._run(2 * _MULTIPLE_BATCH_SIZE + 1, se)
         self.assertEqual(self.od._execute_raw.call_count, 3)
-        self.assertEqual(len(result), 2 * B + 1)
+        self.assertEqual(len(result), 2 * _MULTIPLE_BATCH_SIZE + 1)
 
 
 class TestCreateMultipleChunkPayloads(unittest.TestCase):
@@ -139,8 +138,8 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         return None  # handled in test below
 
     def test_first_chunk_has_batch_size_records(self):
-        """The first chunk sent to the server has exactly B records."""
-        records = [{"name": f"R{i}"} for i in range(B + 50)]
+        """The first chunk sent to the server has exactly _MULTIPLE_BATCH_SIZE records."""
+        records = [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 50)]
         self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
 
         captured = []
@@ -154,12 +153,12 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         self.od._build_create_multiple = capturing_build
         self.od._create_multiple("accounts", "account", records)
 
-        self.assertEqual(captured[0], B)
+        self.assertEqual(captured[0], _MULTIPLE_BATCH_SIZE)
         self.assertEqual(captured[1], 50)
 
     def test_chunks_cover_all_records_no_overlap(self):
         """All input records appear in exactly one chunk, no duplicates or gaps."""
-        n = B + 7
+        n = _MULTIPLE_BATCH_SIZE + 7
         records = [{"name": f"R{i}", "idx": i} for i in range(n)]
         self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
 
@@ -191,7 +190,7 @@ class TestCreateMultipleIdAggregation(unittest.TestCase):
             side_effect=[_mock_create_response(ids1), _mock_create_response(ids2)]
         )
         result = self.od._create_multiple(
-            "accounts", "account", [{"name": f"R{i}"} for i in range(B + 1)]
+            "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
         self.assertEqual(result[:2], ["a1", "a2"])
         self.assertIn("b1", result)
@@ -203,7 +202,7 @@ class TestCreateMultipleIdAggregation(unittest.TestCase):
             side_effect=[_mock_create_response([]), _mock_create_response(["id-1"])]
         )
         result = self.od._create_multiple(
-            "accounts", "account", [{"name": f"R{i}"} for i in range(B + 1)]
+            "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
         self.assertEqual(result, ["id-1"])
 
@@ -220,7 +219,7 @@ class TestCreateMultipleIdAggregation(unittest.TestCase):
 
         self.od._execute_raw = MagicMock(side_effect=[resp1, resp2])
         result = self.od._create_multiple(
-            "accounts", "account", [{"name": f"R{i}"} for i in range(B + 1)]
+            "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
         self.assertIn("a1", result)
 
@@ -259,23 +258,23 @@ class TestUpdateMultipleBoundaries(unittest.TestCase):
         self.od._execute_raw.assert_called_once()
 
     def test_batch_minus_one_single_request(self):
-        self.od._update_multiple("accounts", "account", self._records(B - 1))
+        self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE - 1))
         self.od._execute_raw.assert_called_once()
 
     def test_exact_batch_single_request(self):
-        self.od._update_multiple("accounts", "account", self._records(B))
+        self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE))
         self.od._execute_raw.assert_called_once()
 
     def test_batch_plus_one_two_requests(self):
-        self.od._update_multiple("accounts", "account", self._records(B + 1))
+        self.od._update_multiple("accounts", "account", self._records(_MULTIPLE_BATCH_SIZE + 1))
         self.assertEqual(self.od._execute_raw.call_count, 2)
 
     def test_two_full_batches(self):
-        self.od._update_multiple("accounts", "account", self._records(2 * B))
+        self.od._update_multiple("accounts", "account", self._records(2 * _MULTIPLE_BATCH_SIZE))
         self.assertEqual(self.od._execute_raw.call_count, 2)
 
     def test_two_batches_plus_one(self):
-        self.od._update_multiple("accounts", "account", self._records(2 * B + 1))
+        self.od._update_multiple("accounts", "account", self._records(2 * _MULTIPLE_BATCH_SIZE + 1))
         self.assertEqual(self.od._execute_raw.call_count, 3)
 
 
@@ -287,8 +286,8 @@ class TestUpdateMultipleChunkPayloads(unittest.TestCase):
         self.od._execute_raw = MagicMock(return_value=_mock_update_response())
 
     def test_first_chunk_size_is_batch_size(self):
-        """First chunk has exactly B records."""
-        n = B + 17
+        """First chunk has exactly _MULTIPLE_BATCH_SIZE records."""
+        n = _MULTIPLE_BATCH_SIZE + 17
         records = [{"accountid": f"id-{i}", "name": f"N{i}"} for i in range(n)]
         captured = []
         original = self.od._build_update_multiple_from_records
@@ -299,12 +298,12 @@ class TestUpdateMultipleChunkPayloads(unittest.TestCase):
 
         self.od._build_update_multiple_from_records = capturing
         self.od._update_multiple("accounts", "account", records)
-        self.assertEqual(captured[0], B)
+        self.assertEqual(captured[0], _MULTIPLE_BATCH_SIZE)
         self.assertEqual(captured[1], 17)
 
     def test_records_are_not_duplicated_or_dropped(self):
         """All input IDs appear exactly once across all chunks."""
-        n = B + 3
+        n = _MULTIPLE_BATCH_SIZE + 3
         records = [{"accountid": f"id-{i}", "name": f"N{i}"} for i in range(n)]
         seen_ids = []
         original = self.od._build_update_multiple_from_records
@@ -366,26 +365,26 @@ class TestUpsertMultipleBoundaries(unittest.TestCase):
         self.od._request.assert_called_once()
 
     def test_batch_minus_one_single_request(self):
-        n = B - 1
+        n = _MULTIPLE_BATCH_SIZE - 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.od._request.assert_called_once()
 
     def test_exact_batch_single_request(self):
-        self.od._upsert_multiple("accounts", "account", _alt_keys(B), _upsert_records(B))
+        self.od._upsert_multiple("accounts", "account", _alt_keys(_MULTIPLE_BATCH_SIZE), _upsert_records(_MULTIPLE_BATCH_SIZE))
         self.od._request.assert_called_once()
 
     def test_batch_plus_one_two_requests(self):
-        n = B + 1
+        n = _MULTIPLE_BATCH_SIZE + 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 2)
 
     def test_two_full_batches(self):
-        n = 2 * B
+        n = 2 * _MULTIPLE_BATCH_SIZE
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 2)
 
     def test_two_batches_plus_one(self):
-        n = 2 * B + 1
+        n = 2 * _MULTIPLE_BATCH_SIZE + 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         self.assertEqual(self.od._request.call_count, 3)
 
@@ -398,17 +397,17 @@ class TestUpsertMultipleChunkPayloads(unittest.TestCase):
         self.od._request.return_value = MagicMock()
 
     def test_first_chunk_has_batch_size_targets(self):
-        """First POST body has exactly B Targets."""
-        n = B + 10
+        """First POST body has exactly _MULTIPLE_BATCH_SIZE Targets."""
+        n = _MULTIPLE_BATCH_SIZE + 10
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         first_call = self.od._request.call_args_list[0]
         targets = first_call.kwargs["json"]["Targets"]
-        self.assertEqual(len(targets), B)
+        self.assertEqual(len(targets), _MULTIPLE_BATCH_SIZE)
 
     def test_last_chunk_has_remainder_targets(self):
         """Last POST body has the remainder."""
         remainder = 7
-        n = B + remainder
+        n = _MULTIPLE_BATCH_SIZE + remainder
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         last_call = self.od._request.call_args_list[-1]
         targets = last_call.kwargs["json"]["Targets"]
@@ -416,7 +415,7 @@ class TestUpsertMultipleChunkPayloads(unittest.TestCase):
 
     def test_all_targets_sent_no_duplicates(self):
         """All accountnumber values appear exactly once across all chunks."""
-        n = B + 5
+        n = _MULTIPLE_BATCH_SIZE + 5
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         all_numbers = []
         for c in self.od._request.call_args_list:
@@ -428,7 +427,7 @@ class TestUpsertMultipleChunkPayloads(unittest.TestCase):
 
     def test_odata_type_injected_in_each_target(self):
         """@odata.type is injected into every target in every chunk."""
-        n = B + 2
+        n = _MULTIPLE_BATCH_SIZE + 2
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         for c in self.od._request.call_args_list:
             for t in c.kwargs["json"]["Targets"]:
@@ -437,7 +436,7 @@ class TestUpsertMultipleChunkPayloads(unittest.TestCase):
 
     def test_post_url_uses_upsert_multiple_action(self):
         """Every chunk is POSTed to the UpsertMultiple action URL."""
-        n = B + 1
+        n = _MULTIPLE_BATCH_SIZE + 1
         self.od._upsert_multiple("accounts", "account", _alt_keys(n), _upsert_records(n))
         for c in self.od._request.call_args_list:
             self.assertIn("UpsertMultiple", c.args[1])
@@ -468,7 +467,7 @@ class TestUpsertMultipleValidationUnchanged(unittest.TestCase):
 
     def test_large_batch_with_conflict_in_second_chunk_raises(self):
         """Conflict detection happens before chunking so it catches errors in any position."""
-        n = B + 1
+        n = _MULTIPLE_BATCH_SIZE + 1
         alt_keys = _alt_keys(n)
         records = _upsert_records(n)
         # Inject a conflict in the last record (would be in the second chunk)
