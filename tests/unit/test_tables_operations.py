@@ -193,6 +193,16 @@ class TestTableOperations(unittest.TestCase):
         self.client._odata._create_columns.assert_called_once_with("new_Product", columns)
         self.assertEqual(result, ["new_Notes", "new_Active"])
 
+    def test_add_columns_memo(self):
+        """add_columns() with memo type should pass through correctly."""
+        self.client._odata._create_columns.return_value = ["new_Description"]
+
+        columns = {"new_Description": "memo"}
+        result = self.client.tables.add_columns("new_Product", columns)
+
+        self.client._odata._create_columns.assert_called_once_with("new_Product", columns)
+        self.assertEqual(result, ["new_Description"])
+
     # --------------------------------------------------------- remove_columns
 
     def test_remove_columns_single(self):
