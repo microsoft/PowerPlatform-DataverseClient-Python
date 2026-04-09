@@ -597,7 +597,6 @@ batch.dataframe.delete("account", pd.Series([id1, id2]))
 result = batch.execute()
 ```
 
-
 For a complete example see [examples/advanced/batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py).
 
 ## Next steps
