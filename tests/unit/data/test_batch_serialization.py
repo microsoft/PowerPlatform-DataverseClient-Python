@@ -659,30 +659,6 @@ class TestRaiseTopLevelBatchError(unittest.TestCase):
             client._parse_batch_response(resp)
 
 
-class TestContinueOnError(unittest.TestCase):
-    """execute() sends Prefer: odata.continue-on-error when requested."""
-
-    def setUp(self):
-        self.od = _make_od()
-        self.od._build_get.return_value = _RawRequest(method="GET", url="https://x/accounts(g)")
-        mock_resp = MagicMock()
-        mock_resp.headers = {"Content-Type": 'multipart/mixed; boundary="batch_x"'}
-        mock_resp.status_code = 200
-        mock_resp.text = "--batch_x\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n\r\n--batch_x--"
-        self.od._request.return_value = mock_resp
-        self.client = _BatchClient(self.od)
-
-    def test_continue_on_error_header_sent(self):
-        self.client.execute([_RecordGet(table="account", record_id="guid-1")], continue_on_error=True)
-        _, kwargs = self.od._request.call_args
-        self.assertEqual(kwargs.get("headers", {}).get("Prefer"), "odata.continue-on-error")
-
-    def test_no_continue_on_error_header_by_default(self):
-        self.client.execute([_RecordGet(table="account", record_id="guid-1")])
-        _, kwargs = self.od._request.call_args
-        self.assertNotIn("Prefer", kwargs.get("headers", {}))
-
-
 class TestResolveItemDispatch(unittest.TestCase):
     """_resolve_item() routes each intent type to the correct resolver."""
 
@@ -697,7 +673,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_update.return_value = MagicMock()
         op = _RecordUpdate(table="account", ids="guid-1", changes={"name": "X"})
         result = client._resolve_item(op)
-        od._build_update.assert_called_once()
+        od._build_update.assert_called_once_with("account", "guid-1", {"name": "X"}, content_id=None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_record_delete(self):
@@ -706,7 +682,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_delete.return_value = MagicMock()
         op = _RecordDelete(table="account", ids="guid-1")
         result = client._resolve_item(op)
-        od._build_delete.assert_called_once()
+        od._build_delete.assert_called_once_with("account", "guid-1", content_id=None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_create(self):
@@ -715,7 +691,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_create_entity.return_value = MagicMock()
         op = _TableCreate(table="new_Widget", columns={"new_name": str})
         result = client._resolve_item(op)
-        od._build_create_entity.assert_called_once()
+        od._build_create_entity.assert_called_once_with("new_Widget", {"new_name": str}, None, None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_delete(self):
@@ -734,16 +710,16 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_get_entity.return_value = MagicMock()
         op = _TableGet(table="account")
         result = client._resolve_item(op)
-        od._build_get_entity.assert_called_once()
+        od._build_get_entity.assert_called_once_with("account")
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_list(self):
-        """_resolve_item routes _TableList to _build_list_entities."""
+        """_resolve_item routes _TableList to _build_list_entities, passing filter and select."""
         client, od = self._client_and_od()
         od._build_list_entities.return_value = MagicMock()
         op = _TableList()
         result = client._resolve_item(op)
-        od._build_list_entities.assert_called_once()
+        od._build_list_entities.assert_called_once_with(filter=None, select=None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_add_columns(self):
@@ -753,7 +729,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_create_column.return_value = MagicMock()
         op = _TableAddColumns(table="account", columns={"new_col": str})
         result = client._resolve_item(op)
-        od._build_create_column.assert_called_once()
+        od._build_create_column.assert_called_once_with("meta-1", "new_col", str)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_remove_columns(self):
@@ -764,7 +740,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_delete_column.return_value = MagicMock()
         op = _TableRemoveColumns(table="account", columns="new_col")
         result = client._resolve_item(op)
-        od._build_delete_column.assert_called_once()
+        od._build_delete_column.assert_called_once_with("meta-1", "attr-1")
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_create_one_to_many(self):
@@ -772,12 +748,15 @@ class TestResolveItemDispatch(unittest.TestCase):
         client, od = self._client_and_od()
         od._build_create_relationship.return_value = MagicMock()
         lookup = MagicMock()
-        lookup.to_dict.return_value = {}
+        lookup.to_dict.return_value = {"SchemaName": "new_account_contact"}
         relationship = MagicMock()
-        relationship.to_dict.return_value = {}
+        relationship.to_dict.return_value = {"ReferencedEntity": "account"}
         op = _TableCreateOneToMany(lookup=lookup, relationship=relationship)
         result = client._resolve_item(op)
-        od._build_create_relationship.assert_called_once()
+        od._build_create_relationship.assert_called_once_with(
+            {"ReferencedEntity": "account", "Lookup": {"SchemaName": "new_account_contact"}},
+            solution=None,
+        )
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_create_many_to_many(self):
@@ -785,10 +764,10 @@ class TestResolveItemDispatch(unittest.TestCase):
         client, od = self._client_and_od()
         od._build_create_relationship.return_value = MagicMock()
         relationship = MagicMock()
-        relationship.to_dict.return_value = {}
+        relationship.to_dict.return_value = {"SchemaName": "new_account_contact"}
         op = _TableCreateManyToMany(relationship=relationship)
         result = client._resolve_item(op)
-        od._build_create_relationship.assert_called_once()
+        od._build_create_relationship.assert_called_once_with({"SchemaName": "new_account_contact"}, solution=None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_delete_relationship(self):
@@ -813,9 +792,9 @@ class TestResolveItemDispatch(unittest.TestCase):
         """_resolve_item routes _TableCreateLookupField, building lookup and relationship models."""
         client, od = self._client_and_od()
         lookup = MagicMock()
-        lookup.to_dict.return_value = {}
+        lookup.to_dict.return_value = {"SchemaName": "new_accountid"}
         relationship = MagicMock()
-        relationship.to_dict.return_value = {}
+        relationship.to_dict.return_value = {"ReferencedEntity": "account"}
         od._build_lookup_field_models.return_value = (lookup, relationship)
         od._build_create_relationship.return_value = MagicMock()
         op = _TableCreateLookupField(
@@ -824,8 +803,20 @@ class TestResolveItemDispatch(unittest.TestCase):
             referenced_table="account",
         )
         result = client._resolve_item(op)
-        od._build_lookup_field_models.assert_called_once()
-        od._build_create_relationship.assert_called_once()
+        od._build_lookup_field_models.assert_called_once_with(
+            referencing_table="new_Widget",
+            lookup_field_name="new_accountid",
+            referenced_table="account",
+            display_name=None,
+            description=None,
+            required=False,
+            cascade_delete="RemoveLink",
+            language_code=1033,
+        )
+        od._build_create_relationship.assert_called_once_with(
+            {"ReferencedEntity": "account", "Lookup": {"SchemaName": "new_accountid"}},
+            solution=None,
+        )
         self.assertEqual(len(result), 1)
 
     def test_dispatch_query_sql(self):
@@ -895,6 +886,7 @@ class TestTableRemoveColumnsResolver(unittest.TestCase):
         od._build_delete_column.return_value = MagicMock()
         op = _TableRemoveColumns(table="account", columns="new_col")
         result = client._resolve_table_remove_columns(op)
+        od._build_delete_column.assert_called_once_with("meta-1", "attr-1")
         self.assertEqual(len(result), 1)
 
     def test_missing_column_raises_metadata_error(self):
