@@ -178,9 +178,11 @@ class DataFrameOperations:
             IDs does not match the number of input rows.
 
         .. tip::
-            All rows are sent in a single ``CreateMultiple`` request. For very
-            large DataFrames, consider splitting into smaller batches to avoid
-            request timeouts.
+            The SDK automatically splits large DataFrames into sequential
+            1,000-row chunks before sending to ``CreateMultiple``. You do not
+            need to pre-split large DataFrames. Note that chunked operations
+            are **not atomic** — a failure mid-way may leave earlier chunks
+            applied.
 
         Example:
             Create records from a DataFrame::
@@ -253,9 +255,11 @@ class DataFrameOperations:
             rows are never skipped.
 
         .. tip::
-            All rows are sent in a single ``UpdateMultiple`` request (or a
-            single PATCH for one row). For very large DataFrames, consider
-            splitting into smaller batches to avoid request timeouts.
+            The SDK automatically splits large DataFrames into sequential
+            1,000-row chunks before sending to ``UpdateMultiple`` (or a single
+            PATCH for one row). You do not need to pre-split large DataFrames.
+            Note that chunked operations are **not atomic** — a failure
+            mid-way may leave earlier chunks applied.
 
         Example:
             Update records with different values per row::

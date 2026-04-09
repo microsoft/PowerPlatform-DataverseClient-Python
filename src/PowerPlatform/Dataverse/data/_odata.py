@@ -53,6 +53,7 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+_MULTIPLE_BATCH_SIZE = 1000
 
 
 def _extract_pagingcookie(next_link: str) -> Optional[str]:
@@ -360,8 +361,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    def _create_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> List[str]:
+    def _create_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+    ) -> List[str]:
         """Create multiple records using the collection-bound ``CreateMultiple`` action.
+
+        Large record lists are automatically split into chunks of up to
+        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -374,35 +383,42 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :rtype: ``list[str]``
 
         .. note::
-           Logical type stamping: if any payload omits ``@odata.type`` the client injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads already include ``@odata.type`` no modification occurs.
+           Logical type stamping: if any payload omits ``@odata.type`` the client
+           injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads
+           already include ``@odata.type`` no modification occurs.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
+           split into multiple requests and is **not atomic**. If a later batch
+           fails, earlier batches are already committed. Callers that require
+           atomicity should limit input to ``<= _MULTIPLE_BATCH_SIZE`` records.
         """
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
-        r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, records))
-        try:
-            body = r.json() if r.text else {}
-        except ValueError:
-            body = {}
-        if not isinstance(body, dict):
-            return []
-        # Expected: { "Ids": [guid, ...] }
-        ids = body.get("Ids")
-        if isinstance(ids, list):
-            return [i for i in ids if isinstance(i, str)]
 
-        value = body.get("value")
-        if isinstance(value, list):
-            # Extract IDs if possible
-            out: List[str] = []
-            for item in value:
-                if isinstance(item, dict):
-                    # Heuristic: look for a property ending with 'id'
-                    for k, v in item.items():
-                        if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
-                            out.append(v)
-                            break
-            return out
-        return []
+        all_ids: List[str] = []
+        for i in range(0, len(records), _MULTIPLE_BATCH_SIZE):
+            chunk = records[i : i + _MULTIPLE_BATCH_SIZE]
+            r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, chunk))
+            try:
+                body = r.json() if r.text else {}
+            except ValueError:
+                body = {}
+            if not isinstance(body, dict):
+                continue
+            ids = body.get("Ids")
+            if isinstance(ids, list):
+                all_ids.extend(i for i in ids if isinstance(i, str))
+                continue
+            value = body.get("value")
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
+                                all_ids.append(v)
+                                break
+        return all_ids
 
     def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
         """Build an OData alternate key segment from a mapping of key names to values.
@@ -496,6 +512,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         :raises ValueError: If ``alternate_keys`` and ``records`` differ in length, or if
             any record payload contains an alternate key field with a conflicting value.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
+           split into multiple requests and is **not atomic** across batches.
         """
         if len(alternate_keys) != len(records):
             raise ValueError(
@@ -517,9 +537,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             key_str = self._build_alternate_key_str(alt_key)
             record_processed["@odata.id"] = f"{entity_set}({key_str})"
             targets.append(record_processed)
-        payload = {"Targets": targets}
+
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
-        self._request("post", url, json=payload, expected=(200, 201, 204))
+        for i in range(0, len(targets), _MULTIPLE_BATCH_SIZE):
+            chunk = targets[i : i + _MULTIPLE_BATCH_SIZE]
+            self._request("post", url, json={"Targets": chunk}, expected=(200, 201, 204))
+        return None
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -538,7 +561,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         )
 
     def _update_by_ids(
-        self, table_schema_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
+        self,
+        table_schema_name: str,
+        ids: List[str],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
         """Update many records by GUID list using the collection-bound ``UpdateMultiple`` action.
 
@@ -636,8 +662,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         self._execute_raw(self._build_update(table_schema_name, key, data))
 
-    def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
+    def _update_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+    ) -> None:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
+
+        Large record lists are automatically split into chunks of up to
+        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -650,13 +684,20 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         .. note::
            - Endpoint: ``POST /{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple`` with body ``{"Targets": [...]}``.
-           - Transactional semantics: if any individual update fails, the entire request rolls back.
+           - Transactional semantics apply within each batch; if a batch fails it rolls back, but earlier batches are already committed.
            - Response content is ignored; no stable contract for returned IDs/representations.
            - Caller must supply the correct primary key attribute (e.g. ``accountid``) in every record.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
+           split into multiple requests and is **not atomic** across batches.
         """
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
-        self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, records))
+
+        for i in range(0, len(records), _MULTIPLE_BATCH_SIZE):
+            chunk = records[i : i + _MULTIPLE_BATCH_SIZE]
+            self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, chunk))
         return None
 
     def _delete(self, table_schema_name: str, key: str) -> None:

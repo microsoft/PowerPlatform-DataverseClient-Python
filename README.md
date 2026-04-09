@@ -186,6 +186,10 @@ client.records.update("account", ids, {"industry": "Technology"})
 client.records.delete("account", ids, use_bulk_delete=True)
 ```
 
+> **Large batches**: Lists exceeding 1,000 records are automatically split into sequential
+> 1,000-record chunks — no manual pre-splitting needed. Note that chunked operations are
+> **not atomic**: a failure mid-way may leave earlier chunks applied.
+
 ### Upsert operations
 
 Use `client.records.upsert()` to create or update records identified by alternate keys. When the

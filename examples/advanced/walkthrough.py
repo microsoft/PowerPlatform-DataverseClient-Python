@@ -271,6 +271,37 @@ def _run_walkthrough(client):
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
     # ============================================================================
+    # 6b. LARGE BATCH (AUTO-CHUNKING)
+    # The SDK automatically splits lists > 1,000 records into sequential chunks,
+    # each dispatched as a separate CreateMultiple / UpdateMultiple / UpsertMultiple
+    # request. No manual pre-splitting needed.
+    # Note: chunked operations are NOT atomic — a failure mid-way leaves earlier
+    # chunks applied.
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("6b. Large Batch (Auto-Chunking)")
+    print("=" * 80)
+
+    LARGE_BATCH_SIZE = 1200  # spans 2 chunks: first 1000 + remaining 200
+    log_call(f"client.records.create('{table_name}', [{LARGE_BATCH_SIZE} records])  # auto-chunked")
+    large_batch_records = [
+        {
+            "new_Title": f"Batch item {i}",
+            "new_Quantity": i % 100,
+            "new_Amount": float(i),
+            "new_Completed": False,
+            "new_Priority": Priority.LOW,
+        }
+        for i in range(LARGE_BATCH_SIZE)
+    ]
+    large_batch_ids = backoff(lambda: client.records.create(table_name, large_batch_records))
+    print(f"[OK] Created {len(large_batch_ids)} records across 2 auto-chunks (1000 + 200)")
+
+    log_call(f"client.records.update('{table_name}', [{LARGE_BATCH_SIZE} IDs], {{...}})  # auto-chunked")
+    backoff(lambda: client.records.update(table_name, large_batch_ids, {"new_Completed": True}))
+    print(f"[OK] Updated {len(large_batch_ids)} records across 2 auto-chunks")
+
+    # ============================================================================
     # 7. QUERYBUILDER - FLUENT QUERIES
     # ============================================================================
     print("\n" + "=" * 80)
@@ -615,6 +646,7 @@ def _run_walkthrough(client):
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
+    print("  [OK] Large batch auto-chunking (1,200 records split into 2 chunks)")
     print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where, to_dataframe)")
     print("  [OK] Expand navigation properties (simple + nested ExpandOption)")
     print("  [OK] SQL queries")
