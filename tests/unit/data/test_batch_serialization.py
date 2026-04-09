@@ -193,19 +193,19 @@ class TestBuildBatchBody(unittest.TestCase):
         self.assertIn("--batch_bnd--", body)
 
     def test_multiple_requests_all_in_body(self):
-        r1 = _RawRequest(method="GET", url="https://org/api/data/v9.2/accounts")
-        r2 = _RawRequest(
+        req1 = _RawRequest(method="GET", url="https://org/api/data/v9.2/accounts")
+        req2 = _RawRequest(
             method="DELETE",
             url="https://org/api/data/v9.2/accounts(guid)",
             headers={"If-Match": "*"},
         )
         client = self._client()
-        body = client._build_batch_body([r1, r2], "bnd")
+        body = client._build_batch_body([req1, req2], "bnd")
         self.assertEqual(body.count("--bnd\r\n"), 2)
 
     def test_changeset_produces_nested_multipart(self):
-        r1 = _RawRequest(method="POST", url="https://org/api/data/v9.2/accounts", body="{}")
-        cs = _ChangeSetBatchItem(requests=[r1])
+        req1 = _RawRequest(method="POST", url="https://org/api/data/v9.2/accounts", body="{}")
+        cs = _ChangeSetBatchItem(requests=[req1])
         client = self._client()
         body = client._build_batch_body([cs], "outer_bnd")
         self.assertIn("Content-Type: multipart/mixed", body)
