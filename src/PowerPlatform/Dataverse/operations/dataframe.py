@@ -177,14 +177,6 @@ class DataFrameOperations:
         :raises ValueError: If ``records`` is empty or the number of returned
             IDs does not match the number of input rows.
 
-        .. tip::
-            The SDK automatically splits large DataFrames into sequential
-            1,000-row chunks before sending to ``CreateMultiple``. You do not
-            need to pre-split large DataFrames. Note that chunked operations
-            are **not atomic** — a failure mid-way may leave earlier chunks
-            applied. Callers that require atomicity should limit input to
-            ≤ 1,000 rows.
-
         Example:
             Create records from a DataFrame::
 
@@ -254,14 +246,6 @@ class DataFrameOperations:
             are skipped, the method returns without making an API call. When
             ``clear_nulls`` is ``True``, NaN/None values become explicit nulls, so
             rows are never skipped.
-
-        .. tip::
-            The SDK automatically splits large DataFrames into sequential
-            1,000-row chunks before sending to ``UpdateMultiple`` (or a single
-            PATCH for one row). You do not need to pre-split large DataFrames.
-            Note that chunked operations are **not atomic** — a failure
-            mid-way may leave earlier chunks applied. Callers that require
-            atomicity should limit input to ≤ 1,000 rows.
 
         Example:
             Update records with different values per row::
