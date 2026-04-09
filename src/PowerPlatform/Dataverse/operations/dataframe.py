@@ -178,11 +178,10 @@ class DataFrameOperations:
             IDs does not match the number of input rows.
 
         .. tip::
-            For DataFrames with more than 1,000 rows, the underlying
-            ``CreateMultiple`` call is split into sequential chunks. This is
-            **not atomic** — if a later chunk fails, earlier rows are already
-            committed. Callers that require atomicity should limit DataFrames
-            to ≤ 1,000 rows per call.
+            For DataFrames with more than 1,000 rows, the operation is split
+            into sequential chunks. This is **not atomic** — if a later chunk
+            fails, earlier rows are already committed. Callers that require
+            atomicity should limit DataFrames to ≤ 1,000 rows per call.
 
         Example:
             Create records from a DataFrame::
@@ -255,11 +254,10 @@ class DataFrameOperations:
             rows are never skipped.
 
         .. tip::
-            For DataFrames with more than 1,000 rows, the underlying
-            ``UpdateMultiple`` call is split into sequential chunks. This is
-            **not atomic** — if a later chunk fails, earlier rows are already
-            committed. Callers that require atomicity should limit DataFrames
-            to ≤ 1,000 rows per call.
+            For DataFrames with more than 1,000 rows, the operation is split
+            into sequential chunks. This is **not atomic** — if a later chunk
+            fails, earlier rows are already committed. Callers that require
+            atomicity should limit DataFrames to ≤ 1,000 rows per call.
 
         Example:
             Update records with different values per row::
