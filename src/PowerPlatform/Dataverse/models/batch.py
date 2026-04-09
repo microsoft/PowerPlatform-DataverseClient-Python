@@ -64,8 +64,8 @@ class BatchResult:
 
         result = client.batch.new().execute()
         print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
-        for guid in result.created_ids:
-            print(f"[OK] Created: {guid}")
+        for guid in result.entity_ids:
+            print(f"[OK] entity_id: {guid}")
     """
 
     responses: List[BatchItemResponse] = field(default_factory=list)
@@ -86,6 +86,21 @@ class BatchResult:
         return any(not r.is_success for r in self.responses)
 
     @property
-    def created_ids(self) -> List[str]:
-        """GUIDs from all successful create operations (where entity_id is set)."""
+    def entity_ids(self) -> List[str]:
+        """GUIDs extracted from ``OData-EntityId`` headers of successful responses.
+
+        Returns entity IDs from any successful (2xx) response that includes an
+        ``OData-EntityId`` header.  Both individual ``POST`` (create) and
+        ``PATCH`` (update) operations return this header with the record's GUID.
+        ``GET`` and ``DELETE`` operations do not.
+
+        .. note::
+            ``CreateMultiple`` and ``UpsertMultiple`` action responses do **not**
+            return per-record ``OData-EntityId`` headers.  Their IDs are in the
+            JSON response body (``data["Ids"]``).  Access them via::
+
+                for resp in result.succeeded:
+                    if resp.data and "Ids" in resp.data:
+                        bulk_ids = resp.data["Ids"]
+        """
         return [r.entity_id for r in self.succeeded if r.entity_id is not None]

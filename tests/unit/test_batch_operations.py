@@ -439,7 +439,7 @@ class TestBatchResult(unittest.TestCase):
         )
         self.assertFalse(result.has_errors)
 
-    def test_created_ids(self):
+    def test_entity_ids(self):
         result = BatchResult(
             responses=[
                 BatchItemResponse(status_code=201, entity_id="guid-1"),
@@ -448,7 +448,7 @@ class TestBatchResult(unittest.TestCase):
                 BatchItemResponse(status_code=400),
             ]
         )
-        self.assertEqual(result.created_ids, ["guid-1", "guid-2"])
+        self.assertEqual(result.entity_ids, ["guid-1", "guid-2"])
 
     def test_empty_result(self):
         result = BatchResult()
@@ -456,7 +456,7 @@ class TestBatchResult(unittest.TestCase):
         self.assertEqual(result.succeeded, [])
         self.assertEqual(result.failed, [])
         self.assertFalse(result.has_errors)
-        self.assertEqual(result.created_ids, [])
+        self.assertEqual(result.entity_ids, [])
 
 
 if __name__ == "__main__":

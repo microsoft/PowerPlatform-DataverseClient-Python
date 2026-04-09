@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PowerPlatform-Dataverse-Client"
-version = "0.1.0b5"
+version = "0.1.0b8"
 description = "Python SDK for Microsoft Dataverse"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [{name = "Microsoft Corporation"}]
@@ -29,6 +29,7 @@ dependencies = [
     "azure-identity>=1.17.0",
     "azure-core>=1.30.2",
     "requests>=2.32.0",
+    "pandas>=2.0.0",
 ]
 
 [project.urls]
@@ -89,3 +90,11 @@ select = [
     "UP",      # pyupgrade
     "B",       # flake8-bugbear
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = [
+    "e2e: end-to-end tests requiring a live Dataverse environment (DATAVERSE_URL)",
+]
+# e2e tests require a live Dataverse environment:
+#   DATAVERSE_URL=https://yourorg.crm.dynamics.com pytest tests/e2e/ -v -s

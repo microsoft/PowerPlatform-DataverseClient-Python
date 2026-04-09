@@ -9,21 +9,20 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from ..core.errors import HttpError, MetadataError, ValidationError
-from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
+from ..core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND, _http_subcode
 from ..models.batch import BatchItemResponse, BatchResult
 from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
-    CascadeConfiguration,
 )
-from ..models.labels import Label, LocalizedLabel
 from ..models.upsert import UpsertItem
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ._raw_request import _RawRequest
+from ._odata import _GUID_RE
 
 if TYPE_CHECKING:
     from ._odata import _ODataClient
@@ -101,7 +100,8 @@ class _TableGet:
 
 @dataclass
 class _TableList:
-    pass
+    filter: Optional[str] = None
+    select: Optional[List[str]] = None
 
 
 @dataclass
@@ -276,7 +276,11 @@ class _BatchClient:
             url,
             data=body.encode("utf-8"),
             headers=headers,
-            expected=(200, 400),
+            # 400 is expected: Dataverse returns 400 for top-level batch
+            # errors (e.g. malformed body). We parse the response body to
+            # surface the service error via _parse_batch_response /
+            # _raise_top_level_batch_error rather than letting _request raise.
+            expected=(200, 202, 207, 400),
         )
         return self._parse_batch_response(response)
 
@@ -288,6 +292,9 @@ class _BatchClient:
         result: List[Union[_RawRequest, _ChangeSetBatchItem]] = []
         for item in items:
             if isinstance(item, _ChangeSet):
+                if not item.operations:
+                    # Empty changeset — nothing to send; skip silently.
+                    continue
                 cs_requests = [self._resolve_one(op) for op in item.operations]
                 result.append(_ChangeSetBatchItem(requests=cs_requests))
             else:
@@ -350,19 +357,15 @@ class _BatchClient:
     # ------------------------------------------------------------------
 
     def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:
-        if isinstance(op.data, dict):
-            entity_set = self._od._entity_set_from_schema_name(op.table)
-            return [self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
         entity_set = self._od._entity_set_from_schema_name(op.table)
+        if isinstance(op.data, dict):
+            return [self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
         return [self._od._build_create_multiple(entity_set, op.table, op.data)]
 
     def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:
         if isinstance(op.ids, str):
             if not isinstance(op.changes, dict):
-                raise ValidationError(
-                    "For a single-record update, changes must be a dict.",
-                    subcode="invalid_changes_type",
-                )
+                raise TypeError("For single id, changes must be a dict")
             return [self._od._build_update(op.table, op.ids, op.changes, content_id=op.content_id)]
         entity_set = self._od._entity_set_from_schema_name(op.table)
         return [self._od._build_update_multiple(entity_set, op.table, op.ids, op.changes)]
@@ -395,44 +398,36 @@ class _BatchClient:
     #  specific lookups needed before the relevant _build_* call)
     # ------------------------------------------------------------------
 
+    def _require_entity_metadata(self, table: str) -> str:
+        """Look up MetadataId for *table*, raising MetadataError if not found."""
+        ent = self._od._get_entity_by_table_schema_name(table)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        return ent["MetadataId"]
+
     def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:
         return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column)]
 
     def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        return [self._od._build_delete_entity(ent["MetadataId"])]
+        metadata_id = self._require_entity_metadata(op.table)
+        return [self._od._build_delete_entity(metadata_id)]
 
     def _resolve_table_get(self, op: _TableGet) -> List[_RawRequest]:
         return [self._od._build_get_entity(op.table)]
 
     def _resolve_table_list(self, op: _TableList) -> List[_RawRequest]:
-        return [self._od._build_list_entities()]
+        return [self._od._build_list_entities(filter=op.filter, select=op.select)]
 
     def _resolve_table_add_columns(self, op: _TableAddColumns) -> List[_RawRequest]:
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        return [
-            self._od._build_create_column(ent["MetadataId"], col_name, dtype) for col_name, dtype in op.columns.items()
-        ]
+        metadata_id = self._require_entity_metadata(op.table)
+        return [self._od._build_create_column(metadata_id, col_name, dtype) for col_name, dtype in op.columns.items()]
 
     def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:
         columns = [op.columns] if isinstance(op.columns, str) else list(op.columns)
-        ent = self._od._get_entity_by_table_schema_name(op.table)
-        if not ent or not ent.get("MetadataId"):
-            raise MetadataError(
-                f"Table '{op.table}' not found.",
-                subcode=METADATA_TABLE_NOT_FOUND,
-            )
-        metadata_id = ent["MetadataId"]
+        metadata_id = self._require_entity_metadata(op.table)
         requests: List[_RawRequest] = []
         for col_name in columns:
             attr_meta = self._od._get_attribute_metadata(
@@ -461,28 +456,15 @@ class _BatchClient:
         return [self._od._build_get_relationship(op.schema_name)]
 
     def _resolve_table_create_lookup_field(self, op: _TableCreateLookupField) -> List[_RawRequest]:
-        lang = op.language_code
-        lookup = LookupAttributeMetadata(
-            schema_name=op.lookup_field_name,
-            display_name=Label(
-                localized_labels=[
-                    LocalizedLabel(
-                        label=op.display_name or op.referenced_table,
-                        language_code=lang,
-                    )
-                ]
-            ),
-            required_level="ApplicationRequired" if op.required else "None",
-        )
-        if op.description:
-            lookup.description = Label(localized_labels=[LocalizedLabel(label=op.description, language_code=lang)])
-        rel_name = f"{op.referenced_table}_{op.referencing_table}_{op.lookup_field_name}"
-        relationship = OneToManyRelationshipMetadata(
-            schema_name=rel_name,
-            referenced_entity=op.referenced_table,
-            referencing_entity=op.referencing_table,
-            referenced_attribute=f"{op.referenced_table}id",
-            cascade_configuration=CascadeConfiguration(delete=op.cascade_delete),
+        lookup, relationship = self._od._build_lookup_field_models(
+            referencing_table=op.referencing_table,
+            lookup_field_name=op.lookup_field_name,
+            referenced_table=op.referenced_table,
+            display_name=op.display_name,
+            description=op.description,
+            required=op.required,
+            cascade_delete=op.cascade_delete,
+            language_code=op.language_code,
         )
         body = relationship.to_dict()
         body["Lookup"] = lookup.to_dict()
@@ -573,7 +555,7 @@ class _BatchClient:
                         if item is not None:
                             responses.append(item)
             else:
-                item = _parse_http_response_part(part_body, content_id=None)
+                item = _parse_http_response_part(part_body, content_id=part_headers.get("content-id"))
                 if item is not None:
                     responses.append(item)
         return BatchResult(responses=responses)
@@ -604,19 +586,22 @@ def _raise_top_level_batch_error(response: Any) -> None:
     raise HttpError(
         message=f"Batch request rejected by Dataverse: {message}",
         status_code=status_code,
-        subcode="4xx" if 400 <= status_code < 500 else ("5xx" if status_code >= 500 else None),
+        subcode=_http_subcode(status_code) if status_code else None,
         service_error_code=service_error_code,
     )
 
 
+_BOUNDARY_RE = re.compile(r'boundary="?([^";,\s]+)"?', re.IGNORECASE)
+
+
 def _extract_boundary(content_type: str) -> Optional[str]:
-    m = re.search(r'boundary="?([^";,\s]+)"?', content_type, re.IGNORECASE)
+    m = _BOUNDARY_RE.search(content_type)
     return m.group(1) if m else None
 
 
-def _split_multipart(body: str, boundary: str) -> List[tuple]:
+def _split_multipart(body: str, boundary: str) -> List[Tuple[Dict[str, str], str]]:
     delimiter = f"--{boundary}"
-    parts: List[tuple] = []
+    parts: List[Tuple[Dict[str, str], str]] = []
     lines = body.replace("\r\n", "\n").split("\n")
     current: List[str] = []
     in_part = False
@@ -636,7 +621,7 @@ def _split_multipart(body: str, boundary: str) -> List[tuple]:
     return parts
 
 
-def _parse_mime_part(raw: str) -> tuple:
+def _parse_mime_part(raw: str) -> Tuple[Dict[str, str], str]:
     if "\n\n" in raw:
         header_block, body = raw.split("\n\n", 1)
     else:
@@ -681,9 +666,9 @@ def _parse_http_response_part(text: str, content_id: Optional[str]) -> Optional[
     entity_id: Optional[str] = None
     odata_id = resp_headers.get("odata-entityid", "")
     if odata_id:
-        m = re.search(r"\(([0-9a-fA-F-]{32,36})\)\s*$", odata_id)
+        m = _GUID_RE.search(odata_id)
         if m:
-            entity_id = m.group(1)
+            entity_id = m.group(0)
     body_text = "\n".join(lines[body_start:]).strip()
     data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CHECKING
 
+from ..models.record import Record
 from ..models.upsert import UpsertItem
 
 if TYPE_CHECKING:
@@ -68,11 +69,11 @@ class RecordOperations:
         :type table: :class:`str`
         :param data: A single record dictionary or a list of record dictionaries.
             Each dictionary maps column schema names to values.
-        :type data: :class:`dict` or :class:`list` of :class:`dict`
+        :type data: dict or list[dict]
 
         :return: A single GUID string for a single record, or a list of GUID
             strings for bulk creation.
-        :rtype: :class:`str` or :class:`list` of :class:`str`
+        :rtype: str or list[str]
 
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
@@ -126,10 +127,10 @@ class RecordOperations:
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param changes: A dictionary of field changes (single/broadcast), or a
             list of dictionaries (paired, one per ID).
-        :type changes: :class:`dict` or :class:`list` of :class:`dict`
+        :type changes: dict or list[dict]
 
         :raises TypeError: If ``ids`` is not str or list[str], or if ``changes``
             does not match the expected pattern.
@@ -186,7 +187,7 @@ class RecordOperations:
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
         :param ids: A single GUID string, or a list of GUID strings.
-        :type ids: :class:`str` or :class:`list` of :class:`str`
+        :type ids: str or list[str]
         :param use_bulk_delete: When True (default) and ``ids`` is a list, use
             the BulkDelete action and return its async job ID. When False, delete
             records one at a time.
@@ -231,7 +232,7 @@ class RecordOperations:
         record_id: str,
         *,
         select: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Record:
         """Fetch a single record by its GUID.
 
         :param table: Schema name of the table (e.g. ``"account"``).
@@ -240,10 +241,10 @@ class RecordOperations:
         :type record_id: :class:`str`
         :param select: Optional list of column logical names to include in the
             response.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
-        :return: Record dictionary with the requested attributes.
-        :rtype: :class:`dict`
+        :return: Typed record with dict-like access for backward compatibility.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.record.Record`
 
         :raises TypeError: If ``record_id`` is not a string.
 
@@ -253,7 +254,8 @@ class RecordOperations:
                 record = client.records.get(
                     "account", account_id, select=["name", "telephone1"]
                 )
-                print(record["name"])
+                print(record["name"])       # dict-like access
+                print(record.id)            # structured access
         """
         ...
 
@@ -268,10 +270,13 @@ class RecordOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
+        count: bool = False,
+        include_annotations: Optional[str] = None,
+    ) -> Iterable[List[Record]]:
         """Fetch multiple records from a Dataverse table with pagination.
 
-        Returns a generator that yields one page (list of record dicts) at a
+        Returns a generator that yields one page (list of
+        :class:`~PowerPlatform.Dataverse.models.record.Record` objects) at a
         time. Automatically follows ``@odata.nextLink`` for server-side paging.
 
         :param table: Schema name of the table (e.g. ``"account"`` or
@@ -279,7 +284,7 @@ class RecordOperations:
         :type table: :class:`str`
         :param select: Optional list of column logical names to include.
             Column names are automatically lowercased.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData ``$filter`` expression (e.g.
             ``"name eq 'Contoso'"``). Column names in filter expressions must
             use exact lowercase logical names.
@@ -287,21 +292,27 @@ class RecordOperations:
         :param orderby: Optional list of sort expressions (e.g.
             ``["name asc", "createdon desc"]``). Column names are automatically
             lowercased.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum total number of records to return.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (e.g.
             ``["primarycontactid"]``). Case-sensitive; must match server-defined
             names exactly.
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional per-page size hint sent via
             ``Prefer: odata.maxpagesize``.
         :type page_size: :class:`int` or None
+        :param count: If ``True``, adds ``$count=true`` to include a total
+            record count in the response.
+        :type count: :class:`bool`
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: :class:`str` or None
 
-        :return: Generator yielding pages, where each page is a list of record
-            dictionaries.
-        :rtype: :class:`collections.abc.Iterable` of :class:`list` of
-            :class:`dict`
+        :return: Generator yielding pages, where each page is a list of
+            :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
+        :rtype: collections.abc.Iterable[list[~PowerPlatform.Dataverse.models.record.Record]]
 
         Example:
             Fetch with filtering and pagination::
@@ -328,7 +339,9 @@ class RecordOperations:
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
-    ) -> Union[Dict[str, Any], Iterable[List[Dict[str, Any]]]]:
+        count: bool = False,
+        include_annotations: Optional[str] = None,
+    ) -> Union[Record, Iterable[List[Record]]]:
         """Fetch a single record by ID, or fetch multiple records with pagination.
 
         This method has two usage patterns:
@@ -353,7 +366,7 @@ class RecordOperations:
         :type record_id: :class:`str` or None
         :param select: Optional list of column logical names to include.
             Column names are automatically lowercased.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
         :param filter: Optional OData ``$filter`` expression (e.g.
             ``"name eq 'Contoso'"``). Column names in filter expressions must
             use exact lowercase logical names. Only used for multi-record
@@ -362,23 +375,30 @@ class RecordOperations:
         :param orderby: Optional list of sort expressions (e.g.
             ``["name asc", "createdon desc"]``). Column names are
             automatically lowercased. Only used for multi-record queries.
-        :type orderby: :class:`list` of :class:`str` or None
+        :type orderby: list[str] or None
         :param top: Optional maximum total number of records to return. Only
             used for multi-record queries.
         :type top: :class:`int` or None
         :param expand: Optional list of navigation properties to expand (e.g.
             ``["primarycontactid"]``). Case-sensitive; must match
             server-defined names exactly. Only used for multi-record queries.
-        :type expand: :class:`list` of :class:`str` or None
+        :type expand: list[str] or None
         :param page_size: Optional per-page size hint sent via
             ``Prefer: odata.maxpagesize``. Only used for multi-record queries.
         :type page_size: :class:`int` or None
+        :param count: If ``True``, adds ``$count=true`` to include a total
+            record count in the response. Only used for multi-record queries.
+        :type count: :class:`bool`
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+            Only used for multi-record queries.
+        :type include_annotations: :class:`str` or None
 
         :return: A single record dict when ``record_id`` is provided, or a
             generator yielding pages (lists of record dicts) when fetching
             multiple records.
-        :rtype: :class:`dict` or :class:`collections.abc.Iterable` of
-            :class:`list` of :class:`dict`
+        :rtype: dict or collections.abc.Iterable[list[dict]]
 
         :raises TypeError: If ``record_id`` is provided but not a string.
         :raises ValueError: If query parameters are provided alongside
@@ -412,17 +432,21 @@ class RecordOperations:
                 or top is not None
                 or expand is not None
                 or page_size is not None
+                or count is not False
+                or include_annotations is not None
             ):
                 raise ValueError(
                     "Cannot specify query parameters (filter, orderby, top, "
-                    "expand, page_size) when fetching a single record by ID"
+                    "expand, page_size, count, include_annotations) when "
+                    "fetching a single record by ID"
                 )
             with self._client._scoped_odata() as od:
-                return od._get(table, record_id, select=select)
+                raw = od._get(table, record_id, select=select)
+                return Record.from_api_response(table, raw, record_id=record_id)
 
-        def _paged() -> Iterable[List[Dict[str, Any]]]:
+        def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
-                yield from od._get_multiple(
+                for page in od._get_multiple(
                     table,
                     select=select,
                     filter=filter,
@@ -430,7 +454,10 @@ class RecordOperations:
                     top=top,
                     expand=expand,
                     page_size=page_size,
-                )
+                    count=count,
+                    include_annotations=include_annotations,
+                ):
+                    yield [Record.from_api_response(table, row) for row in page]
 
         return _paged()
 

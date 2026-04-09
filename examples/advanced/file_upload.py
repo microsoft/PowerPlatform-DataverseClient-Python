@@ -375,4 +375,5 @@ if _GENERATED_TEST_FILE_8MB and _GENERATED_TEST_FILE_8MB.exists():
     except Exception as e:  # noqa: BLE001
         print({"test_file_8mb_deleted": False, "error": str(e)})
 
+client.close()
 print("Done.")

@@ -24,6 +24,13 @@ from urllib.parse import quote as _url_quote, parse_qs, urlparse
 from ..core._http import _HttpClient
 from ._upload import _FileUploadMixin
 from ._relationships import _RelationshipOperationsMixin
+from ..models.relationship import (
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
+    CascadeConfiguration,
+)
+from ..models.labels import Label, LocalizedLabel
+from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ..core.errors import *
 from ._raw_request import _RawRequest
 from ..core._error_codes import (
@@ -31,6 +38,7 @@ from ..core._error_codes import (
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
     VALIDATION_SQL_EMPTY,
+    VALIDATION_UNSUPPORTED_COLUMN_TYPE,
     METADATA_ENTITYSET_NOT_FOUND,
     METADATA_ENTITYSET_NAME_MISSING,
     METADATA_TABLE_NOT_FOUND,
@@ -39,7 +47,7 @@ from ..core._error_codes import (
     VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
 
-from ..__version__ import __version__ as _SDK_VERSION
+from .. import __version__ as _SDK_VERSION
 
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -128,10 +136,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         Dataverse LogicalNames for attributes are stored lowercase, but users may
         provide PascalCase names (matching SchemaName). This normalizes the input.
+
+        Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
+        preserved as-is because the navigation property portion before ``@``
+        must retain its original casing (case-sensitive navigation property name).  The OData
+        parser validates ``@odata.bind`` property names **case-sensitively**
+        against the entity's declared navigation properties, so lowercasing
+        these keys causes ``400 - undeclared property`` errors.
         """
         if not isinstance(record, dict):
             return record
-        return {k.lower() if isinstance(k, str) else k: v for k, v in record.items()}
+        return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
 
     @staticmethod
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
@@ -148,6 +163,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         auth,
         base_url: str,
         config=None,
+        session=None,
     ) -> None:
         """Initialize the OData client.
 
@@ -159,6 +175,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
+        :param session: Optional ``requests.Session`` for HTTP connection pooling.
+        :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         self.auth = auth
@@ -176,13 +194,13 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
+            session=session,
         )
         # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
-        # Picklist label cache: (normalized_table_schema_name, normalized_attribute) -> {'map': {...}, 'ts': epoch_seconds}
-        self._picklist_label_cache = {}
+        self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
 
     @contextmanager
@@ -194,6 +212,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             yield shared_id
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+    def close(self) -> None:
+        """Close the OData client and release resources.
+
+        Clears all internal caches and closes the underlying HTTP client.
+        Safe to call multiple times.
+        """
+        self._logical_to_entityset_cache.clear()
+        self._logical_primaryid_cache.clear()
+        self._picklist_label_cache.clear()
+        if self._http is not None:
+            self._http.close()
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -666,6 +696,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         top: Optional[int] = None,
         expand: Optional[List[str]] = None,
         page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
@@ -683,16 +715,25 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type expand: ``list[str]`` | ``None``
         :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
         :type page_size: ``int`` | ``None``
+        :param count: If ``True``, adds ``$count=true`` to include a total record count in the response.
+        :type count: ``bool``
+        :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: ``str`` | ``None``
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
         """
 
         extra_headers: Dict[str, str] = {}
+        prefer_parts: List[str] = []
         if page_size is not None:
             ps = int(page_size)
             if ps > 0:
-                extra_headers["Prefer"] = f"odata.maxpagesize={ps}"
+                prefer_parts.append(f"odata.maxpagesize={ps}")
+        if include_annotations:
+            prefer_parts.append(f'odata.include-annotations="{include_annotations}"')
+        if prefer_parts:
+            extra_headers["Prefer"] = ",".join(prefer_parts)
 
         def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             headers = extra_headers if extra_headers else None
@@ -719,6 +760,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             params["$expand"] = ",".join(expand)
         if top is not None:
             params["$top"] = int(top)
+        if count:
+            params["$count"] = "true"
 
         data = _do_request(base_url, params=params)
         items = data.get("value") if isinstance(data, dict) else None
@@ -938,7 +981,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         logical_lower = table_schema_name.lower()
         logical_escaped = self._escape_odata_quotes(logical_lower)
         params = {
-            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName",
+            "$select": "MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
         r = self._request("get", url, params=params, headers=headers)
@@ -1181,138 +1224,118 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         norm = re.sub(r"\s+", " ", norm).strip().lower()
         return norm
 
-    def _optionset_map(self, table_schema_name: str, attr_logical: str) -> Optional[Dict[str, int]]:
-        """Build or return cached mapping of normalized label -> value for a picklist attribute.
-
-        Returns empty dict if attribute is not a picklist or has no options. Returns None only
-        for invalid inputs or unexpected metadata parse failures.
-
-        Notes
-        -----
-        - This method calls the Web API twice per attribute so it could have perf impact when there are lots of columns on the entity.
-        """
-        if not table_schema_name or not attr_logical:
-            return None
-        # Normalize cache key for case-insensitive lookups
-        cache_key = (self._normalize_cache_key(table_schema_name), self._normalize_cache_key(attr_logical))
-        now = time.time()
-        entry = self._picklist_label_cache.get(cache_key)
-        if isinstance(entry, dict) and "map" in entry and (now - entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
-            return entry["map"]
-
-        # LogicalNames in Dataverse are stored in lowercase, so we need to lowercase for filters
-        attr_esc = self._escape_odata_quotes(attr_logical.lower())
-        table_schema_name_esc = self._escape_odata_quotes(table_schema_name.lower())
-
-        # Step 1: lightweight fetch (no expand) to determine attribute type
-        url_type = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes"
-            f"?$filter=LogicalName eq '{attr_esc}'&$select=LogicalName,AttributeType"
-        )
-        # Retry on 404 (metadata not yet published) before surfacing the error.
-        r_type = None
+    def _request_metadata_with_retry(self, method: str, url: str, **kwargs):
+        """Fetch metadata with retries on transient errors."""
         max_attempts = 5
         backoff_seconds = 0.4
         for attempt in range(1, max_attempts + 1):
             try:
-                r_type = self._request("get", url_type)
-                break
+                return self._request(method, url, **kwargs)
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
                     if attempt < max_attempts:
-                        # Exponential backoff: 0.4s, 0.8s, 1.6s, 3.2s
                         time.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
-                    raise RuntimeError(
-                        f"Picklist attribute metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
+                    raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
                 raise
-        if r_type is None:
-            raise RuntimeError("Failed to retrieve attribute metadata due to repeated request failures.")
 
-        body_type = r_type.json()
-        items = body_type.get("value", []) if isinstance(body_type, dict) else []
-        if not items:
-            return None
-        attr_md = items[0]
-        if attr_md.get("AttributeType") not in ("Picklist", "PickList"):
-            self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
-            return {}
+    def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
+        """Fetch all picklist attributes and their options for a table in one API call.
 
-        # Step 2: fetch with expand only now that we know it's a picklist
-        # Need to cast to the derived PicklistAttributeMetadata type; OptionSet is not a nav on base AttributeMetadata.
-        cast_url = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_schema_name_esc}')/Attributes(LogicalName='{attr_esc}')/"
-            "Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)"
+        Uses collection-level PicklistAttributeMetadata cast to retrieve every picklist
+        attribute on the table, including its OptionSet options. Populates the nested
+        cache so that ``_convert_labels_to_ints`` resolves labels without further API calls.
+        The Dataverse metadata API does not page results.
+        """
+        table_key = self._normalize_cache_key(table_schema_name)
+        now = time.time()
+        table_entry = self._picklist_label_cache.get(table_key)
+        if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
+            return
+
+        table_esc = self._escape_odata_quotes(table_schema_name.lower())
+        url = (
+            f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
+            f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+            f"?$select=LogicalName&$expand=OptionSet($select=Options)"
         )
-        # Step 2 fetch with retries: expanded OptionSet (cast form first)
-        r_opts = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                r_opts = self._request("get", cast_url)
-                break
-            except HttpError as err:
-                if getattr(err, "status_code", None) == 404:
-                    if attempt < max_attempts:
-                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
-                        continue
-                    raise RuntimeError(
-                        f"Picklist OptionSet metadata not found after retries: entity='{table_schema_name}' attribute='{attr_logical}' (404)"
-                    ) from err
-                raise
-        if r_opts is None:
-            raise RuntimeError("Failed to retrieve picklist OptionSet metadata due to repeated request failures.")
+        response = self._request_metadata_with_retry("get", url)
+        body = response.json()
+        items = body.get("value", []) if isinstance(body, dict) else []
 
-        attr_full = {}
-        try:
-            attr_full = r_opts.json() if r_opts.text else {}
-        except ValueError:
-            return None
-        option_set = attr_full.get("OptionSet") or {}
-        options = option_set.get("Options") if isinstance(option_set, dict) else None
-        if not isinstance(options, list):
-            return None
-        mapping: Dict[str, int] = {}
-        for opt in options:
-            if not isinstance(opt, dict):
+        picklists: Dict[str, Dict[str, int]] = {}
+        for item in items:
+            if not isinstance(item, dict):
                 continue
-            val = opt.get("Value")
-            if not isinstance(val, int):
+            ln = item.get("LogicalName", "").lower()
+            if not ln:
                 continue
-            label_def = opt.get("Label") or {}
-            locs = label_def.get("LocalizedLabels")
-            if isinstance(locs, list):
-                for loc in locs:
-                    if isinstance(loc, dict):
-                        lab = loc.get("Label")
-                        if isinstance(lab, str) and lab.strip():
-                            normalized = self._normalize_picklist_label(lab)
-                            mapping.setdefault(normalized, val)
-        if mapping:
-            self._picklist_label_cache[cache_key] = {"map": mapping, "ts": now}
-            return mapping
-        # No options available
-        self._picklist_label_cache[cache_key] = {"map": {}, "ts": now}
-        return {}
+            option_set = item.get("OptionSet") or {}
+            options = option_set.get("Options") if isinstance(option_set, dict) else None
+            mapping: Dict[str, int] = {}
+            if isinstance(options, list):
+                for opt in options:
+                    if not isinstance(opt, dict):
+                        continue
+                    val = opt.get("Value")
+                    if not isinstance(val, int):
+                        continue
+                    label_def = opt.get("Label") or {}
+                    locs = label_def.get("LocalizedLabels")
+                    if isinstance(locs, list):
+                        for loc in locs:
+                            if isinstance(loc, dict):
+                                lab = loc.get("Label")
+                                if isinstance(lab, str) and lab.strip():
+                                    normalized = self._normalize_picklist_label(lab)
+                                    mapping.setdefault(normalized, val)
+            picklists[ln] = mapping
+
+        self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
 
     def _convert_labels_to_ints(self, table_schema_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
         If attribute isn't a picklist or label not found, value left unchanged.
+
+        On first encounter of a table, bulk-fetches all picklist attributes and
+        their options in a single API call, then resolves labels from the warm cache.
         """
-        out = record.copy()
-        for k, v in list(out.items()):
+        resolved_record = record.copy()
+
+        # Check if there are any string-valued candidates worth resolving
+        has_candidates = any(
+            isinstance(v, str) and v.strip() and isinstance(k, str) and "@odata." not in k
+            for k, v in resolved_record.items()
+        )
+        if not has_candidates:
+            return resolved_record
+
+        # Bulk-fetch all picklists for this table (1 API call, cached for TTL)
+        self._bulk_fetch_picklists(table_schema_name)
+
+        # Resolve labels from the nested cache
+        table_key = self._normalize_cache_key(table_schema_name)
+        table_entry = self._picklist_label_cache.get(table_key)
+        if not isinstance(table_entry, dict):
+            return resolved_record
+        picklists = table_entry.get("picklists", {})
+
+        for k, v in resolved_record.items():
             if not isinstance(v, str) or not v.strip():
                 continue
-            mapping = self._optionset_map(table_schema_name, k)
-            if not mapping:
+            if isinstance(k, str) and "@odata." in k:
+                continue
+            attr_key = self._normalize_cache_key(k)
+            mapping = picklists.get(attr_key)
+            if not isinstance(mapping, dict) or not mapping:
                 continue
             norm = self._normalize_picklist_label(v)
             val = mapping.get(norm)
             if val is not None:
-                out[k] = val
-        return out
+                resolved_record[k] = val
+        return resolved_record
 
     def _attribute_payload(
         self, column_schema_name: str, dtype: Any, *, is_primary_name: bool = False
@@ -1420,6 +1443,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": ent.get("LogicalName"),
             "entity_set_name": ent.get("EntitySetName"),
             "metadata_id": ent.get("MetadataId"),
+            "primary_name_attribute": ent.get("PrimaryNameAttribute"),
+            "primary_id_attribute": ent.get("PrimaryIdAttribute"),
             "columns_created": [],
         }
 
@@ -1450,19 +1475,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         :raises HttpError: If the metadata request fails.
         """
-        url = f"{self.api}/EntityDefinitions"
-        base_filter = "IsPrivate eq false"
-        if filter:
-            combined_filter = f"{base_filter} and ({filter})"
-        else:
-            combined_filter = base_filter
-        params: Dict[str, str] = {"$filter": combined_filter}
-        if select is not None and isinstance(select, str):
-            raise TypeError("select must be a list of property names, not a bare string")
-        if select:
-            params["$select"] = ",".join(select)
-        r = self._request("get", url, params=params)
-        return r.json().get("value", [])
+        return self._execute_raw(self._build_list_entities(filter=filter, select=select)).json().get("value", [])
 
     def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name.
@@ -1483,6 +1496,112 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 subcode=METADATA_TABLE_NOT_FOUND,
             )
         self._execute_raw(self._build_delete_entity(ent["MetadataId"]))
+
+    # ------------------- Alternate key metadata helpers -------------------
+
+    def _create_alternate_key(
+        self,
+        table_schema_name: str,
+        key_name: str,
+        columns: List[str],
+        display_name_label=None,
+    ) -> Dict[str, Any]:
+        """Create an alternate key on a table.
+
+        Issues ``POST EntityDefinitions(LogicalName='{logical_name}')/Keys``
+        with ``EntityKeyMetadata`` payload.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_name: Schema name for the new alternate key.
+        :type key_name: ``str``
+        :param columns: List of column logical names that compose the key.
+        :type columns: ``list[str]``
+        :param display_name_label: Label for the key display name.
+        :type display_name_label: ``Label`` or ``None``
+
+        :return: Dictionary with ``metadata_id``, ``schema_name``, and ``key_attributes``.
+        :rtype: ``dict[str, Any]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        payload: Dict[str, Any] = {
+            "SchemaName": key_name,
+            "KeyAttributes": columns,
+        }
+        if display_name_label is not None:
+            payload["DisplayName"] = display_name_label.to_dict()
+        r = self._request("post", url, json=payload)
+        metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
+
+        return {
+            "metadata_id": metadata_id,
+            "schema_name": key_name,
+            "key_attributes": columns,
+        }
+
+    def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
+        """List all alternate keys on a table.
+
+        Issues ``GET EntityDefinitions(LogicalName='{logical_name}')/Keys``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+
+        :return: List of raw ``EntityKeyMetadata`` dictionaries.
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
+        r = self._request("get", url)
+        return r.json().get("value", [])
+
+    def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
+        """Delete an alternate key by metadata ID.
+
+        Issues ``DELETE EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})``.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param key_id: Metadata GUID of the alternate key.
+        :type key_id: ``str``
+
+        :return: ``None``
+        :rtype: ``None``
+
+        :raises MetadataError: If the table does not exist.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        logical_name = ent.get("LogicalName", table_schema_name.lower())
+        url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})"
+        self._request("delete", url)
 
     def _create_table(
         self,
@@ -1556,6 +1675,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "table_logical_name": metadata.get("LogicalName"),
             "entity_set_name": metadata.get("EntitySetName"),
             "metadata_id": metadata.get("MetadataId"),
+            "primary_name_attribute": metadata.get("PrimaryNameAttribute"),
+            "primary_id_attribute": metadata.get("PrimaryIdAttribute"),
             "columns_created": created_cols,
         }
 
@@ -1594,11 +1715,21 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         needs_picklist_flush = False
 
         for column_name, column_type in columns.items():
-            req = self._build_create_column(metadata_id, column_name, column_type)
+            attr = self._attribute_payload(column_name, column_type)
+            if not attr:
+                raise ValidationError(
+                    f"Unsupported column type '{column_type}' for column '{column_name}'.",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
+                )
+            if "OptionSet" in attr:
+                needs_picklist_flush = True
+            req = _RawRequest(
+                method="POST",
+                url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes",
+                body=json.dumps(attr, ensure_ascii=False),
+            )
             self._execute_raw(req)
             created.append(column_name)
-            if req.body and '"OptionSet"' in req.body:
-                needs_picklist_flush = True
 
         if needs_picklist_flush:
             self._flush_cache("picklist")
@@ -1704,6 +1835,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         records: List[Dict[str, Any]],
     ) -> _RawRequest:
         """Build a CreateMultiple POST request without sending it."""
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
         logical_name = table.lower()
         enriched = []
         for r in records:
@@ -1930,7 +2063,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         entity_set = self._entity_set_from_schema_name(table)
         url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
         if select:
-            url += "?$select=" + ",".join(select)
+            url += "?$select=" + ",".join(self._lowercase_list(select))
         return _RawRequest(method="GET", url=url)
 
     def _build_create_entity(
@@ -1951,7 +2084,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not attr:
                 raise ValidationError(
                     f"Unsupported column type '{dtype}' for column '{col_name}'.",
-                    subcode="unsupported_column_type",
+                    subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
                 )
             attributes.append(attr)
         body = {
@@ -1990,17 +2123,29 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             method="GET",
             url=(
                 f"{self.api}/EntityDefinitions"
-                f"?$select=MetadataId,LogicalName,SchemaName,EntitySetName"
+                f"?$select=MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute"
                 f"&$filter=LogicalName eq '{logical}'"
             ),
         )
 
-    def _build_list_entities(self) -> _RawRequest:
+    def _build_list_entities(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> _RawRequest:
         """Build an EntityDefinitions list GET request without sending it."""
-        return _RawRequest(
-            method="GET",
-            url=f"{self.api}/EntityDefinitions?$filter=IsPrivate eq false",
-        )
+        base_filter = "IsPrivate eq false"
+        if filter:
+            combined_filter = f"{base_filter} and ({filter})"
+        else:
+            combined_filter = base_filter
+        url = f"{self.api}/EntityDefinitions?$filter={combined_filter}"
+        if select is not None and isinstance(select, str):
+            raise TypeError("select must be a list of property names, not a bare string")
+        if select:
+            url += "&$select=" + ",".join(select)
+        return _RawRequest(method="GET", url=url)
 
     def _build_create_column(
         self,
@@ -2013,7 +2158,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not attr:
             raise ValidationError(
                 f"Unsupported column type '{dtype}' for column '{col_name}'.",
-                subcode="unsupported_column_type",
+                subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
             )
         return _RawRequest(
             method="POST",
@@ -2032,6 +2177,50 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             url=f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes({col_metadata_id})",
             headers={"If-Match": "*"},
         )
+
+    @staticmethod
+    def _build_lookup_field_models(
+        referencing_table: str,
+        lookup_field_name: str,
+        referenced_table: str,
+        *,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        required: bool = False,
+        cascade_delete: str = CASCADE_BEHAVIOR_REMOVE_LINK,
+        language_code: int = 1033,
+    ) -> tuple:
+        """Build a (lookup, relationship) pair for a lookup field creation.
+
+        Returns ``(LookupAttributeMetadata, OneToManyRelationshipMetadata)``.
+        Used by both the batch resolver and ``TableOperations.create_lookup_field``
+        to avoid duplicating the metadata assembly logic.
+        """
+        lookup = LookupAttributeMetadata(
+            schema_name=lookup_field_name,
+            display_name=Label(
+                localized_labels=[
+                    LocalizedLabel(
+                        label=display_name or referenced_table,
+                        language_code=language_code,
+                    )
+                ]
+            ),
+            required_level="ApplicationRequired" if required else "None",
+        )
+        if description:
+            lookup.description = Label(
+                localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
+            )
+        rel_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
+        relationship = OneToManyRelationshipMetadata(
+            schema_name=rel_name,
+            referenced_entity=referenced_table,
+            referencing_entity=referencing_table,
+            referenced_attribute=f"{referenced_table}id",
+            cascade_configuration=CascadeConfiguration(delete=cascade_delete),
+        )
+        return lookup, relationship
 
     def _build_create_relationship(
         self,
@@ -2072,6 +2261,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         Resolves the entity set from the table name in the SQL statement via
         :meth:`_extract_logical_table`, then embeds the SQL as a URL-encoded
         ``?sql=`` query parameter.
+
+        Uses ``urllib.parse.quote`` (``%20`` for spaces) rather than
+        ``urllib.parse.urlencode`` (``+`` for spaces).  Both are accepted by
+        Dataverse and ``%20`` is the canonical RFC 3986 encoding for query-
+        string values.
 
         :param sql: SELECT statement (non-empty string; caller is responsible
             for validation).
