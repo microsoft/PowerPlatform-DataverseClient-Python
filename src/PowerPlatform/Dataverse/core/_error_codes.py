@@ -41,6 +41,13 @@ ALL_HTTP_SUBCODES = {
 # Validation subcodes
 VALIDATION_SQL_NOT_STRING = "validation_sql_not_string"
 VALIDATION_SQL_EMPTY = "validation_sql_empty"
+VALIDATION_FETCHXML_NOT_STRING = "validation_fetchxml_not_string"
+VALIDATION_FETCHXML_EMPTY = "validation_fetchxml_empty"
+VALIDATION_FETCHXML_MALFORMED = "validation_fetchxml_malformed"
+VALIDATION_FETCHXML_TOO_LONG = "validation_fetchxml_too_long"
+VALIDATION_FETCHXML_URL_TOO_LONG = "validation_fetchxml_url_too_long"
+VALIDATION_FETCHXML_INVALID_PAGE_SIZE = "validation_fetchxml_invalid_page_size"
+VALIDATION_FETCHXML_MAX_PAGES_EXCEEDED = "validation_fetchxml_max_pages_exceeded"
 VALIDATION_ENUM_NO_MEMBERS = "validation_enum_no_members"
 VALIDATION_ENUM_NON_INT_VALUE = "validation_enum_non_int_value"
 VALIDATION_UNSUPPORTED_COLUMN_TYPE = "validation_unsupported_column_type"
