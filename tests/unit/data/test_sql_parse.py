@@ -401,3 +401,46 @@ def test_extract_pagingcookie_different_cookies_not_equal():
 def test_extract_pagingcookie_malformed_url_returns_none():
     """Returns None gracefully when given a non-URL string."""
     assert _extract_pagingcookie("not a url at all !!!") is None
+
+
+def test_extract_pagingcookie_exception_returns_none():
+    """Returns None when an unexpected exception is raised during URL parsing (except branch)."""
+    with patch("PowerPlatform.Dataverse.data._odata.urlparse", side_effect=RuntimeError("boom")):
+        assert _extract_pagingcookie("https://org.example/?$skiptoken=x") is None
+
+
+def test_query_sql_request_exception_warns_and_returns_partial():
+    """When _request raises an exception mid-pagination a RuntimeWarning is emitted and
+    the rows collected so far are returned."""
+    client = _query_sql_client()
+    page1 = _make_response([{"id": 1}], next_link="https://org.example/p2")
+
+    with (
+        patch.object(client, "_execute_raw", return_value=page1),
+        patch.object(client, "_build_sql", return_value=MagicMock()),
+        patch.object(client, "_request", side_effect=ConnectionError("network timeout")),
+    ):
+        with pytest.warns(RuntimeWarning, match="pagination stopped"):
+            result = client._query_sql("SELECT id FROM account")
+
+    assert result == [{"id": 1}]
+
+
+def test_query_sql_non_dict_page_body_stops_pagination():
+    """When a pagination response contains valid JSON that is not a dict (e.g. a list),
+    pagination stops silently and the rows collected so far are returned."""
+    client = _query_sql_client()
+    page1 = _make_response([{"id": 1}], next_link="https://org.example/p2")
+
+    bad_resp = MagicMock()
+    bad_resp.json.return_value = [{"id": 2}]  # a list, not a dict
+
+    with (
+        patch.object(client, "_execute_raw", return_value=page1),
+        patch.object(client, "_build_sql", return_value=MagicMock()),
+        patch.object(client, "_request", return_value=bad_resp) as mock_req,
+    ):
+        result = client._query_sql("SELECT id FROM account")
+
+    mock_req.assert_called_once_with("get", "https://org.example/p2")
+    assert result == [{"id": 1}]
