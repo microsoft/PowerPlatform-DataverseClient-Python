@@ -19,7 +19,7 @@ Prerequisites:
 - pip install azure-identity
 """
 
-import argparse
+import sys
 import json
 import time
 from enum import IntEnum
@@ -69,11 +69,6 @@ def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Dataverse SDK Walkthrough")
-    parser.add_argument("--url", help="Dataverse org URL (e.g. https://yourorg.crm.dynamics.com)")
-    args = parser.parse_args()
-    base_url = args.url.rstrip("/")
-
     print("=" * 80)
     print("Dataverse SDK Walkthrough")
     print("=" * 80)
@@ -84,6 +79,13 @@ def main():
     print("\n" + "=" * 80)
     print("1. Setup & Authentication")
     print("=" * 80)
+
+    base_url = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
+    if not base_url:
+        print("No URL entered; exiting.")
+        sys.exit(1)
+
+    base_url = base_url.rstrip("/")
 
     log_call("InteractiveBrowserCredential()")
     credential = InteractiveBrowserCredential()
