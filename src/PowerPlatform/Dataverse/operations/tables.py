@@ -81,7 +81,8 @@ class TableOperations:
         :type table: :class:`str`
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
-            (or ``"text"``), ``"int"`` (or ``"integer"``), ``"decimal"``
+            (or ``"text"``), ``"memo"`` (or ``"multiline"``),
+            ``"int"`` (or ``"integer"``), ``"decimal"``
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
@@ -821,33 +822,17 @@ class TableOperations:
                 )
                 print(f"Created lookup: {result['lookup_schema_name']}")
         """
-        localized_labels = [
-            LocalizedLabel(
-                label=display_name or referenced_table,
+        with self._client._scoped_odata() as od:
+            lookup, relationship = od._build_lookup_field_models(
+                referencing_table=referencing_table,
+                lookup_field_name=lookup_field_name,
+                referenced_table=referenced_table,
+                display_name=display_name,
+                description=description,
+                required=required,
+                cascade_delete=cascade_delete,
                 language_code=language_code,
             )
-        ]
-
-        lookup = LookupAttributeMetadata(
-            schema_name=lookup_field_name,
-            display_name=Label(localized_labels=localized_labels),
-            required_level="ApplicationRequired" if required else "None",
-        )
-
-        if description:
-            lookup.description = Label(
-                localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
-            )
-
-        relationship_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
-
-        relationship = OneToManyRelationshipMetadata(
-            schema_name=relationship_name,
-            referenced_entity=referenced_table,
-            referencing_entity=referencing_table,
-            referenced_attribute=f"{referenced_table}id",
-            cascade_configuration=CascadeConfiguration(delete=cascade_delete),
-        )
 
         return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
 

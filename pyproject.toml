@@ -93,6 +93,14 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
+
+[tool.coverage.run]
+source = ["src/PowerPlatform"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
 markers = [
     "e2e: end-to-end tests requiring a live Dataverse environment (DATAVERSE_URL)",
 ]

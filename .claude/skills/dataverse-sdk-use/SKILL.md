@@ -22,6 +22,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.query` -- query and search operations
 - `client.tables` -- table metadata, columns, and relationships
 - `client.files` -- file upload operations
+- `client.batch` -- batch multiple operations into a single HTTP request
 
 ### Bulk Operations
 The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation
@@ -249,6 +250,7 @@ table_info = client.tables.create(
 #### Supported Column Types
 Types on the same line map to the same exact format under the hood
 - `"string"` or `"text"` - Single line of text
+- `"memo"` or `"multiline"` - Multiple lines of text (4000 character default)
 - `"int"` or `"integer"` - Whole number
 - `"decimal"` or `"money"` - Decimal number
 - `"float"` or `"double"` - Floating point number
@@ -425,6 +427,50 @@ client.files.upload(
     path="/path/to/document.pdf",
 )
 ```
+
+### Batch Operations
+
+Use `client.batch` to send multiple operations in one HTTP request. All batch methods return `None`; results arrive via `BatchResult` after `execute()`.
+
+```python
+# Build a batch request
+batch = client.batch.new()
+batch.records.create("account", {"name": "Contoso"})
+batch.records.update("account", account_id, {"telephone1": "555-0100"})
+batch.records.get("account", account_id, select=["name"])
+batch.query.sql("SELECT TOP 5 name FROM account")
+
+result = batch.execute()
+for item in result.responses:
+    if item.is_success:
+        print(f"[OK] {item.status_code} entity_id={item.entity_id}")
+        if item.data:
+            # GET responses populate item.data with the parsed JSON record
+            print(item.data.get("name"))
+    else:
+        print(f"[ERR] {item.status_code}: {item.error_message}")
+
+# Transactional changeset (all succeed or roll back)
+with batch.changeset() as cs:
+    ref = cs.records.create("contact", {"firstname": "Alice"})
+    cs.records.update("account", account_id, {"primarycontactid@odata.bind": ref})
+
+# Continue on error
+result = batch.execute(continue_on_error=True)
+print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+```
+
+**BatchResult properties:**
+- `result.responses` -- list of `BatchItemResponse` in submission order
+- `result.succeeded` -- responses with 2xx status codes
+- `result.failed` -- responses with non-2xx status codes
+- `result.has_errors` -- True if any response failed
+- `result.entity_ids` -- GUIDs from OData-EntityId headers (creates and updates)
+
+**Batch limitations:**
+- Maximum 1000 operations per batch
+- Paginated `records.get()` (without `record_id`) is not supported in batch
+- `flush_cache()` is not supported in batch
 
 ## Error Handling
 
