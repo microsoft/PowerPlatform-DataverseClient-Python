@@ -361,12 +361,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    def _create_multiple(
-        self,
-        entity_set: str,
-        table_schema_name: str,
-        records: List[Dict[str, Any]],
-    ) -> List[str]:
+    def _create_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> List[str]:
         """Create multiple records using the collection-bound ``CreateMultiple`` action.
 
         Large record lists are automatically split into chunks of up to
@@ -383,9 +378,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :rtype: ``list[str]``
 
         .. note::
-           Logical type stamping: if any payload omits ``@odata.type`` the client
-           injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads
-           already include ``@odata.type`` no modification occurs.
+           Logical type stamping: if any payload omits ``@odata.type`` the client injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads already include ``@odata.type`` no modification occurs.
 
         .. warning::
            When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
@@ -542,7 +535,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         for i in range(0, len(targets), _MULTIPLE_BATCH_SIZE):
             chunk = targets[i : i + _MULTIPLE_BATCH_SIZE]
             self._request("post", url, json={"Targets": chunk}, expected=(200, 201, 204))
-        return None
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -662,12 +654,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         self._execute_raw(self._build_update(table_schema_name, key, data))
 
-    def _update_multiple(
-        self,
-        entity_set: str,
-        table_schema_name: str,
-        records: List[Dict[str, Any]],
-    ) -> None:
+    def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
 
         Large record lists are automatically split into chunks of up to
