@@ -158,7 +158,7 @@ class TestCloseMethod(unittest.TestCase):
         odata = client._get_odata()
         odata._logical_to_entityset_cache["test"] = "value"
         odata._logical_primaryid_cache["test"] = "value"
-        odata._picklist_label_cache[("test", "attr")] = {"map": {}, "ts": 0}
+        odata._picklist_label_cache["test"] = {"ts": 0, "picklists": {"attr": {}}}
 
         client.close()
 
@@ -267,6 +267,17 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertTrue(client._closed)
         with self.assertRaises(RuntimeError):
             client.records.create("account", {"name": "test"})
+
+    def test_flush_cache_delegates_to_odata(self):
+        """flush_cache() calls _flush_cache on the OData client and returns its result."""
+        client = DataverseClient(self.base_url, self.mock_credential)
+        client._odata = MagicMock()
+        client._odata._flush_cache.return_value = 3
+
+        result = client.flush_cache("picklist")
+
+        client._odata._flush_cache.assert_called_once_with("picklist")
+        self.assertEqual(result, 3)
 
 
 class TestExceptionHandling(unittest.TestCase):

@@ -11,6 +11,7 @@ This example shows:
 - Expand (navigation properties) with QueryBuilder
 - Picklist label-to-value conversion
 - Column management
+- Batch operations (create, read, update, changeset, delete in one HTTP request)
 - Cleanup
 
 Prerequisites:
@@ -119,6 +120,7 @@ def _run_walkthrough(client):
             "new_Quantity": "int",
             "new_Amount": "decimal",
             "new_Completed": "bool",
+            "new_Notes": "memo",
             "new_Priority": Priority,
         }
         table_info = backoff(lambda: client.tables.create(table_name, columns))
@@ -139,6 +141,7 @@ def _run_walkthrough(client):
         "new_Quantity": 5,
         "new_Amount": 1250.50,
         "new_Completed": False,
+        "new_Notes": "This is a multiline memo field.\nIt supports longer text content.",
         "new_Priority": Priority.MEDIUM,
     }
     id1 = backoff(lambda: client.records.create(table_name, single_record))
@@ -191,6 +194,7 @@ def _run_walkthrough(client):
                 "new_quantity": record.get("new_quantity"),
                 "new_amount": record.get("new_amount"),
                 "new_completed": record.get("new_completed"),
+                "new_notes": record.get("new_notes"),
                 "new_priority": record.get("new_priority"),
                 "new_priority@FormattedValue": record.get("new_priority@OData.Community.Display.V1.FormattedValue"),
             },
@@ -217,9 +221,19 @@ def _run_walkthrough(client):
 
     # Single update
     log_call(f"client.records.update('{table_name}', '{id1}', {{...}})")
-    backoff(lambda: client.records.update(table_name, id1, {"new_Quantity": 100}))
+    backoff(
+        lambda: client.records.update(
+            table_name,
+            id1,
+            {
+                "new_Quantity": 100,
+                "new_Notes": "Updated memo field.\nNow with revised content across multiple lines.",
+            },
+        )
+    )
     updated = backoff(lambda: client.records.get(table_name, id1))
     print(f"[OK] Updated single record new_Quantity: {updated.get('new_quantity')}")
+    print(f"  new_Notes: {repr(updated.get('new_notes'))}")
 
     # Multiple update (broadcast same change)
     log_call(f"client.records.update('{table_name}', [{len(ids)} IDs], {{...}})")
@@ -444,6 +458,16 @@ def _run_walkthrough(client):
     print(f"  new_Priority stored as integer: {retrieved.get('new_priority')}")
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
 
+    # Update with a string label
+    log_call(f"client.records.update('{table_name}', label_id, {{'new_Priority': 'Low'}})")
+    backoff(lambda: client.records.update(table_name, label_id, {"new_Priority": "Low"}))
+    updated_label = backoff(lambda: client.records.get(table_name, label_id))
+    print(f"[OK] Updated record with string label 'Low' for new_Priority")
+    print(f"  new_Priority stored as integer: {updated_label.get('new_priority')}")
+    print(
+        f"  new_Priority@FormattedValue: {updated_label.get('new_priority@OData.Community.Display.V1.FormattedValue')}"
+    )
+
     # ============================================================================
     # 11. COLUMN MANAGEMENT
     # ============================================================================
@@ -451,14 +475,14 @@ def _run_walkthrough(client):
     print("11. Column Management")
     print("=" * 80)
 
-    log_call(f"client.tables.add_columns('{table_name}', {{'new_Notes': 'string'}})")
-    created_cols = backoff(lambda: client.tables.add_columns(table_name, {"new_Notes": "string"}))
+    log_call(f"client.tables.add_columns('{table_name}', {{'new_Tags': 'string'}})")
+    created_cols = backoff(lambda: client.tables.add_columns(table_name, {"new_Tags": "string"}))
     print(f"[OK] Added column: {created_cols[0]}")
 
     # Delete the column we just added
-    log_call(f"client.tables.remove_columns('{table_name}', ['new_Notes'])")
-    backoff(lambda: client.tables.remove_columns(table_name, ["new_Notes"]))
-    print(f"[OK] Deleted column: new_Notes")
+    log_call(f"client.tables.remove_columns('{table_name}', ['new_Tags'])")
+    backoff(lambda: client.tables.remove_columns(table_name, ["new_Tags"]))
+    print(f"[OK] Deleted column: new_Tags")
 
     # ============================================================================
     # 12. DELETE OPERATIONS
@@ -479,10 +503,88 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 13. CLEANUP
+    # 13. BATCH OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("13. Cleanup")
+    print("13. Batch Operations")
+    print("=" * 80)
+
+    # Batch create: send 2 creates in a single POST $batch
+    log_call("client.batch.new() + batch.records.create(...) x2 + batch.execute()")
+    batch = client.batch.new()
+    batch.records.create(
+        table_name,
+        {
+            "new_Title": "Batch task alpha",
+            "new_Quantity": 1,
+            "new_Amount": 25.0,
+            "new_Completed": False,
+            "new_Priority": Priority.LOW,
+        },
+    )
+    batch.records.create(
+        table_name,
+        {
+            "new_Title": "Batch task beta",
+            "new_Quantity": 2,
+            "new_Amount": 50.0,
+            "new_Completed": False,
+            "new_Priority": Priority.MEDIUM,
+        },
+    )
+    result = batch.execute()
+    batch_ids = list(result.entity_ids)
+    print(
+        f"[OK] Batch create: {len(result.succeeded)} operations in one HTTP request, {len(batch_ids)} records created"
+    )
+
+    # Batch get: read both records in a single request
+    log_call("client.batch.new() + batch.records.get(...) x2 + batch.execute()")
+    batch = client.batch.new()
+    for bid in batch_ids:
+        batch.records.get(table_name, bid, select=["new_title", "new_quantity"])
+    result = batch.execute()
+    print(f"[OK] Batch get: {len(result.succeeded)} reads in one HTTP request")
+    for resp in result.succeeded:
+        if resp.data:
+            print(f"  new_title='{resp.data.get('new_title')}', new_quantity={resp.data.get('new_quantity')}")
+
+    # Changeset: create + update atomically (all-or-nothing)
+    log_call("with batch.changeset() as cs: cs.records.create(...); cs.records.update(cs_ref, ...)")
+    batch = client.batch.new()
+    with batch.changeset() as cs:
+        cs_ref = cs.records.create(
+            table_name,
+            {
+                "new_Title": "Changeset task",
+                "new_Quantity": 5,
+                "new_Amount": 100.0,
+                "new_Completed": False,
+                "new_Priority": Priority.HIGH,
+            },
+        )
+        cs.records.update(table_name, cs_ref, {"new_Completed": True})
+    result = batch.execute()
+    if not result.has_errors:
+        batch_ids.extend(result.entity_ids)
+        print(f"[OK] Changeset: {len(result.succeeded)} operations committed atomically")
+    else:
+        for item in result.failed:
+            print(f"[WARN] Changeset error {item.status_code}: {item.error_message}")
+
+    # Batch delete: clean up all batch-created records in one request
+    log_call(f"client.batch.new() + batch.records.delete(...) x{len(batch_ids)} + batch.execute()")
+    batch = client.batch.new()
+    for bid in batch_ids:
+        batch.records.delete(table_name, bid)
+    result = batch.execute(continue_on_error=True)
+    print(f"[OK] Batch delete: {len(result.succeeded)} records deleted in one HTTP request")
+
+    # ============================================================================
+    # 14. CLEANUP
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("14. Cleanup")
     print("=" * 80)
 
     log_call(f"client.tables.delete('{table_name}')")
@@ -519,6 +621,7 @@ def _run_walkthrough(client):
     print("  [OK] Picklist label-to-value conversion")
     print("  [OK] Column management")
     print("  [OK] Single and bulk delete operations")
+    print("  [OK] Batch operations (create, read, changeset, delete)")
     print("  [OK] Table cleanup")
     print("=" * 80)
 

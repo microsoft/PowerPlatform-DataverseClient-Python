@@ -344,6 +344,12 @@ class TestFilterRaw(unittest.TestCase):
         qb = QueryBuilder("account")
         self.assertIs(qb.filter_raw("a eq 1"), qb)
 
+    def test_build_with_plain_string_filter_part(self):
+        """build() handles plain string entries in _filter_parts (internal path)."""
+        qb = QueryBuilder("account")
+        qb._filter_parts.append("name eq 'Contoso'")
+        self.assertEqual(qb.build()["filter"], "name eq 'Contoso'")
+
 
 class TestWhere(unittest.TestCase):
     """Tests for the where() method with composable expressions."""
