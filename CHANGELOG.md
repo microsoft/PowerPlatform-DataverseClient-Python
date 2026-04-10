@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0b8] - 2026-04-10
 
 ### Added
 - Batch API: `client.batch` namespace for deferred-execution batch operations that pack multiple Dataverse Web API calls into a single `POST $batch` HTTP request (#129)
@@ -108,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b7...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...HEAD
+[0.1.0b8]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b7...v0.1.0b8
 [0.1.0b7]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b6...v0.1.0b7
 [0.1.0b6]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b5...v0.1.0b6
 [0.1.0b5]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b4...v0.1.0b5
