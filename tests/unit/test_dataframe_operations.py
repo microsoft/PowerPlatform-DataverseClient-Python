@@ -202,6 +202,7 @@ class TestDataFrameUpdate(unittest.TestCase):
             "account",
             ["guid-1", "guid-2"],
             [{"telephone1": "555-0100"}, {"telephone1": "555-0200"}],
+            max_workers=1,
         )
 
     def test_update_type_error(self):
@@ -491,6 +492,53 @@ class TestDataFrameEndToEnd(unittest.TestCase):
         changes = call_args[2]
         self.assertIsInstance(changes["lastonholdtime"], str)
         self.assertIn("2024-06-15T10:30:00", changes["lastonholdtime"])
+
+
+class TestDataFrameMaxWorkers(unittest.TestCase):
+    """Tests that max_workers is forwarded correctly from dataframe to records operations."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+
+    def test_create_passes_max_workers_to_records(self):
+        """dataframe.create() forwards max_workers to the underlying records.create() call."""
+        df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+        self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
+
+        self.client.dataframe.create("account", df, max_workers=4)
+
+        self.client._odata._create_multiple.assert_called_once_with(
+            "accounts", "account", [{"name": "Contoso"}, {"name": "Fabrikam"}], max_workers=4
+        )
+
+    def test_update_single_row_passes_max_workers_to_records(self):
+        """dataframe.update() forwards max_workers on the single-record path."""
+        df = pd.DataFrame([{"accountid": "guid-1", "name": "New Name"}])
+
+        self.client.dataframe.update("account", df, id_column="accountid", max_workers=4)
+
+        self.client._odata._update.assert_called_once_with("account", "guid-1", {"name": "New Name"})
+
+    def test_update_multiple_rows_passes_max_workers_to_records(self):
+        """dataframe.update() forwards max_workers on the batch path."""
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "telephone1": "555-0100"},
+                {"accountid": "guid-2", "telephone1": "555-0200"},
+            ]
+        )
+
+        self.client.dataframe.update("account", df, id_column="accountid", max_workers=4)
+
+        self.client._odata._update_by_ids.assert_called_once_with(
+            "account",
+            ["guid-1", "guid-2"],
+            [{"telephone1": "555-0100"}, {"telephone1": "555-0200"}],
+            max_workers=4,
+        )
 
 
 if __name__ == "__main__":

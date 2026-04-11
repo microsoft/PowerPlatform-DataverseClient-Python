@@ -49,15 +49,17 @@ class RecordOperations:
     # ------------------------------------------------------------------ create
 
     @overload
-    def create(self, table: str, data: Dict[str, Any]) -> str: ...
+    def create(self, table: str, data: Dict[str, Any], *, max_workers: int = 1) -> str: ...
 
     @overload
-    def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
+    def create(self, table: str, data: List[Dict[str, Any]], *, max_workers: int = 1) -> List[str]: ...
 
     def create(
         self,
         table: str,
         data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        *,
+        max_workers: int = 1,
     ) -> Union[str, List[str]]:
         """Create one or more records in a Dataverse table.
 
@@ -97,6 +99,8 @@ class RecordOperations:
                 ])
                 print(f"Created {len(guids)} accounts")
         """
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError("max_workers must be a positive integer")
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -105,7 +109,7 @@ class RecordOperations:
                     raise TypeError("_create (single) did not return GUID string")
                 return rid
             if isinstance(data, list):
-                ids = od._create_multiple(entity_set, table, data)
+                ids = od._create_multiple(entity_set, table, data, max_workers=max_workers)
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                     raise TypeError("_create (multi) did not return list[str]")
                 return ids
@@ -118,6 +122,8 @@ class RecordOperations:
         table: str,
         ids: Union[str, List[str]],
         changes: Union[Dict[str, Any], List[Dict[str, Any]]],
+        *,
+        max_workers: int = 1,
     ) -> None:
         """Update one or more records in a Dataverse table.
 
@@ -164,6 +170,8 @@ class RecordOperations:
                     [{"name": "Name A"}, {"name": "Name B"}],
                 )
         """
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError("max_workers must be a positive integer")
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
@@ -172,7 +180,7 @@ class RecordOperations:
                 return None
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
-            od._update_by_ids(table, ids, changes)
+            od._update_by_ids(table, ids, changes, max_workers=max_workers)
             return None
 
     # ------------------------------------------------------------------ delete
@@ -475,7 +483,7 @@ class RecordOperations:
 
     # ------------------------------------------------------------------ upsert
 
-    def upsert(self, table: str, items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
+    def upsert(self, table: str, items: List[Union[UpsertItem, Dict[str, Any]]], *, max_workers: int = 1) -> None:
         """Upsert one or more records identified by alternate keys.
 
         When ``items`` contains a single entry, performs a single upsert via PATCH
@@ -557,6 +565,8 @@ class RecordOperations:
             alternate key is composite, e.g.
             ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
         """
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError("max_workers must be a positive integer")
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []
@@ -575,5 +585,5 @@ class RecordOperations:
             else:
                 alternate_keys = [i.alternate_key for i in normalized]
                 records = [i.record for i in normalized]
-                od._upsert_multiple(entity_set, table, alternate_keys, records)
+                od._upsert_multiple(entity_set, table, alternate_keys, records, max_workers=max_workers)
         return None

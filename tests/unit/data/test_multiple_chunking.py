@@ -498,7 +498,8 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
         ids = ["id-1", "id-2"]
         self.od._update_by_ids("account", ids, {"name": "X"})
         self.od._update_multiple.assert_called_once_with(
-            "accounts", "account", [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}]
+            "accounts", "account", [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}],
+            max_workers=1,
         )
 
     def test_paired_delegates_correctly(self):
@@ -510,6 +511,7 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
             "accounts",
             "account",
             [{"accountid": "id-1", "name": "A"}, {"accountid": "id-2", "name": "B"}],
+            max_workers=1,
         )
 
     def test_empty_ids_returns_none_without_delegating(self):
@@ -578,7 +580,7 @@ class TestPublicCreateDelegation(unittest.TestCase):
         ops, mock_odata = _make_records_client()
         ops.create("account", [{"name": "A"}, {"name": "B"}])
         mock_odata._create_multiple.assert_called_once_with(
-            "accounts", "account", [{"name": "A"}, {"name": "B"}]
+            "accounts", "account", [{"name": "A"}, {"name": "B"}], max_workers=1
         )
 
     def test_single_dict_delegates_to_create(self):
@@ -598,7 +600,7 @@ class TestPublicUpdateDelegation(unittest.TestCase):
         ops, mock_odata = _make_records_client()
         ops.update("account", ["id-1", "id-2"], {"name": "X"})
         mock_odata._update_by_ids.assert_called_once_with(
-            "account", ["id-1", "id-2"], {"name": "X"}
+            "account", ["id-1", "id-2"], {"name": "X"}, max_workers=1
         )
 
     def test_list_paired_delegates_to_update_by_ids(self):
@@ -606,7 +608,7 @@ class TestPublicUpdateDelegation(unittest.TestCase):
         ops, mock_odata = _make_records_client()
         ops.update("account", ["id-1", "id-2"], [{"name": "A"}, {"name": "B"}])
         mock_odata._update_by_ids.assert_called_once_with(
-            "account", ["id-1", "id-2"], [{"name": "A"}, {"name": "B"}]
+            "account", ["id-1", "id-2"], [{"name": "A"}, {"name": "B"}], max_workers=1
         )
 
     def test_single_delegates_to_update(self):
@@ -634,6 +636,7 @@ class TestPublicUpsertDelegation(unittest.TestCase):
             "account",
             [{"accountnumber": "A1"}, {"accountnumber": "A2"}],
             [{"name": "Contoso"}, {"name": "Fabrikam"}],
+            max_workers=1,
         )
 
     def test_single_item_delegates_to_upsert(self):
@@ -644,6 +647,336 @@ class TestPublicUpsertDelegation(unittest.TestCase):
         ops.upsert("account", [UpsertItem(alternate_key={"accountnumber": "A1"}, record={"name": "X"})])
         mock_odata._upsert_multiple.assert_not_called()
         mock_odata._upsert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _dispatch_chunks: sequential path
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchChunksSequential(unittest.TestCase):
+    """_dispatch_chunks with max_workers=1 runs fn synchronously in order."""
+
+    def setUp(self):
+        from PowerPlatform.Dataverse.data._odata import _dispatch_chunks
+
+        self._dispatch = _dispatch_chunks
+
+    def test_returns_results_in_order(self):
+        results = self._dispatch(lambda c: c[0], [[10], [20], [30]], max_workers=1)
+        self.assertEqual(results, [10, 20, 30])
+
+    def test_empty_chunks_returns_empty(self):
+        called = []
+        self._dispatch(lambda c: called.append(c), [], max_workers=1)
+        self.assertEqual(called, [])
+
+    def test_single_chunk_with_high_workers_still_sequential(self):
+        """Single chunk should skip ThreadPoolExecutor even when max_workers > 1."""
+        call_count = [0]
+
+        def fn(chunk):
+            call_count[0] += 1
+            return "result"
+
+        results = self._dispatch(fn, [["only"]], max_workers=4)
+        self.assertEqual(results, ["result"])
+        self.assertEqual(call_count[0], 1)
+
+    def test_exception_propagates_sequential(self):
+        def fn(chunk):
+            raise ValueError("boom")
+
+        with self.assertRaises(ValueError, msg="boom"):
+            self._dispatch(fn, [["a"]], max_workers=1)
+
+
+# ---------------------------------------------------------------------------
+# _dispatch_chunks: concurrent path
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchChunksConcurrent(unittest.TestCase):
+    """_dispatch_chunks with max_workers > 1 dispatches via ThreadPoolExecutor."""
+
+    def setUp(self):
+        from PowerPlatform.Dataverse.data._odata import _dispatch_chunks
+
+        self._dispatch = _dispatch_chunks
+
+    def test_concurrent_results_preserve_submission_order(self):
+        """Results are returned in chunk-submission order even when chunks finish out of order.
+
+        Chunk 0 blocks until chunk 1 has signalled completion, so the actual
+        completion order is [1, 0].  The returned list must still be
+        ["chunk-0", "chunk-1"] (submission order), not ["chunk-1", "chunk-0"]
+        (completion order), verifying that ``[f.result() for f in futures]``
+        iterates futures in submission order rather than ``as_completed`` order.
+        """
+        import threading
+
+        chunk_1_done = threading.Event()
+
+        def fn(idx):
+            if idx == 0:
+                chunk_1_done.wait()  # hold until chunk 1 has finished
+                return "chunk-0"
+            else:  # idx == 1
+                chunk_1_done.set()   # release chunk 0
+                return "chunk-1"
+
+        results = self._dispatch(fn, [0, 1], max_workers=2)
+        # chunk 1 finished first, but submission order must be preserved
+        self.assertEqual(results, ["chunk-0", "chunk-1"])
+
+    def test_all_chunks_are_executed(self):
+        executed = []
+        lock = __import__("threading").Lock()
+
+        def fn(chunk):
+            with lock:
+                executed.append(chunk)
+            return chunk
+
+        chunks = [["a"], ["b"], ["c"]]
+        results = self._dispatch(fn, chunks, max_workers=3)
+        self.assertEqual(sorted(executed), [["a"], ["b"], ["c"]])
+        self.assertEqual(results, [["a"], ["b"], ["c"]])
+
+    def test_exception_in_worker_propagates(self):
+        def fn(chunk):
+            if chunk == "bad":
+                raise RuntimeError("worker failed")
+            return chunk
+
+        with self.assertRaises(RuntimeError, msg="worker failed"):
+            self._dispatch(fn, ["ok", "bad", "ok2"], max_workers=3)
+
+
+# ---------------------------------------------------------------------------
+# _dispatch_chunks: 429 retry with jitter
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchChunks429Retry(unittest.TestCase):
+    """_dispatch_chunks retries on 429 up to _CHUNK_RETRY_LIMIT times."""
+
+    def setUp(self):
+        from PowerPlatform.Dataverse.data._odata import (
+            _CHUNK_RETRY_DEFAULT_WAIT,
+            _CHUNK_RETRY_JITTER_MAX,
+            _CHUNK_RETRY_LIMIT,
+            _dispatch_chunks,
+        )
+        from PowerPlatform.Dataverse.core.errors import HttpError
+
+        self._dispatch = _dispatch_chunks
+        self._LIMIT = _CHUNK_RETRY_LIMIT
+        self._DEFAULT_WAIT = _CHUNK_RETRY_DEFAULT_WAIT
+        self._JITTER_MAX = _CHUNK_RETRY_JITTER_MAX
+        self._HttpError = HttpError
+
+    def _make_429(self, retry_after=None):
+        kwargs = {"status_code": 429, "is_transient": True}
+        if retry_after is not None:
+            kwargs["retry_after"] = retry_after
+        return self._HttpError("rate limited", **kwargs)
+
+    def test_retries_on_429_and_eventually_succeeds(self):
+        """The bad chunk raises 429 twice then succeeds; sleep is called exactly twice.
+
+        Two chunks are used so ``_dispatch_chunks`` takes the concurrent path
+        and wraps each chunk in ``_with_backoff``.  Only the "bad" chunk retries;
+        the "ok" chunk completes immediately.
+        """
+        bad_calls = [0]
+        err = self._make_429(retry_after=5)
+
+        def fn(chunk):
+            if chunk == "bad":
+                bad_calls[0] += 1
+                if bad_calls[0] < 3:
+                    raise err
+            return chunk
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+            result = self._dispatch(fn, ["bad", "ok"], max_workers=2)
+
+        self.assertEqual(result, ["bad", "ok"])
+        self.assertEqual(bad_calls[0], 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+        # Each sleep value must be >= retry_after and <= retry_after + jitter_max
+        for call_args in mock_sleep.call_args_list:
+            wait = call_args[0][0]
+            self.assertGreaterEqual(wait, 5)
+            self.assertLessEqual(wait, 5 + self._JITTER_MAX)
+
+    def test_429_without_retry_after_uses_default_wait(self):
+        """When Retry-After is absent, the sleep falls back to _CHUNK_RETRY_DEFAULT_WAIT.
+
+        Two chunks are required to exercise the concurrent path with ``_with_backoff``.
+        """
+        bad_calls = [0]
+        err = self._make_429(retry_after=None)
+
+        def fn(chunk):
+            if chunk == "bad":
+                bad_calls[0] += 1
+                if bad_calls[0] < 2:
+                    raise err
+            return chunk
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+            self._dispatch(fn, ["bad", "ok"], max_workers=2)
+
+        wait = mock_sleep.call_args[0][0]
+        self.assertGreaterEqual(wait, self._DEFAULT_WAIT)
+        self.assertLessEqual(wait, self._DEFAULT_WAIT + self._JITTER_MAX)
+
+    def test_429_exhausts_retries_and_raises(self):
+        """After _CHUNK_RETRY_LIMIT retries the 429 HttpError is re-raised.
+
+        Two chunks are required to exercise the concurrent path.  Both always
+        raise 429 so that we verify the limit is enforced regardless of which
+        chunk the executor picks up first.
+        """
+        err = self._make_429(retry_after=1)
+
+        def fn(chunk):
+            raise err
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep"):
+            with self.assertRaises(self._HttpError) as ctx:
+                self._dispatch(fn, ["chunk-a", "chunk-b"], max_workers=2)
+
+        self.assertEqual(ctx.exception.status_code, 429)
+
+    def test_non_429_http_error_not_retried(self):
+        """A non-429 HttpError (e.g. 500) propagates immediately without any retry sleep.
+
+        Two chunks ensure the concurrent path is used.  Only the "bad" chunk
+        raises; it must be called exactly once with no sleep.
+        """
+        bad_calls = [0]
+        err = self._HttpError("server error", status_code=500)
+
+        def fn(chunk):
+            if chunk == "bad":
+                bad_calls[0] += 1
+                raise err
+            return chunk
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+            with self.assertRaises(self._HttpError):
+                self._dispatch(fn, ["bad", "ok"], max_workers=2)
+
+        self.assertEqual(bad_calls[0], 1)
+        mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# max_workers validation in public API
+# ---------------------------------------------------------------------------
+
+
+class TestMaxWorkersValidation(unittest.TestCase):
+    """records.create/update/upsert reject invalid max_workers values."""
+
+    def setUp(self):
+        from contextlib import contextmanager
+
+        from PowerPlatform.Dataverse.operations.records import RecordOperations
+
+        mock_client = MagicMock()
+        mock_odata = MagicMock()
+        mock_odata._entity_set_from_schema_name.return_value = "accounts"
+        mock_odata._create_multiple.return_value = []
+
+        @contextmanager
+        def scoped():
+            yield mock_odata
+
+        mock_client._scoped_odata = scoped
+        self.ops = RecordOperations(mock_client)
+
+    def _assert_invalid(self, method, *args, **kwargs):
+        with self.assertRaises(ValueError):
+            method(*args, **kwargs)
+
+    def test_create_zero_max_workers(self):
+        self._assert_invalid(self.ops.create, "account", [{"name": "X"}], max_workers=0)
+
+    def test_create_negative_max_workers(self):
+        self._assert_invalid(self.ops.create, "account", [{"name": "X"}], max_workers=-1)
+
+    def test_create_string_max_workers(self):
+        self._assert_invalid(self.ops.create, "account", [{"name": "X"}], max_workers="3")
+
+    def test_update_zero_max_workers(self):
+        self._assert_invalid(self.ops.update, "account", ["id-1"], {"name": "X"}, max_workers=0)
+
+    def test_upsert_zero_max_workers(self):
+        from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+        self._assert_invalid(
+            self.ops.upsert,
+            "account",
+            [UpsertItem(alternate_key={"accountnumber": "A1"}, record={"name": "X"})],
+            max_workers=0,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Picklist cache lock: concurrent cold-start
+# ---------------------------------------------------------------------------
+
+
+class TestPicklistCacheLock(unittest.TestCase):
+    """Concurrent _bulk_fetch_picklists cold-starts should trigger only one HTTP call.
+
+    ``_bulk_fetch_picklists`` uses double-checked locking: a lock-free fast path
+    for the warm-cache case and a serialised slow path for cold-starts.  When
+    many threads race to populate the cache simultaneously, only the first thread
+    to acquire ``_picklist_cache_lock`` should make the metadata HTTP call; all
+    others must observe the populated cache inside the lock and return without
+    making a second request.
+    """
+
+    def test_concurrent_cold_start_fetches_once(self):
+        """Eight threads racing on an empty cache must produce exactly one HTTP call."""
+        import threading
+
+        mock_auth = MagicMock()
+        mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+        client = _ODataClient(mock_auth, "https://org.crm.dynamics.com")
+
+        # _bulk_fetch_picklists calls _request_metadata_with_retry, not _request.
+        # Mock that method to count invocations and return an empty picklist body.
+        picklist_resp = MagicMock()
+        picklist_resp.json.return_value = {"value": []}
+        fetch_calls = [0]
+        counter_lock = threading.Lock()
+
+        def mock_metadata_request(*args, **kwargs):
+            with counter_lock:
+                fetch_calls[0] += 1
+            import time as _time
+            _time.sleep(0.01)  # brief pause to widen the race window
+            return picklist_resp
+
+        client._request_metadata_with_retry = mock_metadata_request
+
+        table = "account"
+        threads = [
+            threading.Thread(target=lambda: client._bulk_fetch_picklists(table))
+            for _ in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(fetch_calls[0], 1, "Expected exactly one HTTP call for concurrent cold-start")
 
 
 if __name__ == "__main__":

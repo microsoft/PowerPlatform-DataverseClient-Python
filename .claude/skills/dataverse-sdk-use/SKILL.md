@@ -25,7 +25,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.batch` -- batch multiple operations into a single HTTP request
 
 ### Bulk Operations
-The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()`, or `upsert()` for automatic bulk processing; for `delete()`, set `use_bulk_delete=True`. Lists exceeding 1,000 records are automatically split into sequential 1,000-record chunks — no manual pre-splitting needed. Operations across chunks are **not atomic**: a failure mid-way may leave earlier chunks applied. Callers that require atomicity should limit their input to ≤ 1,000 records.
+The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()`, or `upsert()` for automatic bulk processing; for `delete()`, set `use_bulk_delete=True`. Lists exceeding 1,000 records are automatically split into 1,000-record chunks — no manual pre-splitting needed. By default chunks are dispatched sequentially; pass `max_workers=N` (recommended: 3–4) to dispatch chunks concurrently via threads. Operations across chunks are **not atomic**: a failure mid-way may leave earlier chunks applied. Callers that require atomicity should limit their input to ≤ 1,000 records.
 
 ### Paging
 - Control page size with `page_size` parameter
@@ -465,11 +465,12 @@ except ValidationError as e:
 ### Performance Optimization
 
 1. **Use bulk operations** - Pass lists to create/update/delete for automatic optimization
-2. **Specify select fields** - Limit returned columns to reduce payload size
-3. **Control page size** - Use `top` and `page_size` parameters appropriately
-4. **Reuse client instances** - Don't create new clients for each operation
-5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
-6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
+2. **Use `max_workers`** - Pass `max_workers=3` (or 4) to dispatch 1,000-record chunks concurrently; safe for large datasets where throughput matters more than strict sequential ordering. Dataverse throttles concurrent requests server-side, so values above 4 rarely help and may trigger 429 rate-limiting
+3. **Specify select fields** - Limit returned columns to reduce payload size
+4. **Control page size** - Use `top` and `page_size` parameters appropriately
+5. **Reuse client instances** - Don't create new clients for each operation
+6. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
+7. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
 8. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
 9. **Test in non-production environments** first

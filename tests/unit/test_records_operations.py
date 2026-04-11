@@ -49,7 +49,7 @@ class TestRecordOperations(unittest.TestCase):
 
         result = self.client.records.create("account", payloads)
 
-        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads)
+        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads, max_workers=1)
         self.assertIsInstance(result, list)
         self.assertEqual(result, ["guid-1", "guid-2"])
 
@@ -106,7 +106,7 @@ class TestRecordOperations(unittest.TestCase):
 
         self.client.records.update("account", ids, changes)
 
-        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
+        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes, max_workers=1)
 
     def test_update_paired(self):
         """update() with list of ids and list of dicts should call _update_by_ids (paired)."""
@@ -115,7 +115,7 @@ class TestRecordOperations(unittest.TestCase):
 
         self.client.records.update("account", ids, changes)
 
-        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
+        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes, max_workers=1)
 
     def test_update_single_non_dict_changes_raises(self):
         """update() raises TypeError if ids is str but changes is not a dict."""
@@ -335,7 +335,7 @@ class TestRecordOperations(unittest.TestCase):
 
                 self.client._odata._entity_set_from_schema_name.assert_called_once_with("account")
                 self.client._odata._upsert_multiple.assert_called_once_with(
-                    "accounts", "account", expected_alt_keys, expected_records
+                    "accounts", "account", expected_alt_keys, expected_records, max_workers=1
                 )
                 self.client._odata._upsert.assert_not_called()
                 self.assertIsNone(result)
