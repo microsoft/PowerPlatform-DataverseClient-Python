@@ -82,7 +82,8 @@ class TableOperations:
         :type table: :class:`str`
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
-            (or ``"text"``), ``"int"`` (or ``"integer"``), ``"decimal"``
+            (or ``"text"``), ``"memo"`` (or ``"multiline"``),
+            ``"int"`` (or ``"integer"``), ``"decimal"``
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
@@ -213,10 +214,10 @@ class TableOperations:
             ``["LogicalName", "SchemaName", "DisplayName"]``).
             When ``None`` (the default) or an empty list, all properties are
             returned.
-        :type select: :class:`list` of :class:`str` or None
+        :type select: list[str] or None
 
         :return: List of EntityDefinition metadata dictionaries.
-        :rtype: :class:`list` of :class:`dict`
+        :rtype: list[dict]
 
         Example::
 
@@ -255,7 +256,7 @@ class TableOperations:
         :type columns: :class:`dict`
 
         :return: Schema names of the columns that were created.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist.
@@ -285,10 +286,10 @@ class TableOperations:
         :param columns: Column schema name or list of column schema names to
             remove. Must include the customization prefix (e.g.
             ``"new_TestColumn"``).
-        :type columns: :class:`str` or :class:`list` of :class:`str`
+        :type columns: str or list[str]
 
         :return: Schema names of the columns that were removed.
-        :rtype: :class:`list` of :class:`str`
+        :rtype: list[str]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table or a specified column does not exist.
@@ -557,33 +558,17 @@ class TableOperations:
                 )
                 print(f"Created lookup: {result['lookup_schema_name']}")
         """
-        localized_labels = [
-            LocalizedLabel(
-                label=display_name or referenced_table,
+        with self._client._scoped_odata() as od:
+            lookup, relationship = od._build_lookup_field_models(
+                referencing_table=referencing_table,
+                lookup_field_name=lookup_field_name,
+                referenced_table=referenced_table,
+                display_name=display_name,
+                description=description,
+                required=required,
+                cascade_delete=cascade_delete,
                 language_code=language_code,
             )
-        ]
-
-        lookup = LookupAttributeMetadata(
-            schema_name=lookup_field_name,
-            display_name=Label(localized_labels=localized_labels),
-            required_level="ApplicationRequired" if required else "None",
-        )
-
-        if description:
-            lookup.description = Label(
-                localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
-            )
-
-        relationship_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
-
-        relationship = OneToManyRelationshipMetadata(
-            schema_name=relationship_name,
-            referenced_entity=referenced_table,
-            referencing_entity=referencing_table,
-            referenced_attribute=f"{referenced_table}id",
-            cascade_configuration=CascadeConfiguration(delete=cascade_delete),
-        )
 
         return self.create_one_to_many_relationship(lookup, relationship, solution=solution)
 
@@ -612,7 +597,7 @@ class TableOperations:
         :type key_name: :class:`str`
         :param columns: List of column logical names that compose the key
             (e.g. ``["new_productcode"]``).
-        :type columns: :class:`list` of :class:`str`
+        :type columns: list[str]
         :param display_name: Display name for the key. Defaults to
             ``key_name`` if not provided.
         :type display_name: :class:`str` or None
@@ -660,7 +645,7 @@ class TableOperations:
 
         :return: List of alternate key metadata objects. May be empty if no
             alternate keys are defined.
-        :rtype: :class:`list` of :class:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo`
+        :rtype: list[~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo]
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If the table does not exist.

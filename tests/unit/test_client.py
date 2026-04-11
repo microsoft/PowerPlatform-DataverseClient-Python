@@ -126,11 +126,18 @@ class TestDataverseClient(unittest.TestCase):
             top=10,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
         self.assertEqual(len(results), 1)
         self.assertEqual(len(results[0]), 2)
         self.assertEqual(results[0][0]["name"], "A")
         self.assertEqual(results[0][1]["name"], "B")
+
+    def test_empty_base_url_raises(self):
+        """DataverseClient raises ValueError when base_url is empty."""
+        with self.assertRaises(ValueError):
+            DataverseClient("", self.mock_credential)
 
 
 class TestCreateLookupField(unittest.TestCase):

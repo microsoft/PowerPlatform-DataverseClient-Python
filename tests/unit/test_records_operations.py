@@ -64,6 +64,27 @@ class TestRecordOperations(unittest.TestCase):
         self.assertNotIsInstance(result, list)
         self.assertEqual(result, "single-guid")
 
+    def test_create_single_non_string_return_raises(self):
+        """create() raises TypeError if _create returns a non-string."""
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        self.client._odata._create.return_value = 12345
+
+        with self.assertRaises(TypeError):
+            self.client.records.create("account", {"name": "Contoso"})
+
+    def test_create_bulk_non_list_return_raises(self):
+        """create() raises TypeError if _create_multiple returns a non-list."""
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        self.client._odata._create_multiple.return_value = "not-a-list"
+
+        with self.assertRaises(TypeError):
+            self.client.records.create("account", [{"name": "Contoso"}])
+
+    def test_create_invalid_data_type_raises(self):
+        """create() raises TypeError if data is neither dict nor list."""
+        with self.assertRaises(TypeError):
+            self.client.records.create("account", "invalid")
+
     # ------------------------------------------------------------------ update
 
     def test_update_single(self):
@@ -95,6 +116,16 @@ class TestRecordOperations(unittest.TestCase):
         self.client.records.update("account", ids, changes)
 
         self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
+
+    def test_update_single_non_dict_changes_raises(self):
+        """update() raises TypeError if ids is str but changes is not a dict."""
+        with self.assertRaises(TypeError):
+            self.client.records.update("account", "guid-1", ["not", "a", "dict"])
+
+    def test_update_invalid_ids_type_raises(self):
+        """update() raises TypeError if ids is neither str nor list."""
+        with self.assertRaises(TypeError):
+            self.client.records.update("account", 12345, {"name": "X"})
 
     # ------------------------------------------------------------------ delete
 
@@ -137,6 +168,16 @@ class TestRecordOperations(unittest.TestCase):
         self.client._odata._delete_multiple.assert_not_called()
         self.assertIsNone(result)
 
+    def test_delete_invalid_ids_type_raises(self):
+        """delete() raises TypeError if ids is neither str nor list."""
+        with self.assertRaises(TypeError):
+            self.client.records.delete("account", 12345)
+
+    def test_delete_list_with_non_string_guids_raises(self):
+        """delete() raises TypeError if the ids list contains non-string entries."""
+        with self.assertRaises(TypeError):
+            self.client.records.delete("account", ["valid-guid", 42])
+
     # --------------------------------------------------------------------- get
 
     def test_get_single(self):
@@ -157,6 +198,11 @@ class TestRecordOperations(unittest.TestCase):
         """get() with record_id and query params should raise ValueError."""
         with self.assertRaises(ValueError):
             self.client.records.get("account", "guid-1", filter="statecode eq 0")
+
+    def test_get_non_string_record_id_raises(self):
+        """get() raises TypeError if record_id is not a string."""
+        with self.assertRaises(TypeError):
+            self.client.records.get("account", 12345)
 
     def test_get_paginated(self):
         """get() without record_id should yield pages of Record objects."""
@@ -197,6 +243,8 @@ class TestRecordOperations(unittest.TestCase):
             top=50,
             expand=["primarycontactid"],
             page_size=25,
+            count=False,
+            include_annotations=None,
         )
 
     # ------------------------------------------------------------------ upsert

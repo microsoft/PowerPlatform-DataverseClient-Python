@@ -22,6 +22,7 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 - `client.query` -- query and search operations
 - `client.tables` -- table metadata, columns, and relationships
 - `client.files` -- file upload operations
+- `client.batch` -- batch multiple operations into a single HTTP request
 
 ### Bulk Operations
 The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation
@@ -29,6 +30,9 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 ### Paging
 - Control page size with `page_size` parameter
 - Use `top` parameter to limit total records returned
+
+### DataFrame Support
+- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.get()`, `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()`
 
 ## Common Operations
 
@@ -105,6 +109,20 @@ for page in client.records.get(
         print(f"{account['name']} - {contact.get('fullname', 'N/A')}")
 ```
 
+#### Create Records with Lookup Bindings (@odata.bind)
+```python
+# Set lookup fields using @odata.bind with PascalCase navigation property names
+# CORRECT: use the navigation property name (case-sensitive, must match $metadata)
+guid = client.records.create("new_ticket", {
+    "new_name": "TKT-001",
+    "new_CustomerId@odata.bind": f"/new_customers({customer_id})",
+    "new_AgentId@odata.bind": f"/new_agents({agent_id})",
+})
+
+# WRONG: lowercase navigation property causes 400 error
+# "new_customerid@odata.bind" -> ODataException: undeclared property 'new_customerid'
+```
+
 #### Update Records
 ```python
 # Single update
@@ -115,7 +133,7 @@ client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 ```
 
 #### Upsert Records
-Creates or updates records identified by alternate keys. Single item → PATCH; multiple items → `UpsertMultiple` bulk action.
+Creates or updates records identified by alternate keys. Single item -> PATCH; multiple items -> `UpsertMultiple` bulk action.
 > **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
 ```python
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
@@ -157,6 +175,42 @@ client.records.delete("account", account_id)
 client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 ```
 
+### DataFrame Operations
+
+The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
+
+```python
+import pandas as pd
+
+# Query records -- returns a single DataFrame
+df = client.dataframe.get("account", filter="statecode eq 0", select=["name"])
+print(f"Got {len(df)} rows")
+
+# Limit results with top for large tables
+df = client.dataframe.get("account", select=["name"], top=100)
+
+# Fetch single record as one-row DataFrame
+df = client.dataframe.get("account", record_id=account_id, select=["name"])
+
+# Create records from a DataFrame (returns a Series of GUIDs)
+new_accounts = pd.DataFrame([
+    {"name": "Contoso", "telephone1": "555-0100"},
+    {"name": "Fabrikam", "telephone1": "555-0200"},
+])
+new_accounts["accountid"] = client.dataframe.create("account", new_accounts)
+
+# Update records from a DataFrame (id_column identifies the GUID column)
+new_accounts["telephone1"] = ["555-0199", "555-0299"]
+client.dataframe.update("account", new_accounts, id_column="accountid")
+
+# Clear a field by setting clear_nulls=True (by default, NaN/None fields are skipped)
+df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
+client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
+
+# Delete records by passing a Series of GUIDs
+client.dataframe.delete("account", new_accounts["accountid"])
+```
+
 ### SQL Queries
 
 SQL queries are **read-only** and support limited SQL syntax. A single SELECT statement with optional WHERE, TOP (integer literal), ORDER BY (column names only), and a simple table alias after FROM is supported. But JOIN and subqueries may not be. Refer to the Dataverse documentation for the current feature set.
@@ -196,6 +250,7 @@ table_info = client.tables.create(
 #### Supported Column Types
 Types on the same line map to the same exact format under the hood
 - `"string"` or `"text"` - Single line of text
+- `"memo"` or `"multiline"` - Multiple lines of text (4000 character default)
 - `"int"` or `"integer"` - Whole number
 - `"decimal"` or `"money"` - Decimal number
 - `"float"` or `"double"` - Floating point number
@@ -316,6 +371,50 @@ client.files.upload(
 )
 ```
 
+### Batch Operations
+
+Use `client.batch` to send multiple operations in one HTTP request. All batch methods return `None`; results arrive via `BatchResult` after `execute()`.
+
+```python
+# Build a batch request
+batch = client.batch.new()
+batch.records.create("account", {"name": "Contoso"})
+batch.records.update("account", account_id, {"telephone1": "555-0100"})
+batch.records.get("account", account_id, select=["name"])
+batch.query.sql("SELECT TOP 5 name FROM account")
+
+result = batch.execute()
+for item in result.responses:
+    if item.is_success:
+        print(f"[OK] {item.status_code} entity_id={item.entity_id}")
+        if item.data:
+            # GET responses populate item.data with the parsed JSON record
+            print(item.data.get("name"))
+    else:
+        print(f"[ERR] {item.status_code}: {item.error_message}")
+
+# Transactional changeset (all succeed or roll back)
+with batch.changeset() as cs:
+    ref = cs.records.create("contact", {"firstname": "Alice"})
+    cs.records.update("account", account_id, {"primarycontactid@odata.bind": ref})
+
+# Continue on error
+result = batch.execute(continue_on_error=True)
+print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+```
+
+**BatchResult properties:**
+- `result.responses` -- list of `BatchItemResponse` in submission order
+- `result.succeeded` -- responses with 2xx status codes
+- `result.failed` -- responses with non-2xx status codes
+- `result.has_errors` -- True if any response failed
+- `result.entity_ids` -- GUIDs from OData-EntityId headers (creates and updates)
+
+**Batch limitations:**
+- Maximum 1000 operations per batch
+- Paginated `records.get()` (without `record_id`) is not supported in batch
+- `flush_cache()` is not supported in batch
+
 ## Error Handling
 
 The SDK provides structured exceptions with detailed error information:
@@ -359,6 +458,7 @@ except ValidationError as e:
 - Check filter/expand parameters use correct case
 - Verify column names exist and are spelled correctly
 - Ensure custom columns include customization prefix
+- For `@odata.bind` errors ("undeclared property"): the navigation property name before `@odata.bind` is case-sensitive and must match the entity's `$metadata` exactly (e.g., `new_CustomerId@odata.bind` for custom lookups, `parentaccountid@odata.bind` for system lookups). The SDK preserves `@odata.bind` key casing.
 
 ## Best Practices
 
@@ -371,7 +471,7 @@ except ValidationError as e:
 5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
 6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
 7. **Always include customization prefix** for custom tables/columns
-8. **Use lowercase** - Generally using lowercase input won't go wrong, except for custom table/column naming
+8. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
 9. **Test in non-production environments** first
 10. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
 
