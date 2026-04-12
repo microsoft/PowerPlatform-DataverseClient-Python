@@ -5,10 +5,9 @@
 
 from __future__ import annotations
 
-import logging
+import dataclasses
 import os
 import re
-import tempfile
 
 import pytest
 
@@ -56,7 +55,7 @@ def test_log_config_defaults():
 
 def test_log_config_frozen():
     cfg = LogConfig()
-    with pytest.raises(Exception):  # frozen dataclass raises FrozenInstanceError
+    with pytest.raises(dataclasses.FrozenInstanceError):
         cfg.log_folder = "/other"  # type: ignore[misc]
 
 
@@ -69,8 +68,8 @@ def test_log_file_created(tmp_path):
     _make_logger(tmp_path)
     log_files = [f for f in os.listdir(tmp_path) if f.endswith(".log")]
     assert len(log_files) == 1
-    # File should match: <prefix>_YYYYMMDD_HHMMSS.log
-    assert re.match(r"dataverse_\d{8}_\d{6}\.log", log_files[0])
+    # File should match: <prefix>_YYYYMMDD_HHMMSS_microseconds.log
+    assert re.match(r"dataverse_\d{8}_\d{6}_\d+\.log", log_files[0])
 
 
 def test_log_file_custom_prefix(tmp_path):
@@ -284,8 +283,8 @@ def test_http_client_with_logger_logs_request_and_response(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_dataverse_config_log_config_field():
-    cfg = LogConfig(log_folder="/tmp/test_logs")
+def test_dataverse_config_log_config_field(tmp_path):
+    cfg = LogConfig(log_folder=str(tmp_path))
     dc = DataverseConfig(log_config=cfg)
     assert dc.log_config is cfg
 
@@ -298,3 +297,122 @@ def test_dataverse_config_log_config_default_is_none():
 def test_dataverse_config_from_env_log_config_none():
     dc = DataverseConfig.from_env()
     assert dc.log_config is None
+
+
+# ---------------------------------------------------------------------------
+# Fix #2: empty dict body must be logged, not silently dropped
+# ---------------------------------------------------------------------------
+
+
+def test_http_client_logs_empty_dict_body(tmp_path):
+    """An empty JSON body {} is falsy but must still be logged (not skipped via `or`)."""
+    from unittest.mock import MagicMock
+
+    from PowerPlatform.Dataverse.core._http import _HttpClient
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {}
+    mock_resp.text = ""
+
+    session = MagicMock()
+    session.request.return_value = mock_resp
+
+    cfg = LogConfig(log_folder=str(tmp_path))
+    http_logger = _HttpLogger(cfg)
+    client = _HttpClient(session=session, logger=http_logger)
+    client._request("POST", "https://example.com/accounts", json={})
+
+    content = _read_log(tmp_path)
+    assert ">>> REQUEST" in content
+    assert "{}" in content
+
+
+# ---------------------------------------------------------------------------
+# Fix #3: resp.text not decoded when body logging disabled
+# ---------------------------------------------------------------------------
+
+
+def test_http_client_does_not_decode_response_body_when_logging_disabled(tmp_path):
+    """When max_body_bytes=0, resp.text must not be accessed (no unnecessary decoding)."""
+    from unittest.mock import MagicMock, PropertyMock
+
+    from PowerPlatform.Dataverse.core._http import _HttpClient
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {}
+    # If resp.text is accessed, the test will fail
+    type(mock_resp).text = PropertyMock(side_effect=AssertionError("resp.text should not be accessed"))
+
+    session = MagicMock()
+    session.request.return_value = mock_resp
+
+    cfg = LogConfig(log_folder=str(tmp_path), max_body_bytes=0)
+    http_logger = _HttpLogger(cfg)
+    client = _HttpClient(session=session, logger=http_logger)
+    # Should not raise
+    client._request("GET", "https://example.com")
+
+
+# ---------------------------------------------------------------------------
+# Fix #4: _HttpLogger.close() releases file handle
+# ---------------------------------------------------------------------------
+
+
+def test_http_logger_close_releases_handler(tmp_path):
+    """close() flushes and removes the handler so the file handle is released."""
+    logger = _make_logger(tmp_path)
+    logger.log_request("GET", "https://example.com")
+    logger.close()
+    # After close the internal logger should have no handlers
+    assert len(logger._logger.handlers) == 0
+
+
+def test_http_logger_close_is_idempotent(tmp_path):
+    """Calling close() twice must not raise."""
+    logger = _make_logger(tmp_path)
+    logger.close()
+    logger.close()  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# Fix #5: filename uses microsecond precision (no collision)
+# ---------------------------------------------------------------------------
+
+
+def test_log_filenames_unique_for_rapid_creation(tmp_path):
+    """Two loggers created back-to-back get distinct filenames."""
+    l1 = _make_logger(tmp_path)
+    l2 = _make_logger(tmp_path)
+    log_files = [f for f in os.listdir(tmp_path) if f.endswith(".log")]
+    l1.close()
+    l2.close()
+    assert len(log_files) == 2
+    assert log_files[0] != log_files[1]
+
+
+# ---------------------------------------------------------------------------
+# Fix #6: byte-correct truncation for Unicode bodies
+# ---------------------------------------------------------------------------
+
+
+def test_body_truncation_unicode_byte_accurate(tmp_path):
+    """Truncation respects byte budget even for multi-byte Unicode characters."""
+    # Each '€' is 3 UTF-8 bytes; 10 bytes limit should cut within a few chars
+    logger = _make_logger(tmp_path, max_body_bytes=10)
+    body = "€" * 20  # 60 bytes total
+    logger.log_request("POST", "https://example.com", body=body)
+    content = _read_log(tmp_path)
+    assert "truncated" in content
+    assert "60 bytes total" in content
+
+
+def test_body_truncation_reports_byte_count_not_char_count(tmp_path):
+    """The truncation message reports UTF-8 byte length, not character count."""
+    # 5 chars × 3 bytes each = 15 bytes; limit 5 bytes → should report 15 bytes
+    logger = _make_logger(tmp_path, max_body_bytes=5)
+    body = "€€€€€"  # 5 chars, 15 bytes
+    logger.log_request("POST", "https://example.com", body=body)
+    content = _read_log(tmp_path)
+    assert "15 bytes total" in content

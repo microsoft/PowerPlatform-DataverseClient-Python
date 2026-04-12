@@ -143,17 +143,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
             ).DataverseConfig.from_env()
         )
-        _log = None
+        self._http_logger = None
         if self.config.log_config is not None:
             from ..core._http_logger import _HttpLogger
 
-            _log = _HttpLogger(self.config.log_config)
+            self._http_logger = _HttpLogger(self.config.log_config)
         self._http = _HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
             session=session,
-            logger=_log,
+            logger=self._http_logger,
         )
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
@@ -183,6 +183,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._picklist_label_cache.clear()
         if self._http is not None:
             self._http.close()
+        if self._http_logger is not None:
+            self._http_logger.close()
+            self._http_logger = None
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""

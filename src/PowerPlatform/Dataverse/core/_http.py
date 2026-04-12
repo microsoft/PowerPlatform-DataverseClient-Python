@@ -81,13 +81,20 @@ class _HttpClient:
                 m = (method or "").lower()
                 kwargs["timeout"] = 120 if m in ("post", "delete") else 10
 
-        # Log outbound request once (before retry loop)
+        # Log outbound request once (before retry loop).
+        # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.
         if self._logger is not None:
+            if "json" in kwargs:
+                req_body = kwargs["json"]
+            elif "data" in kwargs:
+                req_body = kwargs["data"]
+            else:
+                req_body = None
             self._logger.log_request(
                 method,
                 url,
                 headers=kwargs.get("headers"),
-                body=kwargs.get("json") or kwargs.get("data"),
+                body=req_body,
             )
 
         # Small backoff retry on network errors only
@@ -99,12 +106,19 @@ class _HttpClient:
                 elapsed_ms = (time.monotonic() - t0) * 1000
 
                 if self._logger is not None:
+                    # Only decode resp.text when body logging is enabled — avoids
+                    # unnecessary overhead for large payloads when max_body_bytes == 0.
+                    resp_body = (
+                        resp.text
+                        if self._logger._config.max_body_bytes != 0
+                        else None
+                    )
                     self._logger.log_response(
                         method,
                         url,
                         status_code=resp.status_code,
                         headers=dict(resp.headers),
-                        body=resp.text,
+                        body=resp_body,
                         elapsed_ms=elapsed_ms,
                     )
                 return resp

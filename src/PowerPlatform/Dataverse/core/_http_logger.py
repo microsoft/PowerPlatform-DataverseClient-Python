@@ -28,8 +28,9 @@ class _HttpLogger:
         # Ensure folder exists
         os.makedirs(config.log_folder, exist_ok=True)
 
-        # Build timestamped filename
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        # Build timestamped filename — microsecond precision avoids collisions when
+        # multiple clients are created within the same second (e.g. in tests).
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         filename = f"{config.log_file_prefix}_{ts}.log"
         filepath = os.path.join(config.log_folder, filename)
 
@@ -39,7 +40,7 @@ class _HttpLogger:
         self._logger.setLevel(getattr(logging, config.log_level.upper(), logging.DEBUG))
         self._logger.propagate = False  # don't bubble to root
 
-        handler = RotatingFileHandler(
+        self._handler = RotatingFileHandler(
             filepath,
             maxBytes=config.max_file_bytes,
             backupCount=config.backup_count,
@@ -49,8 +50,8 @@ class _HttpLogger:
             "[%(asctime)s] %(levelname)s %(message)s",
             datefmt="%Y-%m-%dT%H:%M:%S%z",
         )
-        handler.setFormatter(formatter)
-        self._logger.addHandler(handler)
+        self._handler.setFormatter(formatter)
+        self._logger.addHandler(self._handler)
 
     def log_request(
         self,
@@ -95,6 +96,12 @@ class _HttpLogger:
         """Log an HTTP transport error."""
         self._logger.error(f"!!! ERROR    {method.upper()} {url} - {type(error).__name__}: {error}")
 
+    def close(self) -> None:
+        """Flush and close the underlying file handler. Safe to call multiple times."""
+        self._handler.flush()
+        self._handler.close()
+        self._logger.removeHandler(self._handler)
+
     def _redact_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
         return {k: ("[REDACTED]" if k.lower() in self._redacted else v) for k, v in headers.items()}
 
@@ -114,6 +121,10 @@ class _HttpLogger:
         limit = self._config.max_body_bytes
         if limit == 0:
             return ""
-        if len(text) > limit:
-            return text[:limit] + f"... [truncated, {len(text)} bytes total]"
+        encoded = text.encode("utf-8")
+        if len(encoded) > limit:
+            # Truncate on byte boundary, then decode safely to avoid splitting
+            # multi-byte characters. Report the true byte length, not char count.
+            truncated = encoded[:limit].decode("utf-8", errors="ignore")
+            return truncated + f"... [truncated, {len(encoded)} bytes total]"
         return text
