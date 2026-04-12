@@ -57,8 +57,9 @@ _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _MULTIPLE_BATCH_SIZE = 1000
-# Concurrent chunk dispatch: 429 retry settings
-_CHUNK_RETRY_LIMIT = 3          # max retries per chunk on 429
+# Concurrent chunk dispatch settings
+_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are silently clamped
+_CHUNK_RETRY_LIMIT = 3          # max retries per chunk on transient errors
 _CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
 _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After to desynchronise workers
 
@@ -66,38 +67,46 @@ _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After 
 def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
     """Dispatch ``fn(chunk)`` for each chunk, sequentially or concurrently.
 
+    ``max_workers`` is silently clamped to ``_MAX_WORKERS`` (3) so callers
+    that pass a larger value are not penalised with an error.
+
     When ``max_workers == 1`` or there is only one chunk, runs sequentially
     with no thread overhead.  When ``max_workers > 1`` and there are multiple
-    chunks, submits all chunks to a :class:`~concurrent.futures.ThreadPoolExecutor`
-    and collects results in submission order (preserving chunk ordering).
+    chunks, submits all chunks to a :class:`~concurrent.futures.ThreadPoolExecutor`.
+    Results are collected by iterating the futures list in submission order —
+    ``futures[i].result()`` blocks until chunk *i* finishes, so the returned
+    list is always in chunk-submission order regardless of thread completion order.
 
-    On HTTP 429 (rate limit) each worker retries up to ``_CHUNK_RETRY_LIMIT``
-    times, sleeping for the ``Retry-After`` duration (falling back to
-    ``_CHUNK_RETRY_DEFAULT_WAIT`` seconds) plus a random jitter of up to
-    ``_CHUNK_RETRY_JITTER_MAX`` seconds to desynchronise concurrent retries.
+    On transient HTTP errors (429, 502, 503, 504) each worker retries up to
+    ``_CHUNK_RETRY_LIMIT`` times, sleeping for the ``Retry-After`` duration
+    (falling back to ``_CHUNK_RETRY_DEFAULT_WAIT`` seconds) plus a random jitter
+    of up to ``_CHUNK_RETRY_JITTER_MAX`` seconds to desynchronise concurrent
+    retries.  The sequential path applies the same retry logic.
 
     :param fn: Callable that accepts a single chunk and returns a result.
     :param chunks: List of chunks to process.
-    :param max_workers: Maximum number of concurrent worker threads.
+    :param max_workers: Maximum number of concurrent worker threads (clamped to ``_MAX_WORKERS``).
     :return: List of results in chunk submission order.
     """
-    if max_workers == 1 or len(chunks) <= 1:
-        return [fn(chunk) for chunk in chunks]
+    max_workers = min(max_workers, _MAX_WORKERS)
 
-    def _with_backoff(chunk):
+    def _execute_with_retry(chunk):
         for attempt in range(_CHUNK_RETRY_LIMIT + 1):
             try:
                 return fn(chunk)
             except HttpError as exc:
-                if exc.status_code == 429 and attempt < _CHUNK_RETRY_LIMIT:
-                    wait = (exc.details.get("retry_after") or _CHUNK_RETRY_DEFAULT_WAIT)
+                if exc.is_transient and attempt < _CHUNK_RETRY_LIMIT:
+                    wait = float(exc.details.get("retry_after") or _CHUNK_RETRY_DEFAULT_WAIT)
                     wait += random.uniform(0, _CHUNK_RETRY_JITTER_MAX)
                     time.sleep(wait)
                 else:
                     raise
 
+    if max_workers == 1 or len(chunks) <= 1:
+        return [_execute_with_retry(chunk) for chunk in chunks]
+
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(_with_backoff, chunk) for chunk in chunks]
+        futures = [pool.submit(_execute_with_retry, chunk) for chunk in chunks]
         return [f.result() for f in futures]
 
 
@@ -248,7 +257,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._logical_primaryid_cache: dict[str, str] = {}
         self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
-        self._picklist_cache_lock = threading.Lock()  # serialises cold-start fetches under concurrent workers
+        self._picklist_cache_lock = threading.Lock()  # prevents concurrent threads from making duplicate picklist metadata fetches on cold start
 
     @contextmanager
     def _call_scope(self):
@@ -431,23 +440,21 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             ``1`` (default) dispatches sequentially.
         :type max_workers: ``int``
 
-        :return: List of created record GUIDs in chunk-submission order
-            (may be empty if response lacks IDs).
+        :return: List of created record GUIDs (may be empty if response lacks IDs).
         :rtype: ``list[str]``
 
         .. note::
            Logical type stamping: if any payload omits ``@odata.type`` the client injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads already include ``@odata.type`` no modification occurs.
 
         .. warning::
-           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
-           split into multiple requests and is **not atomic**. If a later batch
-           fails, earlier batches are already committed. Callers that require
-           atomicity should limit input to ``<= _MULTIPLE_BATCH_SIZE`` records.
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is split into multiple requests
+           and is **not atomic**. If a later batch fails, earlier batches are already committed. Callers
+           that require atomicity should limit input to ``<= _MULTIPLE_BATCH_SIZE`` records.
         """
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
 
-        def _send(chunk: List[Dict[str, Any]]) -> List[str]:
+        def _execute_chunk(chunk: List[Dict[str, Any]]) -> List[str]:
             r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, chunk))
             try:
                 body = r.json() if r.text else {}
@@ -463,6 +470,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 out: List[str] = []
                 for item in value:
                     if isinstance(item, dict):
+                        # Heuristic: look for a property ending with 'id'
                         for k, v in item.items():
                             if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
                                 out.append(v)
@@ -471,7 +479,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             return []
 
         chunks = [records[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(records), _MULTIPLE_BATCH_SIZE)]
-        results = _dispatch_chunks(_send, chunks, max_workers)
+        results = _dispatch_chunks(_execute_chunk, chunks, max_workers)
         return [guid for batch_ids in results for guid in batch_ids]
 
     def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
@@ -596,11 +604,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
 
-        def _send(chunk):
+        def _execute_chunk(chunk):
             self._request("post", url, json={"Targets": chunk}, expected=(200, 201, 204))
 
         chunks = [targets[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(targets), _MULTIPLE_BATCH_SIZE)]
-        _dispatch_chunks(_send, chunks, max_workers)
+        _dispatch_chunks(_execute_chunk, chunks, max_workers)
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -757,11 +765,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
 
-        def _send(chunk):
+        def _execute_chunk(chunk):
             self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, chunk))
 
         chunks = [records[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(records), _MULTIPLE_BATCH_SIZE)]
-        _dispatch_chunks(_send, chunks, max_workers)
+        _dispatch_chunks(_execute_chunk, chunks, max_workers)
         return None
 
     def _delete(self, table_schema_name: str, key: str) -> None:

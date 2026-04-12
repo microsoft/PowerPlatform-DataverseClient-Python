@@ -185,15 +185,14 @@ client.records.update("account", ids, {"industry": "Technology"})
 # Bulk delete
 client.records.delete("account", ids, use_bulk_delete=True)
 
-# Concurrent chunk dispatch — max_workers sends chunks in parallel via threads
-# Recommended for large datasets when latency matters more than strict ordering
+# Concurrent chunk dispatch — max_workers sends chunks in parallel via threads (max: 3, default: 1)
 ids = client.records.create("account", payloads, max_workers=3)
 client.records.update("account", ids, {"industry": "Technology"}, max_workers=3)
 ```
 
 > **Large batches**: Lists exceeding 1,000 records are automatically split into 1,000-record
 > chunks — no manual pre-splitting needed. By default chunks are dispatched sequentially.
-> Pass `max_workers=N` (recommended: 3–4) to send chunks concurrently via threads — useful
+> Pass `max_workers=N` (max: 3, default: 1) to send chunks concurrently via threads — useful
 > when throughput matters more than strict sequential ordering. Note that chunked operations
 > are **not atomic**: a failure mid-way may leave earlier chunks applied. Callers that
 > require atomicity should limit their input to ≤ 1,000 records.

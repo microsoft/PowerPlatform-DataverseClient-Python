@@ -8,13 +8,15 @@ client-side chunking.
 import unittest
 from unittest.mock import MagicMock
 
+import time
+
 from PowerPlatform.Dataverse.data._odata import _MULTIPLE_BATCH_SIZE, _ODataClient
+from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _make_odata_client() -> _ODataClient:
     """Return an _ODataClient with all HTTP calls mocked."""
@@ -41,12 +43,9 @@ def _mock_update_response():
     return resp
 
 
-
-
 # ---------------------------------------------------------------------------
 # _create_multiple
 # ---------------------------------------------------------------------------
-
 
 class TestCreateMultipleBoundaries(unittest.TestCase):
     """Chunk-count and request-count are correct at every boundary value."""
@@ -121,12 +120,9 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         self.od = _make_odata_client()
         self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
 
-
     def test_first_chunk_has_batch_size_records(self):
         """The first chunk sent to the server has exactly _MULTIPLE_BATCH_SIZE records."""
         records = [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 50)]
-        self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
-
         captured = []
 
         original_build = self.od._build_create_multiple
@@ -145,8 +141,6 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         """All input records appear in exactly one chunk, no duplicates or gaps."""
         n = _MULTIPLE_BATCH_SIZE + 7
         records = [{"name": f"R{i}", "idx": i} for i in range(n)]
-        self.od._execute_raw = MagicMock(return_value=_mock_create_response([]))
-
         seen_indices = []
 
         original_build = self.od._build_create_multiple
@@ -159,6 +153,22 @@ class TestCreateMultipleChunkPayloads(unittest.TestCase):
         self.od._create_multiple("accounts", "account", records)
 
         self.assertEqual(sorted(seen_indices), list(range(n)))
+
+    def test_chunk_record_order_preserved(self):
+        """Records appear within each chunk in the same relative order as the original input."""
+        n = _MULTIPLE_BATCH_SIZE + 3
+        records = [{"name": f"R{i}", "seq": i} for i in range(n)]
+        sent_seq = []
+        original_build = self.od._build_create_multiple
+
+        def capturing_build(entity_set, table, chunk):
+            sent_seq.extend(r["seq"] for r in chunk)
+            return original_build(entity_set, table, chunk)
+
+        self.od._build_create_multiple = capturing_build
+        self.od._create_multiple("accounts", "account", records)
+
+        self.assertEqual(sent_seq, list(range(n)))
 
 
 class TestCreateMultipleIdAggregation(unittest.TestCase):
@@ -177,9 +187,7 @@ class TestCreateMultipleIdAggregation(unittest.TestCase):
         result = self.od._create_multiple(
             "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
-        self.assertEqual(result[:2], ["a1", "a2"])
-        self.assertIn("b1", result)
-        self.assertEqual(len(result), 3)
+        self.assertEqual(result, ["a1", "a2", "b1"])
 
     def test_empty_ids_from_chunk_still_aggregated(self):
         """A chunk returning [] does not cause errors; its contribution is simply empty."""
@@ -206,7 +214,7 @@ class TestCreateMultipleIdAggregation(unittest.TestCase):
         result = self.od._create_multiple(
             "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
-        self.assertIn("a1", result)
+        self.assertEqual(result, ["a1"])
 
 
 class TestCreateMultipleTypeValidation(unittest.TestCase):
@@ -222,11 +230,16 @@ class TestCreateMultipleTypeValidation(unittest.TestCase):
             self.od._create_multiple("accounts", "account", [{"name": "ok"}, "bad"])
         self.od._execute_raw.assert_not_called()
 
+    def test_non_list_input_raises_type_error(self):
+        """A single dict (not wrapped in a list) raises TypeError before any HTTP call."""
+        with self.assertRaises(TypeError):
+            self.od._create_multiple("accounts", "account", {"name": "X"})
+        self.od._execute_raw.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _update_multiple
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateMultipleBoundaries(unittest.TestCase):
     """Chunk-count is correct at boundary values."""
@@ -307,6 +320,22 @@ class TestUpdateMultipleChunkPayloads(unittest.TestCase):
         self.od._update_multiple("accounts", "account", records)
         self.assertEqual(sorted(seen_ids), sorted(f"id-{i}" for i in range(n)))
 
+    def test_chunk_record_order_preserved(self):
+        """Records appear within each chunk in the same relative order as the original input."""
+        n = _MULTIPLE_BATCH_SIZE + 5
+        records = [{"accountid": f"id-{i}", "name": f"N{i}"} for i in range(n)]
+        sent_ids = []
+        original = self.od._build_update_multiple_from_records
+
+        def capturing(entity_set, table, chunk):
+            sent_ids.extend(r["accountid"] for r in chunk)
+            return original(entity_set, table, chunk)
+
+        self.od._build_update_multiple_from_records = capturing
+        self.od._update_multiple("accounts", "account", records)
+
+        self.assertEqual(sent_ids, [f"id-{i}" for i in range(n)])
+
 
 class TestUpdateMultipleTypeValidation(unittest.TestCase):
     """Input validation is unchanged by chunking."""
@@ -337,7 +366,6 @@ class TestUpdateMultipleTypeValidation(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _upsert_multiple
 # ---------------------------------------------------------------------------
-
 
 def _alt_keys(n):
     return [{"accountnumber": f"ACC-{i}"} for i in range(n)]
@@ -452,19 +480,21 @@ class TestUpsertMultipleValidationUnchanged(unittest.TestCase):
 
     def test_length_mismatch_raises_value_error(self):
         """Mismatched alternate_keys and records lengths raise ValueError before any HTTP call."""
-        with self.assertRaises(ValueError, msg="alternate_keys and records must have the same length"):
+        with self.assertRaises(ValueError) as ctx:
             self.od._upsert_multiple("accounts", "account", _alt_keys(3), _upsert_records(2))
+        self.assertIn("alternate_keys and records must have the same length", str(ctx.exception))
         self.od._request.assert_not_called()
 
     def test_key_conflict_raises_value_error(self):
         """Conflicting value for a key field in the record payload raises ValueError before any HTTP call."""
-        with self.assertRaises(ValueError, msg="record payload conflicts with alternate_key"):
+        with self.assertRaises(ValueError) as ctx:
             self.od._upsert_multiple(
                 "accounts",
                 "account",
                 [{"accountnumber": "ACC-1"}],
                 [{"accountnumber": "ACC-DIFFERENT"}],
             )
+        self.assertIn("record payload conflicts with alternate_key", str(ctx.exception))
         self.od._request.assert_not_called()
 
     def test_large_batch_with_conflict_in_second_chunk_raises(self):
@@ -482,7 +512,6 @@ class TestUpsertMultipleValidationUnchanged(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _update_by_ids — delegates to _update_multiple
 # ---------------------------------------------------------------------------
-
 
 class TestUpdateByIdsDelegation(unittest.TestCase):
     """_update_by_ids builds the correct batch and delegates to _update_multiple."""
@@ -544,11 +573,19 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
             self.od._update_by_ids("account", ["id-1", "id-2"], [{"name": "A"}, "bad"])  # type: ignore
         self.od._update_multiple.assert_not_called()
 
+    def test_max_workers_is_forwarded_to_update_multiple(self):
+        """max_workers is forwarded to _update_multiple."""
+        self.od._update_by_ids("account", ["id-1", "id-2"], {"name": "X"}, max_workers=3)
+        self.od._update_multiple.assert_called_once_with(
+            "accounts", "account",
+            [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}],
+            max_workers=3,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Public API: records.create / records.update / records.upsert
 # ---------------------------------------------------------------------------
-
 
 def _make_records_client():
     """Return a DataverseClient with _odata mocked for public API tests."""
@@ -591,6 +628,14 @@ class TestPublicCreateDelegation(unittest.TestCase):
         mock_odata._create_multiple.assert_not_called()
         mock_odata._create.assert_called_once()
 
+    def test_max_workers_is_forwarded(self):
+        """max_workers is passed through to _create_multiple."""
+        ops, mock_odata = _make_records_client()
+        ops.create("account", [{"name": "A"}, {"name": "B"}], max_workers=3)
+        mock_odata._create_multiple.assert_called_once_with(
+            "accounts", "account", [{"name": "A"}, {"name": "B"}], max_workers=3
+        )
+
 
 class TestPublicUpdateDelegation(unittest.TestCase):
     """records.update delegates to _update_by_ids for list input."""
@@ -623,8 +668,6 @@ class TestPublicUpsertDelegation(unittest.TestCase):
     """records.upsert delegates to _upsert_multiple for multi-item input."""
 
     def test_multi_item_delegates_to_upsert_multiple(self):
-        from PowerPlatform.Dataverse.models.upsert import UpsertItem
-
         ops, mock_odata = _make_records_client()
         items = [
             UpsertItem(alternate_key={"accountnumber": "A1"}, record={"name": "Contoso"}),
@@ -641,18 +684,31 @@ class TestPublicUpsertDelegation(unittest.TestCase):
 
     def test_single_item_delegates_to_upsert(self):
         """A single-item list calls _upsert (PATCH), not _upsert_multiple."""
-        from PowerPlatform.Dataverse.models.upsert import UpsertItem
-
         ops, mock_odata = _make_records_client()
         ops.upsert("account", [UpsertItem(alternate_key={"accountnumber": "A1"}, record={"name": "X"})])
         mock_odata._upsert_multiple.assert_not_called()
         mock_odata._upsert.assert_called_once()
 
+    def test_max_workers_is_forwarded(self):
+        """max_workers is passed through to _upsert_multiple."""
+        ops, mock_odata = _make_records_client()
+        items = [
+            UpsertItem(alternate_key={"accountnumber": "A1"}, record={"name": "X"}),
+            UpsertItem(alternate_key={"accountnumber": "A2"}, record={"name": "Y"}),
+        ]
+        ops.upsert("account", items, max_workers=2)
+        mock_odata._upsert_multiple.assert_called_once_with(
+            "accounts",
+            "account",
+            [{"accountnumber": "A1"}, {"accountnumber": "A2"}],
+            [{"name": "X"}, {"name": "Y"}],
+            max_workers=2,
+        )
+
 
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: sequential path
 # ---------------------------------------------------------------------------
-
 
 class TestDispatchChunksSequential(unittest.TestCase):
     """_dispatch_chunks with max_workers=1 runs fn synchronously in order."""
@@ -687,14 +743,13 @@ class TestDispatchChunksSequential(unittest.TestCase):
         def fn(chunk):
             raise ValueError("boom")
 
-        with self.assertRaises(ValueError, msg="boom"):
+        with self.assertRaises(ValueError):
             self._dispatch(fn, [["a"]], max_workers=1)
 
 
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: concurrent path
 # ---------------------------------------------------------------------------
-
 
 class TestDispatchChunksConcurrent(unittest.TestCase):
     """_dispatch_chunks with max_workers > 1 dispatches via ThreadPoolExecutor."""
@@ -749,17 +804,16 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
                 raise RuntimeError("worker failed")
             return chunk
 
-        with self.assertRaises(RuntimeError, msg="worker failed"):
+        with self.assertRaises(RuntimeError):
             self._dispatch(fn, ["ok", "bad", "ok2"], max_workers=3)
 
 
 # ---------------------------------------------------------------------------
-# _dispatch_chunks: 429 retry with jitter
+# _dispatch_chunks: transient error retry with jitter
 # ---------------------------------------------------------------------------
 
-
-class TestDispatchChunks429Retry(unittest.TestCase):
-    """_dispatch_chunks retries on 429 up to _CHUNK_RETRY_LIMIT times."""
+class TestDispatchChunksTransientRetry(unittest.TestCase):
+    """_dispatch_chunks retries on transient errors (429, 502, 503, 504) up to _CHUNK_RETRY_LIMIT times."""
 
     def setUp(self):
         from PowerPlatform.Dataverse.data._odata import (
@@ -776,21 +830,22 @@ class TestDispatchChunks429Retry(unittest.TestCase):
         self._JITTER_MAX = _CHUNK_RETRY_JITTER_MAX
         self._HttpError = HttpError
 
-    def _make_429(self, retry_after=None):
-        kwargs = {"status_code": 429, "is_transient": True}
+    def _make_transient(self, status_code=429, retry_after=None):
+        kwargs = {"status_code": status_code, "is_transient": True}
         if retry_after is not None:
             kwargs["retry_after"] = retry_after
-        return self._HttpError("rate limited", **kwargs)
+        return self._HttpError("transient error", **kwargs)
 
     def test_retries_on_429_and_eventually_succeeds(self):
         """The bad chunk raises 429 twice then succeeds; sleep is called exactly twice.
 
-        Two chunks are used so ``_dispatch_chunks`` takes the concurrent path
-        and wraps each chunk in ``_with_backoff``.  Only the "bad" chunk retries;
-        the "ok" chunk completes immediately.
+        Two chunks are used so ``_dispatch_chunks`` takes the concurrent path.
+        Only the "bad" chunk retries; the "ok" chunk completes immediately.
+        ``_execute_with_retry`` wraps each chunk in both the sequential and
+        concurrent paths.
         """
         bad_calls = [0]
-        err = self._make_429(retry_after=5)
+        err = self._make_transient(retry_after=5)
 
         def fn(chunk):
             if chunk == "bad":
@@ -811,13 +866,13 @@ class TestDispatchChunks429Retry(unittest.TestCase):
             self.assertGreaterEqual(wait, 5)
             self.assertLessEqual(wait, 5 + self._JITTER_MAX)
 
-    def test_429_without_retry_after_uses_default_wait(self):
+    def test_transient_without_retry_after_uses_default_wait(self):
         """When Retry-After is absent, the sleep falls back to _CHUNK_RETRY_DEFAULT_WAIT.
 
-        Two chunks are required to exercise the concurrent path with ``_with_backoff``.
+        Two chunks are required to exercise the concurrent path via ``_execute_with_retry``.
         """
         bad_calls = [0]
-        err = self._make_429(retry_after=None)
+        err = self._make_transient(retry_after=None)
 
         def fn(chunk):
             if chunk == "bad":
@@ -833,32 +888,55 @@ class TestDispatchChunks429Retry(unittest.TestCase):
         self.assertGreaterEqual(wait, self._DEFAULT_WAIT)
         self.assertLessEqual(wait, self._DEFAULT_WAIT + self._JITTER_MAX)
 
-    def test_429_exhausts_retries_and_raises(self):
-        """After _CHUNK_RETRY_LIMIT retries the 429 HttpError is re-raised.
+    def test_exhausts_retries_and_raises(self):
+        """After _CHUNK_RETRY_LIMIT retries the transient HttpError is re-raised.
 
-        Two chunks are required to exercise the concurrent path.  Both always
-        raise 429 so that we verify the limit is enforced regardless of which
-        chunk the executor picks up first.
+        A single chunk with max_workers=1 gives a deterministic call count:
+        one initial attempt plus exactly _CHUNK_RETRY_LIMIT retries.
         """
-        err = self._make_429(retry_after=1)
+        err = self._make_transient(retry_after=1)
+        call_count = [0]
 
         def fn(chunk):
+            call_count[0] += 1
             raise err
 
-        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep"):
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
             with self.assertRaises(self._HttpError) as ctx:
-                self._dispatch(fn, ["chunk-a", "chunk-b"], max_workers=2)
+                self._dispatch(fn, ["chunk"], max_workers=1)
 
-        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertTrue(ctx.exception.is_transient)
+        self.assertEqual(call_count[0], self._LIMIT + 1)  # 1 initial attempt + _LIMIT retries
+        self.assertEqual(mock_sleep.call_count, self._LIMIT)
 
-    def test_non_429_http_error_not_retried(self):
-        """A non-429 HttpError (e.g. 500) propagates immediately without any retry sleep.
+    def test_other_transient_codes_are_retried(self):
+        """502, 503, and 504 HttpErrors with is_transient=True are retried just like 429."""
+        for status in (502, 503, 504):
+            bad_calls = [0]
+            err = self._make_transient(status_code=status, retry_after=1)
+
+            def fn(chunk, _err=err, _calls=bad_calls):
+                if chunk == "bad":
+                    _calls[0] += 1
+                    if _calls[0] < 2:
+                        raise _err
+                return chunk
+
+            with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+                result = self._dispatch(fn, ["bad", "ok"], max_workers=2)
+
+            self.assertEqual(result, ["bad", "ok"], f"Expected retry to succeed for status={status}")
+            self.assertEqual(bad_calls[0], 2, f"Expected exactly 2 fn calls (1 fail + 1 success) for status={status}")
+            self.assertEqual(mock_sleep.call_count, 1, f"Expected exactly one retry sleep for status={status}")
+
+    def test_non_transient_http_error_not_retried(self):
+        """A non-transient HttpError (is_transient=False) propagates immediately without any retry.
 
         Two chunks ensure the concurrent path is used.  Only the "bad" chunk
         raises; it must be called exactly once with no sleep.
         """
         bad_calls = [0]
-        err = self._HttpError("server error", status_code=500)
+        err = self._HttpError("server error", status_code=500, is_transient=False)
 
         def fn(chunk):
             if chunk == "bad":
@@ -873,11 +951,47 @@ class TestDispatchChunks429Retry(unittest.TestCase):
         self.assertEqual(bad_calls[0], 1)
         mock_sleep.assert_not_called()
 
+    def test_sequential_path_retries_on_transient_error(self):
+        """The sequential path (max_workers=1) also retries transient errors.
+
+        Before the retry refactor, only the concurrent path had retry logic.
+        This verifies ``_execute_with_retry`` is applied to the sequential
+        list-comprehension path as well.
+        """
+        calls = [0]
+        err = self._make_transient(status_code=429, retry_after=2)
+
+        def fn(chunk):
+            calls[0] += 1
+            if calls[0] < 3:
+                raise err
+            return "done"
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+            result = self._dispatch(fn, ["only"], max_workers=1)
+
+        self.assertEqual(result, ["done"])
+        self.assertEqual(calls[0], 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    def test_non_http_error_propagates_without_retry(self):
+        """A non-HttpError exception (ValueError, RuntimeError, etc.) propagates immediately — no retry."""
+        calls = [0]
+
+        def fn(chunk):
+            calls[0] += 1
+            raise ValueError("logic error")
+
+        with unittest.mock.patch("PowerPlatform.Dataverse.data._odata.time.sleep") as mock_sleep:
+            with self.assertRaises(ValueError):
+                self._dispatch(fn, ["only"], max_workers=1)
+
+        self.assertEqual(calls[0], 1)
+        mock_sleep.assert_not_called()
 
 # ---------------------------------------------------------------------------
 # max_workers validation in public API
 # ---------------------------------------------------------------------------
-
 
 class TestMaxWorkersValidation(unittest.TestCase):
     """records.create/update/upsert reject invalid max_workers values."""
@@ -916,8 +1030,6 @@ class TestMaxWorkersValidation(unittest.TestCase):
         self._assert_invalid(self.ops.update, "account", ["id-1"], {"name": "X"}, max_workers=0)
 
     def test_upsert_zero_max_workers(self):
-        from PowerPlatform.Dataverse.models.upsert import UpsertItem
-
         self._assert_invalid(
             self.ops.upsert,
             "account",
@@ -925,11 +1037,55 @@ class TestMaxWorkersValidation(unittest.TestCase):
             max_workers=0,
         )
 
+    def test_create_above_cap_is_clamped_not_rejected(self):
+        """max_workers above _MAX_WORKERS (3) is silently clamped, not an error."""
+        from PowerPlatform.Dataverse.data._odata import _MAX_WORKERS
+
+        self.ops.create("account", [{"name": "X"}], max_workers=_MAX_WORKERS + 1)
+
+
+class TestDispatchChunksCap(unittest.TestCase):
+    """_dispatch_chunks silently clamps max_workers to _MAX_WORKERS."""
+
+    def setUp(self):
+        from PowerPlatform.Dataverse.data._odata import _dispatch_chunks, _MAX_WORKERS
+
+        self._dispatch = _dispatch_chunks
+        self._cap = _MAX_WORKERS
+
+    def test_above_cap_is_clamped(self):
+        """max_workers above _MAX_WORKERS is silently clamped; no error raised."""
+        called = []
+
+        def fn(chunk):
+            called.append(chunk)
+            return chunk
+
+        # 2 chunks with max_workers above cap — should not raise
+        result = self._dispatch(fn, ["a", "b"], max_workers=self._cap + 10)
+        self.assertEqual(result, ["a", "b"])
+        self.assertEqual(called, ["a", "b"])
+
+    def test_exactly_at_cap_is_accepted(self):
+        """max_workers == _MAX_WORKERS dispatches concurrently without clamping."""
+        results = self._dispatch(lambda c: c, ["x", "y"], max_workers=self._cap)
+        self.assertEqual(results, ["x", "y"])
+
+    def test_max_workers_1_is_accepted(self):
+        """Minimum value max_workers=1 is accepted and runs sequentially."""
+        results = self._dispatch(lambda c: c, ["a", "b", "c"], max_workers=1)
+        self.assertEqual(results, ["a", "b", "c"])
+
+    def test_below_cap_is_not_clamped(self):
+        """A max_workers value below _MAX_WORKERS is used as-is (no clamp)."""
+        assert self._cap >= 2, "_MAX_WORKERS must be >= 2 for this test"
+        results = self._dispatch(lambda c: c, ["x", "y", "z"], max_workers=self._cap - 1)
+        self.assertEqual(results, ["x", "y", "z"])
+
 
 # ---------------------------------------------------------------------------
 # Picklist cache lock: concurrent cold-start
 # ---------------------------------------------------------------------------
-
 
 class TestPicklistCacheLock(unittest.TestCase):
     """Concurrent _bulk_fetch_picklists cold-starts should trigger only one HTTP call.
@@ -943,9 +1099,16 @@ class TestPicklistCacheLock(unittest.TestCase):
     """
 
     def test_concurrent_cold_start_fetches_once(self):
-        """Eight threads racing on an empty cache must produce exactly one HTTP call."""
+        """Eight threads racing on an empty cache must produce exactly one HTTP call.
+
+        A ``threading.Barrier`` forces all threads to reach the cache-check
+        simultaneously, guaranteeing a true race rather than relying on
+        scheduler timing.  The mock sleeps briefly to keep the first thread
+        inside the slow path while the others are blocked on the lock.
+        """
         import threading
 
+        NUM_THREADS = 8
         mock_auth = MagicMock()
         mock_auth._acquire_token.return_value = MagicMock(access_token="token")
         client = _ODataClient(mock_auth, "https://org.crm.dynamics.com")
@@ -960,23 +1123,50 @@ class TestPicklistCacheLock(unittest.TestCase):
         def mock_metadata_request(*args, **kwargs):
             with counter_lock:
                 fetch_calls[0] += 1
-            import time as _time
-            _time.sleep(0.01)  # brief pause to widen the race window
+            time.sleep(0.01)  # hold the slow path open while others queue on the lock
             return picklist_resp
 
         client._request_metadata_with_retry = mock_metadata_request
 
+        # Barrier forces all threads to enter _bulk_fetch_picklists simultaneously
+        # so they all see an empty cache and race to acquire _picklist_cache_lock.
+        start_barrier = threading.Barrier(NUM_THREADS)
         table = "account"
-        threads = [
-            threading.Thread(target=lambda: client._bulk_fetch_picklists(table))
-            for _ in range(8)
-        ]
+
+        def thread_fn():
+            start_barrier.wait()
+            client._bulk_fetch_picklists(table)
+
+        threads = [threading.Thread(target=thread_fn) for _ in range(NUM_THREADS)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
         self.assertEqual(fetch_calls[0], 1, "Expected exactly one HTTP call for concurrent cold-start")
+
+    def test_warm_cache_does_not_refetch(self):
+        """A second call after the cache is warm must not make another HTTP request."""
+        mock_auth = MagicMock()
+        mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+        client = _ODataClient(mock_auth, "https://org.crm.dynamics.com")
+
+        fetch_calls = [0]
+        picklist_resp = MagicMock()
+        picklist_resp.json.return_value = {"value": []}
+
+        def mock_metadata_request(*args, **kwargs):
+            fetch_calls[0] += 1
+            return picklist_resp
+
+        client._request_metadata_with_retry = mock_metadata_request
+
+        table = "account"
+        client._bulk_fetch_picklists(table)  # cold start — triggers HTTP
+        client._bulk_fetch_picklists(table)  # warm cache — must not re-fetch
+        client._bulk_fetch_picklists(table)  # warm cache — must not re-fetch
+
+        self.assertEqual(fetch_calls[0], 1, "Expected exactly one HTTP call — subsequent calls should hit the cache")
 
 
 if __name__ == "__main__":
