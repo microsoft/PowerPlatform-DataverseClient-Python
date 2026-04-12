@@ -108,11 +108,7 @@ class _HttpClient:
                 if self._logger is not None:
                     # Only decode resp.text when body logging is enabled — avoids
                     # unnecessary overhead for large payloads when max_body_bytes == 0.
-                    resp_body = (
-                        resp.text
-                        if self._logger._config.max_body_bytes != 0
-                        else None
-                    )
+                    resp_body = resp.text if self._logger._config.max_body_bytes != 0 else None
                     self._logger.log_response(
                         method,
                         url,
