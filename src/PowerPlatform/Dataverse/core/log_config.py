@@ -45,7 +45,8 @@ class LogConfig:
     :param log_file_prefix: Filename prefix. Timestamp is appended automatically.
         Default: ``"dataverse"``  →  ``dataverse_20260310_143022.log``
     :param max_body_bytes: Maximum bytes of request/response body to capture.
-        ``0`` disables body logging. Default: ``4096``.
+        ``0`` (default) disables body capture. Enable only for active debugging
+        sessions — bodies may contain PII and sensitive business data.
     :param redacted_headers: Header names (case-insensitive) whose values are
         replaced with ``"[REDACTED]"`` in logs. Defaults include
         ``Authorization``, ``Proxy-Authorization``, etc.
@@ -57,7 +58,9 @@ class LogConfig:
 
     log_folder: str = "./dataverse_logs"
     log_file_prefix: str = "dataverse"
-    max_body_bytes: int = 4096
+    max_body_bytes: int = 0  # Body capture disabled by default — opt-in only. Request URLs
+    # are always logged and may contain filter values and record identifiers.
+    # Enable only for active debugging sessions and treat log files as regulated data.
     redacted_headers: FrozenSet[str] = field(default_factory=_default_redacted_headers)
     log_level: str = "DEBUG"
     max_file_bytes: int = 10_485_760  # 10 MB

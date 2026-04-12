@@ -45,7 +45,7 @@ def test_log_config_defaults():
     cfg = LogConfig()
     assert cfg.log_folder == "./dataverse_logs"
     assert cfg.log_file_prefix == "dataverse"
-    assert cfg.max_body_bytes == 4096
+    assert cfg.max_body_bytes == 0
     assert cfg.log_level == "DEBUG"
     assert cfg.max_file_bytes == 10_485_760
     assert cfg.backup_count == 5
@@ -111,6 +111,21 @@ def test_safe_headers_not_redacted(tmp_path):
     logger.log_request("GET", "https://example.com", headers={"Content-Type": "application/json"})
     content = _read_log(tmp_path)
     assert "application/json" in content
+
+
+def test_headers_formatted_one_per_line(tmp_path):
+    """Each header must appear on its own line as 'key: value', not as a dict repr."""
+    logger = _make_logger(tmp_path)
+    logger.log_request(
+        "GET",
+        "https://example.com",
+        headers={"Accept": "application/json", "OData-Version": "4.0"},
+    )
+    content = _read_log(tmp_path)
+    assert "    Accept: application/json" in content
+    assert "    OData-Version: 4.0" in content
+    # Old dict format must not be present
+    assert "Headers: {" not in content
 
 
 def test_case_insensitive_redaction(tmp_path):
@@ -318,7 +333,7 @@ def test_http_client_logs_empty_dict_body(tmp_path):
     session = MagicMock()
     session.request.return_value = mock_resp
 
-    cfg = LogConfig(log_folder=str(tmp_path))
+    cfg = LogConfig(log_folder=str(tmp_path), max_body_bytes=4096)
     http_logger = _HttpLogger(cfg)
     client = _HttpClient(session=session, logger=http_logger)
     client._request("POST", "https://example.com/accounts", json={})

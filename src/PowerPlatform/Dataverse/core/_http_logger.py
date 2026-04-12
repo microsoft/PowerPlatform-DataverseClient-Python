@@ -63,10 +63,8 @@ class _HttpLogger:
         """Log an outbound HTTP request."""
         safe_headers = self._redact_headers(headers or {})
         body_text = self._truncate_body(body)
-        lines = [
-            f">>> REQUEST  {method.upper()} {url}",
-            f"    Headers: {safe_headers}",
-        ]
+        lines = [f">>> REQUEST  {method.upper()} {url}"]
+        lines += [f"    {k}: {v}" for k, v in safe_headers.items()]
         if body_text:
             lines.append(f"    Body:    {body_text}")
         self._logger.debug("\n".join(lines))
@@ -84,10 +82,8 @@ class _HttpLogger:
         safe_headers = self._redact_headers(headers or {})
         body_text = self._truncate_body(body)
         elapsed_str = f" ({elapsed_ms:.1f}ms)" if elapsed_ms is not None else ""
-        lines = [
-            f"<<< RESPONSE {status_code} {method.upper()} {url}{elapsed_str}",
-            f"    Headers: {safe_headers}",
-        ]
+        lines = [f"<<< RESPONSE {status_code} {method.upper()} {url}{elapsed_str}"]
+        lines += [f"    {k}: {v}" for k, v in safe_headers.items()]
         if body_text:
             lines.append(f"    Body:    {body_text}")
         self._logger.debug("\n".join(lines))
