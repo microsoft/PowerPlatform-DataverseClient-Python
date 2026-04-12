@@ -49,16 +49,30 @@ class TestTableInfoLegacyAccess(unittest.TestCase):
         keys = list(self.info)
         self.assertEqual(
             keys,
-            ["table_schema_name", "table_logical_name", "entity_set_name", "metadata_id", "columns_created"],
+            [
+                "table_schema_name",
+                "table_logical_name",
+                "entity_set_name",
+                "metadata_id",
+                "primary_name_attribute",
+                "primary_id_attribute",
+                "columns_created",
+            ],
         )
 
     def test_len(self):
-        self.assertEqual(len(self.info), 5)
+        self.assertEqual(len(self.info), 7)
 
     def test_keys_values_items(self):
         self.assertEqual(list(self.info.keys()), list(self.info._LEGACY_KEY_MAP.keys()))
+        self.assertEqual(self.info.values()[0], "new_Product")
         items = dict(self.info.items())
         self.assertEqual(items["table_schema_name"], "new_Product")
+
+    def test_contains_non_string_key_returns_false(self):
+        """__contains__ returns False for non-string keys."""
+        self.assertNotIn(42, self.info)
+        self.assertNotIn(None, self.info)
 
     def test_to_dict(self):
         d = self.info.to_dict()
@@ -76,6 +90,8 @@ class TestTableInfoFromDict(unittest.TestCase):
             "table_logical_name": "new_product",
             "entity_set_name": "new_products",
             "metadata_id": "meta-guid-1",
+            "primary_name_attribute": "new_name",
+            "primary_id_attribute": "new_productid",
             "columns_created": ["new_Price"],
         }
         info = TableInfo.from_dict(data)
@@ -83,12 +99,31 @@ class TestTableInfoFromDict(unittest.TestCase):
         self.assertEqual(info.logical_name, "new_product")
         self.assertEqual(info.entity_set_name, "new_products")
         self.assertEqual(info.metadata_id, "meta-guid-1")
+        self.assertEqual(info.primary_name_attribute, "new_name")
+        self.assertEqual(info.primary_id_attribute, "new_productid")
         self.assertEqual(info.columns_created, ["new_Price"])
 
     def test_from_dict_missing_keys(self):
         info = TableInfo.from_dict({})
         self.assertEqual(info.schema_name, "")
+        self.assertIsNone(info.primary_name_attribute)
+        self.assertIsNone(info.primary_id_attribute)
         self.assertIsNone(info.columns_created)
+
+    def test_from_dict_legacy_access_primary_fields(self):
+        """Primary fields are accessible via legacy dict-key access."""
+        data = {
+            "table_schema_name": "new_Product",
+            "table_logical_name": "new_product",
+            "entity_set_name": "new_products",
+            "metadata_id": "meta-guid-1",
+            "primary_name_attribute": "new_name",
+            "primary_id_attribute": "new_productid",
+            "columns_created": [],
+        }
+        info = TableInfo.from_dict(data)
+        self.assertEqual(info["primary_name_attribute"], "new_name")
+        self.assertEqual(info["primary_id_attribute"], "new_productid")
 
 
 class TestTableInfoFromApiResponse(unittest.TestCase):
@@ -100,6 +135,8 @@ class TestTableInfoFromApiResponse(unittest.TestCase):
             "LogicalName": "account",
             "EntitySetName": "accounts",
             "MetadataId": "meta-guid-2",
+            "PrimaryNameAttribute": "name",
+            "PrimaryIdAttribute": "accountid",
             "DisplayName": {"UserLocalizedLabel": {"Label": "Account", "LanguageCode": 1033}},
             "Description": {"UserLocalizedLabel": {"Label": "Business account", "LanguageCode": 1033}},
         }
@@ -108,6 +145,8 @@ class TestTableInfoFromApiResponse(unittest.TestCase):
         self.assertEqual(info.logical_name, "account")
         self.assertEqual(info.entity_set_name, "accounts")
         self.assertEqual(info.metadata_id, "meta-guid-2")
+        self.assertEqual(info.primary_name_attribute, "name")
+        self.assertEqual(info.primary_id_attribute, "accountid")
         self.assertEqual(info.display_name, "Account")
         self.assertEqual(info.description, "Business account")
 

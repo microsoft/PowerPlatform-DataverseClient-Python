@@ -180,3 +180,40 @@ def test_correlation_id_shared_inside_call_scope():
     h1, h2 = recorder.recorded_headers
     assert h1["x-ms-client-request-id"] != h2["x-ms-client-request-id"]
     assert h1["x-ms-correlation-id"] == h2["x-ms-correlation-id"]
+
+
+def test_validation_error_instantiates():
+    """ValidationError can be raised and carries the correct code."""
+    from PowerPlatform.Dataverse.core.errors import ValidationError
+
+    err = ValidationError("bad input", subcode="missing_field", details={"field": "name"})
+    assert err.code == "validation_error"
+    assert err.subcode == "missing_field"
+    assert err.details["field"] == "name"
+    assert err.source == "client"
+
+
+def test_sql_parse_error_instantiates():
+    """SQLParseError can be raised and carries the correct code."""
+    from PowerPlatform.Dataverse.core.errors import SQLParseError
+
+    err = SQLParseError("unexpected token", subcode="syntax_error")
+    assert err.code == "sql_parse_error"
+    assert err.subcode == "syntax_error"
+    assert err.source == "client"
+
+
+def test_http_error_optional_diagnostic_fields():
+    """HttpError stores correlation_id, service_request_id, and traceparent in details."""
+    from PowerPlatform.Dataverse.core.errors import HttpError
+
+    err = HttpError(
+        "Server error",
+        status_code=500,
+        correlation_id="corr-123",
+        service_request_id="svc-456",
+        traceparent="00-abc-def-01",
+    )
+    assert err.details["correlation_id"] == "corr-123"
+    assert err.details["service_request_id"] == "svc-456"
+    assert err.details["traceparent"] == "00-abc-def-01"

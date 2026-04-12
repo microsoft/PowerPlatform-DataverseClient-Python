@@ -130,6 +130,8 @@ class TestClientDeprecations(unittest.TestCase):
             top=10,
             expand=None,
             page_size=None,
+            count=False,
+            include_annotations=None,
         )
 
     # ------------------------------------------------------------- query_sql

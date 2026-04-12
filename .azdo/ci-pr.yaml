@@ -42,7 +42,7 @@ extends:
         
         - script: |
             python -m pip install --upgrade pip
-            python -m pip install flake8 black build
+            python -m pip install flake8 black build diff-cover
             python -m pip install -e .[dev]
           displayName: 'Install dependencies'
         
@@ -60,18 +60,30 @@ extends:
         - script: |
             python -m build
           displayName: 'Build package'
-        
+
         - script: |
             python -m pip install dist/*.whl
           displayName: 'Install wheel'
-        
+
         - script: |
-            pytest
+            PYTHONPATH=src pytest --junitxml=test-results.xml --cov --cov-report=xml
           displayName: 'Test with pytest'
-        
+
+        - script: |
+            git fetch origin main
+            diff-cover coverage.xml --compare-branch=origin/main --fail-under=90
+          displayName: 'Diff coverage (90% for new changes)'
+
         - task: PublishTestResults@2
           condition: succeededOrFailed()
           inputs:
-            testResultsFiles: '**/test-*.xml'
+            testResultsFiles: '**/test-results.xml'
             testRunTitle: 'Python 3.12'
           displayName: 'Publish test results'
+        
+        - task: PublishCodeCoverageResults@2
+          condition: succeededOrFailed()
+          inputs:
+            summaryFileLocation: '**/coverage.xml'
+            pathToSources: '$(Build.SourcesDirectory)/src'
+          displayName: 'Publish code coverage'
