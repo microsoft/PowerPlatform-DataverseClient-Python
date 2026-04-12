@@ -100,7 +100,7 @@ class RecordOperations:
                 print(f"Created {len(guids)} accounts")
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are clamped to 3)")
+            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -171,7 +171,7 @@ class RecordOperations:
                 )
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are clamped to 3)")
+            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
@@ -566,7 +566,7 @@ class RecordOperations:
             ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are clamped to 3)")
+            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []

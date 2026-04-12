@@ -58,7 +58,7 @@ _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _MULTIPLE_BATCH_SIZE = 1000
 # Concurrent chunk dispatch settings
-_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are silently clamped
+_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are silently capped
 _CHUNK_RETRY_LIMIT = 3          # max retries per chunk on transient errors
 _CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
 _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After to desynchronise workers
@@ -67,7 +67,7 @@ _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After 
 def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
     """Dispatch ``fn(chunk)`` for each chunk, sequentially or concurrently.
 
-    ``max_workers`` is silently clamped to ``_MAX_WORKERS`` (3) so callers
+    ``max_workers`` is silently capped to ``_MAX_WORKERS`` (3) so callers
     that pass a larger value are not penalised with an error.
 
     When ``max_workers == 1`` or there is only one chunk, runs sequentially
@@ -85,7 +85,7 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
 
     :param fn: Callable that accepts a single chunk and returns a result.
     :param chunks: List of chunks to process.
-    :param max_workers: Maximum number of concurrent worker threads (clamped to ``_MAX_WORKERS``).
+    :param max_workers: Maximum number of concurrent worker threads (capped to ``_MAX_WORKERS``).
     :return: List of results in chunk submission order.
     """
     max_workers = min(max_workers, _MAX_WORKERS)
@@ -570,6 +570,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :param records: List of record payload dictionaries, one per record.
             Must be the same length as ``alternate_keys``.
         :type records: ``list[dict[str, Any]]``
+        :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
+            Values above ``_MAX_WORKERS`` are silently capped.
+        :type max_workers: ``int``
 
         :return: ``None``
         :rtype: ``None``
@@ -741,7 +744,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
 
         Large record lists are automatically split into chunks of up to
-        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially.
+        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially or concurrently
+        depending on ``max_workers``.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -749,6 +753,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type table_schema_name: ``str``
         :param records: List of patch dictionaries. Each must include the true primary key attribute (e.g. ``accountid``) and one or more fields to update.
         :type records: ``list[dict[str, Any]]``
+        :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
+            Values above ``_MAX_WORKERS`` are silently capped.
+        :type max_workers: ``int``
         :return: ``None``
         :rtype: ``None``
 
