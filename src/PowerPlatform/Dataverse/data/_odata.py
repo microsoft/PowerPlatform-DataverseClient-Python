@@ -58,7 +58,7 @@ _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _MULTIPLE_BATCH_SIZE = 1000
 # Concurrent chunk dispatch settings
-_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are capped
+_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are capped to _MAX_WORKERS
 _CHUNK_RETRY_LIMIT = 3          # max retries per chunk on transient errors
 _CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
 _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After to desynchronise workers
@@ -68,7 +68,7 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
     """Dispatch ``fn(chunk)`` for each chunk, sequentially or concurrently.
 
     If ``max_workers`` exceeds ``_MAX_WORKERS`` (3) a :class:`UserWarning` is
-    issued and the value is capped.
+    issued and the value is capped to ``_MAX_WORKERS``.
 
     When ``max_workers == 1`` or there is only one chunk, runs sequentially
     with no thread overhead.  When ``max_workers > 1`` and there are multiple
@@ -578,7 +578,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             Must be the same length as ``alternate_keys``.
         :type records: ``list[dict[str, Any]]``
         :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
-            Values above ``_MAX_WORKERS`` are silently capped.
+            Values above ``_MAX_WORKERS`` are capped to ``_MAX_WORKERS``.
         :type max_workers: ``int``
 
         :return: ``None``
@@ -761,7 +761,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :param records: List of patch dictionaries. Each must include the true primary key attribute (e.g. ``accountid``) and one or more fields to update.
         :type records: ``list[dict[str, Any]]``
         :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
-            Values above ``_MAX_WORKERS`` are silently capped.
+            Values above ``_MAX_WORKERS`` are capped to ``_MAX_WORKERS``.
         :type max_workers: ``int``
         :return: ``None``
         :rtype: ``None``
