@@ -814,6 +814,25 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
         mock_pool.assert_called_once_with(max_workers=_MAX_WORKERS)
         self.assertEqual(results, chunks)
 
+    def test_contextvar_propagated_to_worker_threads(self):
+        """Worker threads see the ContextVar set by the calling thread via copy_context."""
+        from PowerPlatform.Dataverse.data._odata import _CALL_SCOPE_CORRELATION_ID
+
+        captured = []
+
+        def fn(chunk):
+            captured.append(_CALL_SCOPE_CORRELATION_ID.get())
+            return chunk
+
+        token = _CALL_SCOPE_CORRELATION_ID.set("test-correlation-id")
+        try:
+            self._dispatch(fn, ["a", "b"], max_workers=2)
+        finally:
+            _CALL_SCOPE_CORRELATION_ID.reset(token)
+
+        self.assertEqual(len(captured), 2)
+        self.assertTrue(all(c == "test-correlation-id" for c in captured))
+
 
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: transient error retry with jitter

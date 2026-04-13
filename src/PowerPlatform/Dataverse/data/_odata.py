@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 
 from urllib.parse import quote as _url_quote, parse_qs, urlparse
 
@@ -96,7 +96,8 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
                 return fn(chunk)
             except HttpError as exc:
                 if exc.is_transient and attempt < _CHUNK_RETRY_LIMIT:
-                    wait = float(exc.details.get("retry_after") or _CHUNK_RETRY_DEFAULT_WAIT)
+                    ra = exc.details.get("retry_after")
+                    wait = float(_CHUNK_RETRY_DEFAULT_WAIT if ra is None else ra)
                     wait += random.uniform(0, _CHUNK_RETRY_JITTER_MAX)
                     time.sleep(wait)
                 else:
@@ -106,7 +107,7 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
         return [_execute_with_retry(chunk) for chunk in chunks]
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(_execute_with_retry, chunk) for chunk in chunks]
+        futures = [pool.submit(copy_context().run, _execute_with_retry, chunk) for chunk in chunks]
         return [f.result() for f in futures]
 
 
@@ -584,11 +585,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
            When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
            split into multiple requests and is **not atomic** across batches.
         """
+        # Validation uses ValueError (not ValidationError) because this is a
+        # caller-facing precondition check, not a service error.  The batch path
+        # (_build_upsert_multiple) raises ValidationError for the same conditions
+        # because batch errors carry structured subcodes.
         if len(alternate_keys) != len(records):
             raise ValueError(
                 f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
             )
         logical_name = table_schema_name.lower()
+        # Pre-process all targets before chunking so that validation (key
+        # conflicts, label conversion) runs eagerly.  This means all records
+        # are held in memory at once, which is acceptable for typical workloads.
         targets: List[Dict[str, Any]] = []
         for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
@@ -678,8 +686,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
     ) -> Optional[str]:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
