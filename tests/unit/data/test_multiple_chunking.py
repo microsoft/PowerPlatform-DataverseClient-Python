@@ -1141,6 +1141,21 @@ class TestDispatchChunksCap(unittest.TestCase):
         results = self._dispatch(lambda c: c, ["x", "y", "z"], max_workers=self._cap - 1)
         self.assertEqual(results, ["x", "y", "z"])
 
+    def test_zero_raises_value_error(self):
+        """max_workers=0 raises ValueError."""
+        with self.assertRaises(ValueError):
+            self._dispatch(lambda c: c, ["a"], max_workers=0)
+
+    def test_negative_raises_value_error(self):
+        """Negative max_workers raises ValueError."""
+        with self.assertRaises(ValueError):
+            self._dispatch(lambda c: c, ["a"], max_workers=-1)
+
+    def test_non_int_raises_value_error(self):
+        """Non-integer max_workers raises ValueError."""
+        with self.assertRaises(ValueError):
+            self._dispatch(lambda c: c, ["a"], max_workers="3")
+
 
 # ---------------------------------------------------------------------------
 # Picklist cache lock: concurrent cold-start

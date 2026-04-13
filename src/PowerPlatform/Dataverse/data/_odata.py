@@ -88,6 +88,8 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
     :param max_workers: Maximum number of concurrent worker threads.
     :return: List of results in chunk submission order.
     """
+    if not isinstance(max_workers, int) or max_workers < 1:
+        raise ValueError(f"max_workers must be a positive integer; got {max_workers!r}")
     if max_workers > _MAX_WORKERS:
         warnings.warn(
             f"max_workers={max_workers} exceeds the maximum of {_MAX_WORKERS}; capping to {_MAX_WORKERS}.",

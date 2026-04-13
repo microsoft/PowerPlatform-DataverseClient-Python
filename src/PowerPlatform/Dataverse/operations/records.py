@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CH
 
 from ..models.record import Record
 from ..models.upsert import UpsertItem
+from ..data._odata import _MAX_WORKERS
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -80,10 +81,12 @@ class RecordOperations:
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
         .. note::
-            Lists exceeding 1,000 records are automatically split into
-            sequential chunks. This is **not atomic** — a failure mid-way
-            may leave earlier chunks applied. Callers that require atomicity
-            should limit input to ≤ 1,000 records.
+            Lists exceeding 1,000 records are automatically split into chunks
+            of up to 1,000 records; dispatched sequentially by default, or
+            concurrently when ``max_workers > 1`` (capped to ``_MAX_WORKERS``).
+            This is **not atomic** — a failure mid-way may leave earlier chunks
+            applied. Callers that require atomicity should limit input to
+            ≤ 1,000 records.
 
         Example:
             Create a single record::
@@ -100,7 +103,9 @@ class RecordOperations:
                 print(f"Created {len(guids)} accounts")
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
+            raise ValueError(
+                f"max_workers must be a positive integer (1–{_MAX_WORKERS}; values above {_MAX_WORKERS} are capped at {_MAX_WORKERS})"
+            )
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -148,9 +153,11 @@ class RecordOperations:
             does not match the expected pattern.
 
         .. note::
-            Lists exceeding 1,000 IDs are automatically split into sequential
-            chunks. This is **not atomic** — a failure mid-way may leave
-            earlier chunks applied. Callers that require atomicity should
+            Lists exceeding 1,000 IDs are automatically split into chunks of
+            up to 1,000; dispatched sequentially by default, or concurrently
+            when ``max_workers > 1`` (capped to ``_MAX_WORKERS``). This is
+            **not atomic** — a failure mid-way may leave earlier chunks
+            applied. Callers that require atomicity should
             limit input to ≤ 1,000 IDs.
 
         Example:
@@ -171,7 +178,9 @@ class RecordOperations:
                 )
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
+            raise ValueError(
+                f"max_workers must be a positive integer (1–{_MAX_WORKERS}; values above {_MAX_WORKERS} are capped at {_MAX_WORKERS})"
+            )
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
@@ -507,10 +516,12 @@ class RecordOperations:
             dict with ``"alternate_key"`` and ``"record"`` keys.
 
         .. note::
-            Lists exceeding 1,000 items are automatically split into
-            sequential chunks. This is **not atomic** — a failure mid-way
-            may leave earlier chunks applied. Callers that require atomicity
-            should limit input to ≤ 1,000 items.
+            Lists exceeding 1,000 items are automatically split into chunks
+            of up to 1,000; dispatched sequentially by default, or
+            concurrently when ``max_workers > 1`` (capped to ``_MAX_WORKERS``).
+            This is **not atomic** — a failure mid-way may leave earlier chunks
+            applied. Callers that require atomicity should limit input to
+            ≤ 1,000 items.
 
         Example:
             Upsert a single record using ``UpsertItem``::
@@ -566,7 +577,9 @@ class RecordOperations:
             ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
         """
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError("max_workers must be a positive integer (1–3; values above 3 are capped at 3)")
+            raise ValueError(
+                f"max_workers must be a positive integer (1–{_MAX_WORKERS}; values above {_MAX_WORKERS} are capped at {_MAX_WORKERS})"
+            )
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []
