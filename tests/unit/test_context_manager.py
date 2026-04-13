@@ -268,6 +268,17 @@ class TestBackwardCompatibility(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             client.records.create("account", {"name": "test"})
 
+    def test_flush_cache_delegates_to_odata(self):
+        """flush_cache() calls _flush_cache on the OData client and returns its result."""
+        client = DataverseClient(self.base_url, self.mock_credential)
+        client._odata = MagicMock()
+        client._odata._flush_cache.return_value = 3
+
+        result = client.flush_cache("picklist")
+
+        client._odata._flush_cache.assert_called_once_with("picklist")
+        self.assertEqual(result, 3)
+
 
 class TestExceptionHandling(unittest.TestCase):
     """Tests for exception handling during context manager usage."""

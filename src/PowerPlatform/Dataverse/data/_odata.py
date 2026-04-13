@@ -21,7 +21,7 @@ import importlib.resources as ir
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from urllib.parse import quote as _url_quote
+from urllib.parse import quote as _url_quote, parse_qs, urlparse
 
 from ..core._http import _HttpClient
 from ._upload import _FileUploadMixin
@@ -57,6 +57,34 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+
+
+def _extract_pagingcookie(next_link: str) -> Optional[str]:
+    """Extract the raw pagingcookie value from a SQL ``@odata.nextLink`` URL.
+
+    The Dataverse SQL endpoint has a server-side bug where the pagingcookie
+    (containing first/last record GUIDs) does not advance between pages even
+    though ``pagenumber`` increments. Detecting a repeated cookie lets the
+    pagination loop break instead of looping indefinitely.
+
+    Returns the pagingcookie string if present, or ``None`` if not found.
+    """
+    try:
+        qs = parse_qs(urlparse(next_link).query)
+        skiptoken = qs.get("$skiptoken", [None])[0]
+        if not skiptoken:
+            return None
+        # parse_qs already URL-decodes the value once, giving the outer XML with
+        # pagingcookie still percent-encoded (e.g. pagingcookie="%3ccookie...").
+        # A second decode is intentionally omitted: decoding again would turn %22
+        # into " inside the cookie XML, breaking the regex and causing every page
+        # to extract the same truncated prefix regardless of the actual GUIDs.
+        m = re.search(r'pagingcookie="([^"]+)"', skiptoken)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
 
 
 @dataclass
@@ -166,13 +194,18 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
             ).DataverseConfig.from_env()
         )
+        self._http_logger = None
+        if self.config.log_config is not None:
+            from ..core._http_logger import _HttpLogger
+
+            self._http_logger = _HttpLogger(self.config.log_config)
         self._http = _HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
             session=session,
+            logger=self._http_logger,
         )
-        # Cache: normalized table_schema_name (lowercase) -> entity set name (plural) resolved from metadata
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
@@ -200,6 +233,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._picklist_label_cache.clear()
         if self._http is not None:
             self._http.close()
+        if self._http_logger is not None:
+            self._http_logger.close()
+            self._http_logger = None
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -986,15 +1022,86 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             body = r.json()
         except ValueError:
             return []
-        if isinstance(body, dict):
-            value = body.get("value")
-            if isinstance(value, list):
-                # Ensure dict rows only
-                return [row for row in value if isinstance(row, dict)]
-        # Fallbacks: if body itself is a list
+
+        # Collect first page
+        results: list[dict[str, Any]] = []
         if isinstance(body, list):
             return [row for row in body if isinstance(row, dict)]
-        return []
+        if not isinstance(body, dict):
+            return results
+
+        value = body.get("value")
+        if isinstance(value, list):
+            results = [row for row in value if isinstance(row, dict)]
+
+        # Follow pagination links until exhausted
+        raw_link = body.get("@odata.nextLink") or body.get("odata.nextLink")
+        next_link: str | None = raw_link if isinstance(raw_link, str) else None
+        visited: set[str] = set()
+        seen_cookies: set[str] = set()
+        while next_link:
+            # Guard 1: exact URL cycle (same next_link returned twice)
+            if next_link in visited:
+                warnings.warn(
+                    f"SQL pagination stopped after {len(results)} rows — "
+                    "the Dataverse server returned the same nextLink URL twice, "
+                    "indicating an infinite pagination cycle. "
+                    "Returning the rows collected so far. "
+                    "To avoid pagination entirely, add a TOP clause to your query.",
+                    RuntimeWarning,
+                    stacklevel=4,
+                )
+                break
+            visited.add(next_link)
+            # Guard 2: server-side bug where pagingcookie does not advance between
+            # pages (pagenumber increments but cookie GUIDs stay the same), which
+            # causes an infinite loop even though URLs differ.
+            cookie = _extract_pagingcookie(next_link)
+            if cookie is not None:
+                if cookie in seen_cookies:
+                    warnings.warn(
+                        f"SQL pagination stopped after {len(results)} rows — "
+                        "the Dataverse server returned the same pagingcookie twice "
+                        "(pagenumber incremented but the paging position did not advance). "
+                        "This is a server-side bug. Returning the rows collected so far. "
+                        "To avoid pagination entirely, add a TOP clause to your query.",
+                        RuntimeWarning,
+                        stacklevel=4,
+                    )
+                    break
+                seen_cookies.add(cookie)
+            try:
+                page_resp = self._request("get", next_link)
+            except Exception as exc:
+                warnings.warn(
+                    f"SQL pagination stopped after {len(results)} rows — "
+                    f"the next-page request failed: {exc}. "
+                    "Add a TOP clause to your query to limit results to a single page.",
+                    RuntimeWarning,
+                    stacklevel=5,
+                )
+                break
+            try:
+                page_body = page_resp.json()
+            except ValueError as exc:
+                warnings.warn(
+                    f"SQL pagination stopped after {len(results)} rows — "
+                    f"the next-page response was not valid JSON: {exc}. "
+                    "Add a TOP clause to your query to limit results to a single page.",
+                    RuntimeWarning,
+                    stacklevel=5,
+                )
+                break
+            if not isinstance(page_body, dict):
+                break
+            page_value = page_body.get("value")
+            if not isinstance(page_value, list) or not page_value:
+                break
+            results.extend(row for row in page_value if isinstance(row, dict))
+            raw_link = page_body.get("@odata.nextLink") or page_body.get("odata.nextLink")
+            next_link = raw_link if isinstance(raw_link, str) else None
+
+        return results
 
     @staticmethod
     def _extract_logical_table(sql: str) -> str:
@@ -1521,6 +1628,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 "MaxLength": 200,
                 "FormatName": {"Value": "Text"},
                 "IsPrimaryName": bool(is_primary_name),
+            }
+        if dtype_l in ("memo", "multiline"):
+            return {
+                "@odata.type": "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                "SchemaName": column_schema_name,
+                "DisplayName": self._label(label),
+                "RequiredLevel": {"Value": "None"},
+                "MaxLength": 4000,
+                "FormatName": {"Value": "Text"},
+                "ImeMode": "Auto",
             }
         if dtype_l in ("int", "integer"):
             return {

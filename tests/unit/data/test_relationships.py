@@ -196,6 +196,19 @@ class TestCreateManyToManyRelationship(unittest.TestCase):
         self.assertEqual(result["entity1_logical_name"], "account")
         self.assertEqual(result["entity2_logical_name"], "contact")
 
+    def test_create_m2m_relationship_with_solution(self):
+        """Solution name is added as MSCRM.SolutionUniqueName header."""
+        mock_response = Mock()
+        mock_response.headers = {
+            "OData-EntityId": "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(abcd1234-abcd-1234-abcd-1234abcd5678)"
+        }
+        self.client._mock_request.return_value = mock_response
+
+        self.client._create_many_to_many_relationship(self.relationship, solution="MySolution")
+
+        headers = self.client._mock_request.call_args.kwargs["headers"]
+        self.assertEqual(headers["MSCRM.SolutionUniqueName"], "MySolution")
+
 
 class TestDeleteRelationship(unittest.TestCase):
     """Tests for _delete_relationship method."""

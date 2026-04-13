@@ -65,8 +65,14 @@ class TestTableInfoLegacyAccess(unittest.TestCase):
 
     def test_keys_values_items(self):
         self.assertEqual(list(self.info.keys()), list(self.info._LEGACY_KEY_MAP.keys()))
+        self.assertEqual(self.info.values()[0], "new_Product")
         items = dict(self.info.items())
         self.assertEqual(items["table_schema_name"], "new_Product")
+
+    def test_contains_non_string_key_returns_false(self):
+        """__contains__ returns False for non-string keys."""
+        self.assertNotIn(42, self.info)
+        self.assertNotIn(None, self.info)
 
     def test_to_dict(self):
         d = self.info.to_dict()
