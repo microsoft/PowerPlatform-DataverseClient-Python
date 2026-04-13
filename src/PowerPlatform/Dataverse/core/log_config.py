@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import FrozenSet
 
+_VALID_LOG_LEVELS: FrozenSet[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+
 __all__ = ["LogConfig"]
 
 # Headers whose values must never appear in log files
@@ -55,6 +57,12 @@ class LogConfig:
         Default: ``10_485_760`` (10 MB).
     :param backup_count: Number of rotated backup files to keep. Default: ``5``.
     """
+
+    def __post_init__(self) -> None:
+        if self.log_level.upper() not in _VALID_LOG_LEVELS:
+            raise ValueError(
+                f"Invalid log_level {self.log_level!r}. " f"Must be one of: {', '.join(sorted(_VALID_LOG_LEVELS))}."
+            )
 
     log_folder: str = "./dataverse_logs"
     log_file_prefix: str = "dataverse"

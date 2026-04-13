@@ -59,6 +59,61 @@ def test_log_config_frozen():
         cfg.log_folder = "/other"  # type: ignore[misc]
 
 
+def test_log_config_invalid_log_level_raises():
+    """An unrecognised log_level must raise ValueError at construction time."""
+    with pytest.raises(ValueError, match="Invalid log_level"):
+        LogConfig(log_level="DEBG")
+
+
+def test_log_config_valid_log_levels():
+    """All standard Python log level names must be accepted."""
+    for level in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        cfg = LogConfig(log_level=level)
+        assert cfg.log_level == level
+
+
+def test_log_config_log_level_case_insensitive():
+    """log_level validation must be case-insensitive."""
+    cfg = LogConfig(log_level="debug")
+    assert cfg.log_level == "debug"
+
+
+# ---------------------------------------------------------------------------
+# Session config summary header
+# ---------------------------------------------------------------------------
+
+
+def test_session_header_written_on_init(tmp_path):
+    """A config summary block must be written to the log when the logger is created."""
+    _make_logger(tmp_path)
+    content = _read_log(tmp_path)
+    assert "=== Dataverse HTTP Diagnostics ===" in content
+    assert "==================================\n" in content or "==================================" in content
+
+
+def test_session_header_shows_body_disabled(tmp_path):
+    """When max_body_bytes=0 the header must say body capture is disabled."""
+    _make_logger(tmp_path)  # default is 0
+    content = _read_log(tmp_path)
+    assert "disabled" in content
+    assert "max_body_bytes" in content
+
+
+def test_session_header_shows_body_limit_when_enabled(tmp_path):
+    """When max_body_bytes > 0 the header must show the byte limit."""
+    _make_logger(tmp_path, max_body_bytes=4096)
+    content = _read_log(tmp_path)
+    assert "4096 bytes" in content
+
+
+def test_session_header_shows_redacted_headers(tmp_path):
+    """The header must list the configured redacted headers."""
+    _make_logger(tmp_path)
+    content = _read_log(tmp_path)
+    assert "authorization" in content
+    assert "redacted_headers" in content
+
+
 # ---------------------------------------------------------------------------
 # Log file creation
 # ---------------------------------------------------------------------------
@@ -68,8 +123,8 @@ def test_log_file_created(tmp_path):
     _make_logger(tmp_path)
     log_files = [f for f in os.listdir(tmp_path) if f.endswith(".log")]
     assert len(log_files) == 1
-    # File should match: <prefix>_YYYYMMDD_HHMMSS_microseconds.log
-    assert re.match(r"dataverse_\d{8}_\d{6}_\d+\.log", log_files[0])
+    # File should match: <prefix>_YYYYMMDD_HHMMSS_<6-char hex>.log
+    assert re.match(r"dataverse_\d{8}_\d{6}_[0-9a-f]{6}\.log", log_files[0])
 
 
 def test_log_file_custom_prefix(tmp_path):
@@ -230,6 +285,50 @@ def test_log_response_no_elapsed_when_none(tmp_path):
     assert "ms)" not in content
 
 
+def test_log_response_not_captured_marker_when_body_disabled_and_content_exists(tmp_path):
+    """When body logging is disabled and Content-Length > 0, emit [not captured] marker."""
+    logger = _make_logger(tmp_path)  # max_body_bytes=0 by default
+    logger.log_response(
+        "GET",
+        "https://example.com",
+        status_code=200,
+        headers={"Content-Length": "230"},
+        body=None,
+    )
+    content = _read_log(tmp_path)
+    assert "[not captured" in content
+
+
+def test_log_response_no_marker_when_body_disabled_and_no_content(tmp_path):
+    """When body logging is disabled and Content-Length is 0 (e.g. 204), no marker is shown."""
+    logger = _make_logger(tmp_path)
+    logger.log_response(
+        "DELETE",
+        "https://example.com/resource",
+        status_code=204,
+        headers={"Content-Length": "0"},
+        body=None,
+    )
+    content = _read_log(tmp_path)
+    assert "not captured" not in content
+    assert "Body" not in content
+
+
+def test_log_response_no_marker_when_body_enabled(tmp_path):
+    """When body logging is enabled, the [not captured] marker must never appear."""
+    logger = _make_logger(tmp_path, max_body_bytes=4096)
+    logger.log_response(
+        "GET",
+        "https://example.com",
+        status_code=200,
+        headers={"Content-Length": "500"},
+        body='{"value": []}',
+    )
+    content = _read_log(tmp_path)
+    assert "not captured" not in content
+    assert '{"value": []}' in content
+
+
 # ---------------------------------------------------------------------------
 # log_error
 # ---------------------------------------------------------------------------
@@ -243,6 +342,45 @@ def test_log_error_writes_error_entry(tmp_path):
     assert "DELETE" in content
     assert "ValueError" in content
     assert "connection refused" in content
+
+
+def test_log_error_includes_attempt_info(tmp_path):
+    """log_error must include attempt/max_attempts when provided."""
+    logger = _make_logger(tmp_path)
+    logger.log_error(
+        "GET",
+        "https://example.com",
+        ConnectionError("timeout"),
+        attempt=2,
+        max_attempts=5,
+    )
+    content = _read_log(tmp_path)
+    assert "[attempt 2/5]" in content
+
+
+def test_log_error_no_attempt_info_when_omitted(tmp_path):
+    """log_error without attempt args must not include attempt info."""
+    logger = _make_logger(tmp_path)
+    logger.log_error("GET", "https://example.com", ConnectionError("timeout"))
+    content = _read_log(tmp_path)
+    assert "attempt" not in content
+
+
+# ---------------------------------------------------------------------------
+# body_logging_enabled property
+# ---------------------------------------------------------------------------
+
+
+def test_body_logging_enabled_false_by_default(tmp_path):
+    """body_logging_enabled must be False when max_body_bytes=0 (the default)."""
+    logger = _make_logger(tmp_path)
+    assert logger.body_logging_enabled is False
+
+
+def test_body_logging_enabled_true_when_set(tmp_path):
+    """body_logging_enabled must be True when max_body_bytes > 0."""
+    logger = _make_logger(tmp_path, max_body_bytes=4096)
+    assert logger.body_logging_enabled is True
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +429,30 @@ def test_http_client_with_logger_logs_request_and_response(tmp_path):
     assert "POST" in content
     assert "<<< RESPONSE" in content
     assert "201" in content
+
+
+def test_http_client_logs_attempt_number_on_retry(tmp_path):
+    """_HttpClient must pass attempt number and max_attempts to log_error on each retry."""
+    import requests as req_lib
+
+    from unittest.mock import MagicMock, patch
+
+    from PowerPlatform.Dataverse.core._http import _HttpClient
+
+    session = MagicMock()
+    session.request.side_effect = req_lib.exceptions.ConnectionError("timeout")
+
+    cfg = LogConfig(log_folder=str(tmp_path))
+    http_logger = _HttpLogger(cfg)
+    client = _HttpClient(retries=2, backoff=0, session=session, logger=http_logger)
+
+    with patch("time.sleep"):  # skip backoff delay
+        with pytest.raises(req_lib.exceptions.ConnectionError):
+            client._request("GET", "https://example.com")
+
+    content = _read_log(tmp_path)
+    assert "[attempt 1/2]" in content
+    assert "[attempt 2/2]" in content
 
 
 # ---------------------------------------------------------------------------
@@ -400,11 +562,13 @@ def test_log_filenames_unique_for_rapid_creation(tmp_path):
     """Two loggers created back-to-back get distinct filenames."""
     l1 = _make_logger(tmp_path)
     l2 = _make_logger(tmp_path)
-    log_files = [f for f in os.listdir(tmp_path) if f.endswith(".log")]
+    # Compare handler filepaths directly — avoids filesystem timing races where
+    # both loggers are created within the same microsecond.
+    path1 = l1._handler.baseFilename
+    path2 = l2._handler.baseFilename
     l1.close()
     l2.close()
-    assert len(log_files) == 2
-    assert log_files[0] != log_files[1]
+    assert path1 != path2
 
 
 # ---------------------------------------------------------------------------

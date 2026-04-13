@@ -108,7 +108,7 @@ class _HttpClient:
                 if self._logger is not None:
                     # Only decode resp.text when body logging is enabled — avoids
                     # unnecessary overhead for large payloads when max_body_bytes == 0.
-                    resp_body = resp.text if self._logger._config.max_body_bytes != 0 else None
+                    resp_body = resp.text if self._logger.body_logging_enabled else None
                     self._logger.log_response(
                         method,
                         url,
@@ -120,7 +120,13 @@ class _HttpClient:
                 return resp
             except requests.exceptions.RequestException as exc:
                 if self._logger is not None:
-                    self._logger.log_error(method, url, exc)
+                    self._logger.log_error(
+                        method,
+                        url,
+                        exc,
+                        attempt=attempt + 1,
+                        max_attempts=self.max_attempts,
+                    )
                 if attempt == self.max_attempts - 1:
                     raise
                 delay = self.base_delay * (2**attempt)
