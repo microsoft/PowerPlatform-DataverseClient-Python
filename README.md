@@ -192,8 +192,7 @@ client.records.update("account", ids, {"industry": "Technology"}, max_workers=3)
 
 > **Large batches**: Lists exceeding 1,000 records are automatically split into 1,000-record
 > chunks — no manual pre-splitting needed. By default chunks are dispatched sequentially.
-> Pass `max_workers=N` (max: 3, default: 1) to send chunks concurrently via threads — useful
-> when throughput matters more than strict sequential ordering. Note that chunked operations
+> Pass `max_workers=N` (max: 3, default: 1) to send chunks concurrently via threads. Note that chunked operations
 > are **not atomic**: a failure mid-way may leave earlier chunks applied. Callers that
 > require atomicity should limit their input to ≤ 1,000 records.
 
