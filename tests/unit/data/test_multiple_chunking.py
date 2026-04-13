@@ -17,7 +17,6 @@ from PowerPlatform.Dataverse.models.upsert import UpsertItem
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _make_odata_client() -> _ODataClient:
     """Return an _ODataClient with all HTTP calls mocked."""
     mock_auth = MagicMock()
@@ -46,7 +45,6 @@ def _mock_update_response():
 # ---------------------------------------------------------------------------
 # _create_multiple
 # ---------------------------------------------------------------------------
-
 
 class TestCreateMultiple(unittest.TestCase):
     """_create_multiple: chunking boundaries, chunk payloads, ID aggregation, and input validation."""
@@ -223,7 +221,6 @@ class TestCreateMultiple(unittest.TestCase):
 # _update_multiple
 # ---------------------------------------------------------------------------
 
-
 class TestUpdateMultiple(unittest.TestCase):
     """_update_multiple: chunking boundaries, chunk payloads, and input validation."""
 
@@ -339,7 +336,6 @@ class TestUpdateMultiple(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _upsert_multiple
 # ---------------------------------------------------------------------------
-
 
 def _alt_keys(n):
     return [{"accountnumber": f"ACC-{i}"} for i in range(n)]
@@ -485,7 +481,6 @@ class TestUpsertMultiple(unittest.TestCase):
 # _update_by_ids — delegates to _update_multiple
 # ---------------------------------------------------------------------------
 
-
 class TestUpdateByIdsDelegation(unittest.TestCase):
     """_update_by_ids builds the correct batch and delegates to _update_multiple."""
 
@@ -562,7 +557,6 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Public API: records.create / records.update / records.upsert
 # ---------------------------------------------------------------------------
-
 
 def _make_records_client():
     """Return a DataverseClient with _odata mocked for public API tests."""
@@ -691,7 +685,6 @@ class TestPublicUpsertDelegation(unittest.TestCase):
 # _dispatch_chunks: sequential path
 # ---------------------------------------------------------------------------
 
-
 class TestDispatchChunksSequential(unittest.TestCase):
     """_dispatch_chunks with max_workers=1 runs fn synchronously in order."""
 
@@ -745,7 +738,6 @@ class TestDispatchChunksSequential(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: concurrent path
 # ---------------------------------------------------------------------------
-
 
 class TestDispatchChunksConcurrent(unittest.TestCase):
     """_dispatch_chunks with max_workers > 1 dispatches via ThreadPoolExecutor."""
@@ -843,7 +835,6 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: transient error retry with jitter
 # ---------------------------------------------------------------------------
-
 
 class TestDispatchChunksTransientRetry(unittest.TestCase):
     """_dispatch_chunks retries on transient errors (429, 502, 503, 504) up to _CHUNK_RETRY_LIMIT times."""
@@ -1027,7 +1018,6 @@ class TestDispatchChunksTransientRetry(unittest.TestCase):
 # max_workers validation in public API
 # ---------------------------------------------------------------------------
 
-
 class TestMaxWorkersValidation(unittest.TestCase):
     """records.create/update/upsert reject invalid max_workers values."""
 
@@ -1160,7 +1150,6 @@ class TestDispatchChunksCap(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Picklist cache lock: concurrent cold-start
 # ---------------------------------------------------------------------------
-
 
 class TestPicklistCacheLock(unittest.TestCase):
     """Concurrent _bulk_fetch_picklists cold-starts should trigger only one HTTP call.
