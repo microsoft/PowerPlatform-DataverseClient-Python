@@ -714,7 +714,8 @@ class TestDispatchChunksSequential(unittest.TestCase):
             call_count[0] += 1
             return "result"
 
-        results = self._dispatch(fn, [["only"]], max_workers=4)
+        with self.assertWarns(UserWarning):
+            results = self._dispatch(fn, [["only"]], max_workers=4)
         self.assertEqual(results, ["result"])
         self.assertEqual(call_count[0], 1)
 
@@ -809,7 +810,8 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
             "PowerPlatform.Dataverse.data._odata.ThreadPoolExecutor",
             wraps=ThreadPoolExecutor,
         ) as mock_pool:
-            results = self._dispatch(lambda c: c, chunks, max_workers=_MAX_WORKERS + 100)
+            with self.assertWarns(UserWarning):
+                results = self._dispatch(lambda c: c, chunks, max_workers=_MAX_WORKERS + 100)
 
         mock_pool.assert_called_once_with(max_workers=_MAX_WORKERS)
         self.assertEqual(results, chunks)
@@ -1088,7 +1090,7 @@ class TestMaxWorkersValidation(unittest.TestCase):
 
 
 class TestDispatchChunksCap(unittest.TestCase):
-    """_dispatch_chunks silently caps max_workers to _MAX_WORKERS."""
+    """_dispatch_chunks caps max_workers to _MAX_WORKERS and emits a UserWarning."""
 
     def setUp(self):
         from PowerPlatform.Dataverse.data._odata import _dispatch_chunks, _MAX_WORKERS
@@ -1096,22 +1098,28 @@ class TestDispatchChunksCap(unittest.TestCase):
         self._dispatch = _dispatch_chunks
         self._cap = _MAX_WORKERS
 
-    def test_above_cap_is_capped(self):
-        """max_workers above _MAX_WORKERS is silently capped; no error raised."""
+    def test_above_cap_emits_warning(self):
+        """max_workers above _MAX_WORKERS emits a UserWarning and still returns results."""
         called = []
 
         def fn(chunk):
             called.append(chunk)
             return chunk
 
-        # 2 chunks with max_workers above cap — should not raise
-        result = self._dispatch(fn, ["a", "b"], max_workers=self._cap + 10)
+        with self.assertWarns(UserWarning) as cm:
+            result = self._dispatch(fn, ["a", "b"], max_workers=self._cap + 10)
+
         self.assertEqual(result, ["a", "b"])
         self.assertEqual(called, ["a", "b"])
+        self.assertIn(str(self._cap + 10), str(cm.warning))
+        self.assertIn(str(self._cap), str(cm.warning))
 
-    def test_exactly_at_cap_is_accepted(self):
-        """max_workers == _MAX_WORKERS dispatches concurrently without capping."""
-        results = self._dispatch(lambda c: c, ["x", "y"], max_workers=self._cap)
+    def test_exactly_at_cap_no_warning(self):
+        """max_workers == _MAX_WORKERS dispatches without capping or warning."""
+        import warnings as _warnings
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error")
+            results = self._dispatch(lambda c: c, ["x", "y"], max_workers=self._cap)
         self.assertEqual(results, ["x", "y"])
 
     def test_max_workers_1_is_accepted(self):

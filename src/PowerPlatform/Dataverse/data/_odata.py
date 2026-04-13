@@ -58,7 +58,7 @@ _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _MULTIPLE_BATCH_SIZE = 1000
 # Concurrent chunk dispatch settings
-_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are silently capped
+_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are capped
 _CHUNK_RETRY_LIMIT = 3          # max retries per chunk on transient errors
 _CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
 _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After to desynchronise workers
@@ -67,8 +67,8 @@ _CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After 
 def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
     """Dispatch ``fn(chunk)`` for each chunk, sequentially or concurrently.
 
-    ``max_workers`` is silently capped to ``_MAX_WORKERS`` (3) so callers
-    that pass a larger value are not penalised with an error.
+    If ``max_workers`` exceeds ``_MAX_WORKERS`` (3) a :class:`UserWarning` is
+    issued and the value is capped.
 
     When ``max_workers == 1`` or there is only one chunk, runs sequentially
     with no thread overhead.  When ``max_workers > 1`` and there are multiple
@@ -85,10 +85,16 @@ def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
 
     :param fn: Callable that accepts a single chunk and returns a result.
     :param chunks: List of chunks to process.
-    :param max_workers: Maximum number of concurrent worker threads (capped to ``_MAX_WORKERS``).
+    :param max_workers: Maximum number of concurrent worker threads.
     :return: List of results in chunk submission order.
     """
-    max_workers = min(max_workers, _MAX_WORKERS)
+    if max_workers > _MAX_WORKERS:
+        warnings.warn(
+            f"max_workers={max_workers} exceeds the maximum of {_MAX_WORKERS}; capping to {_MAX_WORKERS}.",
+            UserWarning,
+            stacklevel=2,
+        )
+        max_workers = _MAX_WORKERS
 
     def _execute_with_retry(chunk):
         for attempt in range(_CHUNK_RETRY_LIMIT + 1):
@@ -585,18 +591,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
            When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
            split into multiple requests and is **not atomic** across batches.
         """
-        # Validation uses ValueError (not ValidationError) because this is a
-        # caller-facing precondition check, not a service error.  The batch path
-        # (_build_upsert_multiple) raises ValidationError for the same conditions
-        # because batch errors carry structured subcodes.
         if len(alternate_keys) != len(records):
             raise ValueError(
                 f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
             )
         logical_name = table_schema_name.lower()
-        # Pre-process all targets before chunking so that validation (key
-        # conflicts, label conversion) runs eagerly.  This means all records
-        # are held in memory at once, which is acceptable for typical workloads.
         targets: List[Dict[str, Any]] = []
         for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
@@ -1386,15 +1385,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         table_key = self._normalize_cache_key(table_schema_name)
         now = time.time()
-        # Fast path — lock-free read for the warm-cache case (common in sequential and
+        # Lock-free read for the warm-cache case (common in sequential and
         # subsequent concurrent calls once the cache is populated).
         table_entry = self._picklist_label_cache.get(table_key)
         if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
             return
 
-        # Slow path — serialise concurrent cold-start fetches so only one thread
-        # makes the metadata HTTP call.  Re-check inside the lock (double-checked
-        # locking) in case another thread populated the cache while we waited.
+        # Serialise concurrent cold-start fetches so only one thread makes the
+        # metadata HTTP call.  Re-check inside the lock (double-checked locking)
+        # in case another thread populated the cache while we waited.
         with self._picklist_cache_lock:
             now = time.time()
             table_entry = self._picklist_label_cache.get(table_key)
