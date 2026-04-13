@@ -12,9 +12,12 @@ network errors and intelligent timeout management based on HTTP method types.
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import requests
+
+if TYPE_CHECKING:
+    from ._http_logger import _HttpLogger
 
 
 class _HttpClient:
@@ -34,6 +37,9 @@ class _HttpClient:
         When provided, all requests use this session (enabling TCP/TLS reuse).
         When ``None``, each request uses ``requests.request()`` directly.
     :type session: :class:`requests.Session` | None
+    :param logger: Optional HTTP diagnostics logger. When provided, all requests,
+        responses, and transport errors are logged with automatic header redaction.
+    :type logger: ~PowerPlatform.Dataverse.core._http_logger._HttpLogger | None
     """
 
     def __init__(
@@ -42,11 +48,13 @@ class _HttpClient:
         backoff: Optional[float] = None,
         timeout: Optional[float] = None,
         session: Optional[requests.Session] = None,
+        logger: Optional["_HttpLogger"] = None,
     ) -> None:
         self.max_attempts = retries if retries is not None else 5
         self.base_delay = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
         self._session = session
+        self._logger = logger
 
     def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """
@@ -73,12 +81,52 @@ class _HttpClient:
                 m = (method or "").lower()
                 kwargs["timeout"] = 120 if m in ("post", "delete") else 10
 
+        # Log outbound request once (before retry loop).
+        # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.
+        if self._logger is not None:
+            if "json" in kwargs:
+                req_body = kwargs["json"]
+            elif "data" in kwargs:
+                req_body = kwargs["data"]
+            else:
+                req_body = None
+            self._logger.log_request(
+                method,
+                url,
+                headers=kwargs.get("headers"),
+                body=req_body,
+            )
+
         # Small backoff retry on network errors only
         requester = self._session.request if self._session is not None else requests.request
         for attempt in range(self.max_attempts):
             try:
-                return requester(method, url, **kwargs)
-            except requests.exceptions.RequestException:
+                t0 = time.monotonic()
+                resp = requester(method, url, **kwargs)
+                elapsed_ms = (time.monotonic() - t0) * 1000
+
+                if self._logger is not None:
+                    # Only decode resp.text when body logging is enabled — avoids
+                    # unnecessary overhead for large payloads when max_body_bytes == 0.
+                    resp_body = resp.text if self._logger.body_logging_enabled else None
+                    self._logger.log_response(
+                        method,
+                        url,
+                        status_code=resp.status_code,
+                        headers=dict(resp.headers),
+                        body=resp_body,
+                        elapsed_ms=elapsed_ms,
+                    )
+                return resp
+            except requests.exceptions.RequestException as exc:
+                if self._logger is not None:
+                    self._logger.log_error(
+                        method,
+                        url,
+                        exc,
+                        attempt=attempt + 1,
+                        max_attempts=self.max_attempts,
+                    )
                 if attempt == self.max_attempts - 1:
                     raise
                 delay = self.base_delay * (2**attempt)
