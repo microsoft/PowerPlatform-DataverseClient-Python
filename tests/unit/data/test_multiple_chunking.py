@@ -13,10 +13,10 @@ import time
 from PowerPlatform.Dataverse.data._odata import _MULTIPLE_BATCH_SIZE, _ODataClient
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_odata_client() -> _ODataClient:
     """Return an _ODataClient with all HTTP calls mocked."""
@@ -46,6 +46,7 @@ def _mock_update_response():
 # ---------------------------------------------------------------------------
 # _create_multiple
 # ---------------------------------------------------------------------------
+
 
 class TestCreateMultiple(unittest.TestCase):
     """_create_multiple: chunking boundaries, chunk payloads, ID aggregation, and input validation."""
@@ -172,9 +173,7 @@ class TestCreateMultiple(unittest.TestCase):
         """Sequential dispatch preserves chunk order in the returned IDs."""
         ids1 = ["a1", "a2"]
         ids2 = ["b1"]
-        self.od._execute_raw = MagicMock(
-            side_effect=[_mock_create_response(ids1), _mock_create_response(ids2)]
-        )
+        self.od._execute_raw = MagicMock(side_effect=[_mock_create_response(ids1), _mock_create_response(ids2)])
         result = self.od._create_multiple(
             "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
@@ -182,9 +181,7 @@ class TestCreateMultiple(unittest.TestCase):
 
     def test_empty_ids_from_chunk_still_aggregated(self):
         """A chunk returning [] does not cause errors; its contribution is simply empty."""
-        self.od._execute_raw = MagicMock(
-            side_effect=[_mock_create_response([]), _mock_create_response(["id-1"])]
-        )
+        self.od._execute_raw = MagicMock(side_effect=[_mock_create_response([]), _mock_create_response(["id-1"])])
         result = self.od._create_multiple(
             "accounts", "account", [{"name": f"R{i}"} for i in range(_MULTIPLE_BATCH_SIZE + 1)]
         )
@@ -225,6 +222,7 @@ class TestCreateMultiple(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _update_multiple
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateMultiple(unittest.TestCase):
     """_update_multiple: chunking boundaries, chunk payloads, and input validation."""
@@ -342,6 +340,7 @@ class TestUpdateMultiple(unittest.TestCase):
 # _upsert_multiple
 # ---------------------------------------------------------------------------
 
+
 def _alt_keys(n):
     return [{"accountnumber": f"ACC-{i}"} for i in range(n)]
 
@@ -372,7 +371,9 @@ class TestUpsertMultiple(unittest.TestCase):
 
     def test_exact_batch_single_request(self):
         """Exactly _MULTIPLE_BATCH_SIZE records produces one chunk and one request."""
-        self.od._upsert_multiple("accounts", "account", _alt_keys(_MULTIPLE_BATCH_SIZE), _upsert_records(_MULTIPLE_BATCH_SIZE))
+        self.od._upsert_multiple(
+            "accounts", "account", _alt_keys(_MULTIPLE_BATCH_SIZE), _upsert_records(_MULTIPLE_BATCH_SIZE)
+        )
         self.od._request.assert_called_once()
 
     def test_batch_plus_one_two_requests(self):
@@ -484,6 +485,7 @@ class TestUpsertMultiple(unittest.TestCase):
 # _update_by_ids — delegates to _update_multiple
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateByIdsDelegation(unittest.TestCase):
     """_update_by_ids builds the correct batch and delegates to _update_multiple."""
 
@@ -498,7 +500,9 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
         ids = ["id-1", "id-2"]
         self.od._update_by_ids("account", ids, {"name": "X"})
         self.od._update_multiple.assert_called_once_with(
-            "accounts", "account", [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}],
+            "accounts",
+            "account",
+            [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}],
             max_workers=1,
         )
 
@@ -548,7 +552,8 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
         """max_workers is forwarded to _update_multiple."""
         self.od._update_by_ids("account", ["id-1", "id-2"], {"name": "X"}, max_workers=3)
         self.od._update_multiple.assert_called_once_with(
-            "accounts", "account",
+            "accounts",
+            "account",
             [{"accountid": "id-1", "name": "X"}, {"accountid": "id-2", "name": "X"}],
             max_workers=3,
         )
@@ -557,6 +562,7 @@ class TestUpdateByIdsDelegation(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Public API: records.create / records.update / records.upsert
 # ---------------------------------------------------------------------------
+
 
 def _make_records_client():
     """Return a DataverseClient with _odata mocked for public API tests."""
@@ -615,9 +621,7 @@ class TestPublicUpdateDelegation(unittest.TestCase):
         """Broadcast list input routes to _update_by_ids, not _update."""
         ops, mock_odata = _make_records_client()
         ops.update("account", ["id-1", "id-2"], {"name": "X"})
-        mock_odata._update_by_ids.assert_called_once_with(
-            "account", ["id-1", "id-2"], {"name": "X"}, max_workers=1
-        )
+        mock_odata._update_by_ids.assert_called_once_with("account", ["id-1", "id-2"], {"name": "X"}, max_workers=1)
 
     def test_list_paired_delegates_to_update_by_ids(self):
         """Paired list-of-patches passes through to _update_by_ids unchanged."""
@@ -638,9 +642,7 @@ class TestPublicUpdateDelegation(unittest.TestCase):
         """max_workers is passed through to _update_by_ids."""
         ops, mock_odata = _make_records_client()
         ops.update("account", ["id-1", "id-2"], {"name": "X"}, max_workers=3)
-        mock_odata._update_by_ids.assert_called_once_with(
-            "account", ["id-1", "id-2"], {"name": "X"}, max_workers=3
-        )
+        mock_odata._update_by_ids.assert_called_once_with("account", ["id-1", "id-2"], {"name": "X"}, max_workers=3)
 
 
 class TestPublicUpsertDelegation(unittest.TestCase):
@@ -688,6 +690,7 @@ class TestPublicUpsertDelegation(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: sequential path
 # ---------------------------------------------------------------------------
+
 
 class TestDispatchChunksSequential(unittest.TestCase):
     """_dispatch_chunks with max_workers=1 runs fn synchronously in order."""
@@ -743,6 +746,7 @@ class TestDispatchChunksSequential(unittest.TestCase):
 # _dispatch_chunks: concurrent path
 # ---------------------------------------------------------------------------
 
+
 class TestDispatchChunksConcurrent(unittest.TestCase):
     """_dispatch_chunks with max_workers > 1 dispatches via ThreadPoolExecutor."""
 
@@ -769,7 +773,7 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
                 chunk_1_done.wait()  # hold until chunk 1 has finished
                 return "chunk-0"
             else:  # idx == 1
-                chunk_1_done.set()   # release chunk 0
+                chunk_1_done.set()  # release chunk 0
                 return "chunk-1"
 
         results = self._dispatch(fn, [0, 1], max_workers=2)
@@ -839,6 +843,7 @@ class TestDispatchChunksConcurrent(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # _dispatch_chunks: transient error retry with jitter
 # ---------------------------------------------------------------------------
+
 
 class TestDispatchChunksTransientRetry(unittest.TestCase):
     """_dispatch_chunks retries on transient errors (429, 502, 503, 504) up to _CHUNK_RETRY_LIMIT times."""
@@ -1017,9 +1022,11 @@ class TestDispatchChunksTransientRetry(unittest.TestCase):
         self.assertEqual(calls[0], 1)
         mock_sleep.assert_not_called()
 
+
 # ---------------------------------------------------------------------------
 # max_workers validation in public API
 # ---------------------------------------------------------------------------
+
 
 class TestMaxWorkersValidation(unittest.TestCase):
     """records.create/update/upsert reject invalid max_workers values."""
@@ -1117,6 +1124,7 @@ class TestDispatchChunksCap(unittest.TestCase):
     def test_exactly_at_cap_no_warning(self):
         """max_workers == _MAX_WORKERS dispatches without capping or warning."""
         import warnings as _warnings
+
         with _warnings.catch_warnings():
             _warnings.simplefilter("error")
             results = self._dispatch(lambda c: c, ["x", "y"], max_workers=self._cap)
@@ -1137,6 +1145,7 @@ class TestDispatchChunksCap(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Picklist cache lock: concurrent cold-start
 # ---------------------------------------------------------------------------
+
 
 class TestPicklistCacheLock(unittest.TestCase):
     """Concurrent _bulk_fetch_picklists cold-starts should trigger only one HTTP call.

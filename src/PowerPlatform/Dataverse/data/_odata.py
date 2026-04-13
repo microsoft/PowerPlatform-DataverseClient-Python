@@ -58,10 +58,10 @@ _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _MULTIPLE_BATCH_SIZE = 1000
 # Concurrent chunk dispatch settings
-_MAX_WORKERS = 3                # maximum concurrent worker threads; values above this are capped to _MAX_WORKERS
-_CHUNK_RETRY_LIMIT = 3          # max retries per chunk on transient errors
+_MAX_WORKERS = 3  # maximum concurrent worker threads; values above this are capped to _MAX_WORKERS
+_CHUNK_RETRY_LIMIT = 3  # max retries per chunk on transient errors
 _CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
-_CHUNK_RETRY_JITTER_MAX = 5     # seconds of random jitter added to Retry-After to desynchronise workers
+_CHUNK_RETRY_JITTER_MAX = 5  # seconds of random jitter added to Retry-After to desynchronise workers
 
 
 def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
@@ -264,7 +264,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._logical_primaryid_cache: dict[str, str] = {}
         self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
-        self._picklist_cache_lock = threading.Lock()  # prevents concurrent threads from making duplicate picklist metadata fetches on cold start
+        self._picklist_cache_lock = (
+            threading.Lock()
+        )  # prevents concurrent threads from making duplicate picklist metadata fetches on cold start
 
     @contextmanager
     def _call_scope(self):
