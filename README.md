@@ -718,7 +718,7 @@ Each log file is timestamped and rotated automatically (default 10 MB per file, 
 >
 > - **Never enable in production.** If required for production diagnostics, keep
 >   `max_body_bytes=0` and treat log files as regulated data under your organization's
->   data handling policy (GDPR, HIPAA, etc.)
+>   data handling policy.
 > - **Restrict access.** Set file system permissions so only the process user can
 >   read log files. Use an encrypted volume or folder in sensitive environments.
 > - **Control retention.** Log rotation keeps up to 5 files by default (`backup_count`).
