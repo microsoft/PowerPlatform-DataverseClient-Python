@@ -14,7 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
-from typing import Any, Optional
+import time
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from ...core._http_logger import _HttpLogger
 
 
 class _AsyncResponse:
@@ -62,12 +66,14 @@ class _AsyncHttpClient:
         backoff: Optional[float] = None,
         timeout: Optional[float] = None,
         session: Any = None,  # aiohttp.ClientSession | None
+        logger: Optional["_HttpLogger"] = None,
     ) -> None:
         self.max_attempts: int = retries if retries is not None else 5
         self.base_delay: float = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
         self._session: Any = session  # aiohttp.ClientSession | None
         self._owns_session: bool = session is None  # True → we created it; we close it
+        self._logger = logger
 
     async def _get_session(self) -> Any:
         """Return the active session, creating one lazily if needed."""
@@ -106,18 +112,43 @@ class _AsyncHttpClient:
             payload = kwargs.pop("json")
             kwargs["data"] = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
+        # Log outbound request once (before retry loop).
+        if self._logger is not None:
+            req_body = kwargs.get("data")
+            self._logger.log_request(method, url, headers=kwargs.get("headers"), body=req_body)
+
         session = await self._get_session()
 
         for attempt in range(self.max_attempts):
             try:
+                t0 = time.monotonic()
                 async with session.request(method, url, **kwargs) as resp:
                     text = await resp.text(encoding="utf-8", errors="replace")
+                    elapsed_ms = (time.monotonic() - t0) * 1000
                     try:
                         json_data: Any = _json.loads(text) if text.strip() else {}
                     except (ValueError, TypeError):
                         json_data = {}
+                    if self._logger is not None:
+                        resp_body = text if self._logger.body_logging_enabled else None
+                        self._logger.log_response(
+                            method,
+                            url,
+                            status_code=resp.status,
+                            headers=dict(resp.headers),
+                            body=resp_body,
+                            elapsed_ms=elapsed_ms,
+                        )
                     return _AsyncResponse(resp.status, resp.headers, text, json_data)
-            except (aiohttp.ClientError, asyncio.TimeoutError):
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if self._logger is not None:
+                    self._logger.log_error(
+                        method,
+                        url,
+                        exc,
+                        attempt=attempt + 1,
+                        max_attempts=self.max_attempts,
+                    )
                 if attempt == self.max_attempts - 1:
                     raise
                 delay = self.base_delay * (2**attempt)
