@@ -27,14 +27,14 @@ class _AsyncResponse:
     :param status: HTTP status code.
     :param headers: Response headers (aiohttp ``CIMultiDictProxy`` — case-insensitive).
     :param text: Full response body as a decoded string (may be empty).
-    :param json_data: Parsed JSON body, or ``{}`` when the body is not valid JSON.
+    :param json_data: Parsed JSON body, or ``{}`` when the body is empty.
     """
 
     __slots__ = ("status_code", "headers", "text", "_json_data")
 
     def __init__(self, status: int, headers: Any, text: str, json_data: Any) -> None:
         self.status_code: int = status
-        self.headers = headers  # CIMultiDictProxy — supports case-insensitive .get()
+        self.headers = headers
         self.text: str = text
         self._json_data: Any = json_data
 
@@ -68,7 +68,7 @@ class _AsyncHttpClient:
         session: Any = None,  # aiohttp.ClientSession | None
         logger: Optional["_HttpLogger"] = None,
     ) -> None:
-        self.max_attempts: int = retries if retries is not None else 5
+        self.max_attempts: int = max(1, retries if retries is not None else 5)
         self.base_delay: float = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
         self._session: Any = session  # aiohttp.ClientSession | None
@@ -106,8 +106,9 @@ class _AsyncHttpClient:
         elif isinstance(kwargs["timeout"], (int, float)):
             kwargs["timeout"] = aiohttp.ClientTimeout(total=float(kwargs.pop("timeout")))
 
-        # Convert json= to data= (bytes) so aiohttp doesn't override Content-Type,
-        # which is already set in the merged request headers.
+        # Convert json= to data= (bytes) to prevent aiohttp from overriding the
+        # Content-Type header that the OData layer already set in kwargs["headers"]
+        # (e.g. "application/json; odata.metadata=minimal").
         if "json" in kwargs:
             payload = kwargs.pop("json")
             kwargs["data"] = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -125,10 +126,7 @@ class _AsyncHttpClient:
                 async with session.request(method, url, **kwargs) as resp:
                     text = await resp.text(encoding="utf-8", errors="replace")
                     elapsed_ms = (time.monotonic() - t0) * 1000
-                    try:
-                        json_data: Any = _json.loads(text) if text.strip() else {}
-                    except (ValueError, TypeError):
-                        json_data = {}
+                    json_data: Any = _json.loads(text) if text.strip() else {}
                     if self._logger is not None:
                         resp_body = text if self._logger.body_logging_enabled else None
                         self._logger.log_response(
@@ -154,8 +152,6 @@ class _AsyncHttpClient:
                 delay = self.base_delay * (2**attempt)
                 await asyncio.sleep(delay)
 
-        # Unreachable — loop always raises or returns inside
-        raise RuntimeError("_AsyncHttpClient._request: retry loop exhausted without result")  # pragma: no cover
 
     async def close(self) -> None:
         """Close the underlying aiohttp session if this client owns it."""

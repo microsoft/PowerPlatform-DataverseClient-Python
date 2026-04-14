@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, List
 
 from ...models.record import Record
 from ...models.query_builder import QueryBuilder
+
+if TYPE_CHECKING:
+    from ..async_client import AsyncDataverseClient
 
 __all__ = ["AsyncQueryOperations", "AsyncQueryBuilder"]
 
@@ -132,27 +135,37 @@ class AsyncQueryOperations:
 
     :param client: The parent
         :class:`~PowerPlatform.Dataverse.aio.AsyncDataverseClient` instance.
+    :type client: ~PowerPlatform.Dataverse.aio.AsyncDataverseClient
 
     Example::
 
-        # Fluent async query builder
-        async for record in await (
-            client.query.builder("account")
-            .select("name", "revenue")
-            .filter_eq("statecode", 0)
-            .execute()
-        ):
-            print(record["name"])
+        async with AsyncDataverseClient(base_url, credential) as client:
 
-        # SQL query
-        rows = await client.query.sql("SELECT TOP 10 name FROM account ORDER BY name")
+            # Fluent async query builder (recommended)
+            async for record in await (
+                client.query.builder("account")
+                .select("name", "revenue")
+                .filter_eq("statecode", 0)
+                .order_by("revenue", descending=True)
+                .top(100)
+                .execute()
+            ):
+                print(record["name"])
+
+            # SQL query
+            rows = await client.query.sql("SELECT TOP 10 name FROM account ORDER BY name")
+            for row in rows:
+                print(row["name"])
     """
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncDataverseClient) -> None:
         self._client = client
 
     def builder(self, table: str) -> AsyncQueryBuilder:
         """Create a fluent async query builder for the specified table.
+
+        Returns an :class:`AsyncQueryBuilder` that can be chained with filter,
+        select, and order methods, then executed directly via ``.execute()``.
 
         :param table: Table schema name (e.g. ``"account"``).
         :type table: :class:`str`
@@ -160,15 +173,32 @@ class AsyncQueryOperations:
         :return: An :class:`AsyncQueryBuilder` bound to this client.
         :rtype: AsyncQueryBuilder
 
-        Example::
+        Example:
+            Build and execute a query fluently::
 
-            async for record in await (
-                client.query.builder("account")
-                .select("name", "revenue")
-                .filter_eq("statecode", 0)
-                .execute()
-            ):
-                print(record["name"])
+                async for record in await (
+                    client.query.builder("account")
+                    .select("name", "revenue")
+                    .filter_eq("statecode", 0)
+                    .filter_gt("revenue", 1000000)
+                    .order_by("revenue", descending=True)
+                    .top(100)
+                    .page_size(50)
+                    .execute()
+                ):
+                    print(record["name"])
+
+            With composable expression tree::
+
+                from PowerPlatform.Dataverse.models.filters import eq, gt
+
+                async for record in await (
+                    client.query.builder("account")
+                    .where((eq("statecode", 0) | eq("statecode", 1))
+                           & gt("revenue", 100000))
+                    .execute()
+                ):
+                    print(record["name"])
         """
         qb = AsyncQueryBuilder(table)
         qb._query_ops = self
@@ -176,6 +206,10 @@ class AsyncQueryOperations:
 
     async def sql(self, sql: str) -> List[Record]:
         """Execute a read-only SQL query using the Dataverse Web API.
+
+        The SQL query must follow the supported subset: a single SELECT
+        statement with optional WHERE, TOP (integer literal), ORDER BY (column
+        names only), and a simple table alias after FROM.
 
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
@@ -187,13 +221,22 @@ class AsyncQueryOperations:
         :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
             If ``sql`` is not a string or is empty.
 
-        Example::
+        Example:
+            Basic SQL query::
 
-            rows = await client.query.sql(
-                "SELECT TOP 10 accountid, name FROM account WHERE name LIKE 'C%'"
-            )
-            for row in rows:
-                print(row["name"])
+                rows = await client.query.sql(
+                    "SELECT TOP 10 accountid, name FROM account "
+                    "WHERE name LIKE 'C%' ORDER BY name"
+                )
+                for row in rows:
+                    print(row["name"])
+
+            Query with alias::
+
+                rows = await client.query.sql(
+                    "SELECT a.name, a.telephone1 FROM account AS a "
+                    "WHERE a.statecode = 0"
+                )
         """
         async with self._client._scoped_odata() as od:
             rows = await od._query_sql(sql)

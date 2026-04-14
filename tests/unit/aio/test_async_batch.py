@@ -9,14 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_batch import (
-    AsyncBatchDataFrameOperations,
     AsyncBatchOperations,
-    AsyncBatchQueryOperations,
-    AsyncBatchRecordOperations,
     AsyncBatchRequest,
-    AsyncBatchTableOperations,
-    AsyncChangeSet,
-    AsyncChangeSetRecordOperations,
+)
+from PowerPlatform.Dataverse.operations.batch import (
+    BatchDataFrameOperations as AsyncBatchDataFrameOperations,
+    BatchQueryOperations as AsyncBatchQueryOperations,
+    BatchRecordOperations as AsyncBatchRecordOperations,
+    BatchTableOperations as AsyncBatchTableOperations,
+    ChangeSet as AsyncChangeSet,
+    ChangeSetRecordOperations as AsyncChangeSetRecordOperations,
 )
 from PowerPlatform.Dataverse.data._batch import (
     _RecordCreate,

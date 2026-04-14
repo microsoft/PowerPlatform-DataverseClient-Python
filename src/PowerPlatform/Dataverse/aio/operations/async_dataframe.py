@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pandas as pd
 
 from ...utils._pandas import dataframe_to_records
+
+if TYPE_CHECKING:
+    from ..async_client import AsyncDataverseClient
 
 __all__ = ["AsyncDataFrameOperations"]
 
@@ -22,20 +25,30 @@ class AsyncDataFrameOperations:
 
     :param client: The parent
         :class:`~PowerPlatform.Dataverse.aio.AsyncDataverseClient` instance.
+    :type client: ~PowerPlatform.Dataverse.aio.AsyncDataverseClient
 
     Example::
 
         import pandas as pd
 
-        # Query records as a DataFrame
-        df = await client.dataframe.get("account", select=["name"], top=100)
+        async with AsyncDataverseClient(base_url, credential) as client:
 
-        # Create records from a DataFrame
-        new_df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
-        new_df["accountid"] = await client.dataframe.create("account", new_df)
+            # Query records as a DataFrame
+            df = await client.dataframe.get("account", select=["name"], top=100)
+
+            # Create records from a DataFrame
+            new_df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+            new_df["accountid"] = await client.dataframe.create("account", new_df)
+
+            # Update records
+            new_df["telephone1"] = ["555-0100", "555-0200"]
+            await client.dataframe.update("account", new_df, id_column="accountid")
+
+            # Delete records
+            await client.dataframe.delete("account", new_df["accountid"])
     """
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: AsyncDataverseClient) -> None:
         self._client = client
 
     # -------------------------------------------------------------------- get
@@ -55,38 +68,59 @@ class AsyncDataFrameOperations:
     ) -> pd.DataFrame:
         """Fetch records and return as a single pandas DataFrame.
 
-        :param table: Schema name of the table (e.g. ``"account"``).
+        When ``record_id`` is provided, returns a single-row DataFrame.
+        When ``record_id`` is None, internally iterates all pages and returns one
+        consolidated DataFrame.
+
+        :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table: :class:`str`
-        :param record_id: Optional GUID for a single-record fetch.
+        :param record_id: Optional GUID to fetch a specific record. If None, queries multiple records.
         :type record_id: :class:`str` or None
-        :param select: Optional list of column logical names.
+        :param select: Optional list of attribute logical names to retrieve.
         :type select: list[str] or None
-        :param filter: Optional OData ``$filter`` expression.
+        :param filter: Optional OData filter string. Column names must use exact lowercase logical names.
         :type filter: :class:`str` or None
-        :param orderby: Optional sort expressions.
+        :param orderby: Optional list of attributes to sort by.
         :type orderby: list[str] or None
-        :param top: Optional maximum number of records.
+        :param top: Optional maximum number of records to return.
         :type top: :class:`int` or None
-        :param expand: Optional navigation properties to expand (case-sensitive).
+        :param expand: Optional list of navigation properties to expand (case-sensitive).
         :type expand: list[str] or None
-        :param page_size: Optional per-page size hint.
+        :param page_size: Optional number of records per page for pagination.
         :type page_size: :class:`int` or None
-        :param count: Include ``$count=true``.
+        :param count: If ``True``, adds ``$count=true`` to include a total
+            record count in the response.
         :type count: :class:`bool`
         :param include_annotations: OData annotation pattern for the
-            ``Prefer: odata.include-annotations`` header.
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
         :type include_annotations: :class:`str` or None
 
-        :return: DataFrame containing matching records.
+        :return: DataFrame containing all matching records. Returns an empty DataFrame
+            when no records match.
         :rtype: ~pandas.DataFrame
 
-        :raises ValueError: If ``record_id`` is invalid or query parameters
-            are provided alongside ``record_id``.
+        :raises ValueError: If ``record_id`` is not a non-empty string, or if
+            query parameters (``filter``, ``orderby``, ``top``, ``expand``,
+            ``page_size``) are provided alongside ``record_id``.
 
-        Example::
+        .. tip::
+            For large tables, use ``top`` or ``filter`` to limit the result set.
 
-            df = await client.dataframe.get("account", filter="statecode eq 0")
-            print(f"Got {len(df)} active accounts")
+        Example:
+            Fetch a single record as a DataFrame::
+
+                df = await client.dataframe.get("account", record_id=account_id, select=["name", "telephone1"])
+                print(df)
+
+            Query with filtering::
+
+                df = await client.dataframe.get("account", filter="statecode eq 0", select=["name"])
+                print(f"Got {len(df)} active accounts")
+
+            Limit result size::
+
+                df = await client.dataframe.get("account", select=["name"], top=100)
         """
         if record_id is not None:
             if not isinstance(record_id, str) or not record_id.strip():
@@ -128,21 +162,33 @@ class AsyncDataFrameOperations:
     ) -> pd.Series:
         """Create records from a pandas DataFrame.
 
-        :param table: Schema name of the table.
+        :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table: :class:`str`
         :param records: DataFrame where each row is a record to create.
         :type records: ~pandas.DataFrame
 
-        :return: Series of created record GUIDs, aligned with the input index.
+        :return: Series of created record GUIDs, aligned with the input DataFrame index.
         :rtype: ~pandas.Series
 
         :raises TypeError: If ``records`` is not a pandas DataFrame.
-        :raises ValueError: If ``records`` is empty or has all-null rows.
+        :raises ValueError: If ``records`` is empty or the number of returned
+            IDs does not match the number of input rows.
 
-        Example::
+        .. tip::
+            All rows are sent in a single ``CreateMultiple`` request. For very
+            large DataFrames, consider splitting into smaller batches to avoid
+            request timeouts.
 
-            df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
-            df["accountid"] = await client.dataframe.create("account", df)
+        Example:
+            Create records from a DataFrame::
+
+                import pandas as pd
+
+                df = pd.DataFrame([
+                    {"name": "Contoso", "telephone1": "555-0100"},
+                    {"name": "Fabrikam", "telephone1": "555-0200"},
+                ])
+                df["accountid"] = await client.dataframe.create("account", df)
         """
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
@@ -173,28 +219,57 @@ class AsyncDataFrameOperations:
     ) -> None:
         """Update records from a pandas DataFrame.
 
-        :param table: Schema name of the table.
+        Each row in the DataFrame represents an update. The ``id_column`` specifies which
+        column contains the record GUIDs.
+
+        :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table: :class:`str`
-        :param changes: DataFrame where each row contains a record GUID and
-            the fields to update.
+        :param changes: DataFrame where each row contains a record GUID and the fields to update.
         :type changes: ~pandas.DataFrame
-        :param id_column: Name of the column containing record GUIDs.
+        :param id_column: Name of the DataFrame column containing record GUIDs.
         :type id_column: :class:`str`
-        :param clear_nulls: When ``True``, NaN/None sends ``null`` to
-            Dataverse (clears the field). Default ``False`` skips NaN/None.
+        :param clear_nulls: When ``False`` (default), missing values (NaN/None) are skipped
+            (the field is left unchanged on the server). When ``True``, missing values are sent
+            as ``null`` to Dataverse, clearing the field. Use ``True`` only when you intentionally
+            want NaN/None values to clear fields.
         :type clear_nulls: :class:`bool`
 
         :raises TypeError: If ``changes`` is not a pandas DataFrame.
-        :raises ValueError: If ``changes`` is empty, ``id_column`` is missing,
-            or IDs are invalid.
+        :raises ValueError: If ``changes`` is empty, ``id_column`` is not found in the
+            DataFrame, ``id_column`` contains invalid (non-string, empty, or whitespace-only)
+            values, or no updatable columns exist besides ``id_column``.
+            When ``clear_nulls`` is ``False`` (default), rows where all change values
+            are NaN/None produce empty patches and are silently skipped. If all rows
+            are skipped, the method returns without making an API call. When
+            ``clear_nulls`` is ``True``, NaN/None values become explicit nulls, so
+            rows are never skipped.
 
-        Example::
+        .. tip::
+            All rows are sent in a single ``UpdateMultiple`` request (or a
+            single PATCH for one row). For very large DataFrames, consider
+            splitting into smaller batches to avoid request timeouts.
 
-            df = pd.DataFrame([
-                {"accountid": "guid-1", "telephone1": "555-0100"},
-                {"accountid": "guid-2", "telephone1": "555-0200"},
-            ])
-            await client.dataframe.update("account", df, id_column="accountid")
+        Example:
+            Update records with different values per row::
+
+                import pandas as pd
+
+                df = pd.DataFrame([
+                    {"accountid": "guid-1", "telephone1": "555-0100"},
+                    {"accountid": "guid-2", "telephone1": "555-0200"},
+                ])
+                await client.dataframe.update("account", df, id_column="accountid")
+
+            Broadcast the same change to all records::
+
+                df = pd.DataFrame({"accountid": ["guid-1", "guid-2", "guid-3"]})
+                df["websiteurl"] = "https://example.com"
+                await client.dataframe.update("account", df, id_column="accountid")
+
+            Clear a field by setting clear_nulls=True::
+
+                df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
+                await client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
         """
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
@@ -240,27 +315,31 @@ class AsyncDataFrameOperations:
     ) -> Optional[str]:
         """Delete records by passing a pandas Series of GUIDs.
 
-        :param table: Schema name of the table.
+        :param table: Schema name of the table (e.g. ``"account"`` or ``"new_MyTestTable"``).
         :type table: :class:`str`
         :param ids: Series of record GUIDs to delete.
         :type ids: ~pandas.Series
-        :param use_bulk_delete: When ``True`` (default) and ``ids`` has
-            multiple values, use the ``BulkDelete`` action.
+        :param use_bulk_delete: When ``True`` (default) and ``ids`` contains multiple values,
+            execute the BulkDelete action and return its async job identifier. When ``False``
+            each record is deleted sequentially.
         :type use_bulk_delete: :class:`bool`
 
         :raises TypeError: If ``ids`` is not a pandas Series.
-        :raises ValueError: If ``ids`` contains invalid values.
+        :raises ValueError: If ``ids`` contains invalid (non-string, empty, or
+            whitespace-only) values.
 
-        :return: BulkDelete job ID when bulk-deleting multiple records;
-            otherwise ``None``.
+        :return: BulkDelete job ID when deleting multiple records via BulkDelete;
+            ``None`` when deleting a single record, using sequential deletion, or
+            when ``ids`` is empty.
         :rtype: :class:`str` or None
 
-        Example::
+        Example:
+            Delete records using a Series::
 
-            import pandas as pd
+                import pandas as pd
 
-            ids = pd.Series(["guid-1", "guid-2"])
-            await client.dataframe.delete("account", ids)
+                ids = pd.Series(["guid-1", "guid-2", "guid-3"])
+                await client.dataframe.delete("account", ids)
         """
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
