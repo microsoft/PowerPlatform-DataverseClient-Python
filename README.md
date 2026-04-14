@@ -47,6 +47,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - **📦 Batch Operations**: Send multiple CRUD, table metadata, and SQL query operations in a single HTTP request with optional transactional changesets
 - **🔐 Azure Identity**: Built-in authentication using Azure Identity credential providers with comprehensive support
 - **🛡️ Error Handling**: Structured exception hierarchy with detailed error context and retry guidance
+- **📋 HTTP Diagnostics Logging**: Opt-in file-based logging of all HTTP requests and responses with automatic redaction of sensitive headers (e.g. `Authorization`)
 
 ## Getting started
 
@@ -681,6 +682,58 @@ For optimal performance in production environments:
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
 | **Production Credentials** | Use `ClientSecretCredential` or `CertificateCredential` for unattended operations |
 | **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |
+
+### HTTP diagnostics logging
+
+Enable file-based HTTP logging to capture all requests and responses for debugging. Sensitive headers (e.g. `Authorization`) are automatically redacted.
+
+```python
+from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.config import DataverseConfig
+from PowerPlatform.Dataverse.core.log_config import LogConfig
+
+log_cfg = LogConfig(
+    log_folder="./my_logs",      # Directory for log files (created if missing)
+    log_file_prefix="crm_debug", # Filename prefix; timestamp appended automatically
+    max_body_bytes=4096,         # Bytes of body to capture per entry — 0 (default) disables body capture
+)
+config = DataverseConfig(log_config=log_cfg)
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential, config=config)
+```
+
+Each log file is timestamped and rotated automatically (default 10 MB per file, 5 backups). Sample output:
+
+```
+[2026-04-11T15:27:31-0700] DEBUG >>> REQUEST  POST https://yourorg.crm.dynamics.com/api/data/v9.2/accounts
+    Authorization: [REDACTED]
+    Accept: application/json
+    Content-Type: application/json
+    OData-MaxVersion: 4.0
+    OData-Version: 4.0
+    User-Agent: DataverseSvcPythonClient:0.1.0b8
+    x-ms-client-request-id: 7050c4d0-6bcc-48e3-a310-b4e8fa18ac69
+    x-ms-correlation-id: 4cace77d-e4ee-4419-8c65-fc62beed6e71
+    Body:    {"name":"Contoso Ltd"}
+[2026-04-11T15:27:31-0700] DEBUG <<< RESPONSE 204 POST https://yourorg.crm.dynamics.com/api/data/v9.2/accounts (78.0ms)
+    Content-Type: application/json; odata.metadata=minimal
+    OData-Version: 4.0
+    x-ms-service-request-id: a6d0b6c4-5dd1-47cb-83eb-b6fccf754216
+    x-ms-ratelimit-burst-remaining-xrm-requests: 7998
+```
+
+> **Security note:** This feature is intended for development and debugging only.
+> Log files are **plaintext** and may contain PII, sensitive business data, and
+> Dataverse record IDs — even with `max_body_bytes=0` (the default), request URLs
+> can include filter values and record identifiers.
+>
+> - **Never enable in production.** If required for production diagnostics, keep
+>   `max_body_bytes=0` and treat log files as regulated data under your organization's
+>   data handling policy.
+> - **Restrict access.** Set file system permissions so only the process user can
+>   read log files. Use an encrypted volume or folder in sensitive environments.
+> - **Control retention.** Log rotation keeps up to 5 files by default (`backup_count`).
+>   Delete logs after the debugging session; use secure deletion for regulated data.
+> - **Prevent source control leaks.** Add the log folder to `.gitignore` immediately.
 
 ### Limitations
 
