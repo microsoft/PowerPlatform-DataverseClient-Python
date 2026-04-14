@@ -792,8 +792,10 @@ class _AsyncODataClient(_ODataClient):
             if next_link in visited:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
-                    "the Dataverse server returned the same nextLink URL twice. "
-                    "Returning the rows collected so far.",
+                    "the Dataverse server returned the same nextLink URL twice, "
+                    "indicating an infinite pagination cycle. "
+                    "Returning the rows collected so far. "
+                    "To avoid pagination entirely, add a TOP clause to your query.",
                     RuntimeWarning,
                     stacklevel=4,
                 )
@@ -804,8 +806,10 @@ class _AsyncODataClient(_ODataClient):
                 if cookie in seen_cookies:
                     warnings.warn(
                         f"SQL pagination stopped after {len(results)} rows — "
-                        "the Dataverse server returned the same pagingcookie twice. "
-                        "Returning the rows collected so far.",
+                        "the Dataverse server returned the same pagingcookie twice "
+                        "(pagenumber incremented but the paging position did not advance). "
+                        "This is a server-side bug. Returning the rows collected so far. "
+                        "To avoid pagination entirely, add a TOP clause to your query.",
                         RuntimeWarning,
                         stacklevel=4,
                     )
@@ -816,7 +820,8 @@ class _AsyncODataClient(_ODataClient):
             except Exception as exc:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
-                    f"the next-page request failed: {exc}.",
+                    f"the next-page request failed: {exc}. "
+                    "Add a TOP clause to your query to limit results to a single page.",
                     RuntimeWarning,
                     stacklevel=5,
                 )
@@ -826,7 +831,8 @@ class _AsyncODataClient(_ODataClient):
             except ValueError as exc:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
-                    f"next-page response was not valid JSON: {exc}.",
+                    f"the next-page response was not valid JSON: {exc}. "
+                    "Add a TOP clause to your query to limit results to a single page.",
                     RuntimeWarning,
                     stacklevel=5,
                 )

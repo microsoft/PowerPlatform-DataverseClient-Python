@@ -29,7 +29,7 @@ def _make_client_with_mock_odata():
     client._scoped_odata() is patched to yield mock_od without making any
     real HTTP or OData calls.
     """
-    credential = MagicMock()
+    credential = AsyncMock()
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     od = AsyncMock()
 
@@ -83,7 +83,7 @@ _RAW_KEY = {
 
 class TestAsyncTableOperationsNamespace:
     def test_namespace_exists(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.tables, AsyncTableOperations)
 

@@ -23,7 +23,7 @@ def _make_client_with_mock_records():
     client.records is replaced with a MagicMock whose async methods can be
     configured per test without making any real HTTP calls.
     """
-    credential = MagicMock()
+    credential = AsyncMock()
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     client.records = MagicMock()
     client.records.get = AsyncMock()
@@ -49,7 +49,7 @@ def _make_record(table: str, data: dict) -> Record:
 
 class TestAsyncDataFrameOperationsNamespace:
     def test_namespace_exists(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.dataframe, AsyncDataFrameOperations)
 

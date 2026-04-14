@@ -43,6 +43,6 @@ class TestAsyncAuthManager:
         assert pair.access_token == "tok2"
 
     def test_credential_stored(self):
-        cred = MagicMock()
+        cred = AsyncMock()
         auth = _AsyncAuthManager(cred)
         assert auth.credential is cred

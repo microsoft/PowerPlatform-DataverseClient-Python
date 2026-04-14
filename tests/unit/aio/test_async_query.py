@@ -18,7 +18,7 @@ from PowerPlatform.Dataverse.models.record import Record
 
 def _make_client_with_mock_odata():
     """Return (client, mock_od) with _scoped_odata patched."""
-    credential = MagicMock()
+    credential = AsyncMock()
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     od = AsyncMock()
 
@@ -36,18 +36,18 @@ def _make_client_with_mock_odata():
 
 class TestAsyncQueryOperationsNamespace:
     def test_namespace_exists(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.query, AsyncQueryOperations)
 
     def test_builder_returns_async_query_builder(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_builder_binds_query_ops(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
         assert qb._query_ops is client.query
@@ -90,25 +90,25 @@ class TestAsyncQuerySql:
 
 class TestAsyncQueryBuilderFluent:
     def test_select_returns_builder(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name", "telephone1")
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_filter_eq_returns_builder(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name").filter_eq("statecode", 0)
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_top_returns_builder(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name").top(10)
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_build_produces_params_dict(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         params = (
             client.query.builder("account")
@@ -130,7 +130,7 @@ class TestAsyncQueryBuilderFluent:
 
     def test_no_constraints_raises(self):
         """execute() with no select/filter/top raises ValueError."""
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
         with pytest.raises(ValueError):
@@ -197,7 +197,7 @@ class TestAsyncQueryBuilderExecute:
 class TestAsyncQueryBuilderToDataframe:
     async def test_to_dataframe_calls_dataframe_get(self):
         import pandas as pd
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         expected_df = pd.DataFrame([{"name": "Contoso"}])
 

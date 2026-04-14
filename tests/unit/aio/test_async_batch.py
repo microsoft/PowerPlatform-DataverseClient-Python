@@ -48,7 +48,7 @@ from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
 def _make_client_with_mock_odata():
     """Return (client, mock_od) with _scoped_odata patched."""
-    credential = MagicMock()
+    credential = AsyncMock()
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     od = AsyncMock()
 
@@ -66,18 +66,18 @@ def _make_client_with_mock_odata():
 
 class TestAsyncBatchOperationsNamespace:
     def test_namespace_exists(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.batch, AsyncBatchOperations)
 
     def test_new_returns_batch_request(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
         assert isinstance(batch, AsyncBatchRequest)
 
     def test_batch_request_has_namespaces(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
         assert isinstance(batch.records, AsyncBatchRecordOperations)
@@ -92,7 +92,7 @@ class TestAsyncBatchOperationsNamespace:
 
 class TestAsyncBatchRecordOperations:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -171,7 +171,7 @@ class TestAsyncBatchRecordOperations:
 
 class TestAsyncChangeSet:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -232,7 +232,7 @@ class TestAsyncChangeSet:
 
 class TestAsyncBatchQueryOperations:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -312,7 +312,7 @@ class TestAsyncBatchRequestExecute:
 
 class TestAsyncBatchRecordUpsertDict:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -337,7 +337,7 @@ class TestAsyncBatchRecordUpsertDict:
 
 class TestAsyncBatchQuerySqlSuccess:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -361,7 +361,7 @@ class TestAsyncBatchQuerySqlSuccess:
 
 class TestAsyncBatchTableOperations:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -462,7 +462,7 @@ class TestAsyncBatchTableOperations:
 
 class TestAsyncBatchDataFrameOperations:
     def _make_batch(self):
-        credential = MagicMock()
+        credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
