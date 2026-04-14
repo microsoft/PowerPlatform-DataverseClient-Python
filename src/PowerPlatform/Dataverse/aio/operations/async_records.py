@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union, overload
 
 from ...models.record import Record
 from ...models.upsert import UpsertItem
@@ -26,6 +26,12 @@ class AsyncRecordOperations:
         self._client = client
 
     # ------------------------------------------------------------------ create
+
+    @overload
+    async def create(self, table: str, data: Dict[str, Any]) -> str: ...
+
+    @overload
+    async def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
 
     async def create(
         self,
@@ -113,6 +119,12 @@ class AsyncRecordOperations:
 
     # ------------------------------------------------------------------ delete
 
+    @overload
+    async def delete(self, table: str, ids: str) -> None: ...
+
+    @overload
+    async def delete(self, table: str, ids: List[str], *, use_bulk_delete: bool = True) -> Optional[str]: ...
+
     async def delete(
         self,
         table: str,
@@ -162,6 +174,30 @@ class AsyncRecordOperations:
             return None
 
     # -------------------------------------------------------------------- get
+
+    @overload
+    async def get(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> Record: ...
+
+    @overload
+    async def get(
+        self,
+        table: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
+    ) -> AsyncGenerator[List[Record], None]: ...
 
     async def get(
         self,

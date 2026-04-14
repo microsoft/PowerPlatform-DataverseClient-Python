@@ -12,9 +12,7 @@ parsing, intent dataclass dispatch — are inherited unchanged from the sync par
 
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from ...core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
@@ -183,188 +181,38 @@ class _AsyncBatchClient(_BatchClient):
     async def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:  # type: ignore[override]
         entity_set = await self._od._entity_set_from_schema_name(op.table)
         if isinstance(op.data, dict):
-            body = self._od._lowercase_keys(op.data)
-            body = await self._od._convert_labels_to_ints(op.table, body)
-            return [_RawRequest(
-                method="POST",
-                url=f"{self._od.api}/{entity_set}",
-                body=json.dumps(body, ensure_ascii=False),
-                content_id=op.content_id,
-            )]
-        # Multiple records
-        logical_name = op.table.lower()
-        enriched = []
-        for r in op.data:
-            r = self._od._lowercase_keys(r)
-            r = await self._od._convert_labels_to_ints(op.table, r)
-            if "@odata.type" not in r:
-                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
-            enriched.append(r)
-        return [_RawRequest(
-            method="POST",
-            url=f"{self._od.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
-            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
-        )]
+            return [await self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
+        return [await self._od._build_create_multiple(entity_set, op.table, op.data)]
 
     async def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:  # type: ignore[override]
         if isinstance(op.ids, str):
             if not isinstance(op.changes, dict):
                 raise TypeError("For single id, changes must be a dict")
-            body = self._od._lowercase_keys(op.changes)
-            body = await self._od._convert_labels_to_ints(op.table, body)
-            record_id = op.ids
-            if record_id.startswith("$"):
-                url = record_id
-            else:
-                entity_set = await self._od._entity_set_from_schema_name(op.table)
-                url = f"{self._od.api}/{entity_set}{self._od._format_key(record_id)}"
-            return [_RawRequest(
-                method="PATCH",
-                url=url,
-                body=json.dumps(body, ensure_ascii=False),
-                headers={"If-Match": "*"},
-                content_id=op.content_id,
-            )]
-        # Multiple records
+            return [await self._od._build_update(op.table, op.ids, op.changes, content_id=op.content_id)]
         entity_set = await self._od._entity_set_from_schema_name(op.table)
-        pk_attr = await self._od._primary_id_attr(op.table)
-        ids = op.ids
-        changes = op.changes
-        if isinstance(changes, dict):
-            records = [{pk_attr: rid, **changes} for rid in ids]
-        elif isinstance(changes, list):
-            if len(changes) != len(ids):
-                raise ValidationError(
-                    "ids and changes lists must have equal length for paired update.",
-                    subcode="ids_changes_length_mismatch",
-                )
-            records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
-        else:
-            raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
-        logical_name = op.table.lower()
-        enriched = []
-        for r in records:
-            r = self._od._lowercase_keys(r)
-            r = await self._od._convert_labels_to_ints(op.table, r)
-            if "@odata.type" not in r:
-                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
-            enriched.append(r)
-        return [_RawRequest(
-            method="POST",
-            url=f"{self._od.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
-            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
-        )]
+        return [await self._od._build_update_multiple(entity_set, op.table, op.ids, op.changes)]
 
     async def _resolve_record_delete(self, op: _RecordDelete) -> List[_RawRequest]:  # type: ignore[override]
         if isinstance(op.ids, str):
-            record_id = op.ids
-            if record_id.startswith("$"):
-                url = record_id
-            else:
-                entity_set = await self._od._entity_set_from_schema_name(op.table)
-                url = f"{self._od.api}/{entity_set}{self._od._format_key(record_id)}"
-            return [_RawRequest(
-                method="DELETE",
-                url=url,
-                headers={"If-Match": "*"},
-                content_id=op.content_id,
-            )]
+            return [await self._od._build_delete(op.table, op.ids, content_id=op.content_id)]
         ids = [rid for rid in op.ids if rid]
         if not ids:
             return []
         if op.use_bulk_delete:
-            pk_attr = await self._od._primary_id_attr(op.table)
-            logical_name = op.table.lower()
-            timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-            payload = {
-                "JobName": f"Bulk delete {op.table} records @ {timestamp}",
-                "SendEmailNotification": False,
-                "ToRecipients": [],
-                "CCRecipients": [],
-                "RecurrencePattern": "",
-                "StartDateTime": timestamp,
-                "QuerySet": [
-                    {
-                        "@odata.type": "Microsoft.Dynamics.CRM.QueryExpression",
-                        "EntityName": logical_name,
-                        "ColumnSet": {
-                            "@odata.type": "Microsoft.Dynamics.CRM.ColumnSet",
-                            "AllColumns": False,
-                            "Columns": [],
-                        },
-                        "Criteria": {
-                            "@odata.type": "Microsoft.Dynamics.CRM.FilterExpression",
-                            "FilterOperator": "And",
-                            "Conditions": [
-                                {
-                                    "@odata.type": "Microsoft.Dynamics.CRM.ConditionExpression",
-                                    "AttributeName": pk_attr,
-                                    "Operator": "In",
-                                    "Values": [{"Value": rid, "Type": "System.Guid"} for rid in ids],
-                                }
-                            ],
-                        },
-                    }
-                ],
-            }
-            return [_RawRequest(
-                method="POST",
-                url=f"{self._od.api}/BulkDelete",
-                body=json.dumps(payload, ensure_ascii=False),
-            )]
-        # Sequential deletes — one _RawRequest per record
-        result: List[_RawRequest] = []
-        entity_set = await self._od._entity_set_from_schema_name(op.table)
-        for rid in ids:
-            url = f"{self._od.api}/{entity_set}{self._od._format_key(rid)}"
-            result.append(_RawRequest(method="DELETE", url=url, headers={"If-Match": "*"}))
-        return result
+            return [await self._od._build_delete_multiple(op.table, ids)]
+        return [await self._od._build_delete(op.table, rid) for rid in ids]
 
     async def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:  # type: ignore[override]
-        entity_set = await self._od._entity_set_from_schema_name(op.table)
-        url = f"{self._od.api}/{entity_set}{self._od._format_key(op.record_id)}"
-        if op.select:
-            url += "?$select=" + ",".join(self._od._lowercase_list(op.select))
-        return [_RawRequest(method="GET", url=url)]
+        return [await self._od._build_get(op.table, op.record_id, select=op.select)]
 
     async def _resolve_record_upsert(self, op: _RecordUpsert) -> List[_RawRequest]:  # type: ignore[override]
         entity_set = await self._od._entity_set_from_schema_name(op.table)
         if len(op.items) == 1:
             item = op.items[0]
-            body = self._od._lowercase_keys(item.record)
-            body = await self._od._convert_labels_to_ints(op.table, body)
-            key_str = self._od._build_alternate_key_str(item.alternate_key)
-            return [_RawRequest(
-                method="PATCH",
-                url=f"{self._od.api}/{entity_set}({key_str})",
-                body=json.dumps(body, ensure_ascii=False),
-            )]
-        # Multiple records
-        logical_name = op.table.lower()
-        targets = []
-        for item in op.items:
-            alt_key_lower = self._od._lowercase_keys(item.alternate_key)
-            record_processed = self._od._lowercase_keys(item.record)
-            record_processed = await self._od._convert_labels_to_ints(op.table, record_processed)
-            conflicting = {
-                k for k in set(alt_key_lower) & set(record_processed)
-                if alt_key_lower[k] != record_processed[k]
-            }
-            if conflicting:
-                raise ValidationError(
-                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}",
-                    subcode="upsert_key_conflict",
-                )
-            if "@odata.type" not in record_processed:
-                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
-            key_str = self._od._build_alternate_key_str(item.alternate_key)
-            record_processed["@odata.id"] = f"{entity_set}({key_str})"
-            targets.append(record_processed)
-        return [_RawRequest(
-            method="POST",
-            url=f"{self._od.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
-            body=json.dumps({"Targets": targets}, ensure_ascii=False),
-        )]
+            return [await self._od._build_upsert(entity_set, op.table, item.alternate_key, item.record)]
+        alternate_keys = [i.alternate_key for i in op.items]
+        records = [i.record for i in op.items]
+        return [await self._od._build_upsert_multiple(entity_set, op.table, alternate_keys, records)]
 
     # ------------------------------------------------------------------
     # Table resolvers (async — pre-resolve MetadataId, column MetadataId)
@@ -449,12 +297,4 @@ class _AsyncBatchClient(_BatchClient):
     # ------------------------------------------------------------------
 
     async def _resolve_query_sql(self, op: _QuerySql) -> List[_RawRequest]:  # type: ignore[override]
-        from urllib.parse import quote as _url_quote
-
-        sql = op.sql
-        logical = self._od._extract_logical_table(sql)
-        entity_set = await self._od._entity_set_from_schema_name(logical)
-        return [_RawRequest(
-            method="GET",
-            url=f"{self._od.api}/{entity_set}?sql={_url_quote(sql, safe='')}",
-        )]
+        return [await self._od._build_sql(op.sql)]

@@ -6,14 +6,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from PowerPlatform.Dataverse.aio.core._async_auth import _AsyncAuthManager, _AsyncTokenPair
-
-
-class TestAsyncTokenPair:
-    def test_fields_stored(self):
-        pair = _AsyncTokenPair(resource="https://example/.default", access_token="tok-abc")
-        assert pair.resource == "https://example/.default"
-        assert pair.access_token == "tok-abc"
+from PowerPlatform.Dataverse.aio.core._async_auth import _AsyncAuthManager
+from PowerPlatform.Dataverse.core._auth import _TokenPair
 
 
 class TestAsyncAuthManager:
@@ -29,7 +23,7 @@ class TestAsyncAuthManager:
         mock_credential.get_token.assert_awaited_once_with(
             "https://org.crm.dynamics.com/.default"
         )
-        assert isinstance(pair, _AsyncTokenPair)
+        assert isinstance(pair, _TokenPair)
         assert pair.access_token == "bearer-xyz"
         assert pair.resource == "https://org.crm.dynamics.com/.default"
 

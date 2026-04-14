@@ -366,7 +366,7 @@ class AsyncRecordOperations:
 
 ```python
 # aio/client.py
-from PowerPlatform.Dataverse.aio.operations.records import AsyncRecordOperations
+from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
 ...
 
 class DataverseClient:

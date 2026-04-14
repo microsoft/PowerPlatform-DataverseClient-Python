@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.dataframe import AsyncDataFrameOperations
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_dataframe import AsyncDataFrameOperations
 from PowerPlatform.Dataverse.models.record import Record
 
 

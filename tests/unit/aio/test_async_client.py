@@ -6,13 +6,13 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.records import AsyncRecordOperations
-from PowerPlatform.Dataverse.aio.operations.query import AsyncQueryOperations
-from PowerPlatform.Dataverse.aio.operations.tables import AsyncTableOperations
-from PowerPlatform.Dataverse.aio.operations.files import AsyncFileOperations
-from PowerPlatform.Dataverse.aio.operations.dataframe import AsyncDataFrameOperations
-from PowerPlatform.Dataverse.aio.operations.batch import AsyncBatchOperations
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
+from PowerPlatform.Dataverse.aio.operations.async_query import AsyncQueryOperations
+from PowerPlatform.Dataverse.aio.operations.async_tables import AsyncTableOperations
+from PowerPlatform.Dataverse.aio.operations.async_files import AsyncFileOperations
+from PowerPlatform.Dataverse.aio.operations.async_dataframe import AsyncDataFrameOperations
+from PowerPlatform.Dataverse.aio.operations.async_batch import AsyncBatchOperations
 
 
 # ---------------------------------------------------------------------------

@@ -7,8 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.query import AsyncQueryBuilder, AsyncQueryOperations
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_query import AsyncQueryBuilder, AsyncQueryOperations
 from PowerPlatform.Dataverse.models.record import Record
 
 
@@ -121,21 +121,21 @@ class TestAsyncQueryBuilderFluent:
         assert "name" in params["select"]
         assert params["top"] == 50
 
-    def test_execute_without_builder_raises(self):
+    @pytest.mark.asyncio
+    async def test_execute_without_builder_raises(self):
         """execute() without _query_ops bound should raise RuntimeError."""
         qb = AsyncQueryBuilder("account")
         with pytest.raises(RuntimeError):
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(qb.execute())
+            await qb.execute()
 
-    def test_no_constraints_raises(self):
+    @pytest.mark.asyncio
+    async def test_no_constraints_raises(self):
         """execute() with no select/filter/top raises ValueError."""
         credential = AsyncMock()
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
         with pytest.raises(ValueError):
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(qb.execute())
+            await qb.execute()
 
 
 # ---------------------------------------------------------------------------

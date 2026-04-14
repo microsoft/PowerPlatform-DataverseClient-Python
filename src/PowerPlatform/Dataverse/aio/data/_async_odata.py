@@ -18,6 +18,7 @@ import re
 import time
 import uuid
 import warnings
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 from urllib.parse import quote as _url_quote
@@ -429,13 +430,7 @@ class _AsyncODataClient(_ODataClient):
 
     async def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:  # type: ignore[override]
         """Create a single record and return its GUID."""
-        body = self._lowercase_keys(record)
-        body = await self._convert_labels_to_ints(table_schema_name, body)
-        req = _RawRequest(
-            method="POST",
-            url=f"{self.api}/{entity_set}",
-            body=json.dumps(body, ensure_ascii=False),
-        )
+        req = await self._build_create(entity_set, table_schema_name, record)
         r = await self._execute_raw(req)
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
@@ -460,21 +455,7 @@ class _AsyncODataClient(_ODataClient):
         records: List[Dict[str, Any]],
     ) -> List[str]:
         """Create multiple records via ``CreateMultiple`` and return GUIDs."""
-        if not all(isinstance(rec, dict) for rec in records):
-            raise TypeError("All items for multi-create must be dicts")
-        logical_name = table_schema_name.lower()
-        enriched: List[Dict[str, Any]] = []
-        for rec in records:
-            rec = self._lowercase_keys(rec)
-            rec = await self._convert_labels_to_ints(table_schema_name, rec)
-            if "@odata.type" not in rec:
-                rec = {**rec, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
-            enriched.append(rec)
-        req = _RawRequest(
-            method="POST",
-            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
-            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
-        )
+        req = await self._build_create_multiple(entity_set, table_schema_name, records)
         r = await self._execute_raw(req)
         try:
             body = r.json() if r.text else {}
@@ -501,13 +482,7 @@ class _AsyncODataClient(_ODataClient):
         self, table_schema_name: str, key: str, select: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Retrieve a single record by GUID."""
-        entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        params: Dict[str, Any] = {}
-        if select:
-            params["$select"] = ",".join(self._lowercase_list(select))
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        r = await self._request("get", url, params=params or None)
-        return r.json()
+        return (await self._execute_raw(await self._build_get(table_schema_name, key, select=select))).json()
 
     async def _get_multiple(  # type: ignore[override]
         self,
@@ -578,17 +553,7 @@ class _AsyncODataClient(_ODataClient):
 
     async def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:  # type: ignore[override]
         """Update a single record by GUID."""
-        body = self._lowercase_keys(data)
-        body = await self._convert_labels_to_ints(table_schema_name, body)
-        entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        req = _RawRequest(
-            method="PATCH",
-            url=url,
-            body=json.dumps(body, ensure_ascii=False),
-            headers={"If-Match": "*"},
-        )
-        await self._execute_raw(req)
+        await self._execute_raw(await self._build_update(table_schema_name, key, data))
 
     async def _update_multiple(  # type: ignore[override]
         self,
@@ -599,20 +564,7 @@ class _AsyncODataClient(_ODataClient):
         """Bulk update via ``UpdateMultiple``."""
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
-        logical_name = table_schema_name.lower()
-        enriched: List[Dict[str, Any]] = []
-        for rec in records:
-            rec = self._lowercase_keys(rec)
-            rec = await self._convert_labels_to_ints(table_schema_name, rec)
-            if "@odata.type" not in rec:
-                rec = {**rec, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
-            enriched.append(rec)
-        req = _RawRequest(
-            method="POST",
-            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
-            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
-        )
-        await self._execute_raw(req)
+        await self._execute_raw(await self._build_update_multiple_from_records(entity_set, table_schema_name, records))
 
     async def _update_by_ids(  # type: ignore[override]
         self,
@@ -625,32 +577,12 @@ class _AsyncODataClient(_ODataClient):
             raise TypeError("ids must be list[str]")
         if not ids:
             return
-        pk_attr = await self._primary_id_attr(table_schema_name)
         entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        if isinstance(changes, dict):
-            batch = [{pk_attr: rid, **changes} for rid in ids]
-        elif isinstance(changes, list):
-            if len(changes) != len(ids):
-                raise ValueError("Length of changes list must match length of ids list")
-            batch = []
-            for rid, patch in zip(ids, changes):
-                if not isinstance(patch, dict):
-                    raise TypeError("Each patch must be a dict")
-                batch.append({pk_attr: rid, **patch})
-        else:
-            raise TypeError("changes must be dict or list[dict]")
-        await self._update_multiple(entity_set, table_schema_name, batch)
+        await self._execute_raw(await self._build_update_multiple(entity_set, table_schema_name, ids, changes))
 
     async def _delete(self, table_schema_name: str, key: str) -> None:  # type: ignore[override]
         """Delete a single record by GUID."""
-        entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        url = f"{self.api}/{entity_set}{self._format_key(key)}"
-        req = _RawRequest(
-            method="DELETE",
-            url=url,
-            headers={"If-Match": "*"},
-        )
-        await self._execute_raw(req)
+        await self._execute_raw(await self._build_delete(table_schema_name, key))
 
     async def _delete_multiple(  # type: ignore[override]
         self,
@@ -661,33 +593,8 @@ class _AsyncODataClient(_ODataClient):
         targets = [rid for rid in ids if rid]
         if not targets:
             return None
-        table_lower = table_schema_name.lower()
-        entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        payload = {
-            "QuerySet": [
-                {
-                    "EntityName": table_lower,
-                    "Criteria": {
-                        "FilterOperator": "Or",
-                        "Conditions": [
-                            {
-                                "AttributeName": await self._primary_id_attr(table_schema_name),
-                                "Operator": "In",
-                                "Values": [{"Value": rid, "Type": "System.Guid"} for rid in targets],
-                            }
-                        ],
-                    },
-                }
-            ],
-            "JobName": f"BulkDelete_{table_lower}",
-            "SendEmailNotification": False,
-            "ToRecipients": [],
-            "CCRecipients": [],
-            "RecurrencePattern": "",
-            "StartDateTime": None,
-        }
-        url = f"{self.api}/BulkDelete"
-        r = await self._request("post", url, json=payload, expected=(200, 202, 204))
+        req = await self._build_delete_multiple(table_schema_name, targets)
+        r = await self._execute_raw(req, expected=(200, 202, 204))
         job_id = None
         try:
             body = r.json() if r.text else {}
@@ -705,16 +612,10 @@ class _AsyncODataClient(_ODataClient):
         record: Dict[str, Any],
     ) -> None:
         """Upsert a single record using an alternate key."""
-        record = self._lowercase_keys(record)
-        record = await self._convert_labels_to_ints(table_schema_name, record)
-        key_str = self._build_alternate_key_str(alternate_key)
-        url = f"{self.api}/{entity_set}({key_str})"
-        req = _RawRequest(
-            method="PATCH",
-            url=url,
-            body=json.dumps(record, ensure_ascii=False),
+        await self._execute_raw(
+            await self._build_upsert(entity_set, table_schema_name, alternate_key, record),
+            expected=(200, 201, 204),
         )
-        await self._execute_raw(req, expected=(200, 201, 204))
 
     async def _upsert_multiple(  # type: ignore[override]
         self,
@@ -724,34 +625,10 @@ class _AsyncODataClient(_ODataClient):
         records: List[Dict[str, Any]],
     ) -> None:
         """Upsert multiple records via ``UpsertMultiple``."""
-        if len(alternate_keys) != len(records):
-            raise ValueError(
-                f"alternate_keys and records must have the same length "
-                f"({len(alternate_keys)} != {len(records)})"
-            )
-        logical_name = table_schema_name.lower()
-        targets: List[Dict[str, Any]] = []
-        for alt_key, record in zip(alternate_keys, records):
-            alt_key_lower = self._lowercase_keys(alt_key)
-            record_processed = self._lowercase_keys(record)
-            record_processed = await self._convert_labels_to_ints(table_schema_name, record_processed)
-            conflicting = {
-                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
-            }
-            if conflicting:
-                raise ValueError(f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}")
-            if "@odata.type" not in record_processed:
-                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
-            key_str = self._build_alternate_key_str(alt_key)
-            record_processed["@odata.id"] = f"{entity_set}({key_str})"
-            targets.append(record_processed)
-        url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
-        req = _RawRequest(
-            method="POST",
-            url=url,
-            body=json.dumps({"Targets": targets}, ensure_ascii=False),
+        await self._execute_raw(
+            await self._build_upsert_multiple(entity_set, table_schema_name, alternate_keys, records),
+            expected=(200, 201, 204),
         )
-        await self._execute_raw(req, expected=(200, 201, 204))
 
     # ------------------------------------------------------------------
     # SQL query
@@ -1392,3 +1269,278 @@ class _AsyncODataClient(_ODataClient):
                 }
                 await self._request("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
+
+    # ------------------------------------------------------------------
+    # _build_* request builders (async — await IO-touching helpers)
+    # ------------------------------------------------------------------
+
+    async def _build_create(
+        self,
+        entity_set: str,
+        table: str,
+        data: Dict[str, Any],
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record POST request without sending it."""
+        body = self._lowercase_keys(data)
+        body = await self._convert_labels_to_ints(table, body)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}",
+            body=json.dumps(body, ensure_ascii=False),
+            content_id=content_id,
+        )
+
+    async def _build_create_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build a CreateMultiple POST request without sending it."""
+        if not all(isinstance(r, dict) for r in records):
+            raise TypeError("All items for multi-create must be dicts")
+        logical_name = table.lower()
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = await self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    async def _build_update(
+        self,
+        table: str,
+        record_id: str,
+        changes: Dict[str, Any],
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record PATCH request without sending it.
+
+        ``record_id`` may be a ``"$n"`` content-ID reference; in that case the
+        URL is the reference itself (resolved server-side within a changeset).
+        """
+        body = self._lowercase_keys(changes)
+        body = await self._convert_labels_to_ints(table, body)
+        if record_id.startswith("$"):
+            url = record_id
+        else:
+            entity_set = await self._entity_set_from_schema_name(table)
+            url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    async def _build_update_multiple_from_records(
+        self,
+        entity_set: str,
+        table: str,
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build an UpdateMultiple POST request from pre-assembled records.
+
+        Each record must already contain the primary key attribute. This helper
+        is shared by :meth:`_update_multiple` (which pre-assembles records) and
+        :meth:`_build_update_multiple` (which assembles from ids + changes).
+        """
+        logical_name = table.lower()
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = await self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    async def _build_update_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        ids: List[str],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
+    ) -> _RawRequest:
+        """Build an UpdateMultiple POST request without sending it."""
+        pk_attr = await self._primary_id_attr(table)
+        if isinstance(changes, dict):
+            records = [{pk_attr: rid, **changes} for rid in ids]
+        elif isinstance(changes, list):
+            if len(changes) != len(ids):
+                raise ValidationError(
+                    "ids and changes lists must have equal length for paired update.",
+                    subcode="ids_changes_length_mismatch",
+                )
+            records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
+        else:
+            raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
+        return await self._build_update_multiple_from_records(entity_set, table, records)
+
+    async def _build_upsert(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_key: Dict[str, Any],
+        record: Dict[str, Any],
+    ) -> _RawRequest:
+        """Build a single-record PATCH upsert request without sending it.
+
+        Unlike :meth:`_build_update`, no ``If-Match: *`` header is added so the
+        server creates the record when it does not yet exist.
+        """
+        body = self._lowercase_keys(record)
+        body = await self._convert_labels_to_ints(table, body)
+        key_str = self._build_alternate_key_str(alternate_key)
+        url = f"{self.api}/{entity_set}({key_str})"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(body, ensure_ascii=False),
+        )
+
+    async def _build_upsert_multiple(
+        self,
+        entity_set: str,
+        table: str,
+        alternate_keys: List[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+    ) -> _RawRequest:
+        """Build an UpsertMultiple POST request without sending it."""
+        if len(alternate_keys) != len(records):
+            raise ValidationError(
+                f"alternate_keys and records must have the same length "
+                f"({len(alternate_keys)} != {len(records)})",
+                subcode="upsert_length_mismatch",
+            )
+        logical_name = table.lower()
+        targets: List[Dict[str, Any]] = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = await self._convert_labels_to_ints(table, record_processed)
+            conflicting = {
+                k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
+            }
+            if conflicting:
+                raise ValidationError(
+                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}",
+                    subcode="upsert_key_conflict",
+                )
+            if "@odata.type" not in record_processed:
+                record_processed["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical_name}"
+            key_str = self._build_alternate_key_str(alt_key)
+            record_processed["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(record_processed)
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
+            body=json.dumps({"Targets": targets}, ensure_ascii=False),
+        )
+
+    async def _build_delete(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        content_id: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a single-record DELETE request without sending it.
+
+        ``record_id`` may be a ``"$n"`` content-ID reference.
+        """
+        if record_id.startswith("$"):
+            url = record_id
+        else:
+            entity_set = await self._entity_set_from_schema_name(table)
+            url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        return _RawRequest(
+            method="DELETE",
+            url=url,
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    async def _build_delete_multiple(self, table: str, ids: List[str]) -> _RawRequest:
+        """Build a BulkDelete POST request without sending it."""
+        pk_attr = await self._primary_id_attr(table)
+        logical_name = table.lower()
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        payload = {
+            "JobName": f"Bulk delete {table} records @ {timestamp}",
+            "SendEmailNotification": False,
+            "ToRecipients": [],
+            "CCRecipients": [],
+            "RecurrencePattern": "",
+            "StartDateTime": timestamp,
+            "QuerySet": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.QueryExpression",
+                    "EntityName": logical_name,
+                    "ColumnSet": {
+                        "@odata.type": "Microsoft.Dynamics.CRM.ColumnSet",
+                        "AllColumns": False,
+                        "Columns": [],
+                    },
+                    "Criteria": {
+                        "@odata.type": "Microsoft.Dynamics.CRM.FilterExpression",
+                        "FilterOperator": "And",
+                        "Conditions": [
+                            {
+                                "@odata.type": "Microsoft.Dynamics.CRM.ConditionExpression",
+                                "AttributeName": pk_attr,
+                                "Operator": "In",
+                                "Values": [{"Value": rid, "Type": "System.Guid"} for rid in ids],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return _RawRequest(
+            method="POST",
+            url=f"{self.api}/BulkDelete",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    async def _build_get(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> _RawRequest:
+        """Build a single-record GET request without sending it."""
+        entity_set = await self._entity_set_from_schema_name(table)
+        url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        if select:
+            url += "?$select=" + ",".join(self._lowercase_list(select))
+        return _RawRequest(method="GET", url=url)
+
+    async def _build_sql(self, sql: str) -> _RawRequest:
+        """Build a SQL query GET request without sending it.
+
+        Resolves the entity set from the table name in the SQL statement via
+        :meth:`_extract_logical_table`, then embeds the SQL as a URL-encoded
+        ``?sql=`` query parameter.
+        """
+        logical = self._extract_logical_table(sql)
+        entity_set = await self._entity_set_from_schema_name(logical)
+        return _RawRequest(
+            method="GET",
+            url=f"{self.api}/{entity_set}?sql={_url_quote(sql, safe='')}",
+        )

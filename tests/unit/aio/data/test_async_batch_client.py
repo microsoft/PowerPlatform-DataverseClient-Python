@@ -93,6 +93,140 @@ def _make_od():
         return_value={"MetadataId": "meta-1", "EntitySetName": "accounts"}
     )
     od._get_attribute_metadata = AsyncMock(return_value={"MetadataId": "attr-1"})
+
+    # async _build_* methods — return realistic _RawRequest objects
+    _API = od.api
+
+    async def _build_create(entity_set, table, data, *, content_id=None):
+        return _RawRequest(
+            method="POST",
+            url=f"{_API}/{entity_set}",
+            body=json.dumps(data, ensure_ascii=False),
+            content_id=content_id,
+        )
+
+    async def _build_create_multiple(entity_set, table, records):
+        logical = table.lower()
+        enriched = [
+            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r
+            for r in records
+        ]
+        return _RawRequest(
+            method="POST",
+            url=f"{_API}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    async def _build_update(table, record_id, changes, *, content_id=None):
+        url = record_id if record_id.startswith("$") else f"{_API}/accounts({record_id})"
+        return _RawRequest(
+            method="PATCH",
+            url=url,
+            body=json.dumps(changes, ensure_ascii=False),
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    async def _build_update_multiple(entity_set, table, ids, changes):
+        pk_attr = "accountid"
+        logical = table.lower()
+        if isinstance(changes, dict):
+            records = [{pk_attr: rid, **changes} for rid in ids]
+        elif isinstance(changes, list):
+            if len(changes) != len(ids):
+                raise ValidationError(
+                    "ids and changes lists must have equal length for paired update.",
+                    subcode="ids_changes_length_mismatch",
+                )
+            records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
+        else:
+            raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
+        enriched = [
+            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r
+            for r in records
+        ]
+        return _RawRequest(
+            method="POST",
+            url=f"{_API}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
+            body=json.dumps({"Targets": enriched}, ensure_ascii=False),
+        )
+
+    async def _build_upsert(entity_set, table, alternate_key, record):
+        key_str = od._build_alternate_key_str(alternate_key)
+        return _RawRequest(
+            method="PATCH",
+            url=f"{_API}/{entity_set}({key_str})",
+            body=json.dumps(record, ensure_ascii=False),
+        )
+
+    async def _build_upsert_multiple(entity_set, table, alternate_keys, records):
+        logical = table.lower()
+        if len(alternate_keys) != len(records):
+            raise ValidationError(
+                f"alternate_keys and records must have the same length "
+                f"({len(alternate_keys)} != {len(records)})",
+                subcode="upsert_length_mismatch",
+            )
+        targets = []
+        for alt_key, record in zip(alternate_keys, records):
+            alt_key_lower = {k.lower(): v for k, v in alt_key.items()}
+            rec = {k.lower(): v for k, v in record.items()}
+            conflicting = {k for k in set(alt_key_lower) & set(rec) if alt_key_lower[k] != rec[k]}
+            if conflicting:
+                raise ValidationError(
+                    f"record payload conflicts with alternate_key on fields: {sorted(conflicting)!r}",
+                    subcode="upsert_key_conflict",
+                )
+            if "@odata.type" not in rec:
+                rec["@odata.type"] = f"Microsoft.Dynamics.CRM.{logical}"
+            key_str = od._build_alternate_key_str(alt_key)
+            rec["@odata.id"] = f"{entity_set}({key_str})"
+            targets.append(rec)
+        return _RawRequest(
+            method="POST",
+            url=f"{_API}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple",
+            body=json.dumps({"Targets": targets}, ensure_ascii=False),
+        )
+
+    async def _build_delete(table, record_id, *, content_id=None):
+        url = record_id if record_id.startswith("$") else f"{_API}/accounts({record_id})"
+        return _RawRequest(
+            method="DELETE",
+            url=url,
+            headers={"If-Match": "*"},
+            content_id=content_id,
+        )
+
+    async def _build_delete_multiple(table, ids):
+        return _RawRequest(
+            method="POST",
+            url=f"{_API}/BulkDelete",
+            body=json.dumps({"ids": ids}, ensure_ascii=False),
+        )
+
+    async def _build_get(table, record_id, *, select=None):
+        url = f"{_API}/accounts({record_id})"
+        if select:
+            url += "?$select=" + ",".join(s.lower() for s in select)
+        return _RawRequest(method="GET", url=url)
+
+    async def _build_sql(sql):
+        from urllib.parse import quote as _url_quote
+        return _RawRequest(
+            method="GET",
+            url=f"{_API}/accounts?sql={_url_quote(sql, safe='')}",
+        )
+
+    od._build_create = AsyncMock(side_effect=_build_create)
+    od._build_create_multiple = AsyncMock(side_effect=_build_create_multiple)
+    od._build_update = AsyncMock(side_effect=_build_update)
+    od._build_update_multiple = AsyncMock(side_effect=_build_update_multiple)
+    od._build_upsert = AsyncMock(side_effect=_build_upsert)
+    od._build_upsert_multiple = AsyncMock(side_effect=_build_upsert_multiple)
+    od._build_delete = AsyncMock(side_effect=_build_delete)
+    od._build_delete_multiple = AsyncMock(side_effect=_build_delete_multiple)
+    od._build_get = AsyncMock(side_effect=_build_get)
+    od._build_sql = AsyncMock(side_effect=_build_sql)
     return od
 
 
@@ -223,7 +357,7 @@ class TestAsyncBatchClientResolveRecordCreate:
         assert req.method == "POST"
         assert req.url == "https://example.crm.dynamics.com/api/data/v9.2/accounts"
         od._entity_set_from_schema_name.assert_called_once_with("account")
-        od._convert_labels_to_ints.assert_called_once()
+        od._build_create.assert_called_once_with("accounts", "account", {"name": "Acme"}, content_id=None)
 
     async def test_list_data_returns_create_multiple(self):
         bc, od = _make_client()
@@ -592,8 +726,7 @@ class TestAsyncBatchClientResolveQuerySql:
         op = _QuerySql(sql=sql)
         result = await bc._resolve_query_sql(op)
 
-        od._extract_logical_table.assert_called_once_with(sql)
-        od._entity_set_from_schema_name.assert_called_once_with("account")
+        od._build_sql.assert_called_once_with(sql)
         assert len(result) == 1
         req = result[0]
         assert req.method == "GET"

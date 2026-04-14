@@ -7,8 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.records import AsyncRecordOperations
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
 from PowerPlatform.Dataverse.models.record import Record
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 

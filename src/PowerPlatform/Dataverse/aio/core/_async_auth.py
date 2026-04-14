@@ -11,17 +11,10 @@ from an ``azure.identity.aio`` async credential.
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
 
 from azure.core.credentials_async import AsyncTokenCredential
 
-
-@dataclass
-class _AsyncTokenPair:
-    """Container for an OAuth2 access token and its associated resource scope."""
-
-    resource: str
-    access_token: str
+from ...core._auth import _TokenPair
 
 
 class _AsyncAuthManager:
@@ -46,14 +39,14 @@ class _AsyncAuthManager:
             )
         self.credential: AsyncTokenCredential = credential
 
-    async def _acquire_token(self, scope: str) -> _AsyncTokenPair:
+    async def _acquire_token(self, scope: str) -> _TokenPair:
         """Acquire an access token for *scope*.
 
         :param scope: OAuth2 scope string, e.g.
             ``"https://<org>.crm.dynamics.com/.default"``.
         :type scope: :class:`str`
         :return: Token pair containing the scope and access token.
-        :rtype: ~PowerPlatform.Dataverse.aio.core._async_auth._AsyncTokenPair
+        :rtype: ~PowerPlatform.Dataverse.core._auth._TokenPair
         """
         token = await self.credential.get_token(scope)
-        return _AsyncTokenPair(resource=scope, access_token=token.token)
+        return _TokenPair(resource=scope, access_token=token.token)

@@ -7,8 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.tables import AsyncTableOperations
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_tables import AsyncTableOperations
 from PowerPlatform.Dataverse.models.table_info import AlternateKeyInfo, TableInfo
 from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,

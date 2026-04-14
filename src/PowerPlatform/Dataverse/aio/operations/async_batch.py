@@ -86,7 +86,7 @@ class AsyncChangeSetRecordOperations:
 
         Example::
 
-            with await batch.changeset() as cs:
+            with batch.changeset() as cs:
                 lead_ref = cs.records.create("lead", {"firstname": "Ada"})
                 cs.records.create("account", {
                     "name": "Babbage",

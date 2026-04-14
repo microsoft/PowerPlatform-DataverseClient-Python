@@ -7,8 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from PowerPlatform.Dataverse.aio import AsyncDataverseClient
-from PowerPlatform.Dataverse.aio.operations.batch import (
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio.operations.async_batch import (
     AsyncBatchDataFrameOperations,
     AsyncBatchOperations,
     AsyncBatchQueryOperations,
@@ -264,7 +264,7 @@ class TestAsyncBatchRequestExecute:
         mock_bc_instance.execute.return_value = expected_result
 
         with patch(
-            "PowerPlatform.Dataverse.aio.operations.batch._AsyncBatchClient",
+            "PowerPlatform.Dataverse.aio.operations.async_batch._AsyncBatchClient",
             return_value=mock_bc_instance,
         ) as MockBatchClient:
             result = await batch.execute()
@@ -281,7 +281,7 @@ class TestAsyncBatchRequestExecute:
         mock_bc_instance.execute.return_value = BatchResult()
 
         with patch(
-            "PowerPlatform.Dataverse.aio.operations.batch._AsyncBatchClient",
+            "PowerPlatform.Dataverse.aio.operations.async_batch._AsyncBatchClient",
             return_value=mock_bc_instance,
         ):
             await batch.execute(continue_on_error=True)
@@ -297,7 +297,7 @@ class TestAsyncBatchRequestExecute:
         mock_bc_instance.execute.return_value = BatchResult()
 
         with patch(
-            "PowerPlatform.Dataverse.aio.operations.batch._AsyncBatchClient",
+            "PowerPlatform.Dataverse.aio.operations.async_batch._AsyncBatchClient",
             return_value=mock_bc_instance,
         ):
             result = await batch.execute()

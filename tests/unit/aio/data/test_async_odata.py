@@ -657,9 +657,9 @@ class TestAsyncODataGet:
 
         await client._get("account", "guid-1", select=["accountid", "name"])
 
-        call_kwargs = client._request.call_args[1]
-        assert "$select" in call_kwargs.get("params", {})
-        assert "accountid" in call_kwargs["params"]["$select"]
+        call_url = client._request.call_args[0][1]
+        assert "$select=" in call_url
+        assert "accountid" in call_url
 
     async def test_get_no_select_no_params(self):
         client = _make_async_odata_client()
@@ -1856,13 +1856,13 @@ class TestAsyncODataUpdateMultiple:
 
 
 class TestAsyncODataUpdateByIds:
-    """Line 632 — changes must be dict or list[dict] else raise TypeError."""
+    """_update_by_ids: invalid changes type → ValidationError."""
 
     async def test_invalid_changes_type_raises(self):
         client = _make_async_odata_client()
         _seed_cache(client)
 
-        with pytest.raises(TypeError, match="changes must be dict or list"):
+        with pytest.raises(ValidationError, match="changes must be"):
             await client._update_by_ids("account", ["id-1"], 42)
 
 
@@ -1882,13 +1882,13 @@ class TestAsyncODataDeleteMultiple:
 
 
 class TestAsyncODataUpsertMultiple:
-    """Line 733 — conflicting alt_key / record field values."""
+    """_upsert_multiple: conflicting alt_key / record field values → ValidationError."""
 
     async def test_conflicting_key_raises_value_error(self):
         client = _make_async_odata_client()
         _seed_cache(client)
 
-        with pytest.raises(ValueError, match="conflicts with alternate_key"):
+        with pytest.raises(ValidationError, match="conflicts with alternate_key"):
             await client._upsert_multiple(
                 "accounts",
                 "account",
@@ -2749,41 +2749,45 @@ class TestAsyncODataUpdateByIdsAdditional:
         client._request.assert_not_called()
 
     async def test_changes_as_dict(self):
-        """Line 621-622: changes is dict → apply same patch to all ids."""
+        """changes is dict → apply same patch to all ids via _build_update_multiple."""
         client = _make_async_odata_client()
         _seed_cache(client)
-        client._update_multiple = AsyncMock()
+        client._execute_raw = AsyncMock()
+        client._picklist_label_cache["account"] = {"ts": time.time(), "picklists": {}}
 
         await client._update_by_ids("account", ["id-1", "id-2"], {"name": "Updated"})
 
-        call_args = client._update_multiple.call_args
-        batch = call_args[0][2]
-        assert len(batch) == 2
-        assert all(r["name"] == "Updated" for r in batch)
+        client._execute_raw.assert_awaited_once()
+        import json as _json
+        req = client._execute_raw.call_args[0][0]
+        body = _json.loads(req.body)
+        assert len(body["Targets"]) == 2
+        assert all(r["name"] == "Updated" for r in body["Targets"])
 
     async def test_changes_as_list_mismatch_raises(self):
-        """Line 624-625: len(changes) != len(ids) raises ValueError."""
+        """len(changes) != len(ids) raises ValidationError."""
         client = _make_async_odata_client()
         _seed_cache(client)
-        with pytest.raises(ValueError, match="Length of changes"):
+        with pytest.raises(ValidationError, match="equal length"):
             await client._update_by_ids("account", ["id-1", "id-2"], [{"name": "A"}])
 
     async def test_changes_as_list_non_dict_patch_raises(self):
-        """Line 628-629: patch in list is not dict → TypeError."""
+        """patch in list is not dict → TypeError from dict unpacking."""
         client = _make_async_odata_client()
         _seed_cache(client)
-        with pytest.raises(TypeError, match="Each patch must be a dict"):
+        with pytest.raises(TypeError):
             await client._update_by_ids("account", ["id-1"], ["not-a-dict"])
 
     async def test_changes_as_list_success(self):
-        """Line 626-630: list changes applied correctly."""
+        """list changes applied correctly — _execute_raw is called."""
         client = _make_async_odata_client()
         _seed_cache(client)
-        client._update_multiple = AsyncMock()
+        client._execute_raw = AsyncMock()
+        client._picklist_label_cache["account"] = {"ts": time.time(), "picklists": {}}
 
         await client._update_by_ids("account", ["id-1"], [{"name": "NewName"}])
 
-        client._update_multiple.assert_awaited_once()
+        client._execute_raw.assert_awaited_once()
 
 
 class TestAsyncODataDeleteMultipleAdditional:
@@ -2800,9 +2804,9 @@ class TestAsyncODataUpsertMultipleAdditional:
     """Lines 719, 734-745 — _upsert_multiple success path."""
 
     async def test_length_mismatch_raises_value_error(self):
-        """Line 718-722: different lengths raise ValueError."""
+        """Different lengths raise ValidationError."""
         client = _make_async_odata_client()
-        with pytest.raises(ValueError, match="same length"):
+        with pytest.raises(ValidationError, match="same length"):
             await client._upsert_multiple(
                 "accounts", "account",
                 alternate_keys=[{"accountnumber": "A"}, {"accountnumber": "B"}],
