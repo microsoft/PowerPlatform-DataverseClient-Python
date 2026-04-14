@@ -174,9 +174,9 @@ class _AsyncBatchClient(_BatchClient):
             )
         return resolved[0]
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------------
     # Record resolvers (async — inline body-building to avoid sync HTTP calls)
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------------
 
     async def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:  # type: ignore[override]
         entity_set = await self._od._entity_set_from_schema_name(op.table)
@@ -214,9 +214,9 @@ class _AsyncBatchClient(_BatchClient):
         records = [i.record for i in op.items]
         return [await self._od._build_upsert_multiple(entity_set, op.table, alternate_keys, records)]
 
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------
     # Table resolvers (async — pre-resolve MetadataId, column MetadataId)
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------
 
     async def _require_entity_metadata(self, table: str) -> str:  # type: ignore[override]
         ent = await self._od._get_entity_by_table_schema_name(table)

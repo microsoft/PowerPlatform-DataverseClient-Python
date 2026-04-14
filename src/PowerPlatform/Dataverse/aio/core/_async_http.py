@@ -18,6 +18,7 @@ import time
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
+    import aiohttp
     from ...core._http_logger import _HttpLogger
 
 
@@ -65,17 +66,17 @@ class _AsyncHttpClient:
         retries: Optional[int] = None,
         backoff: Optional[float] = None,
         timeout: Optional[float] = None,
-        session: Any = None,  # aiohttp.ClientSession | None
+        session: Optional["aiohttp.ClientSession"] = None,
         logger: Optional["_HttpLogger"] = None,
     ) -> None:
         self.max_attempts: int = max(1, retries if retries is not None else 5)
         self.base_delay: float = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
-        self._session: Any = session  # aiohttp.ClientSession | None
+        self._session: Optional["aiohttp.ClientSession"] = session
         self._owns_session: bool = session is None  # True → we created it; we close it
         self._logger = logger
 
-    async def _get_session(self) -> Any:
+    async def _get_session(self) -> "aiohttp.ClientSession":
         """Return the active session, creating one lazily if needed."""
         if self._session is None:
             import aiohttp
@@ -151,7 +152,6 @@ class _AsyncHttpClient:
                     raise
                 delay = self.base_delay * (2**attempt)
                 await asyncio.sleep(delay)
-
 
     async def close(self) -> None:
         """Close the underlying aiohttp session if this client owns it."""

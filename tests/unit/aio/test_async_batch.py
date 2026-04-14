@@ -7,6 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from azure.core.credentials_async import AsyncTokenCredential
+
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_batch import (
     AsyncBatchOperations,
@@ -50,7 +52,7 @@ from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
 def _make_client_with_mock_odata():
     """Return (client, mock_od) with _scoped_odata patched."""
-    credential = AsyncMock()
+    credential = AsyncMock(spec=AsyncTokenCredential)
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     od = AsyncMock()
 
@@ -68,18 +70,18 @@ def _make_client_with_mock_odata():
 
 class TestAsyncBatchOperationsNamespace:
     def test_namespace_exists(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.batch, AsyncBatchOperations)
 
     def test_new_returns_batch_request(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
         assert isinstance(batch, AsyncBatchRequest)
 
     def test_batch_request_has_namespaces(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
         assert isinstance(batch.records, AsyncBatchRecordOperations)
@@ -94,7 +96,7 @@ class TestAsyncBatchOperationsNamespace:
 
 class TestAsyncBatchRecordOperations:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -173,7 +175,7 @@ class TestAsyncBatchRecordOperations:
 
 class TestAsyncChangeSet:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -234,7 +236,7 @@ class TestAsyncChangeSet:
 
 class TestAsyncBatchQueryOperations:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -314,7 +316,7 @@ class TestAsyncBatchRequestExecute:
 
 class TestAsyncBatchRecordUpsertDict:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -339,7 +341,7 @@ class TestAsyncBatchRecordUpsertDict:
 
 class TestAsyncBatchQuerySqlSuccess:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -363,7 +365,7 @@ class TestAsyncBatchQuerySqlSuccess:
 
 class TestAsyncBatchTableOperations:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
@@ -464,7 +466,7 @@ class TestAsyncBatchTableOperations:
 
 class TestAsyncBatchDataFrameOperations:
     def _make_batch(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 

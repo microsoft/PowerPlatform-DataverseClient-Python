@@ -20,7 +20,7 @@ import uuid
 import warnings
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, Union
 from urllib.parse import quote as _url_quote
 
 from ...core._error_codes import (
@@ -47,6 +47,9 @@ from ...data._odata import (
 from ...data._raw_request import _RawRequest
 from ..core._async_auth import _AsyncAuthManager
 from ..core._async_http import _AsyncHttpClient, _AsyncResponse
+
+if TYPE_CHECKING:
+    import aiohttp
 
 __all__: list[str] = []
 
@@ -76,7 +79,7 @@ class _AsyncODataClient(_ODataClient):
         auth: _AsyncAuthManager,
         base_url: str,
         config: Any = None,
-        session: Any = None,  # aiohttp.ClientSession | None
+        session: Optional["aiohttp.ClientSession"] = None,
     ) -> None:
         # Bypass _ODataClient.__init__ — it creates a sync _HttpClient and threading.Lock.
         # We initialise equivalent attributes manually.
@@ -113,7 +116,7 @@ class _AsyncODataClient(_ODataClient):
     # ------------------------------------------------------------------
 
     @asynccontextmanager
-    async def _call_scope(self):  # type: ignore[override]
+    async def _call_scope(self) -> AsyncIterator[str]:  # type: ignore[override]
         """Async context manager that sets a per-call correlation ID."""
         shared_id = str(uuid.uuid4())
         token = _CALL_SCOPE_CORRELATION_ID.set(shared_id)

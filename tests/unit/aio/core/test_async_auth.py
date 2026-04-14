@@ -6,13 +6,15 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from azure.core.credentials_async import AsyncTokenCredential
+
 from PowerPlatform.Dataverse.aio.core._async_auth import _AsyncAuthManager
 from PowerPlatform.Dataverse.core._auth import _TokenPair
 
 
 class TestAsyncAuthManager:
     async def test_acquire_token_calls_credential_get_token(self):
-        mock_credential = AsyncMock()
+        mock_credential = AsyncMock(spec=AsyncTokenCredential)
         mock_token = MagicMock()
         mock_token.token = "bearer-xyz"
         mock_credential.get_token.return_value = mock_token
@@ -28,7 +30,7 @@ class TestAsyncAuthManager:
         assert pair.resource == "https://org.crm.dynamics.com/.default"
 
     async def test_acquire_token_different_scopes(self):
-        mock_credential = AsyncMock()
+        mock_credential = AsyncMock(spec=AsyncTokenCredential)
         mock_credential.get_token.return_value = MagicMock(token="tok2")
 
         auth = _AsyncAuthManager(mock_credential)
@@ -37,6 +39,10 @@ class TestAsyncAuthManager:
         assert pair.access_token == "tok2"
 
     def test_credential_stored(self):
-        cred = AsyncMock()
+        cred = AsyncMock(spec=AsyncTokenCredential)
         auth = _AsyncAuthManager(cred)
         assert auth.credential is cred
+
+    def test_non_async_credential_raises_type_error(self):
+        with pytest.raises(TypeError, match="async get_token"):
+            _AsyncAuthManager(MagicMock())

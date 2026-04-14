@@ -6,6 +6,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from azure.core.credentials_async import AsyncTokenCredential
+
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
 from PowerPlatform.Dataverse.aio.operations.async_query import AsyncQueryOperations
@@ -21,7 +23,7 @@ from PowerPlatform.Dataverse.aio.operations.async_batch import AsyncBatchOperati
 
 def _make_client(base_url="https://example.crm.dynamics.com"):
     """Return an AsyncDataverseClient with a mock credential."""
-    credential = AsyncMock()
+    credential = AsyncMock(spec=AsyncTokenCredential)
     return AsyncDataverseClient(base_url, credential)
 
 
@@ -77,23 +79,23 @@ class TestAsyncClientNamespaces:
 class TestAsyncClientConstruction:
     def test_empty_base_url_raises(self):
         with pytest.raises(ValueError):
-            AsyncDataverseClient("", AsyncMock())
+            AsyncDataverseClient("", AsyncMock(spec=AsyncTokenCredential))
 
     def test_whitespace_only_base_url_raises(self):
         # "   ".rstrip("/") = "   " which is truthy — client won't raise on whitespace.
         # Only truly empty string (or None-equivalent) raises.
         # This verifies the current behavior: whitespace alone does NOT raise.
-        client = AsyncDataverseClient("   ", AsyncMock())
+        client = AsyncDataverseClient("   ", AsyncMock(spec=AsyncTokenCredential))
         assert client._base_url == "   "
 
     def test_trailing_slash_stripped(self):
-        client = AsyncDataverseClient("https://example.crm.dynamics.com/", AsyncMock())
+        client = AsyncDataverseClient("https://example.crm.dynamics.com/", AsyncMock(spec=AsyncTokenCredential))
         assert client._base_url == "https://example.crm.dynamics.com"
 
     def test_custom_config_stored(self):
         from PowerPlatform.Dataverse.core.config import DataverseConfig
         cfg = DataverseConfig()
-        client = AsyncDataverseClient("https://example.crm.dynamics.com", AsyncMock(), config=cfg)
+        client = AsyncDataverseClient("https://example.crm.dynamics.com", AsyncMock(spec=AsyncTokenCredential), config=cfg)
         assert client._config is cfg
 
 

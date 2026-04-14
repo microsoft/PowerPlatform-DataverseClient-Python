@@ -158,11 +158,11 @@ class TestAsyncHttpClientRequest:
         r = await c._request("DELETE", "https://x.com")
         assert r.json() == {}
 
-    async def test_non_json_body_empty_dict(self):
+    async def test_non_json_body_raises_decode_error(self):
         sess, _ = _fake_session(200, "not json")
         c = _AsyncHttpClient(session=sess)
-        r = await c._request("GET", "https://x.com")
-        assert r.json() == {}
+        with pytest.raises(json.JSONDecodeError):
+            await c._request("GET", "https://x.com")
 
 
 class TestAsyncHttpClientRetry:

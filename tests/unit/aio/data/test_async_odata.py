@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from azure.core.credentials_async import AsyncTokenCredential
+
 from PowerPlatform.Dataverse.aio.core._async_auth import _AsyncAuthManager
 from PowerPlatform.Dataverse.aio.data._async_odata import _AsyncODataClient
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
@@ -22,7 +24,7 @@ from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, Valida
 
 def _make_async_odata_client() -> _AsyncODataClient:
     """Return an _AsyncODataClient with HTTP calls mocked out."""
-    mock_cred = AsyncMock()
+    mock_cred = AsyncMock(spec=AsyncTokenCredential)
     mock_cred.get_token.return_value = MagicMock(token="test-token")
     auth = _AsyncAuthManager(mock_cred)
     client = _AsyncODataClient(auth, "https://example.crm.dynamics.com")
@@ -54,7 +56,7 @@ def _seed_cache(client, table="account", entity_set="accounts", primary_id="acco
 
 class TestAsyncODataClientInit:
     def test_base_url_stripped(self):
-        mock_cred = AsyncMock()
+        mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
         client = _AsyncODataClient(auth, "https://example.crm.dynamics.com/")
@@ -79,14 +81,14 @@ class TestAsyncODataClientInit:
         assert isinstance(client._picklist_cache_lock, asyncio.Lock)
 
     def test_empty_base_url_raises(self):
-        mock_cred = AsyncMock()
+        mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
         with pytest.raises(ValueError, match="base_url is required"):
             _AsyncODataClient(auth, "")
 
     def test_none_base_url_raises(self):
-        mock_cred = AsyncMock()
+        mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
         with pytest.raises(ValueError, match="base_url is required"):
@@ -239,7 +241,7 @@ class TestAsyncODataHeaders:
 
 def _make_raw_mocked_client(status_code=200, json_data=None, text=None, headers=None):
     """Return a client where _raw_request is mocked (so _request runs real logic)."""
-    mock_cred = AsyncMock()
+    mock_cred = AsyncMock(spec=AsyncTokenCredential)
     mock_cred.get_token.return_value = MagicMock(token="test-token")
     auth = _AsyncAuthManager(mock_cred)
     client = _AsyncODataClient(auth, "https://example.crm.dynamics.com")

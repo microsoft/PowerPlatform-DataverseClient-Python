@@ -6,10 +6,15 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
+
+from azure.core.credentials_async import AsyncTokenCredential
 
 from ..core.config import DataverseConfig
 from .core._async_auth import _AsyncAuthManager
+
+if TYPE_CHECKING:
+    import aiohttp
 from .data._async_odata import _AsyncODataClient
 from .operations.async_records import AsyncRecordOperations
 from .operations.async_query import AsyncQueryOperations
@@ -29,8 +34,7 @@ class AsyncDataverseClient:
     ``azure.identity.aio`` async credentials.
 
     :param base_url: Dataverse environment URL, e.g.
-        ``"https://org.crm.dynamics.com"``.  A trailing slash is removed
-        automatically.
+        ``"https://org.crm.dynamics.com"``. A trailing slash is removed automatically.
     :type base_url: :class:`str`
     :param credential: An async Azure Identity credential that exposes an
         async ``get_token(scope)`` coroutine (e.g.
@@ -89,7 +93,7 @@ class AsyncDataverseClient:
     def __init__(
         self,
         base_url: str,
-        credential: Any,  # azure.identity.aio async credential
+        credential: AsyncTokenCredential,
         config: Optional[DataverseConfig] = None,
     ) -> None:
         self.auth = _AsyncAuthManager(credential)
@@ -98,7 +102,7 @@ class AsyncDataverseClient:
             raise ValueError("base_url is required.")
         self._config = config or DataverseConfig.from_env()
         self._odata: Optional[_AsyncODataClient] = None
-        self._session: Any = None  # aiohttp.ClientSession | None
+        self._session: Optional["aiohttp.ClientSession"] = None
         self._closed: bool = False
 
         # Operation namespaces

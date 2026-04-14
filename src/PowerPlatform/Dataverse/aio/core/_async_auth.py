@@ -10,8 +10,6 @@ from an ``azure.identity.aio`` async credential.
 
 from __future__ import annotations
 
-import inspect
-
 from azure.core.credentials_async import AsyncTokenCredential
 
 from ...core._auth import _TokenPair
@@ -31,7 +29,7 @@ class _AsyncAuthManager:
     """
 
     def __init__(self, credential: AsyncTokenCredential) -> None:
-        if not inspect.iscoroutinefunction(getattr(credential, "get_token", None)):
+        if not isinstance(credential, AsyncTokenCredential):
             raise TypeError(
                 "credential must implement AsyncTokenCredential with an async get_token() method. "
                 "For async usage, pass a credential from azure.identity.aio "

@@ -7,6 +7,8 @@ import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
+from azure.core.credentials_async import AsyncTokenCredential
+
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
 from PowerPlatform.Dataverse.models.record import Record
@@ -24,7 +26,7 @@ def _make_client_with_mock_odata():
     client._scoped_odata() is patched to yield mock_od without making any
     real HTTP or OData calls.
     """
-    credential = AsyncMock()
+    credential = AsyncMock(spec=AsyncTokenCredential)
     client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
     od = AsyncMock()
 
@@ -42,7 +44,7 @@ def _make_client_with_mock_odata():
 
 class TestAsyncRecordOperationsNamespace:
     def test_namespace_exists(self):
-        credential = AsyncMock()
+        credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.records, AsyncRecordOperations)
 
