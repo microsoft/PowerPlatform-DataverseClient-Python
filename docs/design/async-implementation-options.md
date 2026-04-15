@@ -32,8 +32,8 @@ _BatchClient
 
 **Cons**
 
-- **LSP violation.** The Liskov Substitution Principle (LSP) states that a subclass must be usable wherever its parent class is expected, without breaking the program. Here, `_AsyncODataClient` is a subclass of `_ODataClient`, yet every I/O method changes from a regular function to a coroutine (`async def`). A caller written against `_ODataClient` expects `client.get(...)` to return a result directly; the async subclass returns a coroutine object instead, which is a different type entirely. Passing the async subclass where a sync client is expected silently produces wrong behavior rather than a clean error.
-- Every overridden method requires `# type: ignore[override]` to silence the type checker (44 suppressions in this codebase). The suppression hides real errors.
+- **LSP violation.** The Liskov Substitution Principle (LSP) states that a subclass must be usable wherever its parent class is expected, without breaking the program. Here, `_AsyncODataClient` is a subclass of `_ODataClient`, yet every I/O method changes from a regular function to a coroutine (`async def`). A caller written against `_ODataClient` expects `client.get(...)` to return a result directly; the async subclass returns a coroutine object instead, which is a different type entirely.
+- Every overridden method requires `# type: ignore[override]` to silence the type checker (44 suppressions in this codebase).
 - Conceptually misleading — "is a" implies substitutability; async-over-sync does not have it.
 - Sync and async surfaces must evolve in lockstep or the inheritance chain silently inherits wrong sync behavior.
 
