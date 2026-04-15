@@ -3,10 +3,12 @@
 
 """Async Dataverse Web API client.
 
-:class:`_AsyncODataClient` extends :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`
-and overrides every method that performs HTTP I/O as an ``async def`` coroutine.
-Pure helper methods (URL builders, body serialisers, cache utilities) are
-inherited unchanged from the sync parent class.
+:class:`_AsyncODataClient` inherits all pure helper methods (URL builders, body
+serialisers, cache utilities) from
+:class:`~PowerPlatform.Dataverse.data._odata_base._ODataBase` and implements
+every I/O method as an ``async def`` coroutine using :mod:`aiohttp` for
+transport and :class:`~PowerPlatform.Dataverse.aio.core._async_auth._AsyncAuthManager`
+for token acquisition.
 """
 
 from __future__ import annotations
@@ -39,10 +41,10 @@ from ...data._odata import (
     _CALL_SCOPE_CORRELATION_ID,
     _DEFAULT_EXPECTED_STATUSES,
     _GUID_RE,
-    _ODataClient,
     _USER_AGENT,
     _extract_pagingcookie,
 )
+from ...data._odata_base import _ODataBase
 from ...data._raw_request import _RawRequest
 from ..core._async_auth import _AsyncAuthManager
 from ..core._async_http import _AsyncHttpClient, _AsyncResponse
@@ -55,13 +57,13 @@ if TYPE_CHECKING:
 __all__: list[str] = []
 
 
-class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin, _ODataClient):
+class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin, _ODataBase):
     """Async Dataverse Web API client.
 
     Inherits all pure helper methods (URL/body builders, cache utilities,
-    column-type mappings) from :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`.
-    Every method that performs HTTP I/O is overridden as an ``async def``
-    coroutine using :class:`~PowerPlatform.Dataverse.aio.core._async_http._AsyncHttpClient`
+    column-type mappings) from :class:`~PowerPlatform.Dataverse.data._odata_base._ODataBase`.
+    Every I/O method is implemented as an ``async def`` coroutine using
+    :class:`~PowerPlatform.Dataverse.aio.core._async_http._AsyncHttpClient`
     (aiohttp) for transport and
     :class:`~PowerPlatform.Dataverse.aio.core._async_auth._AsyncAuthManager` for
     token acquisition.
@@ -82,8 +84,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         config: Any = None,
         session: Optional["aiohttp.ClientSession"] = None,
     ) -> None:
-        # Bypass _ODataClient.__init__ — it creates a sync _HttpClient and threading.Lock.
-        # We initialise equivalent attributes manually.
+        # _ODataBase has no __init__; we initialise all required attributes here.
         self.auth = auth
         self.base_url = (base_url or "").rstrip("/")
         if not self.base_url:

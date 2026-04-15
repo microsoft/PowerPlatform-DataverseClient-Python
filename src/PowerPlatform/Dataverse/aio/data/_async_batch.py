@@ -3,11 +3,10 @@
 
 """Async Dataverse OData $batch client.
 
-:class:`_AsyncBatchClient` extends :class:`~PowerPlatform.Dataverse.data._batch._BatchClient`
-and overrides every method that performs HTTP I/O (or calls HTTP-touching helpers
-on :class:`~PowerPlatform.Dataverse.aio.data._async_odata._AsyncODataClient`) as an
-``async def`` coroutine.  Pure helpers — multipart serialisation, response
-parsing, intent dataclass dispatch — are inherited unchanged from the sync parent.
+:class:`_AsyncBatchClient` inherits from :class:`~PowerPlatform.Dataverse.data._batch_base._BatchBase`
+to reuse pure multipart serialisation and response-parsing logic, and implements
+all intent-resolution and HTTP dispatch methods as ``async def`` coroutines using
+:class:`~PowerPlatform.Dataverse.aio.data._async_odata._AsyncODataClient`.
 """
 
 from __future__ import annotations
@@ -17,8 +16,8 @@ from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from ...core._error_codes import METADATA_TABLE_NOT_FOUND, METADATA_COLUMN_NOT_FOUND
 from ...core.errors import MetadataError, ValidationError
+from ...data._batch_base import _BatchBase
 from ...data._batch import (
-    _BatchClient,
     _ChangeSet,
     _ChangeSetBatchItem,
     _MAX_BATCH_SIZE,
@@ -49,12 +48,13 @@ if TYPE_CHECKING:
 __all__: list[str] = []
 
 
-class _AsyncBatchClient(_BatchClient):
+class _AsyncBatchClient(_BatchBase):
     """Async OData ``$batch`` client.
 
-    Serialises intent objects into a multipart request (identical logic to the
-    sync :class:`~PowerPlatform.Dataverse.data._batch._BatchClient`), but sends
-    the batch request and resolves all metadata dependencies via the async
+    Inherits pure multipart serialisation and response-parsing from
+    :class:`~PowerPlatform.Dataverse.data._batch_base._BatchBase`, and
+    implements all intent-resolution and HTTP dispatch methods as ``async def``
+    coroutines using the async
     :class:`~PowerPlatform.Dataverse.aio.data._async_odata._AsyncODataClient`.
 
     :param od: Active async OData client instance.
@@ -65,10 +65,10 @@ class _AsyncBatchClient(_BatchClient):
         self._od = od
 
     # ------------------------------------------------------------------
-    # Public entry point (async override)
+    # Public entry point (async)
     # ------------------------------------------------------------------
 
-    async def execute(  # type: ignore[override]
+    async def execute(
         self,
         items: List[Any],
         continue_on_error: bool = False,
@@ -112,10 +112,10 @@ class _AsyncBatchClient(_BatchClient):
         return self._parse_batch_response(response)
 
     # ------------------------------------------------------------------
-    # Intent resolution dispatcher (async overrides)
+    # Intent resolution dispatcher (async)
     # ------------------------------------------------------------------
 
-    async def _resolve_all(  # type: ignore[override]
+    async def _resolve_all(
         self, items: List[Any]
     ) -> List[Union[_RawRequest, _ChangeSetBatchItem]]:
         result: List[Union[_RawRequest, _ChangeSetBatchItem]] = []
@@ -130,7 +130,7 @@ class _AsyncBatchClient(_BatchClient):
                 result.extend(await self._resolve_item(item))
         return result
 
-    async def _resolve_item(self, item: Any) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_item(self, item: Any) -> List[_RawRequest]:
         if isinstance(item, _RecordCreate):
             return await self._resolve_record_create(item)
         if isinstance(item, _RecordUpdate):
@@ -170,7 +170,7 @@ class _AsyncBatchClient(_BatchClient):
             subcode="unknown_batch_item",
         )
 
-    async def _resolve_one(self, item: Any) -> _RawRequest:  # type: ignore[override]
+    async def _resolve_one(self, item: Any) -> _RawRequest:
         resolved = await self._resolve_item(item)
         if len(resolved) != 1:
             raise ValidationError(
@@ -183,13 +183,13 @@ class _AsyncBatchClient(_BatchClient):
     # Record resolvers (async — inline body-building to avoid sync HTTP calls)
     # ------------------------------------------------------------------------
 
-    async def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_record_create(self, op: _RecordCreate) -> List[_RawRequest]:
         entity_set = await self._od._entity_set_from_schema_name(op.table)
         if isinstance(op.data, dict):
             return [await self._od._build_create(entity_set, op.table, op.data, content_id=op.content_id)]
         return [await self._od._build_create_multiple(entity_set, op.table, op.data)]
 
-    async def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_record_update(self, op: _RecordUpdate) -> List[_RawRequest]:
         if isinstance(op.ids, str):
             if not isinstance(op.changes, dict):
                 raise TypeError("For single id, changes must be a dict")
@@ -197,7 +197,7 @@ class _AsyncBatchClient(_BatchClient):
         entity_set = await self._od._entity_set_from_schema_name(op.table)
         return [await self._od._build_update_multiple(entity_set, op.table, op.ids, op.changes)]
 
-    async def _resolve_record_delete(self, op: _RecordDelete) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_record_delete(self, op: _RecordDelete) -> List[_RawRequest]:
         if isinstance(op.ids, str):
             return [await self._od._build_delete(op.table, op.ids, content_id=op.content_id)]
         ids = [rid for rid in op.ids if rid]
@@ -207,10 +207,10 @@ class _AsyncBatchClient(_BatchClient):
             return [await self._od._build_delete_multiple(op.table, ids)]
         return [await self._od._build_delete(op.table, rid) for rid in ids]
 
-    async def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:
         return [await self._od._build_get(op.table, op.record_id, select=op.select)]
 
-    async def _resolve_record_upsert(self, op: _RecordUpsert) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_record_upsert(self, op: _RecordUpsert) -> List[_RawRequest]:
         entity_set = await self._od._entity_set_from_schema_name(op.table)
         if len(op.items) == 1:
             item = op.items[0]
@@ -223,7 +223,7 @@ class _AsyncBatchClient(_BatchClient):
     # Table resolvers (async — pre-resolve MetadataId, column MetadataId)
     # -------------------------------------------------------------------
 
-    async def _require_entity_metadata(self, table: str) -> str:  # type: ignore[override]
+    async def _require_entity_metadata(self, table: str) -> str:
         ent = await self._od._get_entity_by_table_schema_name(table)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
@@ -232,24 +232,24 @@ class _AsyncBatchClient(_BatchClient):
             )
         return ent["MetadataId"]
 
-    async def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:
         return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column)]
 
-    async def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:
         metadata_id = await self._require_entity_metadata(op.table)
         return [self._od._build_delete_entity(metadata_id)]
 
-    async def _resolve_table_get(self, op: _TableGet) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_get(self, op: _TableGet) -> List[_RawRequest]:
         return [self._od._build_get_entity(op.table)]
 
-    async def _resolve_table_list(self, op: _TableList) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_list(self, op: _TableList) -> List[_RawRequest]:
         return [self._od._build_list_entities(filter=op.filter, select=op.select)]
 
-    async def _resolve_table_add_columns(self, op: _TableAddColumns) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_add_columns(self, op: _TableAddColumns) -> List[_RawRequest]:
         metadata_id = await self._require_entity_metadata(op.table)
         return [self._od._build_create_column(metadata_id, col_name, dtype) for col_name, dtype in op.columns.items()]
 
-    async def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:
         columns = [op.columns] if isinstance(op.columns, str) else list(op.columns)
         metadata_id = await self._require_entity_metadata(op.table)
         requests: List[_RawRequest] = []
@@ -265,21 +265,21 @@ class _AsyncBatchClient(_BatchClient):
             requests.append(self._od._build_delete_column(metadata_id, attr_meta["MetadataId"]))
         return requests
 
-    async def _resolve_table_create_one_to_many(self, op: _TableCreateOneToMany) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_create_one_to_many(self, op: _TableCreateOneToMany) -> List[_RawRequest]:
         body = op.relationship.to_dict()
         body["Lookup"] = op.lookup.to_dict()
         return [self._od._build_create_relationship(body, solution=op.solution)]
 
-    async def _resolve_table_create_many_to_many(self, op: _TableCreateManyToMany) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_create_many_to_many(self, op: _TableCreateManyToMany) -> List[_RawRequest]:
         return [self._od._build_create_relationship(op.relationship.to_dict(), solution=op.solution)]
 
-    async def _resolve_table_delete_relationship(self, op: _TableDeleteRelationship) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_delete_relationship(self, op: _TableDeleteRelationship) -> List[_RawRequest]:
         return [self._od._build_delete_relationship(op.relationship_id)]
 
-    async def _resolve_table_get_relationship(self, op: _TableGetRelationship) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_get_relationship(self, op: _TableGetRelationship) -> List[_RawRequest]:
         return [self._od._build_get_relationship(op.schema_name)]
 
-    async def _resolve_table_create_lookup_field(self, op: _TableCreateLookupField) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_table_create_lookup_field(self, op: _TableCreateLookupField) -> List[_RawRequest]:
         lookup, relationship = self._od._build_lookup_field_models(
             referencing_table=op.referencing_table,
             lookup_field_name=op.lookup_field_name,
@@ -298,5 +298,5 @@ class _AsyncBatchClient(_BatchClient):
     # Query resolvers (async)
     # ------------------------------------------------------------------
 
-    async def _resolve_query_sql(self, op: _QuerySql) -> List[_RawRequest]:  # type: ignore[override]
+    async def _resolve_query_sql(self, op: _QuerySql) -> List[_RawRequest]:
         return [await self._od._build_sql(op.sql)]

@@ -18,12 +18,14 @@ from PowerPlatform.Dataverse.data._batch import (
     _ChangeSetBatchItem,
     _RecordDelete,
     _RecordGet,
+    _MAX_BATCH_SIZE,
+)
+from PowerPlatform.Dataverse.data._batch_base import (
     _extract_boundary,
     _raise_top_level_batch_error,
     _split_multipart,
     _parse_http_response_part,
     _CRLF,
-    _MAX_BATCH_SIZE,
 )
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 from PowerPlatform.Dataverse.data._raw_request import _RawRequest
