@@ -11,26 +11,32 @@ from PowerPlatform.Dataverse.aio.core._async_http import _AsyncHttpClient, _Asyn
 
 class TestAsyncResponse:
     def test_status_code(self):
-        r = _AsyncResponse(200, {}, "", {})
+        r = _AsyncResponse(200, {}, "")
         assert r.status_code == 200
 
     def test_headers(self):
         h = {"Content-Type": "application/json"}
-        r = _AsyncResponse(200, h, "", {})
+        r = _AsyncResponse(200, h, "")
         assert r.headers is h
 
     def test_text(self):
-        r = _AsyncResponse(200, {}, "hello", {})
+        r = _AsyncResponse(200, {}, "hello")
         assert r.text == "hello"
 
     def test_json(self):
         data = {"k": "v"}
-        r = _AsyncResponse(200, {}, json.dumps(data), data)
+        r = _AsyncResponse(200, {}, json.dumps(data))
         assert r.json() == data
 
-    def test_json_empty(self):
-        r = _AsyncResponse(204, {}, "", {})
-        assert r.json() == {}
+    def test_json_empty_raises(self):
+        r = _AsyncResponse(204, {}, "")
+        with pytest.raises(json.JSONDecodeError):
+            r.json()
+
+    def test_json_non_json_raises(self):
+        r = _AsyncResponse(200, {}, "multipart/mixed content")
+        with pytest.raises(json.JSONDecodeError):
+            r.json()
 
 
 class TestAsyncHttpClientConstruction:
@@ -40,13 +46,11 @@ class TestAsyncHttpClientConstruction:
         assert c.base_delay == 0.5
         assert c.default_timeout is None
         assert c._session is None
-        assert c._owns_session is True
 
-    def test_external_session_not_owned(self):
+    def test_external_session_stored(self):
         session = MagicMock()
         c = _AsyncHttpClient(session=session)
         assert c._session is session
-        assert c._owns_session is False
 
     def test_custom_params(self):
         c = _AsyncHttpClient(retries=3, backoff=1.0, timeout=30.0)
@@ -68,7 +72,7 @@ class TestAsyncHttpClientConstruction:
 
 
 class TestAsyncHttpClientClose:
-    async def test_close_owned_session(self):
+    async def test_close_lazily_created_session(self):
         mock_sess = AsyncMock()
         c = _AsyncHttpClient()
         c._session = mock_sess
@@ -76,11 +80,12 @@ class TestAsyncHttpClientClose:
         mock_sess.close.assert_awaited_once()
         assert c._session is None
 
-    async def test_close_unowned_skips(self):
+    async def test_close_external_session(self):
         mock_sess = AsyncMock()
         c = _AsyncHttpClient(session=mock_sess)
         await c.close()
-        mock_sess.close.assert_not_awaited()
+        mock_sess.close.assert_awaited_once()
+        assert c._session is None
 
     async def test_close_no_session_noop(self):
         c = _AsyncHttpClient()
@@ -155,17 +160,26 @@ class TestAsyncHttpClientRequest:
         assert "json" not in cap
         assert json.loads(cap["data"].decode()) == payload
 
-    async def test_empty_body_empty_dict(self):
-        sess, _ = _fake_session(204, "")
+    async def test_empty_body_json_raises(self):
+        sess, _ = _fake_session(204, b"")
         c = _AsyncHttpClient(session=sess)
         r = await c._request("DELETE", "https://x.com")
-        assert r.json() == {}
-
-    async def test_non_json_body_raises_decode_error(self):
-        sess, _ = _fake_session(200, "not json")
-        c = _AsyncHttpClient(session=sess)
         with pytest.raises(json.JSONDecodeError):
-            await c._request("GET", "https://x.com")
+            r.json()
+
+    async def test_non_json_body_json_raises(self):
+        sess, _ = _fake_session(200, b"not json")
+        c = _AsyncHttpClient(session=sess)
+        r = await c._request("GET", "https://x.com")
+        with pytest.raises(json.JSONDecodeError):
+            r.json()
+
+    async def test_multipart_body_text_accessible(self):
+        body = "--batchresponse_123\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\n"
+        sess, _ = _fake_session(200, body)
+        c = _AsyncHttpClient(session=sess)
+        r = await c._request("POST", "https://x.com")
+        assert r.text.startswith("--batchresponse_123")
 
 
 class TestAsyncHttpClientRetry:

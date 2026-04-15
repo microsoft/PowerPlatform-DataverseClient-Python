@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List
+from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Union
 
 from ...models.record import Record
 from ...models.query_builder import QueryBuilder
@@ -30,7 +30,7 @@ class AsyncQueryBuilder(QueryBuilder):
         self,
         *,
         by_page: bool = False,
-    ) -> Any:
+    ) -> Union[AsyncGenerator[Record, None], AsyncGenerator[List[Record], None]]:
         """Execute the query and return an async iterator of results.
 
         :param by_page: If ``True``, yields pages (lists of

@@ -5,9 +5,8 @@
 Async HTTP client for Dataverse using aiohttp.
 
 Provides :class:`_AsyncHttpClient` (aiohttp-based) and :class:`_AsyncResponse`,
-a synchronous-looking response wrapper that eagerly materialises the aiohttp
-response body so callers can use familiar ``.status_code``, ``.text``, and
-``.json()`` attributes without ``await``.
+a synchronous-looking response wrapper that mirrors the interface of
+``requests.Response`` used by the sync :class:`~PowerPlatform.Dataverse.core._http._HttpClient`.
 """
 
 from __future__ import annotations
@@ -27,21 +26,22 @@ class _AsyncResponse:
 
     :param status: HTTP status code.
     :param headers: Response headers (aiohttp ``CIMultiDictProxy`` — case-insensitive).
-    :param text: Full response body as a decoded string (may be empty).
-    :param json_data: Parsed JSON body, or ``{}`` when the body is empty.
+    :param text: Response body decoded as UTF-8 (with replacement characters).
     """
 
-    __slots__ = ("status_code", "headers", "text", "_json_data")
+    __slots__ = ("status_code", "headers", "text")
 
-    def __init__(self, status: int, headers: Any, text: str, json_data: Any) -> None:
+    def __init__(self, status: int, headers: Any, text: str) -> None:
         self.status_code: int = status
         self.headers = headers
         self.text: str = text
-        self._json_data: Any = json_data
 
     def json(self) -> Any:
-        """Return the pre-parsed JSON body."""
-        return self._json_data
+        """Parse response body as JSON.
+
+        :raises json.JSONDecodeError: If the body is not valid JSON.
+        """
+        return _json.loads(self.text)
 
 
 class _AsyncHttpClient:
@@ -55,9 +55,8 @@ class _AsyncHttpClient:
         (120 s for POST/DELETE, 10 s for all other methods).
     :type timeout: :class:`float` | None
     :param session: Optional ``aiohttp.ClientSession`` to use for all requests.
-        When provided the session is **not** closed by :meth:`close` (caller owns it).
-        When ``None`` a session is created lazily on the first request and closed by
-        :meth:`close`.
+        When ``None`` a session is created lazily on the first request.
+        :meth:`close` closes whatever session is held, whether provided or lazily created.
     :type session: ``aiohttp.ClientSession`` | None
     """
 
@@ -73,7 +72,6 @@ class _AsyncHttpClient:
         self.base_delay: float = backoff if backoff is not None else 0.5
         self.default_timeout: Optional[float] = timeout
         self._session: Optional["aiohttp.ClientSession"] = session
-        self._owns_session: bool = session is None  # True → we created it; we close it
         self._logger = logger
 
     async def _get_session(self) -> "aiohttp.ClientSession":
@@ -131,10 +129,7 @@ class _AsyncHttpClient:
                 async with session.request(method, url, **kwargs) as resp:
                     text = await resp.text(encoding="utf-8", errors="replace")
                     elapsed_ms = (time.monotonic() - t0) * 1000
-                    json_data: Any = _json.loads(text) if text.strip() else {}
                     if self._logger is not None:
-                        # Only decode resp.text when body logging is enabled — avoids
-                        # unnecessary overhead for large payloads when max_body_bytes == 0.
                         resp_body = text if self._logger.body_logging_enabled else None
                         self._logger.log_response(
                             method,
@@ -144,7 +139,7 @@ class _AsyncHttpClient:
                             body=resp_body,
                             elapsed_ms=elapsed_ms,
                         )
-                    return _AsyncResponse(resp.status, resp.headers, text, json_data)
+                    return _AsyncResponse(resp.status, resp.headers, text)
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if self._logger is not None:
                     self._logger.log_error(
@@ -160,7 +155,7 @@ class _AsyncHttpClient:
                 await asyncio.sleep(delay)
 
     async def close(self) -> None:
-        """Close the underlying aiohttp session if this client owns it."""
-        if self._owns_session and self._session is not None:
+        """Close the underlying aiohttp session if one exists."""
+        if self._session is not None:
             await self._session.close()
             self._session = None

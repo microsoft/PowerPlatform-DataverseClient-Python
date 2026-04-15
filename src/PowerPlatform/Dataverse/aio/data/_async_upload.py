@@ -9,7 +9,9 @@ Provides :class:`_AsyncFileUploadMixin`, the async counterpart of
 
 from __future__ import annotations
 
+import asyncio
 import math
+import os
 from typing import Dict, Optional
 from urllib.parse import quote as _url_quote
 
@@ -61,8 +63,6 @@ class _AsyncFileUploadMixin:
         :raises ValueError: If *mode* is not a recognised value.
         :raises HttpError: If the Web API request fails.
         """
-        import os
-
         # Resolve entity set from table schema name
         entity_set = await self._entity_set_from_schema_name(table_schema_name)
         # Check if the file column exists, create it if it doesn't
@@ -80,9 +80,9 @@ class _AsyncFileUploadMixin:
 
         mode = (mode or "auto").lower()
         if mode == "auto":
-            if not os.path.isfile(path):
+            if not await asyncio.to_thread(os.path.isfile, path):
                 raise FileNotFoundError(f"File not found: {path}")
-            size = os.path.getsize(path)
+            size = await asyncio.to_thread(os.path.getsize, path)
             mode = "small" if size < 128 * 1024 * 1024 else "chunk"
 
         # Convert schema name to lowercase logical name for URL usage
@@ -119,19 +119,17 @@ class _AsyncFileUploadMixin:
         :raises FileNotFoundError: If *path* does not exist.
         :raises HttpError: If the Web API request fails.
         """
-        import os
-
         if not record_id:
             raise ValueError("record_id required")
-        if not os.path.isfile(path):
+        if not await asyncio.to_thread(os.path.isfile, path):
             raise FileNotFoundError(f"File not found: {path}")
-        size = os.path.getsize(path)
+        size = await asyncio.to_thread(os.path.getsize, path)
         limit = 128 * 1024 * 1024
         if size > limit:
             raise ValueError(f"File size {size} exceeds single-upload limit {limit}; use chunk mode.")
-        with open(path, "rb") as fh:
-            data = fh.read()
-        fname = os.path.basename(path)
+        # Read entire file in a thread pool to avoid blocking the event loop.
+        data = await asyncio.to_thread(_read_file, path)
+        fname = os.path.basename(path)  # pure string operation, no I/O
         key = self._format_key(record_id)
         url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
         headers: Dict[str, str] = {
@@ -160,6 +158,9 @@ class _AsyncFileUploadMixin:
         size from the ``x-ms-chunk-size`` response header, then sends each
         chunk with a ``Content-Range`` header.
 
+        Each chunk is read from disk in a thread pool worker so the event loop
+        is not blocked between HTTP requests.
+
         :param entity_set: Resolved entity set (plural) name.
         :param record_id: GUID of the target record.
         :param file_name_attribute: Logical (lowercase) name of the file column.
@@ -174,14 +175,12 @@ class _AsyncFileUploadMixin:
             with the upload session token.
         :raises HttpError: If any HTTP request fails.
         """
-        import os
-
         if not record_id:
             raise ValueError("record_id required")
-        if not os.path.isfile(path):
+        if not await asyncio.to_thread(os.path.isfile, path):
             raise FileNotFoundError(f"File not found: {path}")
-        total_size = os.path.getsize(path)
-        fname = os.path.basename(path)
+        total_size = await asyncio.to_thread(os.path.getsize, path)
+        fname = os.path.basename(path)  # pure string operation, no I/O
         key = self._format_key(record_id)
         init_url = f"{self.api}/{entity_set}{key}/{file_name_attribute}?x-ms-file-name={_url_quote(fname)}"
         headers: Dict[str, str] = {"x-ms-transfer-mode": "chunked"}
@@ -204,9 +203,12 @@ class _AsyncFileUploadMixin:
             raise ValueError("effective chunk size must be positive")
         total_chunks = int(math.ceil(total_size / effective_size)) if total_size else 1
         uploaded_bytes = 0
-        with open(path, "rb") as fh:
+        # Open the file handle synchronously (fast fd acquisition), then read
+        # each chunk in a thread pool to keep the event loop unblocked.
+        fh = open(path, "rb")
+        try:
             for _ in range(total_chunks):
-                chunk = fh.read(effective_size)
+                chunk = await asyncio.to_thread(fh.read, effective_size)
                 if not chunk:
                     break
                 start = uploaded_bytes
@@ -220,3 +222,11 @@ class _AsyncFileUploadMixin:
                 # Each chunk returns 206 (partial) or 204 (final). Accept both.
                 await self._request("patch", location, headers=chunk_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
+        finally:
+            fh.close()
+
+
+def _read_file(path: str) -> bytes:
+    """Read an entire file as bytes (runs in a thread pool worker)."""
+    with open(path, "rb") as fh:
+        return fh.read()
