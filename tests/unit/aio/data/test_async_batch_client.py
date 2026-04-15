@@ -36,10 +36,10 @@ from PowerPlatform.Dataverse.models.batch import BatchResult
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from PowerPlatform.Dataverse.core.errors import MetadataError, ValidationError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_od():
     """Return a mock _AsyncODataClient with common attributes."""
@@ -64,10 +64,14 @@ def _make_od():
         return_value=_RawRequest("DELETE", "https://example.crm.dynamics.com/api/data/v9.2/EntityDefinitions(meta-1)")
     )
     od._build_create_column = MagicMock(
-        return_value=_RawRequest("POST", "https://example.crm.dynamics.com/api/data/v9.2/EntityDefinitions(meta-1)/Attributes")
+        return_value=_RawRequest(
+            "POST", "https://example.crm.dynamics.com/api/data/v9.2/EntityDefinitions(meta-1)/Attributes"
+        )
     )
     od._build_delete_column = MagicMock(
-        return_value=_RawRequest("DELETE", "https://example.crm.dynamics.com/api/data/v9.2/EntityDefinitions(meta-1)/Attributes(attr-1)")
+        return_value=_RawRequest(
+            "DELETE", "https://example.crm.dynamics.com/api/data/v9.2/EntityDefinitions(meta-1)/Attributes(attr-1)"
+        )
     )
     od._build_create_relationship = MagicMock(
         return_value=_RawRequest("POST", "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions")
@@ -79,19 +83,22 @@ def _make_od():
         return_value=_RawRequest("POST", "https://example.crm.dynamics.com/api/data/v9.2/Relationships")
     )
     od._build_delete_relationship = MagicMock(
-        return_value=_RawRequest("DELETE", "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(rel-1)")
+        return_value=_RawRequest(
+            "DELETE", "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions(rel-1)"
+        )
     )
     od._build_get_relationship = MagicMock(
-        return_value=_RawRequest("GET", "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions?$filter=SchemaName eq 'schema'")
+        return_value=_RawRequest(
+            "GET",
+            "https://example.crm.dynamics.com/api/data/v9.2/RelationshipDefinitions?$filter=SchemaName eq 'schema'",
+        )
     )
     od._extract_logical_table = MagicMock(return_value="account")
     # async helpers
     od._entity_set_from_schema_name = AsyncMock(return_value="accounts")
     od._primary_id_attr = AsyncMock(return_value="accountid")
     od._convert_labels_to_ints = AsyncMock(side_effect=lambda table, rec: rec)
-    od._get_entity_by_table_schema_name = AsyncMock(
-        return_value={"MetadataId": "meta-1", "EntitySetName": "accounts"}
-    )
+    od._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "meta-1", "EntitySetName": "accounts"})
     od._get_attribute_metadata = AsyncMock(return_value={"MetadataId": "attr-1"})
 
     # async _build_* methods — return realistic _RawRequest objects
@@ -108,8 +115,7 @@ def _make_od():
     async def _build_create_multiple(entity_set, table, records):
         logical = table.lower()
         enriched = [
-            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r
-            for r in records
+            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r for r in records
         ]
         return _RawRequest(
             method="POST",
@@ -142,8 +148,7 @@ def _make_od():
         else:
             raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
         enriched = [
-            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r
-            for r in records
+            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical}"} if "@odata.type" not in r else r for r in records
         ]
         return _RawRequest(
             method="POST",
@@ -163,8 +168,7 @@ def _make_od():
         logical = table.lower()
         if len(alternate_keys) != len(records):
             raise ValidationError(
-                f"alternate_keys and records must have the same length "
-                f"({len(alternate_keys)} != {len(records)})",
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})",
                 subcode="upsert_length_mismatch",
             )
         targets = []
@@ -212,6 +216,7 @@ def _make_od():
 
     async def _build_sql(sql):
         from urllib.parse import quote as _url_quote
+
         return _RawRequest(
             method="GET",
             url=f"{_API}/accounts?sql={_url_quote(sql, safe='')}",
@@ -239,6 +244,7 @@ def _make_client(od=None):
 # ---------------------------------------------------------------------------
 # 1. TestAsyncBatchClientExecute
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientExecute:
     async def test_execute_empty_returns_empty_batch_result(self):
@@ -302,6 +308,7 @@ class TestAsyncBatchClientExecute:
 # 2. TestAsyncBatchClientResolveAll
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchClientResolveAll:
     async def test_empty_changeset_is_skipped(self):
         bc, od = _make_client()
@@ -311,6 +318,7 @@ class TestAsyncBatchClientResolveAll:
 
     async def test_changeset_with_one_op_produces_changeset_batch_item(self):
         from PowerPlatform.Dataverse.data._batch import _ChangeSetBatchItem
+
         bc, od = _make_client()
         cs = _ChangeSet()
         cs.add_create("account", {"name": "Test"})
@@ -331,6 +339,7 @@ class TestAsyncBatchClientResolveAll:
 
     async def test_mixed_items_both_resolved(self):
         from PowerPlatform.Dataverse.data._batch import _ChangeSetBatchItem
+
         bc, od = _make_client()
         cs = _ChangeSet()
         cs.add_create("account", {"name": "CS"})
@@ -345,6 +354,7 @@ class TestAsyncBatchClientResolveAll:
 # ---------------------------------------------------------------------------
 # 3. TestAsyncBatchClientResolveRecordCreate
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientResolveRecordCreate:
     async def test_single_dict_returns_post_to_entity_set(self):
@@ -389,6 +399,7 @@ class TestAsyncBatchClientResolveRecordCreate:
 # ---------------------------------------------------------------------------
 # 4. TestAsyncBatchClientResolveRecordUpdate
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientResolveRecordUpdate:
     async def test_single_str_id_returns_patch(self):
@@ -455,6 +466,7 @@ class TestAsyncBatchClientResolveRecordUpdate:
 # 5. TestAsyncBatchClientResolveRecordDelete
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchClientResolveRecordDelete:
     async def test_single_str_id_returns_delete(self):
         bc, od = _make_client()
@@ -510,6 +522,7 @@ class TestAsyncBatchClientResolveRecordDelete:
 # 6. TestAsyncBatchClientResolveRecordGet
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchClientResolveRecordGet:
     async def test_returns_get_request(self):
         bc, od = _make_client()
@@ -535,6 +548,7 @@ class TestAsyncBatchClientResolveRecordGet:
 # ---------------------------------------------------------------------------
 # 7. TestAsyncBatchClientResolveRecordUpsert
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientResolveRecordUpsert:
     async def test_single_item_returns_patch_to_alternate_key(self):
@@ -569,6 +583,7 @@ class TestAsyncBatchClientResolveRecordUpsert:
 # ---------------------------------------------------------------------------
 # 8. TestAsyncBatchClientResolveTableOps
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientResolveTableOps:
     async def test_table_create_calls_build_create_entity(self):
@@ -657,6 +672,7 @@ class TestAsyncBatchClientResolveTableOps:
             LookupAttributeMetadata,
             OneToManyRelationshipMetadata,
         )
+
         lookup = MagicMock(spec=LookupAttributeMetadata)
         lookup.to_dict = MagicMock(return_value={"SchemaName": "lookup_field"})
         rel = MagicMock(spec=OneToManyRelationshipMetadata)
@@ -670,6 +686,7 @@ class TestAsyncBatchClientResolveTableOps:
     async def test_table_create_many_to_many_calls_build_create_relationship(self):
         bc, od = _make_client()
         from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
+
         rel = MagicMock(spec=ManyToManyRelationshipMetadata)
         rel.to_dict = MagicMock(return_value={"SchemaName": "m2m_rel"})
         op = _TableCreateManyToMany(relationship=rel, solution=None)
@@ -719,6 +736,7 @@ class TestAsyncBatchClientResolveTableOps:
 # 9. TestAsyncBatchClientResolveQuerySql
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchClientResolveQuerySql:
     async def test_query_sql_returns_get_with_encoded_sql(self):
         bc, od = _make_client()
@@ -747,6 +765,7 @@ class TestAsyncBatchClientResolveQuerySql:
 # 10. TestAsyncBatchClientResolveOne
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchClientResolveOne:
     async def test_single_request_item_returns_that_request(self):
         bc, od = _make_client()
@@ -765,6 +784,7 @@ class TestAsyncBatchClientResolveOne:
 # ---------------------------------------------------------------------------
 # 11. TestAsyncBatchClientUnknownItem
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchClientUnknownItem:
     async def test_unknown_item_type_raises_validation_error(self):

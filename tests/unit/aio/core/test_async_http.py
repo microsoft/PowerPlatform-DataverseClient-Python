@@ -93,12 +93,14 @@ def _fake_session(status=200, body="{}"):
     resp.headers = {}
     resp.text = AsyncMock(return_value=body)
     captured = {}
+
     @asynccontextmanager
     async def _req(method, url, **kwargs):
         captured["method"] = method
         captured["url"] = url
         captured.update(kwargs)
         yield resp
+
     sess = MagicMock()
     sess.request = _req
     return sess, captured
@@ -106,7 +108,7 @@ def _fake_session(status=200, body="{}"):
 
 class TestAsyncHttpClientRequest:
     async def test_returns_response_200(self):
-        sess, _ = _fake_session(200, "{\"value\": []}")
+        sess, _ = _fake_session(200, '{"value": []}')
         c = _AsyncHttpClient(session=sess)
         r = await c._request("GET", "https://x.com")
         assert isinstance(r, _AsyncResponse)
@@ -138,6 +140,7 @@ class TestAsyncHttpClientRequest:
 
     async def test_float_timeout_kwarg_converted(self):
         import aiohttp
+
         sess, cap = _fake_session()
         c = _AsyncHttpClient(session=sess)
         await c._request("get", "https://x.com", timeout=45.0)
@@ -168,6 +171,7 @@ class TestAsyncHttpClientRequest:
 class TestAsyncHttpClientRetry:
     async def test_retries_on_network_error(self):
         import aiohttp
+
         count = 0
         ok = AsyncMock()
         ok.status = 200

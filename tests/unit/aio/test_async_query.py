@@ -13,10 +13,10 @@ from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_query import AsyncQueryBuilder, AsyncQueryOperations
 from PowerPlatform.Dataverse.models.record import Record
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_odata():
     """Return (client, mock_od) with _scoped_odata patched."""
@@ -35,6 +35,7 @@ def _make_client_with_mock_odata():
 # ---------------------------------------------------------------------------
 # AsyncQueryOperations namespace
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncQueryOperationsNamespace:
     def test_namespace_exists(self):
@@ -59,6 +60,7 @@ class TestAsyncQueryOperationsNamespace:
 # AsyncQueryOperations.sql
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncQuerySql:
     async def test_sql_returns_list_of_records(self):
         client, od = _make_client_with_mock_odata()
@@ -67,9 +69,7 @@ class TestAsyncQuerySql:
             {"accountid": "2", "name": "Fabrikam"},
         ]
 
-        result = await client.query.sql(
-            "SELECT TOP 2 accountid, name FROM account"
-        )
+        result = await client.query.sql("SELECT TOP 2 accountid, name FROM account")
 
         od._query_sql.assert_awaited_once_with("SELECT TOP 2 accountid, name FROM account")
         assert len(result) == 2
@@ -89,6 +89,7 @@ class TestAsyncQuerySql:
 # ---------------------------------------------------------------------------
 # AsyncQueryBuilder — fluent builder
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncQueryBuilderFluent:
     def test_select_returns_builder(self):
@@ -112,13 +113,7 @@ class TestAsyncQueryBuilderFluent:
     def test_build_produces_params_dict(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
-        params = (
-            client.query.builder("account")
-            .select("name", "telephone1")
-            .filter_eq("statecode", 0)
-            .top(50)
-            .build()
-        )
+        params = client.query.builder("account").select("name", "telephone1").filter_eq("statecode", 0).top(50).build()
         assert params["table"] == "account"
         assert "name" in params["select"]
         assert params["top"] == 50
@@ -144,6 +139,7 @@ class TestAsyncQueryBuilderFluent:
 # AsyncQueryBuilder.execute — individual records
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncQueryBuilderExecute:
     async def test_execute_yields_individual_records(self):
         client, od = _make_client_with_mock_odata()
@@ -156,12 +152,7 @@ class TestAsyncQueryBuilderExecute:
 
         od._get_multiple = _mock_get_multiple
 
-        gen = await (
-            client.query.builder("account")
-            .select("name")
-            .filter_eq("statecode", 0)
-            .execute()
-        )
+        gen = await client.query.builder("account").select("name").filter_eq("statecode", 0).execute()
 
         records = [rec async for rec in gen]
         assert len(records) == 2
@@ -180,12 +171,7 @@ class TestAsyncQueryBuilderExecute:
 
         od._get_multiple = _mock_get_multiple
 
-        pages_gen = await (
-            client.query.builder("account")
-            .select("name")
-            .filter_eq("statecode", 0)
-            .execute(by_page=True)
-        )
+        pages_gen = await client.query.builder("account").select("name").filter_eq("statecode", 0).execute(by_page=True)
 
         pages = [page async for page in pages_gen]
         assert len(pages) == 2
@@ -196,9 +182,11 @@ class TestAsyncQueryBuilderExecute:
 # AsyncQueryBuilder.to_dataframe
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncQueryBuilderToDataframe:
     async def test_to_dataframe_calls_dataframe_get(self):
         import pandas as pd
+
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         expected_df = pd.DataFrame([{"name": "Contoso"}])
@@ -207,12 +195,7 @@ class TestAsyncQueryBuilderToDataframe:
         client.dataframe = MagicMock()
         client.dataframe.get = AsyncMock(return_value=expected_df)
 
-        result = await (
-            client.query.builder("account")
-            .select("name")
-            .top(10)
-            .to_dataframe()
-        )
+        result = await client.query.builder("account").select("name").top(10).to_dataframe()
 
         client.dataframe.get.assert_awaited_once()
         assert isinstance(result, pd.DataFrame)

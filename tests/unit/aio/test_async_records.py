@@ -14,10 +14,10 @@ from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOper
 from PowerPlatform.Dataverse.models.record import Record
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_odata():
     """
@@ -42,6 +42,7 @@ def _make_client_with_mock_odata():
 # Namespace
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncRecordOperationsNamespace:
     def test_namespace_exists(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -52,6 +53,7 @@ class TestAsyncRecordOperationsNamespace:
 # ---------------------------------------------------------------------------
 # create
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncRecordCreate:
     async def test_create_single_returns_guid(self):
@@ -106,13 +108,12 @@ class TestAsyncRecordCreate:
 # update
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncRecordUpdate:
     async def test_update_single(self):
         client, od = _make_client_with_mock_odata()
 
-        await client.records.update(
-            "account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"}
-        )
+        await client.records.update("account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"})
 
         od._update.assert_awaited_once_with(
             "account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"}
@@ -152,6 +153,7 @@ class TestAsyncRecordUpdate:
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncRecordDelete:
     async def test_delete_single_returns_none(self):
@@ -211,6 +213,7 @@ class TestAsyncRecordDelete:
 # get — single
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncRecordGetSingle:
     async def test_get_single_returns_record(self):
         client, od = _make_client_with_mock_odata()
@@ -241,6 +244,7 @@ class TestAsyncRecordGetSingle:
 # ---------------------------------------------------------------------------
 # get — paginated
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncRecordGetPaginated:
     async def test_get_paginated_yields_record_pages(self):
@@ -300,6 +304,7 @@ class TestAsyncRecordGetPaginated:
 # upsert
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncRecordUpsert:
     async def test_upsert_single_upsert_item(self):
         client, od = _make_client_with_mock_odata()
@@ -309,9 +314,7 @@ class TestAsyncRecordUpsert:
         result = await client.records.upsert("account", [item])
 
         od._entity_set_from_schema_name.assert_awaited_once_with("account")
-        od._upsert.assert_awaited_once_with(
-            "accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"}
-        )
+        od._upsert.assert_awaited_once_with("accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"})
         od._upsert_multiple.assert_not_awaited()
         assert result is None
 
@@ -322,9 +325,7 @@ class TestAsyncRecordUpsert:
 
         await client.records.upsert("account", [item])
 
-        od._upsert.assert_awaited_once_with(
-            "accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"}
-        )
+        od._upsert.assert_awaited_once_with("accounts", "account", {"accountnumber": "ACC-001"}, {"name": "Contoso"})
 
     async def test_upsert_multiple_calls_upsert_multiple(self):
         client, od = _make_client_with_mock_odata()

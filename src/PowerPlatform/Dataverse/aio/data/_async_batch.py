@@ -247,10 +247,7 @@ class _AsyncBatchClient(_BatchClient):
 
     async def _resolve_table_add_columns(self, op: _TableAddColumns) -> List[_RawRequest]:  # type: ignore[override]
         metadata_id = await self._require_entity_metadata(op.table)
-        return [
-            self._od._build_create_column(metadata_id, col_name, dtype)
-            for col_name, dtype in op.columns.items()
-        ]
+        return [self._od._build_create_column(metadata_id, col_name, dtype) for col_name, dtype in op.columns.items()]
 
     async def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:  # type: ignore[override]
         columns = [op.columns] if isinstance(op.columns, str) else list(op.columns)

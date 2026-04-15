@@ -89,9 +89,12 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         if not self.base_url:
             raise ValueError("base_url is required.")
         self.api = f"{self.base_url}/api/data/v9.2"
-        self.config = config or __import__(
-            "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
-        ).DataverseConfig.from_env()
+        self.config = (
+            config
+            or __import__(
+                "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
+            ).DataverseConfig.from_env()
+        )
         self._http_logger = None
         if self.config.log_config is not None:
             from ...core._http_logger import _HttpLogger
@@ -335,9 +338,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                     if attempt < max_attempts:
                         await asyncio.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
-                    raise RuntimeError(
-                        f"Metadata request failed after {max_attempts} retries (404): {url}"
-                    ) from err
+                    raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
                 raise
         raise RuntimeError("_request_metadata_with_retry: retry loop exhausted")  # pragma: no cover
 
@@ -560,9 +561,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
                 yield [x for x in items if isinstance(x, dict)]
-            next_link = (
-                (data.get("@odata.nextLink") or data.get("odata.nextLink")) if isinstance(data, dict) else None
-            )
+            next_link = (data.get("@odata.nextLink") or data.get("odata.nextLink")) if isinstance(data, dict) else None
 
     async def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:  # type: ignore[override]
         """Update a single record by GUID."""
@@ -1257,8 +1256,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         """Build an UpsertMultiple POST request without sending it."""
         if len(alternate_keys) != len(records):
             raise ValidationError(
-                f"alternate_keys and records must have the same length "
-                f"({len(alternate_keys)} != {len(records)})",
+                f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})",
                 subcode="upsert_length_mismatch",
             )
         logical_name = table.lower()

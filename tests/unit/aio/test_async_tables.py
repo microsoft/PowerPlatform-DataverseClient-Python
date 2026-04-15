@@ -19,10 +19,10 @@ from PowerPlatform.Dataverse.models.relationship import (
     RelationshipInfo,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_odata():
     """
@@ -83,6 +83,7 @@ _RAW_KEY = {
 # Namespace
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncTableOperationsNamespace:
     def test_namespace_exists(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -93,6 +94,7 @@ class TestAsyncTableOperationsNamespace:
 # ---------------------------------------------------------------------------
 # create
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableCreate:
     async def test_create_calls_create_table_and_returns_table_info(self):
@@ -112,13 +114,9 @@ class TestAsyncTableCreate:
         client, od = _make_client_with_mock_odata()
         od._create_table.return_value = _RAW_TABLE
 
-        await client.tables.create(
-            "new_Product", {"new_Title": "string"}, solution="MySolution"
-        )
+        await client.tables.create("new_Product", {"new_Title": "string"}, solution="MySolution")
 
-        od._create_table.assert_awaited_once_with(
-            "new_Product", {"new_Title": "string"}, "MySolution", None
-        )
+        od._create_table.assert_awaited_once_with("new_Product", {"new_Title": "string"}, "MySolution", None)
 
     async def test_create_with_primary_column_passes_through(self):
         client, od = _make_client_with_mock_odata()
@@ -130,14 +128,13 @@ class TestAsyncTableCreate:
             primary_column="new_Title",
         )
 
-        od._create_table.assert_awaited_once_with(
-            "new_Product", {"new_Title": "string"}, None, "new_Title"
-        )
+        od._create_table.assert_awaited_once_with("new_Product", {"new_Title": "string"}, None, "new_Title")
 
 
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableDelete:
     async def test_delete_calls_delete_table(self):
@@ -158,6 +155,7 @@ class TestAsyncTableDelete:
 # ---------------------------------------------------------------------------
 # get
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableGet:
     async def test_get_returns_table_info(self):
@@ -182,6 +180,7 @@ class TestAsyncTableGet:
 # ---------------------------------------------------------------------------
 # list
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableList:
     async def test_list_returns_list_of_dicts(self):
@@ -215,6 +214,7 @@ class TestAsyncTableList:
 # add_columns / remove_columns
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncTableColumns:
     async def test_add_columns_calls_create_columns(self):
         client, od = _make_client_with_mock_odata()
@@ -247,6 +247,7 @@ class TestAsyncTableColumns:
 # ---------------------------------------------------------------------------
 # delete_relationship / get_relationship
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableRelationship:
     async def test_delete_relationship_calls_delete_relationship(self):
@@ -334,18 +335,15 @@ class TestAsyncTableRelationship:
         lookup = MagicMock(spec=LookupAttributeMetadata)
         relationship = MagicMock(spec=OneToManyRelationshipMetadata)
 
-        await client.tables.create_one_to_many_relationship(
-            lookup, relationship, solution="MySolution"
-        )
+        await client.tables.create_one_to_many_relationship(lookup, relationship, solution="MySolution")
 
-        od._create_one_to_many_relationship.assert_awaited_once_with(
-            lookup, relationship, "MySolution"
-        )
+        od._create_one_to_many_relationship.assert_awaited_once_with(lookup, relationship, "MySolution")
 
 
 # ---------------------------------------------------------------------------
 # create_lookup_field
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableCreateLookupField:
     async def test_create_lookup_field_builds_models_and_creates_relationship(self):
@@ -368,9 +366,7 @@ class TestAsyncTableCreateLookupField:
         )
 
         od._build_lookup_field_models.assert_called_once()
-        od._create_one_to_many_relationship.assert_awaited_once_with(
-            mock_lookup, mock_relationship, None
-        )
+        od._create_one_to_many_relationship.assert_awaited_once_with(mock_lookup, mock_relationship, None)
         assert isinstance(result, RelationshipInfo)
         assert result.relationship_type == "one_to_many"
 
@@ -395,14 +391,13 @@ class TestAsyncTableCreateLookupField:
             solution="MySolution",
         )
 
-        od._create_one_to_many_relationship.assert_awaited_once_with(
-            mock_lookup, mock_relationship, "MySolution"
-        )
+        od._create_one_to_many_relationship.assert_awaited_once_with(mock_lookup, mock_relationship, "MySolution")
 
 
 # ---------------------------------------------------------------------------
 # alternate keys
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncTableAlternateKeys:
     async def test_create_alternate_key_returns_alternate_key_info(self):
@@ -413,9 +408,7 @@ class TestAsyncTableAlternateKeys:
             "key_attributes": ["new_field1"],
         }
 
-        result = await client.tables.create_alternate_key(
-            "new_Product", "new_mykey", ["new_field1"]
-        )
+        result = await client.tables.create_alternate_key("new_Product", "new_mykey", ["new_field1"])
 
         od._create_alternate_key.assert_awaited_once()
         call_args = od._create_alternate_key.call_args[0]

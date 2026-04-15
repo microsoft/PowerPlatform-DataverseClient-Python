@@ -22,9 +22,7 @@ class TestAsyncAuthManager:
         auth = _AsyncAuthManager(mock_credential)
         pair = await auth._acquire_token("https://org.crm.dynamics.com/.default")
 
-        mock_credential.get_token.assert_awaited_once_with(
-            "https://org.crm.dynamics.com/.default"
-        )
+        mock_credential.get_token.assert_awaited_once_with("https://org.crm.dynamics.com/.default")
         assert isinstance(pair, _TokenPair)
         assert pair.access_token == "bearer-xyz"
         assert pair.resource == "https://org.crm.dynamics.com/.default"

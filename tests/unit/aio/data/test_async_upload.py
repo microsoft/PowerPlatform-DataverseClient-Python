@@ -13,10 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from PowerPlatform.Dataverse.aio.data._async_upload import _AsyncFileUploadMixin
 
-
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
 
 class _MockUploadClient(_AsyncFileUploadMixin):
     """Minimal async client that satisfies mixin dependencies."""
@@ -59,6 +59,7 @@ def _tmp_file(content: bytes = b"hello world") -> str:
 # ---------------------------------------------------------------------------
 # _upload_file — mode dispatch
 # ---------------------------------------------------------------------------
+
 
 class TestUploadFileMode:
     async def test_small_mode_calls_upload_file_small(self):
@@ -155,6 +156,7 @@ class TestUploadFileColumnCreation:
 # ---------------------------------------------------------------------------
 # _upload_file_small
 # ---------------------------------------------------------------------------
+
 
 class TestUploadFileSmall:
     async def test_uploads_successfully(self):
@@ -260,6 +262,7 @@ class TestUploadFileSmall:
 # _upload_file_chunk
 # ---------------------------------------------------------------------------
 
+
 class TestUploadFileChunk:
     async def test_uploads_successfully_in_chunks(self):
         client = _MockUploadClient()
@@ -353,9 +356,7 @@ class TestUploadFileChunk:
         data = b"Y" * 20
         path = _tmp_file(data)
         try:
-            init_resp = _mock_response(
-                headers={"Location": "https://example.com/session/tok", "x-ms-chunk-size": "10"}
-            )
+            init_resp = _mock_response(headers={"Location": "https://example.com/session/tok", "x-ms-chunk-size": "10"})
             chunk_resp1 = _mock_response(status_code=206)
             chunk_resp2 = _mock_response(status_code=204)
             client._request.side_effect = [init_resp, chunk_resp1, chunk_resp2]

@@ -351,8 +351,7 @@ class AsyncDataFrameOperations:
         invalid = [ids.index[i] for i, v in enumerate(raw_list) if not isinstance(v, str) or not v.strip()]
         if invalid:
             raise ValueError(
-                f"ids Series contains invalid values at index(es) {invalid}. "
-                "All IDs must be non-empty strings."
+                f"ids Series contains invalid values at index(es) {invalid}. " "All IDs must be non-empty strings."
             )
         id_list = [v.strip() for v in raw_list]
 

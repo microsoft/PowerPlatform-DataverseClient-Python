@@ -13,10 +13,10 @@ from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_dataframe import AsyncDataFrameOperations
 from PowerPlatform.Dataverse.models.record import Record
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_records():
     """
@@ -49,6 +49,7 @@ def _make_record(table: str, data: dict) -> Record:
 # Namespace
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncDataFrameOperationsNamespace:
     def test_namespace_exists(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -59,6 +60,7 @@ class TestAsyncDataFrameOperationsNamespace:
 # ---------------------------------------------------------------------------
 # get — single record
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncDataFrameGetSingle:
     async def test_get_single_returns_dataframe_with_one_row(self):
@@ -111,6 +113,7 @@ class TestAsyncDataFrameGetSingle:
 # ---------------------------------------------------------------------------
 # get — multi-page
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncDataFrameGetMultiPage:
     async def test_get_multipage_collects_all_rows(self):
@@ -175,6 +178,7 @@ class TestAsyncDataFrameGetMultiPage:
 # create
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncDataFrameCreate:
     async def test_create_returns_series_of_guids(self):
         client = _make_client_with_mock_records()
@@ -229,13 +233,16 @@ class TestAsyncDataFrameCreate:
 # update
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncDataFrameUpdate:
     async def test_update_multiple_rows_passes_list(self):
         client = _make_client_with_mock_records()
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "telephone1": "555-0100"},
-            {"accountid": "guid-2", "telephone1": "555-0200"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "telephone1": "555-0100"},
+                {"accountid": "guid-2", "telephone1": "555-0200"},
+            ]
+        )
         client.records.update = AsyncMock()
 
         await client.dataframe.update("account", df, id_column="accountid")
@@ -292,6 +299,7 @@ class TestAsyncDataFrameUpdate:
 # delete
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncDataFrameDelete:
     async def test_delete_multiple_calls_delete_with_list(self):
         client = _make_client_with_mock_records()
@@ -300,9 +308,7 @@ class TestAsyncDataFrameDelete:
 
         result = await client.dataframe.delete("account", ids)
 
-        client.records.delete.assert_awaited_once_with(
-            "account", ["guid-1", "guid-2", "guid-3"], use_bulk_delete=True
-        )
+        client.records.delete.assert_awaited_once_with("account", ["guid-1", "guid-2", "guid-3"], use_bulk_delete=True)
 
     async def test_delete_single_guid_uses_string_form(self):
         client = _make_client_with_mock_records()

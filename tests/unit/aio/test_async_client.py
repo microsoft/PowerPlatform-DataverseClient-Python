@@ -16,10 +16,10 @@ from PowerPlatform.Dataverse.aio.operations.async_files import AsyncFileOperatio
 from PowerPlatform.Dataverse.aio.operations.async_dataframe import AsyncDataFrameOperations
 from PowerPlatform.Dataverse.aio.operations.async_batch import AsyncBatchOperations
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client(base_url="https://example.crm.dynamics.com"):
     """Return an AsyncDataverseClient with a mock credential."""
@@ -36,8 +36,10 @@ def _make_mock_odata():
 
 class _async_ctx:
     """Trivial async context manager for mocking _call_scope()."""
+
     async def __aenter__(self):
         return self
+
     async def __aexit__(self, *_):
         return False
 
@@ -45,6 +47,7 @@ class _async_ctx:
 # ---------------------------------------------------------------------------
 # Namespace tests
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncClientNamespaces:
     def test_records_namespace(self):
@@ -76,6 +79,7 @@ class TestAsyncClientNamespaces:
 # Construction / validation
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncClientConstruction:
     def test_empty_base_url_raises(self):
         with pytest.raises(ValueError):
@@ -94,14 +98,18 @@ class TestAsyncClientConstruction:
 
     def test_custom_config_stored(self):
         from PowerPlatform.Dataverse.core.config import DataverseConfig
+
         cfg = DataverseConfig()
-        client = AsyncDataverseClient("https://example.crm.dynamics.com", AsyncMock(spec=AsyncTokenCredential), config=cfg)
+        client = AsyncDataverseClient(
+            "https://example.crm.dynamics.com", AsyncMock(spec=AsyncTokenCredential), config=cfg
+        )
         assert client._config is cfg
 
 
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncClientLifecycle:
     async def test_context_manager_creates_session(self):

@@ -549,17 +549,10 @@ class AsyncRecordOperations:
         for i in items:
             if isinstance(i, UpsertItem):
                 normalized.append(i)
-            elif (
-                isinstance(i, dict)
-                and isinstance(i.get("alternate_key"), dict)
-                and isinstance(i.get("record"), dict)
-            ):
+            elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
                 normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
             else:
-                raise TypeError(
-                    "Each item must be an UpsertItem or a dict with "
-                    "'alternate_key' and 'record' keys"
-                )
+                raise TypeError("Each item must be an UpsertItem or a dict with " "'alternate_key' and 'record' keys")
         async with self._client._scoped_odata() as od:
             entity_set = await od._entity_set_from_schema_name(table)
             if len(normalized) == 1:

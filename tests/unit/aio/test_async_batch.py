@@ -45,10 +45,10 @@ from PowerPlatform.Dataverse.data._batch import (
 from PowerPlatform.Dataverse.models.batch import BatchResult
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_odata():
     """Return (client, mock_od) with _scoped_odata patched."""
@@ -67,6 +67,7 @@ def _make_client_with_mock_odata():
 # ---------------------------------------------------------------------------
 # AsyncBatchOperations / AsyncBatchRequest construction
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchOperationsNamespace:
     def test_namespace_exists(self):
@@ -93,6 +94,7 @@ class TestAsyncBatchOperationsNamespace:
 # ---------------------------------------------------------------------------
 # AsyncBatchRecordOperations — local assembly (no HTTP)
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchRecordOperations:
     def _make_batch(self):
@@ -173,6 +175,7 @@ class TestAsyncBatchRecordOperations:
 # AsyncChangeSet / AsyncChangeSetRecordOperations
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncChangeSet:
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -234,6 +237,7 @@ class TestAsyncChangeSet:
 # AsyncBatchQueryOperations
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchQueryOperations:
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -242,12 +246,14 @@ class TestAsyncBatchQueryOperations:
 
     def test_sql_empty_raises(self):
         from PowerPlatform.Dataverse.core.errors import ValidationError
+
         batch = self._make_batch()
         with pytest.raises(ValidationError):
             batch.query.sql("")
 
     def test_sql_non_string_raises(self):
         from PowerPlatform.Dataverse.core.errors import ValidationError
+
         batch = self._make_batch()
         with pytest.raises((ValidationError, TypeError)):
             batch.query.sql(123)  # type: ignore[arg-type]
@@ -256,6 +262,7 @@ class TestAsyncBatchQueryOperations:
 # ---------------------------------------------------------------------------
 # AsyncBatchRequest.execute — delegates to _AsyncBatchClient
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchRequestExecute:
     async def test_execute_calls_batch_client_execute(self):
@@ -314,6 +321,7 @@ class TestAsyncBatchRequestExecute:
 # AsyncBatchRecordOperations — upsert dict path
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchRecordUpsertDict:
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -322,9 +330,12 @@ class TestAsyncBatchRecordUpsertDict:
 
     def test_upsert_dict_form_normalised(self):
         batch = self._make_batch()
-        batch.records.upsert("account", [
-            {"alternate_key": {"accountnumber": "ACC-1"}, "record": {"name": "Contoso"}},
-        ])
+        batch.records.upsert(
+            "account",
+            [
+                {"alternate_key": {"accountnumber": "ACC-1"}, "record": {"name": "Contoso"}},
+            ],
+        )
         item = batch._items[0]
         assert isinstance(item, _RecordUpsert)
         assert item.items[0].alternate_key == {"accountnumber": "ACC-1"}
@@ -338,6 +349,7 @@ class TestAsyncBatchRecordUpsertDict:
 # ---------------------------------------------------------------------------
 # AsyncBatchQueryOperations — sql success path
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchQuerySqlSuccess:
     def _make_batch(self):
@@ -362,6 +374,7 @@ class TestAsyncBatchQuerySqlSuccess:
 # ---------------------------------------------------------------------------
 # AsyncBatchTableOperations — all methods
 # ---------------------------------------------------------------------------
+
 
 class TestAsyncBatchTableOperations:
     def _make_batch(self):
@@ -464,6 +477,7 @@ class TestAsyncBatchTableOperations:
 # AsyncBatchDataFrameOperations
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncBatchDataFrameOperations:
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -472,6 +486,7 @@ class TestAsyncBatchDataFrameOperations:
 
     def test_create_from_dataframe(self):
         import pandas as pd
+
         batch = self._make_batch()
         df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
         batch.dataframe.create("account", df)
@@ -490,17 +505,21 @@ class TestAsyncBatchDataFrameOperations:
 
     def test_create_empty_dataframe_raises(self):
         import pandas as pd
+
         batch = self._make_batch()
         with pytest.raises(ValueError):
             batch.dataframe.create("account", pd.DataFrame())
 
     def test_update_from_dataframe(self):
         import pandas as pd
+
         batch = self._make_batch()
-        df = pd.DataFrame([
-            {"accountid": "guid-1", "name": "New Name"},
-            {"accountid": "guid-2", "name": "Other Name"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"accountid": "guid-1", "name": "New Name"},
+                {"accountid": "guid-2", "name": "Other Name"},
+            ]
+        )
         batch.dataframe.update("account", df, id_column="accountid")
         assert len(batch._items) == 1
         item = batch._items[0]
@@ -513,12 +532,14 @@ class TestAsyncBatchDataFrameOperations:
 
     def test_update_empty_dataframe_raises(self):
         import pandas as pd
+
         batch = self._make_batch()
         with pytest.raises(ValueError):
             batch.dataframe.update("account", pd.DataFrame(), "accountid")
 
     def test_update_missing_id_column_raises(self):
         import pandas as pd
+
         batch = self._make_batch()
         df = pd.DataFrame([{"name": "X"}])
         with pytest.raises(ValueError):
@@ -526,6 +547,7 @@ class TestAsyncBatchDataFrameOperations:
 
     def test_delete_from_series(self):
         import pandas as pd
+
         batch = self._make_batch()
         ids = pd.Series(["guid-1", "guid-2"])
         batch.dataframe.delete("account", ids)
@@ -540,6 +562,7 @@ class TestAsyncBatchDataFrameOperations:
 
     def test_delete_empty_series_is_noop(self):
         import pandas as pd
+
         batch = self._make_batch()
         batch.dataframe.delete("account", pd.Series([], dtype=str))
         assert len(batch._items) == 0

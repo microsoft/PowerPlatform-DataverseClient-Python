@@ -12,10 +12,10 @@ from azure.core.credentials_async import AsyncTokenCredential
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_files import AsyncFileOperations
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client_with_mock_odata():
     """
@@ -40,6 +40,7 @@ def _make_client_with_mock_odata():
 # Namespace
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncFileOperationsNamespace:
     def test_namespace_exists(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -51,13 +52,12 @@ class TestAsyncFileOperationsNamespace:
 # upload
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncFileUpload:
     async def test_upload_calls_upload_file_with_defaults(self):
         client, od = _make_client_with_mock_odata()
 
-        result = await client.files.upload(
-            "account", "record-guid-1", "new_Document", "/path/to/file.pdf"
-        )
+        result = await client.files.upload("account", "record-guid-1", "new_Document", "/path/to/file.pdf")
 
         od._upload_file.assert_awaited_once_with(
             "account",
@@ -74,9 +74,7 @@ class TestAsyncFileUpload:
         client, od = _make_client_with_mock_odata()
         od._upload_file.return_value = None
 
-        result = await client.files.upload(
-            "account", "record-guid-1", "new_Document", "/path/to/file.pdf"
-        )
+        result = await client.files.upload("account", "record-guid-1", "new_Document", "/path/to/file.pdf")
 
         assert result is None
 
@@ -169,9 +167,7 @@ class TestAsyncFileUpload:
     async def test_upload_different_tables_and_columns(self):
         client, od = _make_client_with_mock_odata()
 
-        await client.files.upload(
-            "new_contract", "contract-guid-1", "new_Attachment", "/tmp/doc.docx"
-        )
+        await client.files.upload("new_contract", "contract-guid-1", "new_Attachment", "/tmp/doc.docx")
 
         od._upload_file.assert_awaited_once_with(
             "new_contract",

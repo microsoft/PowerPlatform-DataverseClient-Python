@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from PowerPlatform.Dataverse.aio.data._async_relationships import _AsyncRelationshipOperationsMixin
 
-
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
 
 class _MockRelationshipClient(_AsyncRelationshipOperationsMixin):
     """Minimal async client that satisfies mixin dependencies."""
@@ -38,6 +38,7 @@ def _mock_response(json_data=None, status_code=200, headers=None):
 # ---------------------------------------------------------------------------
 # _create_one_to_many_relationship
 # ---------------------------------------------------------------------------
+
 
 class TestCreateOneToManyRelationship:
     async def test_returns_correct_dict(self):
@@ -68,7 +69,9 @@ class TestCreateOneToManyRelationship:
         lookup.to_dict.return_value = {}
         relationship = MagicMock(schema_name="rel", referenced_entity="a", referencing_entity="b")
         relationship.to_dict.return_value = {}
-        client._request.return_value = _mock_response(headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"})
+        client._request.return_value = _mock_response(
+            headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"}
+        )
 
         await client._create_one_to_many_relationship(lookup, relationship)
 
@@ -82,7 +85,9 @@ class TestCreateOneToManyRelationship:
         lookup.to_dict.return_value = {}
         relationship = MagicMock(schema_name="rel", referenced_entity="a", referencing_entity="b")
         relationship.to_dict.return_value = {}
-        client._request.return_value = _mock_response(headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"})
+        client._request.return_value = _mock_response(
+            headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"}
+        )
 
         await client._create_one_to_many_relationship(lookup, relationship, solution="MySolution")
 
@@ -95,7 +100,9 @@ class TestCreateOneToManyRelationship:
         lookup.to_dict.return_value = {}
         relationship = MagicMock(schema_name="rel", referenced_entity="a", referencing_entity="b")
         relationship.to_dict.return_value = {}
-        client._request.return_value = _mock_response(headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"})
+        client._request.return_value = _mock_response(
+            headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"}
+        )
 
         await client._create_one_to_many_relationship(lookup, relationship)
 
@@ -118,6 +125,7 @@ class TestCreateOneToManyRelationship:
 # ---------------------------------------------------------------------------
 # _create_many_to_many_relationship
 # ---------------------------------------------------------------------------
+
 
 class TestCreateManyToManyRelationship:
     async def test_returns_correct_dict(self):
@@ -143,7 +151,9 @@ class TestCreateManyToManyRelationship:
         client = _MockRelationshipClient()
         relationship = MagicMock(schema_name="rel", entity1_logical_name="a", entity2_logical_name="b")
         relationship.to_dict.return_value = {}
-        client._request.return_value = _mock_response(headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"})
+        client._request.return_value = _mock_response(
+            headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"}
+        )
 
         await client._create_many_to_many_relationship(relationship, solution="AnotherSolution")
 
@@ -154,7 +164,9 @@ class TestCreateManyToManyRelationship:
         client = _MockRelationshipClient()
         relationship = MagicMock(schema_name="rel", entity1_logical_name="a", entity2_logical_name="b")
         relationship.to_dict.return_value = {}
-        client._request.return_value = _mock_response(headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"})
+        client._request.return_value = _mock_response(
+            headers={"OData-EntityId": "https://x.com/R(33333333-3333-3333-3333-333333333333)"}
+        )
 
         await client._create_many_to_many_relationship(relationship)
 
@@ -165,6 +177,7 @@ class TestCreateManyToManyRelationship:
 # ---------------------------------------------------------------------------
 # _delete_relationship
 # ---------------------------------------------------------------------------
+
 
 class TestDeleteRelationship:
     async def test_sends_delete_to_correct_url(self):
@@ -198,6 +211,7 @@ class TestDeleteRelationship:
 # ---------------------------------------------------------------------------
 # _get_relationship
 # ---------------------------------------------------------------------------
+
 
 class TestGetRelationship:
     async def test_returns_first_result_when_found(self):
@@ -240,12 +254,11 @@ class TestGetRelationship:
 # _extract_id_from_header (inherited from sync mixin)
 # ---------------------------------------------------------------------------
 
+
 class TestExtractIdFromHeader:
     def test_extracts_guid_from_url(self):
         client = _MockRelationshipClient()
-        result = client._extract_id_from_header(
-            "https://example.com/RelationshipDefinitions(abc123-def456)"
-        )
+        result = client._extract_id_from_header("https://example.com/RelationshipDefinitions(abc123-def456)")
         assert result == "abc123-def456"
 
     def test_returns_none_for_none_input(self):
