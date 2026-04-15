@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import re
 import time
 import uuid
@@ -47,6 +46,8 @@ from ...data._odata import (
 from ...data._raw_request import _RawRequest
 from ..core._async_auth import _AsyncAuthManager
 from ..core._async_http import _AsyncHttpClient, _AsyncResponse
+from ._async_relationships import _AsyncRelationshipOperationsMixin
+from ._async_upload import _AsyncFileUploadMixin
 
 if TYPE_CHECKING:
     import aiohttp
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
 __all__: list[str] = []
 
 
-class _AsyncODataClient(_ODataClient):
+class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin, _ODataClient):
     """Async Dataverse Web API client.
 
     Inherits all pure helper methods (URL/body builders, cache utilities,
@@ -105,9 +106,10 @@ class _AsyncODataClient(_ODataClient):
         )
         # Caches (same structure as sync client)
         self._logical_to_entityset_cache: dict[str, str] = {}
+        # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
         self._picklist_label_cache: dict[str, dict] = {}
-        self._picklist_cache_ttl_seconds: int = 3600
+        self._picklist_cache_ttl_seconds: int = 3600  # 1 hour TTL
         # asyncio.Lock instead of threading.Lock for concurrent coroutine safety
         self._picklist_cache_lock: asyncio.Lock = asyncio.Lock()
 
@@ -181,17 +183,17 @@ class _AsyncODataClient(_ODataClient):
         merged.setdefault("x-ms-correlation-id", _CALL_SCOPE_CORRELATION_ID.get())
         kwargs["headers"] = merged
 
-        r = await self._raw_request(method, url, **kwargs)
-        if r.status_code in expected:
-            return r
+        response = await self._raw_request(method, url, **kwargs)
+        if response.status_code in expected:
+            return response
 
         # Parse error body for a useful message
-        response_headers = r.headers or {}
-        body_excerpt = (r.text or "")[:200]
+        response_headers = response.headers or {}
+        body_excerpt = (response.text or "")[:200]
         svc_code = None
-        msg = f"HTTP {r.status_code}"
+        msg = f"HTTP {response.status_code}"
         try:
-            data = r.json() if r.text else {}
+            data = response.json() if response.text else {}
             if isinstance(data, dict):
                 inner = data.get("error")
                 if isinstance(inner, dict):
@@ -206,7 +208,7 @@ class _AsyncODataClient(_ODataClient):
         except Exception:
             pass
 
-        sc = r.status_code
+        sc = response.status_code
         subcode = _http_subcode(sc)
         request_id = (
             response_headers.get("x-ms-service-request-id")
@@ -258,20 +260,22 @@ class _AsyncODataClient(_ODataClient):
         """Resolve the entity set name for *table_schema_name* (cached)."""
         if not table_schema_name:
             raise ValueError("table schema name required")
+        # Use normalized (lowercase) key for cache lookup
         cache_key = self._normalize_cache_key(table_schema_name)
         cached = self._logical_to_entityset_cache.get(cache_key)
         if cached:
             return cached
         url = f"{self.api}/EntityDefinitions"
+        # LogicalName in Dataverse is stored in lowercase, so we need to lowercase for the filter
         logical_lower = table_schema_name.lower()
         logical_escaped = self._escape_odata_quotes(logical_lower)
         params = {
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = await self._request("get", url, params=params)
+        response = await self._request("get", url, params=params)
         try:
-            body = r.json()
+            body = response.json()
             items = body.get("value", []) if isinstance(body, dict) else []
         except ValueError:
             items = []
@@ -305,6 +309,7 @@ class _AsyncODataClient(_ODataClient):
         pid = self._logical_primaryid_cache.get(cache_key)
         if pid:
             return pid
+        # Resolve metadata (populates _logical_primaryid_cache or raises if table_schema_name unknown)
         await self._entity_set_from_schema_name(table_schema_name)
         pid2 = self._logical_primaryid_cache.get(cache_key)
         if pid2:
@@ -397,6 +402,7 @@ class _AsyncODataClient(_ODataClient):
     ) -> Dict[str, Any]:
         """Return a copy of *record* with picklist label strings converted to ints."""
         resolved_record = record.copy()
+        # Check if there are any string-valued candidates worth resolving
         has_candidates = any(
             isinstance(v, str) and v.strip() and isinstance(k, str) and "@odata." not in k
             for k, v in resolved_record.items()
@@ -404,8 +410,10 @@ class _AsyncODataClient(_ODataClient):
         if not has_candidates:
             return resolved_record
 
+        # Bulk-fetch all picklists for this table (1 API call, cached for TTL)
         await self._bulk_fetch_picklists(table_schema_name)
 
+        # Resolve labels from the nested cache
         table_key = self._normalize_cache_key(table_schema_name)
         table_entry = self._picklist_label_cache.get(table_key)
         if not isinstance(table_entry, dict):
@@ -434,21 +442,21 @@ class _AsyncODataClient(_ODataClient):
     async def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:  # type: ignore[override]
         """Create a single record and return its GUID."""
         req = await self._build_create(entity_set, table_schema_name, record)
-        r = await self._execute_raw(req)
-        ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
+        response = await self._execute_raw(req)
+        ent_loc = response.headers.get("OData-EntityId") or response.headers.get("OData-EntityID")
         if ent_loc:
-            m = _GUID_RE.search(ent_loc)
-            if m:
-                return m.group(0)
-        loc = r.headers.get("Location")
+            guid_match = _GUID_RE.search(ent_loc)
+            if guid_match:
+                return guid_match.group(0)
+        loc = response.headers.get("Location")
         if loc:
-            m = _GUID_RE.search(loc)
-            if m:
-                return m.group(0)
-        header_keys = ", ".join(sorted(r.headers.keys()))
+            guid_match = _GUID_RE.search(loc)
+            if guid_match:
+                return guid_match.group(0)
+        header_keys = ", ".join(sorted(response.headers.keys()))
         raise RuntimeError(
             f"Create response missing GUID in OData-EntityId/Location headers "
-            f"(status={r.status_code}). Headers: {header_keys}"
+            f"(status={response.status_code}). Headers: {header_keys}"
         )
 
     async def _create_multiple(  # type: ignore[override]
@@ -459,9 +467,9 @@ class _AsyncODataClient(_ODataClient):
     ) -> List[str]:
         """Create multiple records via ``CreateMultiple`` and return GUIDs."""
         req = await self._build_create_multiple(entity_set, table_schema_name, records)
-        r = await self._execute_raw(req)
+        response = await self._execute_raw(req)
         try:
-            body = r.json() if r.text else {}
+            body = response.json() if response.text else {}
         except ValueError:
             body = {}
         if not isinstance(body, dict):
@@ -511,28 +519,34 @@ class _AsyncODataClient(_ODataClient):
         if prefer_parts:
             extra_headers["Prefer"] = ",".join(prefer_parts)
 
+        async def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            response = await self._request("get", url, headers=extra_headers or None, params=params)
+            try:
+                return response.json()
+            except ValueError:
+                return {}
+
         entity_set = await self._entity_set_from_schema_name(table_schema_name)
         base_url = f"{self.api}/{entity_set}"
         params: Dict[str, Any] = {}
         if select:
+            # Lowercase column names for case-insensitive matching
             params["$select"] = ",".join(self._lowercase_list(select))
         if filter:
+            # Filter is passed as-is; users must use lowercase column names in filter expressions
             params["$filter"] = filter
         if orderby:
+            # Lowercase column names for case-insensitive matching
             params["$orderby"] = ",".join(self._lowercase_list(orderby))
         if expand:
+            # Lowercase navigation property names for case-insensitive matching
             params["$expand"] = ",".join(expand)
         if top is not None:
             params["$top"] = int(top)
         if count:
             params["$count"] = "true"
 
-        r = await self._request("get", base_url, headers=extra_headers or None, params=params or None)
-        try:
-            data = r.json()
-        except ValueError:
-            data = {}
-
+        data = await _do_request(base_url, params=params or None)
         items = data.get("value") if isinstance(data, dict) else None
         if isinstance(items, list) and items:
             yield [x for x in items if isinstance(x, dict)]
@@ -542,11 +556,7 @@ class _AsyncODataClient(_ODataClient):
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
 
         while next_link:
-            r = await self._request("get", next_link, headers=extra_headers or None)
-            try:
-                data = r.json()
-            except ValueError:
-                data = {}
+            data = await _do_request(next_link)
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
                 yield [x for x in items if isinstance(x, dict)]
@@ -597,10 +607,10 @@ class _AsyncODataClient(_ODataClient):
         if not targets:
             return None
         req = await self._build_delete_multiple(table_schema_name, targets)
-        r = await self._execute_raw(req, expected=(200, 202, 204))
+        response = await self._execute_raw(req, expected=(200, 202, 204))
         job_id = None
         try:
-            body = r.json() if r.text else {}
+            body = response.json() if response.text else {}
         except ValueError:
             body = {}
         if isinstance(body, dict):
@@ -644,16 +654,13 @@ class _AsyncODataClient(_ODataClient):
         if not sql.strip():
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
-        logical_name = self._extract_logical_table(sql)
-        entity_set = await self._entity_set_from_schema_name(logical_name)
-        encoded_sql = _url_quote(sql, safe="")
-        url = f"{self.api}/{entity_set}?sql={encoded_sql}"
-        r = await self._request("get", url)
+        response = await self._execute_raw(await self._build_sql(sql))
         try:
-            body = r.json()
+            body = response.json()
         except ValueError:
             return []
 
+        # Collect first page
         results: List[Dict[str, Any]] = []
         if isinstance(body, list):
             return [row for row in body if isinstance(row, dict)]
@@ -664,11 +671,13 @@ class _AsyncODataClient(_ODataClient):
         if isinstance(value, list):
             results = [row for row in value if isinstance(row, dict)]
 
+        # Follow pagination links until exhausted
         raw_link = body.get("@odata.nextLink") or body.get("odata.nextLink")
         next_link: Optional[str] = raw_link if isinstance(raw_link, str) else None
         visited: set[str] = set()
         seen_cookies: set[str] = set()
         while next_link:
+            # Guard 1: exact URL cycle (same next_link returned twice)
             if next_link in visited:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
@@ -681,6 +690,9 @@ class _AsyncODataClient(_ODataClient):
                 )
                 break
             visited.add(next_link)
+            # Guard 2: server-side bug where pagingcookie does not advance between
+            # pages (pagenumber increments but cookie GUIDs stay the same), which
+            # causes an infinite loop even though URLs differ.
             cookie = _extract_pagingcookie(next_link)
             if cookie is not None:
                 if cookie in seen_cookies:
@@ -739,14 +751,15 @@ class _AsyncODataClient(_ODataClient):
     ) -> Optional[Dict[str, Any]]:
         """Fetch entity metadata by table schema name."""
         url = f"{self.api}/EntityDefinitions"
+        # LogicalName is stored lowercase, so we lowercase the input for lookup
         logical_lower = table_schema_name.lower()
         logical_escaped = self._escape_odata_quotes(logical_lower)
         params = {
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = await self._request("get", url, headers=headers, params=params)
-        items = r.json().get("value", [])
+        response = await self._request("get", url, headers=headers, params=params)
+        items = response.json().get("value", [])
         return items[0] if items else None
 
     async def _create_entity(  # type: ignore[override]
@@ -793,6 +806,7 @@ class _AsyncODataClient(_ODataClient):
         extra_select: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Fetch attribute metadata for a column."""
+        # Convert to lowercase logical name for lookup
         logical_name = column_name.lower()
         attr_escaped = self._escape_odata_quotes(logical_name)
         url = f"{self.api}/EntityDefinitions({entity_metadata_id})/Attributes"
@@ -810,9 +824,9 @@ class _AsyncODataClient(_ODataClient):
             "$select": ",".join(select_fields),
             "$filter": f"LogicalName eq '{attr_escaped}'",
         }
-        r = await self._request("get", url, params=params)
+        response = await self._request("get", url, params=params)
         try:
-            body = r.json() if r.text else {}
+            body = response.json() if response.text else {}
         except ValueError:
             return None
         items = body.get("value") if isinstance(body, dict) else None
@@ -829,6 +843,7 @@ class _AsyncODataClient(_ODataClient):
         delays: tuple = (0, 3, 10, 20),
     ) -> None:
         """Poll until a newly created attribute becomes visible in the data API."""
+        # Convert to lowercase logical name for URL
         logical_name = attribute_name.lower()
         probe_url = f"{self.api}/{entity_set}?$top=1&$select={logical_name}"
         last_error = None
@@ -844,6 +859,7 @@ class _AsyncODataClient(_ODataClient):
                 last_error = ex
                 continue
 
+        # All retries exhausted - raise with context
         raise RuntimeError(
             f"Attribute '{logical_name}' did not become visible in the data API "
             f"after {total_wait} seconds (exhausted all retries)."
@@ -870,8 +886,8 @@ class _AsyncODataClient(_ODataClient):
         select: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """List all non-private tables."""
-        r = await self._execute_raw(self._build_list_entities(filter=filter, select=select))
-        return r.json().get("value", [])
+        response = await self._execute_raw(self._build_list_entities(filter=filter, select=select))
+        return response.json().get("value", [])
 
     async def _delete_table(self, table_schema_name: str) -> None:  # type: ignore[override]
         """Delete a table by schema name."""
@@ -899,6 +915,8 @@ class _AsyncODataClient(_ODataClient):
             )
 
         created_cols: List[str] = []
+        # Use provided primary column name, or derive from table_schema_name prefix (e.g., "new_Product" -> "new_Name").
+        # If no prefix detected, default to "new_Name"; server will validate overall table schema.
         if primary_column_schema_name:
             primary_attr_schema = primary_column_schema_name
         else:
@@ -996,6 +1014,7 @@ class _AsyncODataClient(_ODataClient):
                 f"Table '{table_schema_name}' not found.",
                 subcode=METADATA_TABLE_NOT_FOUND,
             )
+        # Use the actual SchemaName from the entity metadata
         entity_schema = ent.get("SchemaName") or table_schema_name
         metadata_id = ent.get("MetadataId")
         deleted: List[str] = []
@@ -1045,8 +1064,8 @@ class _AsyncODataClient(_ODataClient):
         }
         if display_name_label is not None:
             payload["DisplayName"] = display_name_label.to_dict()
-        r = await self._request("post", url, json=payload)
-        metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
+        response = await self._request("post", url, json=payload)
+        metadata_id = self._extract_id_from_header(response.headers.get("OData-EntityId"))
         return {
             "metadata_id": metadata_id,
             "schema_name": key_name,
@@ -1063,8 +1082,8 @@ class _AsyncODataClient(_ODataClient):
             )
         logical_name = ent.get("LogicalName", table_schema_name.lower())
         url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
-        r = await self._request("get", url)
-        data = r.json()
+        response = await self._request("get", url)
+        data = response.json()
         return data.get("value", []) if isinstance(data, dict) else []
 
     async def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:  # type: ignore[override]
@@ -1078,200 +1097,6 @@ class _AsyncODataClient(_ODataClient):
         logical_name = ent.get("LogicalName", table_schema_name.lower())
         url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})"
         await self._request("delete", url)
-
-    # ------------------------------------------------------------------
-    # Relationships (async overrides of _RelationshipOperationsMixin)
-    # ------------------------------------------------------------------
-
-    async def _create_one_to_many_relationship(  # type: ignore[override]
-        self,
-        lookup: Any,
-        relationship: Any,
-        solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Create a one-to-many relationship."""
-        url = f"{self.api}/RelationshipDefinitions"
-        payload = relationship.to_dict()
-        payload["Lookup"] = lookup.to_dict()
-        extra_headers: Dict[str, str] = {}
-        if solution:
-            extra_headers["MSCRM.SolutionUniqueName"] = solution
-        r = await self._request("post", url, headers=extra_headers or None, json=payload)
-        relationship_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
-        return {
-            "relationship_id": relationship_id,
-            "relationship_schema_name": relationship.schema_name,
-            "lookup_schema_name": lookup.schema_name,
-            "referenced_entity": relationship.referenced_entity,
-            "referencing_entity": relationship.referencing_entity,
-        }
-
-    async def _create_many_to_many_relationship(  # type: ignore[override]
-        self,
-        relationship: Any,
-        solution: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Create a many-to-many relationship."""
-        url = f"{self.api}/RelationshipDefinitions"
-        payload = relationship.to_dict()
-        extra_headers: Dict[str, str] = {}
-        if solution:
-            extra_headers["MSCRM.SolutionUniqueName"] = solution
-        r = await self._request("post", url, headers=extra_headers or None, json=payload)
-        relationship_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
-        return {
-            "relationship_id": relationship_id,
-            "relationship_schema_name": relationship.schema_name,
-            "entity1_logical_name": relationship.entity1_logical_name,
-            "entity2_logical_name": relationship.entity2_logical_name,
-        }
-
-    async def _delete_relationship(self, relationship_id: str) -> None:  # type: ignore[override]
-        """Delete a relationship by metadata ID."""
-        url = f"{self.api}/RelationshipDefinitions({relationship_id})"
-        await self._request("delete", url, headers={"If-Match": "*"})
-
-    async def _get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:  # type: ignore[override]
-        """Retrieve relationship metadata by schema name."""
-        url = f"{self.api}/RelationshipDefinitions"
-        params = {"$filter": f"SchemaName eq '{self._escape_odata_quotes(schema_name)}'"}
-        r = await self._request("get", url, params=params)
-        data = r.json()
-        results = data.get("value", [])
-        return results[0] if results else None
-
-    # ------------------------------------------------------------------
-    # File upload (async overrides of _FileUploadMixin)
-    # ------------------------------------------------------------------
-
-    async def _upload_file(  # type: ignore[override]
-        self,
-        table_schema_name: str,
-        record_id: str,
-        file_name_attribute: str,
-        path: str,
-        mode: Optional[str] = None,
-        mime_type: Optional[str] = None,
-        if_none_match: bool = True,
-    ) -> None:
-        """Upload a file to a Dataverse file column."""
-        import os
-
-        entity_set = await self._entity_set_from_schema_name(table_schema_name)
-        entity_metadata = await self._get_entity_by_table_schema_name(table_schema_name)
-        if entity_metadata:
-            metadata_id = entity_metadata.get("MetadataId")
-            if metadata_id:
-                attr_metadata = await self._get_attribute_metadata(metadata_id, file_name_attribute)
-                if not attr_metadata:
-                    await self._create_columns(table_schema_name, {file_name_attribute: "file"})
-                    await self._wait_for_attribute_visibility(entity_set, file_name_attribute)
-
-        mode = (mode or "auto").lower()
-        if mode == "auto":
-            if not os.path.isfile(path):
-                raise FileNotFoundError(f"File not found: {path}")
-            size = os.path.getsize(path)
-            mode = "small" if size < 128 * 1024 * 1024 else "chunk"
-
-        logical_name = file_name_attribute.lower()
-        if mode == "small":
-            await self._upload_file_small(
-                entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
-            )
-        elif mode == "chunk":
-            await self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
-        else:
-            raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
-
-    async def _upload_file_small(  # type: ignore[override]
-        self,
-        entity_set: str,
-        record_id: str,
-        file_name_attribute: str,
-        path: str,
-        content_type: Optional[str] = None,
-        if_none_match: bool = True,
-    ) -> None:
-        """Upload a file (<128 MB) via a single PATCH request."""
-        import os
-
-        if not record_id:
-            raise ValueError("record_id required")
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"File not found: {path}")
-        size = os.path.getsize(path)
-        limit = 128 * 1024 * 1024
-        if size > limit:
-            raise ValueError(f"File size {size} exceeds single-upload limit {limit}; use chunk mode.")
-        with open(path, "rb") as fh:
-            data = fh.read()
-        fname = os.path.basename(path)
-        key = self._format_key(record_id)
-        url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
-        headers: Dict[str, str] = {
-            "Content-Type": content_type or "application/octet-stream",
-            "x-ms-file-name": fname,
-        }
-        if if_none_match:
-            headers["If-None-Match"] = "null"
-        else:
-            headers["If-Match"] = "*"
-        await self._request("patch", url, headers=headers, data=data)
-
-    async def _upload_file_chunk(  # type: ignore[override]
-        self,
-        entity_set: str,
-        record_id: str,
-        file_name_attribute: str,
-        path: str,
-        if_none_match: bool = True,
-    ) -> None:
-        """Stream a file using Dataverse native chunked PATCH protocol."""
-        import os
-
-        if not record_id:
-            raise ValueError("record_id required")
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"File not found: {path}")
-        total_size = os.path.getsize(path)
-        fname = os.path.basename(path)
-        key = self._format_key(record_id)
-        init_url = f"{self.api}/{entity_set}{key}/{file_name_attribute}?x-ms-file-name={_url_quote(fname)}"
-        init_headers: Dict[str, str] = {"x-ms-transfer-mode": "chunked"}
-        if if_none_match:
-            init_headers["If-None-Match"] = "null"
-        else:
-            init_headers["If-Match"] = "*"
-        r_init = await self._request("patch", init_url, headers=init_headers, data=b"")
-        location = r_init.headers.get("Location") or r_init.headers.get("location")
-        if not location:
-            raise RuntimeError("Missing Location header with sessiontoken for chunked upload")
-        rec_hdr = r_init.headers.get("x-ms-chunk-size") or r_init.headers.get("X-MS-CHUNK-SIZE")
-        try:
-            recommended_size = int(rec_hdr) if rec_hdr else None
-        except Exception:
-            recommended_size = None
-        effective_size = recommended_size or (4 * 1024 * 1024)
-        if effective_size <= 0:
-            raise ValueError("effective chunk size must be positive")
-        total_chunks = int(math.ceil(total_size / effective_size)) if total_size else 1
-        uploaded_bytes = 0
-        with open(path, "rb") as fh:
-            for _ in range(total_chunks):
-                chunk = fh.read(effective_size)
-                if not chunk:
-                    break
-                start = uploaded_bytes
-                end = start + len(chunk) - 1
-                c_headers = {
-                    "x-ms-file-name": fname,
-                    "Content-Type": "application/octet-stream",
-                    "Content-Range": f"bytes {start}-{end}/{total_size}",
-                    "Content-Length": str(len(chunk)),
-                }
-                await self._request("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
-                uploaded_bytes += len(chunk)
 
     # ------------------------------------------------------------------
     # _build_* request builders (async — await IO-touching helpers)
@@ -1389,6 +1214,12 @@ class _AsyncODataClient(_ODataClient):
                     "ids and changes lists must have equal length for paired update.",
                     subcode="ids_changes_length_mismatch",
                 )
+            for i, ch in enumerate(changes):
+                if not isinstance(ch, dict):
+                    raise ValidationError(
+                        f"Each patch in changes must be a dict; got {type(ch).__name__} at index {i}.",
+                        subcode="invalid_patch_type",
+                    )
             records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
         else:
             raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")

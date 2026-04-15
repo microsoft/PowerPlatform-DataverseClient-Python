@@ -96,13 +96,15 @@ class _AsyncHttpClient:
         """
         import aiohttp
 
-        # Resolve timeout — convert float to aiohttp.ClientTimeout
+        # If no timeout is provided, use the user-specified default timeout if set;
+        # otherwise, apply per-method defaults (120s for POST/DELETE, 10s for others).
+        # Convert the resolved float to aiohttp.ClientTimeout.
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
                 t = self.default_timeout
             else:
-                m = (method or "").lower()
-                t = 120.0 if m in ("post", "delete") else 10.0
+                http_method = (method or "").lower()
+                t = 120.0 if http_method in ("post", "delete") else 10.0
             kwargs["timeout"] = aiohttp.ClientTimeout(total=t)
         elif isinstance(kwargs["timeout"], (int, float)):
             kwargs["timeout"] = aiohttp.ClientTimeout(total=float(kwargs.pop("timeout")))
@@ -115,12 +117,14 @@ class _AsyncHttpClient:
             kwargs["data"] = _json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
         # Log outbound request once (before retry loop).
+        # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.
         if self._logger is not None:
             req_body = kwargs.get("data")
             self._logger.log_request(method, url, headers=kwargs.get("headers"), body=req_body)
 
         session = await self._get_session()
 
+        # Small backoff retry on network errors only
         for attempt in range(self.max_attempts):
             try:
                 t0 = time.monotonic()
@@ -129,6 +133,8 @@ class _AsyncHttpClient:
                     elapsed_ms = (time.monotonic() - t0) * 1000
                     json_data: Any = _json.loads(text) if text.strip() else {}
                     if self._logger is not None:
+                        # Only decode resp.text when body logging is enabled — avoids
+                        # unnecessary overhead for large payloads when max_body_bytes == 0.
                         resp_body = text if self._logger.body_logging_enabled else None
                         self._logger.log_response(
                             method,

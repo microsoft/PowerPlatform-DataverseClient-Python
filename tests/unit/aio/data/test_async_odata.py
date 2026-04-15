@@ -2774,10 +2774,10 @@ class TestAsyncODataUpdateByIdsAdditional:
             await client._update_by_ids("account", ["id-1", "id-2"], [{"name": "A"}])
 
     async def test_changes_as_list_non_dict_patch_raises(self):
-        """patch in list is not dict → TypeError from dict unpacking."""
+        """patch in list is not dict → ValidationError."""
         client = _make_async_odata_client()
         _seed_cache(client)
-        with pytest.raises(TypeError):
+        with pytest.raises(ValidationError, match="dict"):
             await client._update_by_ids("account", ["id-1"], ["not-a-dict"])
 
     async def test_changes_as_list_success(self):

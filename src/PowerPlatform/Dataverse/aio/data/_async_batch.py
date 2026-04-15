@@ -103,6 +103,10 @@ class _AsyncBatchClient(_BatchClient):
             url,
             data=body.encode("utf-8"),
             headers=headers,
+            # 400 is expected: Dataverse returns 400 for top-level batch
+            # errors (e.g. malformed body). We parse the response body to
+            # surface the service error via _parse_batch_response /
+            # _raise_top_level_batch_error rather than letting _request raise.
             expected=(200, 202, 207, 400),
         )
         return self._parse_batch_response(response)
@@ -118,6 +122,7 @@ class _AsyncBatchClient(_BatchClient):
         for item in items:
             if isinstance(item, _ChangeSet):
                 if not item.operations:
+                    # Empty changeset — nothing to send; skip silently.
                     continue
                 cs_requests = [await self._resolve_one(op) for op in item.operations]
                 result.append(_ChangeSetBatchItem(requests=cs_requests))
