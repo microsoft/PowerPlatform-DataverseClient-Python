@@ -39,7 +39,7 @@ class _AsyncRelationshipOperationsMixin:
         match = re.search(r"\(([0-9a-fA-F-]+)\)", header_value)
         return match.group(1) if match else None
 
-    async def _create_one_to_many_relationship(  # type: ignore[override]
+    async def _create_one_to_many_relationship(
         self,
         lookup: Any,
         relationship: Any,
@@ -79,7 +79,7 @@ class _AsyncRelationshipOperationsMixin:
             "referencing_entity": relationship.referencing_entity,
         }
 
-    async def _create_many_to_many_relationship(  # type: ignore[override]
+    async def _create_many_to_many_relationship(
         self,
         relationship: Any,
         solution: Optional[str] = None,
@@ -113,7 +113,7 @@ class _AsyncRelationshipOperationsMixin:
             "entity2_logical_name": relationship.entity2_logical_name,
         }
 
-    async def _delete_relationship(self, relationship_id: str) -> None:  # type: ignore[override]
+    async def _delete_relationship(self, relationship_id: str) -> None:
         """Delete a relationship by metadata ID.
 
         :param relationship_id: GUID of the relationship metadata record.
@@ -125,7 +125,7 @@ class _AsyncRelationshipOperationsMixin:
         headers = {"If-Match": "*"}
         await self._request("delete", url, headers=headers)
 
-    async def _get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:  # type: ignore[override]
+    async def _get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:
         """Retrieve relationship metadata by schema name.
 
         :param schema_name: Schema name of the relationship.

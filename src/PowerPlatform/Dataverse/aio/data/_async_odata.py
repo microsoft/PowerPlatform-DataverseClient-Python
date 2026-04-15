@@ -122,7 +122,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # ------------------------------------------------------------------
 
     @asynccontextmanager
-    async def _call_scope(self) -> AsyncIterator[str]:  # type: ignore[override]
+    async def _call_scope(self) -> AsyncIterator[str]:
         """Async context manager that sets a per-call correlation ID."""
         shared_id = str(uuid.uuid4())
         token = _CALL_SCOPE_CORRELATION_ID.set(shared_id)
@@ -131,7 +131,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         finally:
             _CALL_SCOPE_CORRELATION_ID.reset(token)
 
-    async def close(self) -> None:  # type: ignore[override]
+    async def close(self) -> None:
         """Close the async HTTP client and clear caches."""
         self._logical_to_entityset_cache.clear()
         self._logical_primaryid_cache.clear()
@@ -145,7 +145,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # HTTP pipeline (async overrides)
     # ------------------------------------------------------------------
 
-    async def _headers(self) -> Dict[str, str]:  # type: ignore[override]
+    async def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with a fresh bearer token."""
         scope = f"{self.base_url}/.default"
         token = (await self.auth._acquire_token(scope)).access_token
@@ -158,7 +158,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             "User-Agent": _USER_AGENT,
         }
 
-    async def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:  # type: ignore[override]
+    async def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """Merge caller-supplied headers on top of the standard OData headers."""
         base = await self._headers()
         if not headers:
@@ -167,11 +167,11 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         merged.update(headers)
         return merged
 
-    async def _raw_request(self, method: str, url: str, **kwargs: Any) -> _AsyncResponse:  # type: ignore[override]
+    async def _raw_request(self, method: str, url: str, **kwargs: Any) -> _AsyncResponse:
         """Execute an HTTP request via aiohttp (no error parsing)."""
         return await self._http._request(method, url, **kwargs)
 
-    async def _request(  # type: ignore[override]
+    async def _request(
         self,
         method: str,
         url: str,
@@ -242,7 +242,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             is_transient=is_transient,
         )
 
-    async def _execute_raw(  # type: ignore[override]
+    async def _execute_raw(
         self,
         req: _RawRequest,
         *,
@@ -260,7 +260,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # Entity set / primary key resolution
     # ------------------------------------------------------------------
 
-    async def _entity_set_from_schema_name(self, table_schema_name: str) -> str:  # type: ignore[override]
+    async def _entity_set_from_schema_name(self, table_schema_name: str) -> str:
         """Resolve the entity set name for *table_schema_name* (cached)."""
         if not table_schema_name:
             raise ValueError("table schema name required")
@@ -307,7 +307,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             self._logical_primaryid_cache[cache_key] = primary_id_attr
         return es
 
-    async def _primary_id_attr(self, table_schema_name: str) -> str:  # type: ignore[override]
+    async def _primary_id_attr(self, table_schema_name: str) -> str:
         """Return the primary key attribute name for *table_schema_name* (cached)."""
         cache_key = self._normalize_cache_key(table_schema_name)
         pid = self._logical_primaryid_cache.get(cache_key)
@@ -327,7 +327,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # Picklist / label resolution
     # ------------------------------------------------------------------
 
-    async def _request_metadata_with_retry(self, method: str, url: str, **kwargs: Any) -> _AsyncResponse:  # type: ignore[override]
+    async def _request_metadata_with_retry(self, method: str, url: str, **kwargs: Any) -> _AsyncResponse:
         """Fetch metadata with up to 5 retries on 404 (newly provisioned tables)."""
         max_attempts = 5
         backoff_seconds = 0.4
@@ -343,7 +343,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                 raise
         raise RuntimeError("_request_metadata_with_retry: retry loop exhausted")  # pragma: no cover
 
-    async def _bulk_fetch_picklists(self, table_schema_name: str) -> None:  # type: ignore[override]
+    async def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
         """Fetch all picklist attributes and cache their label→int mappings."""
         table_key = self._normalize_cache_key(table_schema_name)
         now = time.time()
@@ -399,7 +399,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
 
             self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
 
-    async def _convert_labels_to_ints(  # type: ignore[override]
+    async def _convert_labels_to_ints(
         self, table_schema_name: str, record: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Return a copy of *record* with picklist label strings converted to ints."""
@@ -441,7 +441,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # CRUD — single record
     # ------------------------------------------------------------------
 
-    async def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:  # type: ignore[override]
+    async def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
         """Create a single record and return its GUID."""
         req = await self._build_create(entity_set, table_schema_name, record)
         response = await self._execute_raw(req)
@@ -461,7 +461,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             f"(status={response.status_code}). Headers: {header_keys}"
         )
 
-    async def _create_multiple(  # type: ignore[override]
+    async def _create_multiple(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -491,13 +491,13 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             return out
         return []
 
-    async def _get(  # type: ignore[override]
+    async def _get(
         self, table_schema_name: str, key: str, select: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Retrieve a single record by GUID."""
         return (await self._execute_raw(await self._build_get(table_schema_name, key, select=select))).json()
 
-    async def _get_multiple(  # type: ignore[override]
+    async def _get_multiple(
         self,
         table_schema_name: str,
         select: Optional[List[str]] = None,
@@ -564,11 +564,11 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                 yield [x for x in items if isinstance(x, dict)]
             next_link = (data.get("@odata.nextLink") or data.get("odata.nextLink")) if isinstance(data, dict) else None
 
-    async def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:  # type: ignore[override]
+    async def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:
         """Update a single record by GUID."""
         await self._execute_raw(await self._build_update(table_schema_name, key, data))
 
-    async def _update_multiple(  # type: ignore[override]
+    async def _update_multiple(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -579,7 +579,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             raise TypeError("records must be a non-empty list[dict]")
         await self._execute_raw(await self._build_update_multiple_from_records(entity_set, table_schema_name, records))
 
-    async def _update_by_ids(  # type: ignore[override]
+    async def _update_by_ids(
         self,
         table_schema_name: str,
         ids: List[str],
@@ -593,11 +593,11 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         entity_set = await self._entity_set_from_schema_name(table_schema_name)
         await self._execute_raw(await self._build_update_multiple(entity_set, table_schema_name, ids, changes))
 
-    async def _delete(self, table_schema_name: str, key: str) -> None:  # type: ignore[override]
+    async def _delete(self, table_schema_name: str, key: str) -> None:
         """Delete a single record by GUID."""
         await self._execute_raw(await self._build_delete(table_schema_name, key))
 
-    async def _delete_multiple(  # type: ignore[override]
+    async def _delete_multiple(
         self,
         table_schema_name: str,
         ids: List[str],
@@ -617,7 +617,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             job_id = body.get("JobId")
         return job_id
 
-    async def _upsert(  # type: ignore[override]
+    async def _upsert(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -630,7 +630,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             expected=(200, 201, 204),
         )
 
-    async def _upsert_multiple(  # type: ignore[override]
+    async def _upsert_multiple(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -647,7 +647,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # SQL query
     # ------------------------------------------------------------------
 
-    async def _query_sql(self, sql: str) -> List[Dict[str, Any]]:  # type: ignore[override]
+    async def _query_sql(self, sql: str) -> List[Dict[str, Any]]:
         """Execute a read-only SQL SELECT via the Dataverse ``?sql=`` API."""
         if not isinstance(sql, str):
             raise ValidationError("sql must be a string", subcode=VALIDATION_SQL_NOT_STRING)
@@ -744,7 +744,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
     # Table / entity metadata
     # ------------------------------------------------------------------
 
-    async def _get_entity_by_table_schema_name(  # type: ignore[override]
+    async def _get_entity_by_table_schema_name(
         self,
         table_schema_name: str,
         headers: Optional[Dict[str, str]] = None,
@@ -762,7 +762,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         items = response.json().get("value", [])
         return items[0] if items else None
 
-    async def _create_entity(  # type: ignore[override]
+    async def _create_entity(
         self,
         table_schema_name: str,
         display_name: str,
@@ -799,7 +799,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             raise RuntimeError(f"MetadataId missing after creating entity '{table_schema_name}'.")
         return ent
 
-    async def _get_attribute_metadata(  # type: ignore[override]
+    async def _get_attribute_metadata(
         self,
         entity_metadata_id: str,
         column_name: str,
@@ -836,7 +836,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                 return item
         return None
 
-    async def _wait_for_attribute_visibility(  # type: ignore[override]
+    async def _wait_for_attribute_visibility(
         self,
         entity_set: str,
         attribute_name: str,
@@ -865,7 +865,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             f"after {total_wait} seconds (exhausted all retries)."
         ) from last_error
 
-    async def _get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:  # type: ignore[override]
+    async def _get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
         """Return basic metadata for a table, or ``None`` if not found."""
         ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent:
@@ -880,7 +880,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             "columns_created": [],
         }
 
-    async def _list_tables(  # type: ignore[override]
+    async def _list_tables(
         self,
         filter: Optional[str] = None,
         select: Optional[List[str]] = None,
@@ -889,7 +889,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         response = await self._execute_raw(self._build_list_entities(filter=filter, select=select))
         return response.json().get("value", [])
 
-    async def _delete_table(self, table_schema_name: str) -> None:  # type: ignore[override]
+    async def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name."""
         ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
@@ -899,7 +899,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             )
         await self._execute_raw(self._build_delete_entity(ent["MetadataId"]))
 
-    async def _create_table(  # type: ignore[override]
+    async def _create_table(
         self,
         table_schema_name: str,
         schema: Dict[str, Any],
@@ -956,7 +956,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             "columns_created": created_cols,
         }
 
-    async def _create_columns(  # type: ignore[override]
+    async def _create_columns(
         self,
         table_schema_name: str,
         columns: Dict[str, Any],
@@ -993,7 +993,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             self._flush_cache("picklist")
         return created
 
-    async def _delete_columns(  # type: ignore[override]
+    async def _delete_columns(
         self,
         table_schema_name: str,
         columns: Union[str, List[str]],
@@ -1042,7 +1042,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             self._flush_cache("picklist")
         return deleted
 
-    async def _create_alternate_key(  # type: ignore[override]
+    async def _create_alternate_key(
         self,
         table_schema_name: str,
         key_name: str,
@@ -1072,7 +1072,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             "key_attributes": columns,
         }
 
-    async def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:  # type: ignore[override]
+    async def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
         """List all alternate keys on a table."""
         ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
@@ -1086,7 +1086,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         data = response.json()
         return data.get("value", []) if isinstance(data, dict) else []
 
-    async def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:  # type: ignore[override]
+    async def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
         """Delete an alternate key by metadata ID."""
         ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):

@@ -34,7 +34,7 @@ class _AsyncFileUploadMixin:
     - ``self._wait_for_attribute_visibility()`` — async coroutine.
     """
 
-    async def _upload_file(  # type: ignore[override]
+    async def _upload_file(
         self,
         table_schema_name: str,
         record_id: str,
@@ -96,7 +96,7 @@ class _AsyncFileUploadMixin:
         else:
             raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 
-    async def _upload_file_small(  # type: ignore[override]
+    async def _upload_file_small(
         self,
         entity_set: str,
         record_id: str,
@@ -143,7 +143,7 @@ class _AsyncFileUploadMixin:
         # Single PATCH upload; allow default success codes (includes 204)
         await self._request("patch", url, headers=headers, data=data)
 
-    async def _upload_file_chunk(  # type: ignore[override]
+    async def _upload_file_chunk(
         self,
         entity_set: str,
         record_id: str,
