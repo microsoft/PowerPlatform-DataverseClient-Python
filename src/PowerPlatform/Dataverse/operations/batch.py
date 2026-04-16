@@ -34,6 +34,7 @@ from ..data._batch import (
 )
 from ..models.batch import BatchResult
 from ..models.upsert import UpsertItem
+from ..models.entity import resolve_table
 from ..models.relationship import (
     LookupAttributeMetadata,
     OneToManyRelationshipMetadata,
@@ -43,6 +44,7 @@ from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity
 
 __all__ = [
     "BatchRecordOperations",
@@ -75,14 +77,14 @@ class ChangeSetRecordOperations:
     def __init__(self, cs_internal: _ChangeSet) -> None:
         self._cs = cs_internal
 
-    def create(self, table: str, data: Dict[str, Any]) -> str:
+    def create(self, table: Union[str, "type[Entity]"], data: Union[Dict[str, Any], "Entity"]) -> str:
         """
         Add a single-record create to this changeset.
 
-        :param table: Table schema name (e.g. ``"account"``).
-        :type table: :class:`str`
-        :param data: Column values for the new record.
-        :type data: dict[str, typing.Any]
+        :param table: Table schema name (e.g. ``"account"``) or entity class.
+        :type table: str or type[Entity]
+        :param data: Column values for the new record, or an entity instance.
+        :type data: dict[str, typing.Any] or Entity
         :returns: A content-ID reference string (e.g. ``"$1"``) usable in
             subsequent operations within this changeset as a URI reference
             in ``@odata.bind`` fields or as ``record_id`` in
@@ -98,33 +100,42 @@ class ChangeSetRecordOperations:
                     "originatingleadid@odata.bind": lead_ref,
                 })
         """
+        table = resolve_table(table)
+        from ..models.entity import Entity as _Entity
+        if isinstance(data, _Entity):
+            data = data.to_dict()
         return self._cs.add_create(table, data)
 
-    def update(self, table: str, record_id: str, changes: Dict[str, Any]) -> None:
+    def update(self, table: Union[str, "type[Entity]"], record_id: str, changes: Union[Dict[str, Any], "Entity"]) -> None:
         """
         Add a single-record update to this changeset.
 
-        :param table: Table schema name. Ignored when ``record_id`` is a
+        :param table: Table schema name or entity class. Ignored when ``record_id`` is a
             content-ID reference.
-        :type table: :class:`str`
+        :type table: str or type[Entity]
         :param record_id: GUID or a content-ID reference (e.g. ``"$1"``)
             returned by a prior :meth:`create` in this changeset.
         :type record_id: :class:`str`
-        :param changes: Column values to update.
-        :type changes: dict[str, typing.Any]
+        :param changes: Column values to update, or an entity instance.
+        :type changes: dict[str, typing.Any] or Entity
         """
+        table = resolve_table(table)
+        from ..models.entity import Entity as _Entity
+        if isinstance(changes, _Entity):
+            changes = changes.to_dict()
         self._cs.add_update(table, record_id, changes)
 
-    def delete(self, table: str, record_id: str) -> None:
+    def delete(self, table: Union[str, "type[Entity]"], record_id: str) -> None:
         """
         Add a single-record delete to this changeset.
 
-        :param table: Table schema name. Ignored when ``record_id`` is a
+        :param table: Table schema name or entity class. Ignored when ``record_id`` is a
             content-ID reference.
-        :type table: :class:`str`
+        :type table: str or type[Entity]
         :param record_id: GUID or a content-ID reference (e.g. ``"$1"``).
         :type record_id: :class:`str`
         """
+        table = resolve_table(table)
         self._cs.add_delete(table, record_id)
 
 
@@ -179,7 +190,7 @@ class BatchRecordOperations:
 
     def create(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         data: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
         """
@@ -189,16 +200,22 @@ class BatchRecordOperations:
         A list of dicts creates all records via the ``CreateMultiple`` action
         (one batch item).
 
-        :param table: Table schema name (e.g. ``"account"``).
-        :type table: :class:`str`
+        :param table: Table schema name (e.g. ``"account"``) or entity class.
+        :type table: str or type[Entity]
         :param data: Single record dict or list of record dicts.
         :type data: dict or list[dict]
         """
+        table = resolve_table(table)
+        from ..models.entity import Entity as _Entity
+        if isinstance(data, _Entity):
+            data = data.to_dict()
+        elif isinstance(data, list) and data and isinstance(data[0], _Entity):
+            data = [e.to_dict() for e in data]
         self._batch._items.append(_RecordCreate(table=table, data=data))
 
     def update(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         ids: Union[str, List[str]],
         changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
@@ -209,18 +226,24 @@ class BatchRecordOperations:
         - **Broadcast** ``(table, [id1, id2], {...})`` -> one ``UpdateMultiple`` POST.
         - **Paired** ``(table, [id1, id2], [{...}, {...}])`` -> one ``UpdateMultiple`` POST.
 
-        :param table: Table schema name.
-        :type table: :class:`str`
+        :param table: Table schema name or entity class.
+        :type table: str or type[Entity]
         :param ids: Single GUID or list of GUIDs.
         :type ids: str or list[str]
         :param changes: Single dict (single/broadcast) or list of dicts (paired).
         :type changes: dict or list[dict]
         """
+        table = resolve_table(table)
+        from ..models.entity import Entity as _Entity
+        if isinstance(changes, _Entity):
+            changes = changes.to_dict()
+        elif isinstance(changes, list) and changes and isinstance(changes[0], _Entity):
+            changes = [c.to_dict() for c in changes]
         self._batch._items.append(_RecordUpdate(table=table, ids=ids, changes=changes))
 
     def delete(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         ids: Union[str, List[str]],
         *,
         use_bulk_delete: bool = True,
@@ -233,19 +256,20 @@ class BatchRecordOperations:
           The async job ID will be available in ``BatchItemResponse.data["JobId"]``.
         - **List + use_bulk_delete=False** -> one DELETE per record.
 
-        :param table: Table schema name.
-        :type table: :class:`str`
+        :param table: Table schema name or entity class.
+        :type table: str or type[Entity]
         :param ids: Single GUID or list of GUIDs.
         :type ids: str or list[str]
         :param use_bulk_delete: When True (default) and ``ids`` is a list, use the
             BulkDelete action. When False, delete records individually.
         :type use_bulk_delete: :class:`bool`
         """
+        table = resolve_table(table)
         self._batch._items.append(_RecordDelete(table=table, ids=ids, use_bulk_delete=use_bulk_delete))
 
     def get(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         record_id: str,
         *,
         select: Optional[List[str]] = None,
@@ -271,11 +295,12 @@ class BatchRecordOperations:
         :param select: Optional list of column names to include.
         :type select: list[str] or None
         """
+        table = resolve_table(table)
         self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
 
     def upsert(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         items: List[Union[UpsertItem, Dict[str, Any]]],
     ) -> None:
         """
@@ -313,6 +338,7 @@ class BatchRecordOperations:
                 ),
             ])
         """
+        table = resolve_table(table)
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []
@@ -353,7 +379,7 @@ class BatchTableOperations:
 
     def create(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         columns: Dict[str, Any],
         *,
         solution: Optional[str] = None,
@@ -367,8 +393,8 @@ class BatchTableOperations:
             in batch mode. If the table already exists the server returns an error
             in the corresponding :class:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse`.
 
-        :param table: Schema name of the new table (e.g. ``"new_Product"``).
-        :type table: :class:`str`
+        :param table: Schema name of the new table (e.g. ``"new_Product"``) or entity class.
+        :type table: str or type[Entity]
         :param columns: Mapping of column schema names to type strings or Enum subclasses.
         :type columns: dict[str, typing.Any]
         :param solution: Optional solution unique name.
@@ -376,6 +402,7 @@ class BatchTableOperations:
         :param primary_column: Optional primary column schema name.
         :type primary_column: str or None
         """
+        table = resolve_table(table)
         self._batch._items.append(
             _TableCreate(
                 table=table,
@@ -385,26 +412,28 @@ class BatchTableOperations:
             )
         )
 
-    def delete(self, table: str) -> None:
+    def delete(self, table: Union[str, "type[Entity]"]) -> None:
         """
         Add a table-delete operation to the batch.
 
         The table's ``MetadataId`` is resolved via a GET request at execute time.
 
-        :param table: Schema name of the table to delete.
-        :type table: :class:`str`
+        :param table: Schema name of the table to delete or entity class.
+        :type table: str or type[Entity]
         """
+        table = resolve_table(table)
         self._batch._items.append(_TableDelete(table=table))
 
-    def get(self, table: str) -> None:
+    def get(self, table: Union[str, "type[Entity]"]) -> None:
         """
         Add a table-metadata-get operation to the batch.
 
         The response will be in ``BatchItemResponse.data`` after execute.
 
-        :param table: Schema name of the table.
-        :type table: :class:`str`
+        :param table: Schema name of the table or entity class.
+        :type table: str or type[Entity]
         """
+        table = resolve_table(table)
         self._batch._items.append(_TableGet(table=table))
 
     def list(
@@ -430,21 +459,22 @@ class BatchTableOperations:
         """
         self._batch._items.append(_TableList(filter=filter, select=select))
 
-    def add_columns(self, table: str, columns: Dict[str, Any]) -> None:
+    def add_columns(self, table: Union[str, "type[Entity]"], columns: Dict[str, Any]) -> None:
         """
         Add column-create operations to the batch (one per column).
 
         The table's ``MetadataId`` is resolved at execute time. Each column
         produces one entry in :attr:`BatchResult.responses`.
 
-        :param table: Schema name of the target table.
-        :type table: :class:`str`
+        :param table: Schema name of the target table or entity class.
+        :type table: str or type[Entity]
         :param columns: Mapping of column schema names to type strings or Enum subclasses.
         :type columns: dict[str, typing.Any]
         """
+        table = resolve_table(table)
         self._batch._items.append(_TableAddColumns(table=table, columns=columns))
 
-    def remove_columns(self, table: str, columns: Union[str, List[str]]) -> None:
+    def remove_columns(self, table: Union[str, "type[Entity]"], columns: Union[str, List[str]]) -> None:
         """
         Add column-delete operations to the batch (one per column).
 
@@ -452,11 +482,12 @@ class BatchTableOperations:
         at execute time. Each column produces one entry in
         :attr:`BatchResult.responses`.
 
-        :param table: Schema name of the target table.
-        :type table: :class:`str`
+        :param table: Schema name of the target table or entity class.
+        :type table: str or type[Entity]
         :param columns: Column schema name or list of column schema names to remove.
         :type columns: str or list[str]
         """
+        table = resolve_table(table)
         self._batch._items.append(_TableRemoveColumns(table=table, columns=columns))
 
     def create_one_to_many_relationship(
@@ -516,9 +547,9 @@ class BatchTableOperations:
 
     def create_lookup_field(
         self,
-        referencing_table: str,
+        referencing_table: Union[str, "type[Entity]"],
         lookup_field_name: str,
-        referenced_table: str,
+        referenced_table: Union[str, "type[Entity]"],
         *,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
@@ -531,12 +562,12 @@ class BatchTableOperations:
         Add a lookup field creation to the batch (convenience wrapper for
         :meth:`create_one_to_many_relationship`).
 
-        :param referencing_table: Logical name of the child (many) table.
-        :type referencing_table: :class:`str`
+        :param referencing_table: Logical name of the child (many) table or entity class.
+        :type referencing_table: str or type[Entity]
         :param lookup_field_name: Schema name for the lookup field.
         :type lookup_field_name: :class:`str`
-        :param referenced_table: Logical name of the parent (one) table.
-        :type referenced_table: :class:`str`
+        :param referenced_table: Logical name of the parent (one) table or entity class.
+        :type referenced_table: str or type[Entity]
         :param display_name: Display name for the lookup field.
         :type display_name: str or None
         :param description: Optional description.
@@ -550,6 +581,8 @@ class BatchTableOperations:
         :param language_code: Language code for labels (default 1033).
         :type language_code: :class:`int`
         """
+        referencing_table = resolve_table(referencing_table)
+        referenced_table = resolve_table(referenced_table)
         self._batch._items.append(
             _TableCreateLookupField(
                 referencing_table=referencing_table,
@@ -638,7 +671,7 @@ class BatchDataFrameOperations:
     def __init__(self, batch: "BatchRequest") -> None:
         self._batch = batch
 
-    def create(self, table: str, records: pd.DataFrame) -> None:
+    def create(self, table: Union[str, "type[Entity]"], records: pd.DataFrame) -> None:
         """Enqueue record creates from a pandas DataFrame.
 
         Each row becomes a record. All rows are bundled in a single
@@ -657,6 +690,7 @@ class BatchDataFrameOperations:
             df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
             batch.dataframe.create("account", df)
         """
+        table = resolve_table(table)
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
         if records.empty:
@@ -675,7 +709,7 @@ class BatchDataFrameOperations:
 
     def update(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         changes: pd.DataFrame,
         id_column: str,
         clear_nulls: bool = False,
@@ -708,6 +742,7 @@ class BatchDataFrameOperations:
             ])
             batch.dataframe.update("account", df, id_column="accountid")
         """
+        table = resolve_table(table)
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
         if changes.empty:
@@ -743,7 +778,7 @@ class BatchDataFrameOperations:
 
     def delete(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         ids: pd.Series,
         use_bulk_delete: bool = True,
     ) -> None:
@@ -765,6 +800,7 @@ class BatchDataFrameOperations:
             ids_series = pd.Series(["guid-1", "guid-2", "guid-3"])
             batch.dataframe.delete("account", ids_series)
         """
+        table = resolve_table(table)
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
         raw_list = ids.tolist()

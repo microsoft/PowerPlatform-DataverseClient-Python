@@ -9,9 +9,11 @@ from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CH
 
 from ..models.record import Record
 from ..models.upsert import UpsertItem
+from ..models.entity import resolve_table
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity
 
 
 __all__ = ["RecordOperations"]
@@ -49,15 +51,21 @@ class RecordOperations:
     # ------------------------------------------------------------------ create
 
     @overload
-    def create(self, table: str, data: Dict[str, Any]) -> str: ...
+    def create(self, table: "Entity") -> str: ...
 
     @overload
-    def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
+    def create(self, table: "List[Entity]") -> List[str]: ...
+
+    @overload
+    def create(self, table: Union[str, "type[Entity]"], data: Dict[str, Any]) -> str: ...
+
+    @overload
+    def create(self, table: Union[str, "type[Entity]"], data: List[Dict[str, Any]]) -> List[str]: ...
 
     def create(
         self,
-        table: str,
-        data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        table: Union[str, "type[Entity]", "Entity", "List[Entity]"],
+        data: Union[Dict[str, Any], List[Dict[str, Any]], "Entity", "List[Entity]", None] = None,
     ) -> Union[str, List[str]]:
         """Create one or more records in a Dataverse table.
 
@@ -91,6 +99,22 @@ class RecordOperations:
                 ])
                 print(f"Created {len(guids)} accounts")
         """
+        from ..models.entity import Entity as _Entity
+        # Entity-instance form: create(entity) or create([entity, ...])
+        # Table is inferred from the instance type; no separate table arg needed.
+        if isinstance(table, _Entity):
+            data = table.to_dict()
+            table = resolve_table(type(table))
+        elif isinstance(table, list) and table and isinstance(table[0], _Entity):
+            data = [e.to_dict() for e in table]
+            table = resolve_table(type(table[0]))
+        else:
+            table = resolve_table(table)
+            if isinstance(data, _Entity):
+                data = data.to_dict()
+            elif isinstance(data, list) and data and isinstance(data[0], _Entity):
+                data = [e.to_dict() for e in data]
+
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -103,13 +127,13 @@ class RecordOperations:
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                     raise TypeError("_create (multi) did not return list[str]")
                 return ids
-        raise TypeError("data must be dict or list[dict]")
+        raise TypeError("data must be a dict, list[dict], Entity instance, or list[Entity]")
 
     # ------------------------------------------------------------------ update
 
     def update(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         ids: Union[str, List[str]],
         changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
@@ -152,10 +176,16 @@ class RecordOperations:
                     [{"name": "Name A"}, {"name": "Name B"}],
                 )
         """
+        from ..models.entity import Entity as _Entity
+        table = resolve_table(table)
+        if isinstance(changes, _Entity):
+            changes = changes.to_dict()
+        elif isinstance(changes, list) and changes and isinstance(changes[0], _Entity):
+            changes = [c.to_dict() for c in changes]
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
-                    raise TypeError("For single id, changes must be a dict")
+                    raise TypeError("For single id, changes must be a dict or Entity instance")
                 od._update(table, ids, changes)
                 return None
             if not isinstance(ids, list):
@@ -166,14 +196,14 @@ class RecordOperations:
     # ------------------------------------------------------------------ delete
 
     @overload
-    def delete(self, table: str, ids: str) -> None: ...
+    def delete(self, table: Union[str, "type[Entity]"], ids: str) -> None: ...
 
     @overload
-    def delete(self, table: str, ids: List[str], *, use_bulk_delete: bool = True) -> Optional[str]: ...
+    def delete(self, table: Union[str, "type[Entity]"], ids: List[str], *, use_bulk_delete: bool = True) -> Optional[str]: ...
 
     def delete(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         ids: Union[str, List[str]],
         *,
         use_bulk_delete: bool = True,
@@ -207,6 +237,7 @@ class RecordOperations:
 
                 job_id = client.records.delete("account", [id1, id2, id3])
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 od._delete(table, ids)
@@ -228,7 +259,7 @@ class RecordOperations:
     @overload
     def get(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         record_id: str,
         *,
         select: Optional[List[str]] = None,
@@ -262,7 +293,7 @@ class RecordOperations:
     @overload
     def get(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
@@ -330,7 +361,7 @@ class RecordOperations:
 
     def get(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         record_id: Optional[str] = None,
         *,
         select: Optional[List[str]] = None,
@@ -423,6 +454,7 @@ class RecordOperations:
                     for record in page:
                         print(record["name"])
         """
+        table = resolve_table(table)
         if record_id is not None:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
@@ -463,7 +495,7 @@ class RecordOperations:
 
     # ------------------------------------------------------------------ upsert
 
-    def upsert(self, table: str, items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
+    def upsert(self, table: Union[str, "type[Entity]"], items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
         """Upsert one or more records identified by alternate keys.
 
         When ``items`` contains a single entry, performs a single upsert via PATCH
@@ -539,6 +571,7 @@ class RecordOperations:
             alternate key is composite, e.g.
             ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
         """
+        table = resolve_table(table)
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []

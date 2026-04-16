@@ -18,9 +18,11 @@ from ..models.table_info import AlternateKeyInfo
 from ..models.labels import Label, LocalizedLabel
 from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
+from ..models.entity import resolve_table
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity
 
 
 __all__ = ["TableOperations"]
@@ -69,7 +71,7 @@ class TableOperations:
 
     def create(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         columns: Dict[str, Any],
         *,
         solution: Optional[str] = None,
@@ -127,6 +129,7 @@ class TableOperations:
                 )
                 print(f"Created: {result['table_schema_name']}")
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             raw = od._create_table(
                 table,
@@ -138,7 +141,7 @@ class TableOperations:
 
     # ----------------------------------------------------------------- delete
 
-    def delete(self, table: str) -> None:
+    def delete(self, table: Union[str, "type[Entity]"]) -> None:
         """Delete a custom table by schema name.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``).
@@ -155,12 +158,13 @@ class TableOperations:
 
             client.tables.delete("new_MyTestTable")
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             od._delete_table(table)
 
     # -------------------------------------------------------------------- get
 
-    def get(self, table: str) -> Optional[TableInfo]:
+    def get(self, table: Union[str, "type[Entity]"]) -> Optional[TableInfo]:
         """Get basic metadata for a table if it exists.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
@@ -180,6 +184,7 @@ class TableOperations:
                 print(f"Logical name: {info['table_logical_name']}")
                 print(f"Entity set: {info['entity_set_name']}")
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             raw = od._get_table_info(table)
             if raw is None:
@@ -243,7 +248,7 @@ class TableOperations:
 
     def add_columns(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         columns: Dict[str, Any],
     ) -> List[str]:
         """Add one or more columns to an existing table.
@@ -269,6 +274,7 @@ class TableOperations:
             )
             print(created)  # ['new_Notes', 'new_Active']
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             return od._create_columns(table, columns)
 
@@ -276,7 +282,7 @@ class TableOperations:
 
     def remove_columns(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         columns: Union[str, List[str]],
     ) -> List[str]:
         """Remove one or more columns from a table.
@@ -302,6 +308,7 @@ class TableOperations:
             )
             print(removed)  # ['new_Notes', 'new_Active']
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             return od._delete_columns(table, columns)
 
@@ -494,9 +501,9 @@ class TableOperations:
 
     def create_lookup_field(
         self,
-        referencing_table: str,
+        referencing_table: Union[str, "type[Entity]"],
         lookup_field_name: str,
-        referenced_table: str,
+        referenced_table: Union[str, "type[Entity]"],
         *,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
@@ -558,6 +565,8 @@ class TableOperations:
                 )
                 print(f"Created lookup: {result['lookup_schema_name']}")
         """
+        referencing_table = resolve_table(referencing_table)
+        referenced_table = resolve_table(referenced_table)
         with self._client._scoped_odata() as od:
             lookup, relationship = od._build_lookup_field_models(
                 referencing_table=referencing_table,
@@ -576,7 +585,7 @@ class TableOperations:
 
     def create_alternate_key(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         key_name: str,
         columns: List[str],
         *,
@@ -625,6 +634,7 @@ class TableOperations:
                 print(f"Key ID: {key.metadata_id}")
                 print(f"Columns: {key.key_attributes}")
         """
+        table = resolve_table(table)
         label = Label(localized_labels=[LocalizedLabel(label=display_name or key_name, language_code=language_code)])
         with self._client._scoped_odata() as od:
             raw = od._create_alternate_key(table, key_name, columns, label)
@@ -637,7 +647,7 @@ class TableOperations:
 
     # --------------------------------------------------- get_alternate_keys
 
-    def get_alternate_keys(self, table: str) -> List[AlternateKeyInfo]:
+    def get_alternate_keys(self, table: Union[str, "type[Entity]"]) -> List[AlternateKeyInfo]:
         """List all alternate keys defined on a table.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).
@@ -659,13 +669,14 @@ class TableOperations:
                 for key in keys:
                     print(f"{key.schema_name}: {key.status}")
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             raw_list = od._get_alternate_keys(table)
             return [AlternateKeyInfo.from_api_response(item) for item in raw_list]
 
     # ------------------------------------------------ delete_alternate_key
 
-    def delete_alternate_key(self, table: str, key_id: str) -> None:
+    def delete_alternate_key(self, table: Union[str, "type[Entity]"], key_id: str) -> None:
         """Delete an alternate key by its metadata ID.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).
@@ -689,5 +700,6 @@ class TableOperations:
                 "12345678-1234-1234-1234-123456789abc",
             )
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             od._delete_alternate_key(table, key_id)

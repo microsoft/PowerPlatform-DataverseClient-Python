@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
+
+from ..models.entity import resolve_table
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity
 
 
 __all__ = ["FileOperations"]
@@ -39,7 +42,7 @@ class FileOperations:
 
     def upload(
         self,
-        table: str,
+        table: Union[str, "type[Entity]"],
         record_id: str,
         file_column: str,
         path: str,
@@ -101,6 +104,7 @@ class FileOperations:
                     "/path/to/large_file.zip",
                 )
         """
+        table = resolve_table(table)
         with self._client._scoped_odata() as od:
             od._upload_file(
                 table,

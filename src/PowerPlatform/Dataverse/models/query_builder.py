@@ -46,12 +46,15 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, TypedDict, Union
+from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, TYPE_CHECKING, TypedDict, Union
 
 import pandas as pd
 
 from . import filters
 from .record import Record
+
+if TYPE_CHECKING:
+    from .entity import Entity, FieldDescriptor
 
 __all__ = ["QueryBuilder", "QueryParams", "ExpandOption"]
 
@@ -187,11 +190,28 @@ class QueryBuilder:
             #  "filter": "statecode eq 0", "top": 10}
     """
 
-    def __init__(self, table: str) -> None:
-        table = table.strip() if table else ""
-        if not table:
-            raise ValueError("table name is required")
-        self.table = table
+    def __init__(self, table: Union[str, "type[Entity]"]) -> None:
+        # Accept either a plain table-name string (existing behaviour) or a
+        # generated Entity subclass (typed path).  Both paths are equivalent
+        # at the OData layer; the entity class additionally enables typed
+        # .select() columns and typed result hydration in .execute().
+        from .entity import Entity as _Entity, FieldDescriptor as _FieldDescriptor  # noqa: F401
+
+        if isinstance(table, str):
+            table = table.strip()
+            if not table:
+                raise ValueError("table name is required")
+            self.table = table
+            self._entity_cls: Optional[type] = None
+        elif isinstance(table, type) and issubclass(table, _Entity):
+            if not table.__table__:
+                raise ValueError(f"{table.__name__} has no __table__ set. "
+                                 "Pass table= when defining the entity class.")
+            self.table = table.__table__
+            self._entity_cls = table
+        else:
+            raise TypeError("table must be a string or an Entity subclass")
+
         self._select: List[str] = []
         self._filter_parts: List[Union[str, filters.FilterExpression]] = []
         self._orderby: List[str] = []
@@ -204,20 +224,29 @@ class QueryBuilder:
 
     # ----------------------------------------------------------------- select
 
-    def select(self, *columns: str) -> QueryBuilder:
+    def select(self, *columns: "Union[str, FieldDescriptor]") -> QueryBuilder:
         """Select specific columns to retrieve.
 
-        Column names are passed as-is; the OData layer lowercases them
-        automatically.  Can be called multiple times (additive).
+        Accepts plain column name strings (existing behaviour) or
+        :class:`~PowerPlatform.Dataverse.models.entity.FieldDescriptor`
+        objects from a generated entity class (typed path).  Both forms
+        can be mixed freely.  Can be called multiple times (additive).
 
-        :param columns: Column names to select.
+        :param columns: Column names (str) or field descriptors.
         :return: Self for method chaining.
 
         Example::
 
-            query = QueryBuilder("account").select("name", "telephone1", "revenue")
+            # String-based (existing)
+            query = QueryBuilder("account").select("name", "telephone1")
+
+            # Typed (new)
+            query = QueryBuilder(Account).select(Account.name, Account.telephone1)
         """
-        self._select.extend(columns)
+        from .entity import FieldDescriptor as _FieldDescriptor
+        self._select.extend(
+            c.name if isinstance(c, _FieldDescriptor) else c for c in columns
+        )
         return self
 
     # ----------------------------------------------------------- filter: comparison
@@ -457,16 +486,22 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- ordering
 
-    def order_by(self, column: str, descending: bool = False) -> QueryBuilder:
+    def order_by(self, column: "Union[str, FieldDescriptor]", descending: bool = False) -> QueryBuilder:
         """Add sorting order.
+
+        Accepts a plain column name string (existing behaviour) or a
+        :class:`~PowerPlatform.Dataverse.models.entity.FieldDescriptor`
+        from a generated entity class (typed path).
 
         Can be called multiple times for multi-column sorting.
 
-        :param column: Column name to sort by (will be lowercased).
+        :param column: Column name (str) or field descriptor.
         :param descending: Sort in descending order.
         :return: Self for method chaining.
         """
-        order = f"{column.lower()} desc" if descending else column.lower()
+        from .entity import FieldDescriptor as _FieldDescriptor
+        col = column.name if isinstance(column, _FieldDescriptor) else column
+        order = f"{col.lower()} desc" if descending else col.lower()
         self._orderby.append(order)
         return self
 
@@ -730,6 +765,23 @@ class QueryBuilder:
             count=params.get("count", False),
             include_annotations=params.get("include_annotations"),
         )
+
+        if self._entity_cls is not None:
+            # Typed path: hydrate each Record into an entity instance.
+            entity_cls = self._entity_cls
+
+            if by_page:
+                def _paged_typed() -> Iterable[List[Any]]:
+                    for page in pages:
+                        yield [entity_cls.from_record(r) for r in page]
+                return _paged_typed()
+
+            def _flat_typed() -> Iterable[Any]:
+                for page in pages:
+                    for record in page:
+                        yield entity_cls.from_record(record)
+
+            return _flat_typed()
 
         if by_page:
             return pages
