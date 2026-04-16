@@ -77,15 +77,15 @@ class AsyncDataverseClient:
             async with AsyncDataverseClient(
                 "https://org.crm.dynamics.com", credential
             ) as client:
-                guid = await client.records.create("account", {"name": "Contoso"})
-                await client.records.delete("account", guid)
+                record_id = await client.records.create("account", {"name": "Contoso"})
+                await client.records.delete("account", record_id)
             # Session closed automatically
 
         **Manual lifecycle**::
 
             client = AsyncDataverseClient("https://org.crm.dynamics.com", credential)
             try:
-                guid = await client.records.create("account", {"name": "Contoso"})
+                record_id = await client.records.create("account", {"name": "Contoso"})
             finally:
                 await client.close()
     """

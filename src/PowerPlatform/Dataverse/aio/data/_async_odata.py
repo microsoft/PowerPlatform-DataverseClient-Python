@@ -40,6 +40,7 @@ from ...data._odata import (
     _DEFAULT_EXPECTED_STATUSES,
     _GUID_RE,
     _ODataClient,
+    _RequestContext,
     _USER_AGENT,
     _extract_pagingcookie,
 )
@@ -179,15 +180,23 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         **kwargs: Any,
     ) -> _AsyncResponse:
         """Execute an HTTP request, merging auth headers and raising on unexpected status."""
-        # Merge auth headers with any caller-supplied headers
+        # Await the async part first, then build _RequestContext with the resolved headers.
         caller_headers: Optional[Dict[str, str]] = kwargs.pop("headers", None)
         merged = await self._merge_headers(caller_headers)
         merged.setdefault("x-ms-client-request-id", str(uuid.uuid4()))
         merged.setdefault("x-ms-correlation-id", _CALL_SCOPE_CORRELATION_ID.get())
         kwargs["headers"] = merged
 
-        response = await self._raw_request(method, url, **kwargs)
-        if response.status_code in expected:
+        request_context = _RequestContext(
+            method=method,
+            url=url,
+            expected=expected,
+            headers=merged,
+            kwargs=kwargs,
+        )
+
+        response = await self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
+        if response.status_code in request_context.expected:
             return response
 
         # Parse error body for a useful message
@@ -232,8 +241,8 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             status_code=sc,
             subcode=subcode,
             service_error_code=svc_code,
-            correlation_id=merged.get("x-ms-correlation-id"),
-            client_request_id=merged.get("x-ms-client-request-id"),
+            correlation_id=request_context.headers.get("x-ms-correlation-id"),
+            client_request_id=request_context.headers.get("x-ms-client-request-id"),
             service_request_id=request_id,
             traceparent=traceparent,
             body_excerpt=body_excerpt,
@@ -508,7 +517,30 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         count: bool = False,
         include_annotations: Optional[str] = None,
     ) -> AsyncGenerator[List[Dict[str, Any]], None]:
-        """Async generator yielding pages of records."""
+        """Async generator yielding pages of records from an entity set.
+
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
+        :param select: Columns to include (``$select``) or ``None``. Column names are automatically lowercased.
+        :type select: ``list[str]`` | ``None``
+        :param filter: OData ``$filter`` expression or ``None``. This is passed as-is without transformation. Users must provide lowercase logical column names (e.g., "statecode eq 0").
+        :type filter: ``str`` | ``None``
+        :param orderby: Order expressions (``$orderby``) or ``None``. Column names are automatically lowercased.
+        :type orderby: ``list[str]`` | ``None``
+        :param top: Max total records (applied on first request as ``$top``) or ``None``.
+        :type top: ``int`` | ``None``
+        :param expand: Navigation properties to expand (``$expand``) or ``None``. These are case-sensitive and passed as-is. Users must provide exact navigation property names from entity metadata.
+        :type expand: ``list[str]`` | ``None``
+        :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
+        :type page_size: ``int`` | ``None``
+        :param count: If ``True``, adds ``$count=true`` to include a total record count in the response.
+        :type count: ``bool``
+        :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: ``str`` | ``None``
+
+        :return: Async generator yielding pages (each page is a ``list`` of record dicts).
+        :rtype: ``AsyncGenerator[list[dict[str, Any]], None]``
+        """
         extra_headers: Dict[str, str] = {}
         prefer_parts: List[str] = []
         if page_size is not None:

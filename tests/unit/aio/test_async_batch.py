@@ -70,18 +70,23 @@ def _make_client_with_mock_odata():
 
 
 class TestAsyncBatchOperationsNamespace:
+    """Tests for AsyncBatchOperations construction and the batch.new() factory."""
+
     def test_namespace_exists(self):
+        """client.batch is an AsyncBatchOperations instance."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.batch, AsyncBatchOperations)
 
     def test_new_returns_batch_request(self):
+        """batch.new() returns an AsyncBatchRequest instance."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
         assert isinstance(batch, AsyncBatchRequest)
 
     def test_batch_request_has_namespaces(self):
+        """AsyncBatchRequest exposes records, tables, query, and dataframe namespaces."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         batch = client.batch.new()
@@ -97,12 +102,15 @@ class TestAsyncBatchOperationsNamespace:
 
 
 class TestAsyncBatchRecordOperations:
+    """Tests for AsyncBatchRecordOperations local item assembly."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_create_single_appends_record_create(self):
+        """records.create() appends a _RecordCreate with the correct table and data."""
         batch = self._make_batch()
         batch.records.create("account", {"name": "Contoso"})
         assert len(batch._items) == 1
@@ -112,6 +120,7 @@ class TestAsyncBatchRecordOperations:
         assert item.data == {"name": "Contoso"}
 
     def test_create_list_appends_record_create(self):
+        """records.create() with a list payload appends a _RecordCreate containing the list."""
         batch = self._make_batch()
         payloads = [{"name": "A"}, {"name": "B"}]
         batch.records.create("account", payloads)
@@ -119,6 +128,7 @@ class TestAsyncBatchRecordOperations:
         assert batch._items[0].data == payloads
 
     def test_update_appends_record_update(self):
+        """records.update() appends a _RecordUpdate with the correct table and id."""
         batch = self._make_batch()
         batch.records.update("account", "guid-1", {"name": "Updated"})
         assert len(batch._items) == 1
@@ -128,6 +138,7 @@ class TestAsyncBatchRecordOperations:
         assert item.ids == "guid-1"
 
     def test_delete_appends_record_delete(self):
+        """records.delete() appends a _RecordDelete with the correct table and id."""
         batch = self._make_batch()
         batch.records.delete("account", "guid-1")
         assert len(batch._items) == 1
@@ -137,6 +148,7 @@ class TestAsyncBatchRecordOperations:
         assert item.ids == "guid-1"
 
     def test_get_appends_record_get(self):
+        """records.get() appends a _RecordGet with the correct table, id, and select list."""
         batch = self._make_batch()
         batch.records.get("account", "guid-1", select=["name"])
         assert len(batch._items) == 1
@@ -147,6 +159,7 @@ class TestAsyncBatchRecordOperations:
         assert item.select == ["name"]
 
     def test_upsert_appends_record_upsert(self):
+        """records.upsert() with UpsertItem objects appends a _RecordUpsert."""
         batch = self._make_batch()
         items = [UpsertItem(alternate_key={"accountnumber": "ACC-1"}, record={"name": "Contoso"})]
         batch.records.upsert("account", items)
@@ -156,11 +169,13 @@ class TestAsyncBatchRecordOperations:
         assert item.table == "account"
 
     def test_upsert_empty_list_raises(self):
+        """records.upsert() with an empty list raises TypeError."""
         batch = self._make_batch()
         with pytest.raises(TypeError):
             batch.records.upsert("account", [])
 
     def test_multiple_operations_append_in_order(self):
+        """Multiple record operations are appended to _items in call order."""
         batch = self._make_batch()
         batch.records.create("account", {"name": "A"})
         batch.records.get("account", "guid-1")
@@ -177,29 +192,35 @@ class TestAsyncBatchRecordOperations:
 
 
 class TestAsyncChangeSet:
+    """Tests for AsyncChangeSet construction and operation accumulation."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_changeset_returns_async_change_set(self):
+        """batch.changeset() returns an AsyncChangeSet instance."""
         batch = self._make_batch()
         cs = batch.changeset()
         assert isinstance(cs, AsyncChangeSet)
 
     def test_changeset_appended_to_items(self):
+        """Calling batch.changeset() appends a _ChangeSet to batch._items."""
         batch = self._make_batch()
         batch.changeset()
         assert len(batch._items) == 1
         assert isinstance(batch._items[0], _ChangeSet)
 
     def test_changeset_is_context_manager(self):
+        """AsyncChangeSet can be used as a context manager yielding a records namespace."""
         batch = self._make_batch()
         with batch.changeset() as cs:
             assert isinstance(cs, AsyncChangeSet)
             assert isinstance(cs.records, AsyncChangeSetRecordOperations)
 
     def test_changeset_records_create_adds_to_changeset(self):
+        """cs.records.create() adds one operation to the changeset's internal operation list."""
         batch = self._make_batch()
         with batch.changeset() as cs:
             ref = cs.records.create("contact", {"firstname": "Alice"})
@@ -209,6 +230,7 @@ class TestAsyncChangeSet:
         assert len(internal_cs.operations) == 1
 
     def test_changeset_records_update_adds_to_changeset(self):
+        """cs.records.update() adds one operation to the changeset's internal operation list."""
         batch = self._make_batch()
         with batch.changeset() as cs:
             cs.records.update("account", "guid-1", {"name": "New"})
@@ -216,6 +238,7 @@ class TestAsyncChangeSet:
         assert len(internal_cs.operations) == 1
 
     def test_changeset_records_delete_adds_to_changeset(self):
+        """cs.records.delete() adds one operation to the changeset's internal operation list."""
         batch = self._make_batch()
         with batch.changeset() as cs:
             cs.records.delete("account", "guid-1")
@@ -223,6 +246,7 @@ class TestAsyncChangeSet:
         assert len(internal_cs.operations) == 1
 
     def test_multiple_changesets_are_separate(self):
+        """Two consecutive changesets are stored as independent _ChangeSet items."""
         batch = self._make_batch()
         with batch.changeset() as cs1:
             cs1.records.create("account", {"name": "A"})
@@ -239,12 +263,15 @@ class TestAsyncChangeSet:
 
 
 class TestAsyncBatchQueryOperations:
+    """Tests for AsyncBatchQueryOperations input validation."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_sql_empty_raises(self):
+        """batch.query.sql() raises ValidationError when passed an empty string."""
         from PowerPlatform.Dataverse.core.errors import ValidationError
 
         batch = self._make_batch()
@@ -252,6 +279,7 @@ class TestAsyncBatchQueryOperations:
             batch.query.sql("")
 
     def test_sql_non_string_raises(self):
+        """batch.query.sql() raises when passed a non-string argument."""
         from PowerPlatform.Dataverse.core.errors import ValidationError
 
         batch = self._make_batch()
@@ -265,7 +293,10 @@ class TestAsyncBatchQueryOperations:
 
 
 class TestAsyncBatchRequestExecute:
+    """Tests for AsyncBatchRequest.execute() delegating to _AsyncBatchClient."""
+
     async def test_execute_calls_batch_client_execute(self):
+        """execute() constructs _AsyncBatchClient and awaits its execute method with the item list."""
         client, od = _make_client_with_mock_odata()
         batch = client.batch.new()
         batch.records.create("account", {"name": "Contoso"})
@@ -285,6 +316,7 @@ class TestAsyncBatchRequestExecute:
         assert result is expected_result
 
     async def test_execute_passes_continue_on_error(self):
+        """execute(continue_on_error=True) forwards the flag to the batch client."""
         client, od = _make_client_with_mock_odata()
         batch = client.batch.new()
 
@@ -323,12 +355,15 @@ class TestAsyncBatchRequestExecute:
 
 
 class TestAsyncBatchRecordUpsertDict:
+    """Tests for records.upsert() accepting dict-form items."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_upsert_dict_form_normalised(self):
+        """Dict-form upsert items are normalised into UpsertItem objects with correct alternate_key."""
         batch = self._make_batch()
         batch.records.upsert(
             "account",
@@ -341,6 +376,7 @@ class TestAsyncBatchRecordUpsertDict:
         assert item.items[0].alternate_key == {"accountnumber": "ACC-1"}
 
     def test_upsert_invalid_dict_raises(self):
+        """A dict missing required keys raises TypeError."""
         batch = self._make_batch()
         with pytest.raises(TypeError):
             batch.records.upsert("account", [{"bad": "shape"}])
@@ -352,12 +388,15 @@ class TestAsyncBatchRecordUpsertDict:
 
 
 class TestAsyncBatchQuerySqlSuccess:
+    """Tests for batch.query.sql() appending a valid SQL item."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_sql_success_appends_query_sql(self):
+        """A valid SQL string is appended as a _QuerySql item with the correct sql attribute."""
         batch = self._make_batch()
         batch.query.sql("SELECT name FROM account")
         assert len(batch._items) == 1
@@ -366,6 +405,7 @@ class TestAsyncBatchQuerySqlSuccess:
         assert item.sql == "SELECT name FROM account"
 
     def test_sql_strips_whitespace(self):
+        """Leading and trailing whitespace is stripped from the SQL string before storing."""
         batch = self._make_batch()
         batch.query.sql("  SELECT name FROM account  ")
         assert batch._items[0].sql == "SELECT name FROM account"
@@ -377,18 +417,22 @@ class TestAsyncBatchQuerySqlSuccess:
 
 
 class TestAsyncBatchTableOperations:
+    """Tests for AsyncBatchTableOperations local item assembly."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_create_appends_table_create(self):
+        """tables.create() appends a _TableCreate with the correct table name."""
         batch = self._make_batch()
         batch.tables.create("new_Product", {"new_Title": "string"})
         assert isinstance(batch._items[0], _TableCreate)
         assert batch._items[0].table == "new_Product"
 
     def test_create_with_solution_and_primary(self):
+        """tables.create() stores solution and primary_column when provided."""
         batch = self._make_batch()
         batch.tables.create("new_T", {}, solution="MySolution", primary_column="new_id")
         item = batch._items[0]
@@ -396,23 +440,27 @@ class TestAsyncBatchTableOperations:
         assert item.primary_column == "new_id"
 
     def test_delete_appends_table_delete(self):
+        """tables.delete() appends a _TableDelete with the correct table name."""
         batch = self._make_batch()
         batch.tables.delete("new_Product")
         assert isinstance(batch._items[0], _TableDelete)
         assert batch._items[0].table == "new_Product"
 
     def test_get_appends_table_get(self):
+        """tables.get() appends a _TableGet with the correct table name."""
         batch = self._make_batch()
         batch.tables.get("new_Product")
         assert isinstance(batch._items[0], _TableGet)
         assert batch._items[0].table == "new_Product"
 
     def test_list_appends_table_list(self):
+        """tables.list() appends a _TableList item."""
         batch = self._make_batch()
         batch.tables.list()
         assert isinstance(batch._items[0], _TableList)
 
     def test_list_passes_filter_and_select(self):
+        """tables.list() stores filter and select arguments on the _TableList item."""
         batch = self._make_batch()
         batch.tables.list(filter="IsCustomEntity eq true", select=["LogicalName"])
         item = batch._items[0]
@@ -420,29 +468,34 @@ class TestAsyncBatchTableOperations:
         assert item.select == ["LogicalName"]
 
     def test_add_columns_appends_table_add_columns(self):
+        """tables.add_columns() appends a _TableAddColumns with the correct table name."""
         batch = self._make_batch()
         batch.tables.add_columns("new_Product", {"new_Desc": "string"})
         assert isinstance(batch._items[0], _TableAddColumns)
         assert batch._items[0].table == "new_Product"
 
     def test_remove_columns_appends_table_remove_columns(self):
+        """tables.remove_columns() appends a _TableRemoveColumns item."""
         batch = self._make_batch()
         batch.tables.remove_columns("new_Product", ["new_Desc"])
         assert isinstance(batch._items[0], _TableRemoveColumns)
 
     def test_delete_relationship_appends(self):
+        """tables.delete_relationship() appends a _TableDeleteRelationship with the given id."""
         batch = self._make_batch()
         batch.tables.delete_relationship("rel-guid-123")
         assert isinstance(batch._items[0], _TableDeleteRelationship)
         assert batch._items[0].relationship_id == "rel-guid-123"
 
     def test_get_relationship_appends(self):
+        """tables.get_relationship() appends a _TableGetRelationship with the given schema name."""
         batch = self._make_batch()
         batch.tables.get_relationship("new_account_contact")
         assert isinstance(batch._items[0], _TableGetRelationship)
         assert batch._items[0].schema_name == "new_account_contact"
 
     def test_create_lookup_field_appends(self):
+        """tables.create_lookup_field() appends a _TableCreateLookupField with correct table references."""
         batch = self._make_batch()
         batch.tables.create_lookup_field("contact", "new_accountid", "account")
         assert isinstance(batch._items[0], _TableCreateLookupField)
@@ -450,6 +503,7 @@ class TestAsyncBatchTableOperations:
         assert batch._items[0].referenced_table == "account"
 
     def test_create_one_to_many_appends(self):
+        """tables.create_one_to_many_relationship() appends a _TableCreateOneToMany item."""
         batch = self._make_batch()
         lookup = MagicMock()
         relationship = MagicMock()
@@ -457,12 +511,14 @@ class TestAsyncBatchTableOperations:
         assert isinstance(batch._items[0], _TableCreateOneToMany)
 
     def test_create_many_to_many_appends(self):
+        """tables.create_many_to_many_relationship() appends a _TableCreateManyToMany item."""
         batch = self._make_batch()
         relationship = MagicMock()
         batch.tables.create_many_to_many_relationship(relationship)
         assert isinstance(batch._items[0], _TableCreateManyToMany)
 
     def test_multiple_table_ops_in_order(self):
+        """Multiple table operations are appended to _items in call order."""
         batch = self._make_batch()
         batch.tables.get("new_A")
         batch.tables.delete("new_B")
@@ -479,12 +535,15 @@ class TestAsyncBatchTableOperations:
 
 
 class TestAsyncBatchDataFrameOperations:
+    """Tests for AsyncBatchDataFrameOperations converting DataFrames into batch items."""
+
     def _make_batch(self):
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         return client.batch.new()
 
     def test_create_from_dataframe(self):
+        """dataframe.create() converts a DataFrame into a _RecordCreate with a list of dicts."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -499,11 +558,13 @@ class TestAsyncBatchDataFrameOperations:
         assert len(item.data) == 2
 
     def test_create_non_dataframe_raises(self):
+        """dataframe.create() raises TypeError when passed a non-DataFrame argument."""
         batch = self._make_batch()
         with pytest.raises(TypeError):
             batch.dataframe.create("account", [{"name": "X"}])
 
     def test_create_empty_dataframe_raises(self):
+        """dataframe.create() raises ValueError when the DataFrame has no rows."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -511,6 +572,7 @@ class TestAsyncBatchDataFrameOperations:
             batch.dataframe.create("account", pd.DataFrame())
 
     def test_update_from_dataframe(self):
+        """dataframe.update() converts a DataFrame into a _RecordUpdate item."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -526,11 +588,13 @@ class TestAsyncBatchDataFrameOperations:
         assert isinstance(item, _RecordUpdate)
 
     def test_update_non_dataframe_raises(self):
+        """dataframe.update() raises TypeError when passed a non-DataFrame argument."""
         batch = self._make_batch()
         with pytest.raises(TypeError):
             batch.dataframe.update("account", "bad", "accountid")
 
     def test_update_empty_dataframe_raises(self):
+        """dataframe.update() raises ValueError when the DataFrame has no rows."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -538,6 +602,7 @@ class TestAsyncBatchDataFrameOperations:
             batch.dataframe.update("account", pd.DataFrame(), "accountid")
 
     def test_update_missing_id_column_raises(self):
+        """dataframe.update() raises ValueError when the id column is absent from the DataFrame."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -546,6 +611,7 @@ class TestAsyncBatchDataFrameOperations:
             batch.dataframe.update("account", df, "accountid")
 
     def test_delete_from_series(self):
+        """dataframe.delete() converts a Series of IDs into a _RecordDelete item."""
         import pandas as pd
 
         batch = self._make_batch()
@@ -556,11 +622,13 @@ class TestAsyncBatchDataFrameOperations:
         assert isinstance(item, _RecordDelete)
 
     def test_delete_non_series_raises(self):
+        """dataframe.delete() raises TypeError when passed a non-Series argument."""
         batch = self._make_batch()
         with pytest.raises(TypeError):
             batch.dataframe.delete("account", ["guid-1"])
 
     def test_delete_empty_series_is_noop(self):
+        """dataframe.delete() with an empty Series appends nothing to the batch."""
         import pandas as pd
 
         batch = self._make_batch()

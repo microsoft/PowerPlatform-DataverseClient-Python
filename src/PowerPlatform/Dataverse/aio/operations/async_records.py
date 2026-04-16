@@ -179,7 +179,7 @@ class AsyncRecordOperations:
     ) -> Optional[str]:
         """Delete one or more records from a Dataverse table.
 
-        When ``ids`` is a single string, deletes that one record.  When ``ids``
+        When ``ids`` is a single string, deletes that one record. When ``ids``
         is a list, either executes a BulkDelete action (returning the async job
         ID) or deletes each record sequentially depending on ``use_bulk_delete``.
 
@@ -552,7 +552,7 @@ class AsyncRecordOperations:
             elif isinstance(i, dict) and isinstance(i.get("alternate_key"), dict) and isinstance(i.get("record"), dict):
                 normalized.append(UpsertItem(alternate_key=i["alternate_key"], record=i["record"]))
             else:
-                raise TypeError("Each item must be an UpsertItem or a dict with " "'alternate_key' and 'record' keys")
+                raise TypeError("Each item must be an UpsertItem or a dict with 'alternate_key' and 'record' keys")
         async with self._client._scoped_odata() as od:
             entity_set = await od._entity_set_from_schema_name(table)
             if len(normalized) == 1:

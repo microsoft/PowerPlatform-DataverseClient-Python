@@ -488,9 +488,8 @@ class AsyncTableOperations:
     ) -> RelationshipInfo:
         """Create a simple lookup field relationship.
 
-        This is a convenience method that wraps
-        :meth:`create_one_to_many_relationship` for the common case of adding
-        a lookup field to an existing table.
+        This is a convenience method that wraps :meth:`create_one_to_many_relationship`
+        for the common case of adding a lookup field to an existing table.
 
         :param referencing_table: Logical name of the table that will have
             the lookup field (child table).

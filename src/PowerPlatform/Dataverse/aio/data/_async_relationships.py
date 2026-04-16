@@ -65,10 +65,10 @@ class _AsyncRelationshipOperationsMixin:
         # Build the payload by combining relationship and lookup metadata
         payload = relationship.to_dict()
         payload["Lookup"] = lookup.to_dict()
-        headers: Dict[str, str] = {}
+        headers = (await self._headers()).copy()
         if solution:
             headers["MSCRM.SolutionUniqueName"] = solution
-        response = await self._request("post", url, headers=headers or None, json=payload)
+        response = await self._request("post", url, headers=headers, json=payload)
         # Extract IDs from response headers
         relationship_id = self._extract_id_from_header(response.headers.get("OData-EntityId"))
         return {
@@ -100,10 +100,10 @@ class _AsyncRelationshipOperationsMixin:
         """
         url = f"{self.api}/RelationshipDefinitions"
         payload = relationship.to_dict()
-        headers: Dict[str, str] = {}
+        headers = (await self._headers()).copy()
         if solution:
             headers["MSCRM.SolutionUniqueName"] = solution
-        response = await self._request("post", url, headers=headers or None, json=payload)
+        response = await self._request("post", url, headers=headers, json=payload)
         # Extract ID from response header
         relationship_id = self._extract_id_from_header(response.headers.get("OData-EntityId"))
         return {
@@ -122,7 +122,8 @@ class _AsyncRelationshipOperationsMixin:
         :raises HttpError: If the Web API request fails.
         """
         url = f"{self.api}/RelationshipDefinitions({relationship_id})"
-        headers = {"If-Match": "*"}
+        headers = (await self._headers()).copy()
+        headers["If-Match"] = "*"
         await self._request("delete", url, headers=headers)
 
     async def _get_relationship(self, schema_name: str) -> Optional[Dict[str, Any]]:  # type: ignore[override]
@@ -137,7 +138,7 @@ class _AsyncRelationshipOperationsMixin:
         """
         url = f"{self.api}/RelationshipDefinitions"
         params = {"$filter": f"SchemaName eq '{self._escape_odata_quotes(schema_name)}'"}
-        response = await self._request("get", url, params=params)
+        response = await self._request("get", url, headers=await self._headers(), params=params)
         data = response.json()
         results = data.get("value", [])
         return results[0] if results else None

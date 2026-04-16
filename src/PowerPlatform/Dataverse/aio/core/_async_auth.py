@@ -4,8 +4,10 @@
 """
 Async authentication helpers for Dataverse.
 
-Provides :class:`_AsyncAuthManager` for acquiring OAuth 2.0 access tokens
-from an ``azure.identity.aio`` async credential.
+This module provides :class:`~PowerPlatform.Dataverse.aio.core._async_auth._AsyncAuthManager`, a thin wrapper over any
+Azure Identity ``AsyncTokenCredential`` for acquiring OAuth2 access tokens. It reuses
+:class:`~PowerPlatform.Dataverse.core._auth._TokenPair` from the sync module for storing the acquired token
+alongside its scope.
 """
 
 from __future__ import annotations
@@ -16,35 +18,28 @@ from ...core._auth import _TokenPair
 
 
 class _AsyncAuthManager:
-    """Async Azure Identity-based authentication manager for Dataverse.
+    """
+    Azure Identity-based async authentication manager for Dataverse.
 
-    Accepts any ``azure.identity.aio`` credential that exposes an async
-    ``get_token(scope)`` coroutine (e.g. ``ClientSecretCredential``,
-    ``DefaultAzureCredential``, ``InteractiveBrowserCredential``).
-
-    :param credential: An async Azure Identity credential.
+    :param credential: Azure Identity async credential implementation.
     :type credential: ~azure.core.credentials_async.AsyncTokenCredential
-    :raises TypeError: If ``credential`` does not implement
-        :class:`~azure.core.credentials_async.AsyncTokenCredential`.
+    :raises TypeError: If ``credential`` does not implement :class:`~azure.core.credentials_async.AsyncTokenCredential`.
     """
 
     def __init__(self, credential: AsyncTokenCredential) -> None:
         if not isinstance(credential, AsyncTokenCredential):
-            raise TypeError(
-                "credential must implement AsyncTokenCredential with an async get_token() method. "
-                "For async usage, pass a credential from azure.identity.aio "
-                "(e.g. azure.identity.aio.DefaultAzureCredential)."
-            )
+            raise TypeError("credential must implement azure.core.credentials_async.AsyncTokenCredential.")
         self.credential: AsyncTokenCredential = credential
 
     async def _acquire_token(self, scope: str) -> _TokenPair:
-        """Acquire an access token for *scope*.
+        """
+        Acquire an access token for the specified OAuth2 scope.
 
-        :param scope: OAuth2 scope string, e.g.
-            ``"https://<org>.crm.dynamics.com/.default"``.
+        :param scope: OAuth2 scope string, typically ``"https://<org>.crm.dynamics.com/.default"``.
         :type scope: :class:`str`
         :return: Token pair containing the scope and access token.
         :rtype: ~PowerPlatform.Dataverse.core._auth._TokenPair
+        :raises ~azure.core.exceptions.ClientAuthenticationError: If token acquisition fails.
         """
         token = await self.credential.get_token(scope)
         return _TokenPair(resource=scope, access_token=token.token)

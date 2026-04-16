@@ -56,7 +56,10 @@ def _seed_cache(client, table="account", entity_set="accounts", primary_id="acco
 
 
 class TestAsyncODataClientInit:
+    """Tests for _AsyncODataClient initialisation and construction-time validation."""
+
     def test_base_url_stripped(self):
+        """Trailing slash in base_url is stripped on construction."""
         mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
@@ -64,24 +67,29 @@ class TestAsyncODataClientInit:
         assert client.base_url == "https://example.crm.dynamics.com"
 
     def test_api_url_set(self):
+        """api attribute is set to the correct OData v9.2 endpoint."""
         client = _make_async_odata_client()
         assert client.api == "https://example.crm.dynamics.com/api/data/v9.2"
 
     def test_auth_set(self):
+        """auth attribute is an _AsyncAuthManager instance."""
         client = _make_async_odata_client()
         assert isinstance(client.auth, _AsyncAuthManager)
 
     def test_caches_are_empty_dicts(self):
+        """All lookup caches start as empty dicts on a fresh client."""
         client = _make_async_odata_client()
         assert client._logical_to_entityset_cache == {}
         assert client._logical_primaryid_cache == {}
         assert client._picklist_label_cache == {}
 
     def test_picklist_cache_lock_is_asyncio_lock(self):
+        """_picklist_cache_lock is an asyncio.Lock instance."""
         client = _make_async_odata_client()
         assert isinstance(client._picklist_cache_lock, asyncio.Lock)
 
     def test_empty_base_url_raises(self):
+        """Raises ValueError when base_url is an empty string."""
         mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
@@ -89,6 +97,7 @@ class TestAsyncODataClientInit:
             _AsyncODataClient(auth, "")
 
     def test_none_base_url_raises(self):
+        """Raises ValueError when base_url is None."""
         mock_cred = AsyncMock(spec=AsyncTokenCredential)
         mock_cred.get_token.return_value = MagicMock(token="tok")
         auth = _AsyncAuthManager(mock_cred)
@@ -102,13 +111,17 @@ class TestAsyncODataClientInit:
 
 
 class TestAsyncODataCallScope:
+    """Tests for _AsyncODataClient._call_scope correlation-id context manager."""
+
     async def test_yields_non_empty_string(self):
+        """_call_scope yields a non-empty string correlation id."""
         client = _make_async_odata_client()
         async with client._call_scope() as cid:
             assert isinstance(cid, str)
             assert len(cid) > 0
 
     async def test_yields_valid_uuid(self):
+        """_call_scope yields a well-formed UUID string."""
         import uuid
 
         client = _make_async_odata_client()
@@ -118,6 +131,7 @@ class TestAsyncODataCallScope:
             assert str(parsed) == cid
 
     async def test_correlation_id_reset_after_scope(self):
+        """Correlation id context-var is restored to its prior value after the scope exits."""
         from PowerPlatform.Dataverse.data._odata import _CALL_SCOPE_CORRELATION_ID
 
         client = _make_async_odata_client()
@@ -129,6 +143,7 @@ class TestAsyncODataCallScope:
         assert after == before
 
     async def test_different_calls_get_different_ids(self):
+        """Each invocation of _call_scope produces a unique correlation id."""
         client = _make_async_odata_client()
         ids = []
         for _ in range(3):
@@ -143,7 +158,10 @@ class TestAsyncODataCallScope:
 
 
 class TestAsyncODataClose:
+    """Tests for _AsyncODataClient.close teardown behaviour."""
+
     async def test_close_clears_all_caches(self):
+        """close() empties all internal lookup and picklist caches."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._picklist_label_cache["account"] = {"ts": 0, "picklists": {}}
@@ -157,6 +175,7 @@ class TestAsyncODataClose:
         assert client._picklist_label_cache == {}
 
     async def test_close_calls_http_close(self):
+        """close() awaits the underlying HTTP session's close method."""
         client = _make_async_odata_client()
         mock_http = AsyncMock()
         client._http = mock_http
@@ -172,7 +191,10 @@ class TestAsyncODataClose:
 
 
 class TestAsyncODataHeaders:
+    """Tests for _AsyncODataClient._headers and _merge_headers token and header assembly."""
+
     async def test_headers_returns_authorization(self):
+        """_headers includes a Bearer Authorization header built from the acquired token."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "my-token"
@@ -184,6 +206,7 @@ class TestAsyncODataHeaders:
         assert headers["Authorization"] == "Bearer my-token"
 
     async def test_headers_includes_standard_odata_keys(self):
+        """_headers includes the standard OData Accept, Content-Type, and version headers."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "tok"
@@ -197,6 +220,7 @@ class TestAsyncODataHeaders:
         assert headers.get("OData-Version") == "4.0"
 
     async def test_headers_calls_acquire_token_with_correct_scope(self):
+        """_headers acquires a token using the environment's .default scope."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "tok"
@@ -207,6 +231,7 @@ class TestAsyncODataHeaders:
         client.auth._acquire_token.assert_awaited_once_with("https://example.crm.dynamics.com/.default")
 
     async def test_merge_headers_no_extra(self):
+        """_merge_headers with no extra headers returns the base headers including Authorization."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "tok"
@@ -217,6 +242,7 @@ class TestAsyncODataHeaders:
         assert "Authorization" in merged
 
     async def test_merge_headers_with_extra(self):
+        """Extra headers are merged in and override matching base header keys."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "tok"
@@ -229,6 +255,7 @@ class TestAsyncODataHeaders:
         assert merged.get("Accept") == "text/plain"
 
     async def test_merge_headers_none_extra(self):
+        """_merge_headers with None extra headers still returns the base headers."""
         client = _make_async_odata_client()
         mock_token = MagicMock()
         mock_token.access_token = "tok"
@@ -266,7 +293,10 @@ def _make_raw_mocked_client(status_code=200, json_data=None, text=None, headers=
 
 
 class TestAsyncODataRequest:
+    """Tests for _AsyncODataClient._request HTTP dispatch, error parsing, and header injection."""
+
     async def test_request_returns_response_on_expected_status(self):
+        """Returns the response object when the status code matches an expected code."""
         client, resp = _make_raw_mocked_client(status_code=200, json_data={"ok": True})
 
         result = await client._request("get", "https://example.com/test")
@@ -274,6 +304,7 @@ class TestAsyncODataRequest:
         assert result is resp
 
     async def test_request_raises_http_error_on_unexpected_status(self):
+        """Raises HttpError when the response status code is not in the expected set."""
         client, _ = _make_raw_mocked_client(
             status_code=400,
             json_data={"error": {"code": "0x80060891", "message": "Not found"}},
@@ -287,6 +318,7 @@ class TestAsyncODataRequest:
         assert err.status_code == 400
 
     async def test_request_error_parses_service_error_code(self):
+        """HttpError details include the service error code from the JSON error body."""
         client, _ = _make_raw_mocked_client(
             status_code=404,
             json_data={"error": {"code": "0x80060891", "message": "Not found"}},
@@ -300,6 +332,7 @@ class TestAsyncODataRequest:
         assert err.details.get("service_error_code") == "0x80060891"
 
     async def test_request_error_uses_message_from_error_body(self):
+        """HttpError message is taken from the error.message field in the JSON body."""
         client, _ = _make_raw_mocked_client(
             status_code=404,
             json_data={"error": {"code": "ERR", "message": "Record not found"}},
@@ -312,12 +345,14 @@ class TestAsyncODataRequest:
         assert "Record not found" in str(exc_info.value)
 
     async def test_request_custom_expected_statuses(self):
+        """A caller-supplied expected status tuple is honoured without raising HttpError."""
         client, resp = _make_raw_mocked_client(status_code=204)
 
         result = await client._request("delete", "https://example.com/test", expected=(204,))
         assert result is resp
 
     async def test_request_401_raises_http_error(self):
+        """Raises HttpError with status 401 when the server returns Unauthorized."""
         client, raw_resp = _make_raw_mocked_client(status_code=401, text="Unauthorized")
         raw_resp.json.side_effect = ValueError("no json")
 
@@ -327,6 +362,7 @@ class TestAsyncODataRequest:
         assert exc_info.value.status_code == 401
 
     async def test_request_merges_headers(self):
+        """Caller-supplied headers are merged with base headers before the raw request is sent."""
         client, _ = _make_raw_mocked_client(status_code=200)
 
         await client._request("get", "https://example.com/test", headers={"X-Custom": "val"})
@@ -350,6 +386,7 @@ class TestAsyncODataRequest:
         assert "Top-level error" in str(exc_info.value)
 
     async def test_request_retry_after_header_parsed(self):
+        """Retry-After header value is parsed to an integer and stored in HttpError details."""
         client, raw_resp = _make_raw_mocked_client(
             status_code=429,
             headers={"Retry-After": "30"},
@@ -363,6 +400,7 @@ class TestAsyncODataRequest:
         assert exc_info.value.details.get("retry_after") == 30
 
     async def test_request_injects_client_request_id(self):
+        """A unique x-ms-client-request-id header is injected into every request."""
         client, _ = _make_raw_mocked_client(status_code=200)
 
         await client._request("get", "https://example.com/test")
@@ -371,6 +409,7 @@ class TestAsyncODataRequest:
         assert "x-ms-client-request-id" in call_kwargs["headers"]
 
     async def test_request_500_non_json_body(self):
+        """Raises HttpError with status 500 even when the response body is not valid JSON."""
         client, raw_resp = _make_raw_mocked_client(status_code=500, text="Internal Server Error")
         raw_resp.json.side_effect = ValueError("not json")
 
@@ -386,7 +425,10 @@ class TestAsyncODataRequest:
 
 
 class TestAsyncODataEntitySet:
+    """Tests for _AsyncODataClient._entity_set_from_schema_name metadata resolution and caching."""
+
     async def test_cache_hit_returns_without_request(self):
+        """Returns the cached entity-set name without making an HTTP request."""
         client = _make_async_odata_client()
         _seed_cache(client, "account", "accounts")
 
@@ -396,6 +438,7 @@ class TestAsyncODataEntitySet:
         client._request.assert_not_awaited()
 
     async def test_cache_miss_calls_request(self):
+        """Fetches entity-set name from the API and returns it on a cache miss."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(
             json_data={
@@ -409,6 +452,7 @@ class TestAsyncODataEntitySet:
         client._request.assert_awaited_once()
 
     async def test_result_is_cached(self):
+        """Second call for the same table uses the cached value without re-requesting."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(
             json_data={
@@ -423,6 +467,7 @@ class TestAsyncODataEntitySet:
         assert client._request.await_count == 1
 
     async def test_caches_primary_id_attr(self):
+        """PrimaryIdAttribute returned by the API is stored in the primary-id cache."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(
             json_data={
@@ -435,6 +480,7 @@ class TestAsyncODataEntitySet:
         assert client._logical_primaryid_cache.get("account") == "accountid"
 
     async def test_empty_items_raises_metadata_error(self):
+        """Raises MetadataError when the API returns an empty entity definitions list."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -442,6 +488,7 @@ class TestAsyncODataEntitySet:
             await client._entity_set_from_schema_name("account")
 
     async def test_missing_entity_set_name_raises_metadata_error(self):
+        """Raises MetadataError when the matching entity definition lacks an EntitySetName."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": [{"LogicalName": "account"}]})
 
@@ -449,6 +496,7 @@ class TestAsyncODataEntitySet:
             await client._entity_set_from_schema_name("account")
 
     async def test_plural_hint_in_error_when_name_ends_in_s(self):
+        """MetadataError hints the caller to use the singular name when the argument ends in 's'."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -456,6 +504,7 @@ class TestAsyncODataEntitySet:
             await client._entity_set_from_schema_name("accounts")
 
     async def test_no_plural_hint_for_ss_ending(self):
+        """MetadataError does not include a plural hint when the name does not end in 's'."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -464,12 +513,14 @@ class TestAsyncODataEntitySet:
         assert "plural" not in str(exc_info.value)
 
     async def test_empty_schema_name_raises_value_error(self):
+        """Raises ValueError when an empty string is passed as the schema name."""
         client = _make_async_odata_client()
 
         with pytest.raises(ValueError):
             await client._entity_set_from_schema_name("")
 
     async def test_request_sent_to_entity_definitions_url(self):
+        """The API call targets the EntityDefinitions endpoint."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(
             json_data={
@@ -489,7 +540,10 @@ class TestAsyncODataEntitySet:
 
 
 class TestAsyncODataPrimaryIdAttr:
+    """Tests for _AsyncODataClient._primary_id_attr primary-key attribute resolution."""
+
     async def test_returns_from_cache(self):
+        """Returns the cached primary-id attribute name without an HTTP request."""
         client = _make_async_odata_client()
         _seed_cache(client, "account", "accounts", "accountid")
 
@@ -499,6 +553,7 @@ class TestAsyncODataPrimaryIdAttr:
         client._request.assert_not_awaited()
 
     async def test_calls_entity_set_on_cache_miss(self):
+        """Falls back to _entity_set_from_schema_name to populate the primary-id cache on miss."""
         client = _make_async_odata_client()
         # Only seed entity set cache, not primary id cache
         client._logical_to_entityset_cache["account"] = "accounts"
@@ -516,6 +571,7 @@ class TestAsyncODataPrimaryIdAttr:
         assert result == "accountid"
 
     async def test_raises_runtime_error_if_not_resolved(self):
+        """Raises RuntimeError when PrimaryIdAttribute cannot be resolved from the API response."""
         client = _make_async_odata_client()
         # Entity set response without PrimaryIdAttribute
         client._request.return_value = _mock_response(
@@ -532,7 +588,10 @@ class TestAsyncODataPrimaryIdAttr:
 
 
 class TestAsyncODataCreate:
+    """Tests for _AsyncODataClient._create single-record creation."""
+
     async def test_create_returns_guid_from_odata_entity_id_header(self):
+        """Returns the record GUID extracted from the OData-EntityId response header."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "12345678-abcd-abcd-abcd-123456789012"
@@ -547,6 +606,7 @@ class TestAsyncODataCreate:
         assert result == guid
 
     async def test_create_posts_to_entity_set_url(self):
+        """Issues a POST request to the correct entity-set URL."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "12345678-1234-1234-1234-123456789012"
@@ -564,6 +624,7 @@ class TestAsyncODataCreate:
         assert "accounts" in call_args[0][1]
 
     async def test_create_location_header_fallback(self):
+        """Falls back to the Location header when OData-EntityId is absent."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "aaaabbbb-cccc-dddd-eeee-ffffaaaabbbb"
@@ -578,6 +639,7 @@ class TestAsyncODataCreate:
         assert result == guid
 
     async def test_create_raises_runtime_when_no_guid_in_headers(self):
+        """Raises RuntimeError when neither OData-EntityId nor Location header contains a GUID."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(
@@ -596,7 +658,10 @@ class TestAsyncODataCreate:
 
 
 class TestAsyncODataCreateMultiple:
+    """Tests for _AsyncODataClient._create_multiple bulk record creation."""
+
     async def test_returns_list_of_guids(self):
+        """Returns the list of created record GUIDs from the Ids field in the response."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={"Ids": ["g1", "g2"]}, text='{"Ids": ["g1", "g2"]}')
@@ -607,6 +672,7 @@ class TestAsyncODataCreateMultiple:
         assert result == ["g1", "g2"]
 
     async def test_value_key_fallback(self):
+        """Falls back to extracting GUIDs from the value list when Ids is absent."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "12345678-1234-1234-1234-123456789abc"
@@ -621,6 +687,7 @@ class TestAsyncODataCreateMultiple:
         assert guid in result
 
     async def test_raises_type_error_for_non_dict_records(self):
+        """Raises TypeError when any element in the records list is not a dict."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -628,6 +695,7 @@ class TestAsyncODataCreateMultiple:
             await client._create_multiple("accounts", "account", ["not-a-dict"])
 
     async def test_empty_body_returns_empty_list(self):
+        """Returns an empty list when the response body contains no recognised id keys."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={}, text="{}")
@@ -638,6 +706,7 @@ class TestAsyncODataCreateMultiple:
         assert result == []
 
     async def test_adds_odata_type_if_missing(self):
+        """Injects @odata.type into each target record when it is not already present."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={"Ids": ["g1"]}, text='{"Ids": ["g1"]}')
@@ -661,7 +730,10 @@ class TestAsyncODataCreateMultiple:
 
 
 class TestAsyncODataGet:
+    """Tests for _AsyncODataClient._get single-record retrieval."""
+
     async def test_get_returns_dict(self):
+        """Returns the record as a dict from the JSON response body."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={"accountid": "guid-1", "name": "Contoso"})
@@ -672,6 +744,7 @@ class TestAsyncODataGet:
         assert result == {"accountid": "guid-1", "name": "Contoso"}
 
     async def test_get_passes_select_param(self):
+        """Appends a $select query parameter when a field list is provided."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={"accountid": "guid-1"})
@@ -684,6 +757,7 @@ class TestAsyncODataGet:
         assert "accountid" in call_url
 
     async def test_get_no_select_no_params(self):
+        """No $select query parameter is sent when select is omitted."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={"accountid": "guid-1"})
@@ -696,6 +770,7 @@ class TestAsyncODataGet:
         assert params is None or "$select" not in params
 
     async def test_get_url_contains_entity_set_and_key(self):
+        """Request URL contains both the entity-set name and the record key."""
         client = _make_async_odata_client()
         _seed_cache(client)
         resp = _mock_response(json_data={})
@@ -714,7 +789,10 @@ class TestAsyncODataGet:
 
 
 class TestAsyncODataGetMultiple:
+    """Tests for _AsyncODataClient._get_multiple paginated record retrieval."""
+
     async def test_single_page_no_nextlink(self):
+        """Yields a single page when the response has no @odata.nextLink."""
         client = _make_async_odata_client()
         _seed_cache(client)
         page = [{"accountid": "g1"}, {"accountid": "g2"}]
@@ -726,6 +804,7 @@ class TestAsyncODataGetMultiple:
         assert pages[0] == page
 
     async def test_two_pages_with_nextlink(self):
+        """Follows @odata.nextLink and yields both pages in order."""
         client = _make_async_odata_client()
         _seed_cache(client)
         page1 = [{"accountid": "g1"}]
@@ -742,6 +821,7 @@ class TestAsyncODataGetMultiple:
         assert pages[1] == page2
 
     async def test_empty_value_yields_nothing(self):
+        """Yields no pages when the value list in the response is empty."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": []})
@@ -751,6 +831,7 @@ class TestAsyncODataGetMultiple:
         assert pages == []
 
     async def test_page_size_adds_prefer_header(self):
+        """Passing page_size adds an odata.maxpagesize Prefer header to the request."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"accountid": "g1"}]})
@@ -764,6 +845,7 @@ class TestAsyncODataGetMultiple:
         assert "odata.maxpagesize=50" in prefer
 
     async def test_get_multiple_with_select_and_filter(self):
+        """$select and $filter query parameters are included when select and filter are provided."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"accountid": "g1"}]})
@@ -776,6 +858,7 @@ class TestAsyncODataGetMultiple:
         assert "$filter" in call_kwargs.get("params", {})
 
     async def test_get_multiple_with_include_annotations(self):
+        """An odata.include-annotations Prefer header is sent when include_annotations is set."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"a": 1}]})
@@ -798,7 +881,10 @@ class TestAsyncODataGetMultiple:
 
 
 class TestAsyncODataUpdate:
+    """Tests for _AsyncODataClient._update single-record patch."""
+
     async def test_update_patches_correct_url(self):
+        """Issues a PATCH request to the entity-set URL keyed by the record GUID."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "12345678-1234-1234-1234-123456789012"
@@ -812,6 +898,7 @@ class TestAsyncODataUpdate:
         assert guid in call_args[0][1]
 
     async def test_update_returns_none(self):
+        """Returns None on a successful 204 update response."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -821,6 +908,7 @@ class TestAsyncODataUpdate:
         assert result is None
 
     async def test_update_sends_if_match_header(self):
+        """Includes an If-Match: * header to enforce optimistic concurrency."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -839,7 +927,10 @@ class TestAsyncODataUpdate:
 
 
 class TestAsyncODataUpdateByIds:
+    """Tests for _AsyncODataClient._update_by_ids bulk update by record IDs."""
+
     async def test_broadcast_single_dict_posts_to_update_multiple(self):
+        """A single dict of changes is broadcast to all IDs via UpdateMultiple."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -851,6 +942,7 @@ class TestAsyncODataUpdateByIds:
         assert "UpdateMultiple" in post_calls[0][0][1]
 
     async def test_paired_list_posts_with_paired_payloads(self):
+        """A list of changes paired with matching IDs is submitted as a single UpdateMultiple call."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -861,6 +953,7 @@ class TestAsyncODataUpdateByIds:
         assert len(post_calls) == 1
 
     async def test_empty_ids_returns_early(self):
+        """Returns immediately without making any request when the ids list is empty."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -869,6 +962,7 @@ class TestAsyncODataUpdateByIds:
         client._request.assert_not_awaited()
 
     async def test_mismatched_lengths_raise_value_error(self):
+        """Raises ValueError when the changes list length does not match the ids list."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -876,6 +970,7 @@ class TestAsyncODataUpdateByIds:
             await client._update_by_ids("account", ["id1", "id2"], [{"name": "Only one"}])
 
     async def test_non_dict_in_list_raises_type_error(self):
+        """Raises TypeError when a non-dict element appears in the changes list."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -884,6 +979,7 @@ class TestAsyncODataUpdateByIds:
             await client._update_by_ids("account", ["id1"], ["not-a-dict"])
 
     async def test_ids_must_be_list(self):
+        """Raises TypeError when ids is not a list."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -897,7 +993,10 @@ class TestAsyncODataUpdateByIds:
 
 
 class TestAsyncODataDelete:
+    """Tests for _AsyncODataClient._delete single-record deletion."""
+
     async def test_delete_sends_delete_request(self):
+        """Issues a DELETE request to the entity-set URL keyed by the record GUID."""
         client = _make_async_odata_client()
         _seed_cache(client)
         guid = "12345678-1234-1234-1234-123456789012"
@@ -911,6 +1010,7 @@ class TestAsyncODataDelete:
         assert guid in call_args[0][1]
 
     async def test_delete_returns_none(self):
+        """Returns None on a successful 204 delete response."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -920,6 +1020,7 @@ class TestAsyncODataDelete:
         assert result is None
 
     async def test_delete_sends_if_match_header(self):
+        """Includes an If-Match: * header to enforce optimistic concurrency on delete."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -937,7 +1038,10 @@ class TestAsyncODataDelete:
 
 
 class TestAsyncODataDeleteMultiple:
+    """Tests for _AsyncODataClient._delete_multiple bulk deletion via BulkDelete."""
+
     async def test_returns_job_id(self):
+        """Returns the JobId string from the BulkDelete response body."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(
@@ -950,6 +1054,7 @@ class TestAsyncODataDeleteMultiple:
         assert result == "job-123"
 
     async def test_posts_to_bulk_delete_url(self):
+        """Issues a POST request to the BulkDelete endpoint."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(
@@ -964,6 +1069,7 @@ class TestAsyncODataDeleteMultiple:
         assert call_args[0][0].lower() == "post"
 
     async def test_empty_ids_returns_none(self):
+        """Returns None and makes no request when the ids list is empty."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -973,6 +1079,7 @@ class TestAsyncODataDeleteMultiple:
         client._request.assert_not_awaited()
 
     async def test_filters_out_empty_string_ids(self):
+        """Returns None and makes no request when all ids are empty strings."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -989,7 +1096,10 @@ class TestAsyncODataDeleteMultiple:
 
 
 class TestAsyncODataUpsert:
+    """Tests for _AsyncODataClient._upsert single-record upsert via alternate key."""
+
     async def test_upsert_patches_alternate_key_url(self):
+        """Issues a PATCH to the entity-set URL qualified by the alternate key value."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -1002,6 +1112,7 @@ class TestAsyncODataUpsert:
         assert "ACC-001" in call_args[0][1]
 
     async def test_upsert_returns_none(self):
+        """Returns None on a successful 204 upsert response."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -1017,7 +1128,10 @@ class TestAsyncODataUpsert:
 
 
 class TestAsyncODataUpsertMultiple:
+    """Tests for _AsyncODataClient._upsert_multiple bulk upsert via alternate keys."""
+
     async def test_posts_to_upsert_multiple_url(self):
+        """Issues a POST request to the UpsertMultiple endpoint."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -1033,6 +1147,7 @@ class TestAsyncODataUpsertMultiple:
         assert "UpsertMultiple" in call_args[0][1]
 
     async def test_mismatched_lengths_raise_value_error(self):
+        """Raises ValueError when alternate_keys and records lists have different lengths."""
         client = _make_async_odata_client()
         _seed_cache(client)
 
@@ -1045,6 +1160,7 @@ class TestAsyncODataUpsertMultiple:
             )
 
     async def test_returns_none_on_success(self):
+        """Returns None on a successful upsert-multiple operation."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(status_code=204)
@@ -1065,7 +1181,10 @@ class TestAsyncODataUpsertMultiple:
 
 
 class TestAsyncODataQuerySql:
+    """Tests for _AsyncODataClient._query_sql SQL-based query execution and pagination."""
+
     async def test_returns_list_from_value_key(self):
+        """Returns the list of rows from the value key in the response body."""
         client = _make_async_odata_client()
         _seed_cache(client)
         rows = [{"accountid": "g1"}, {"accountid": "g2"}]
@@ -1076,6 +1195,7 @@ class TestAsyncODataQuerySql:
         assert result == rows
 
     async def test_returns_list_when_body_is_list(self):
+        """Returns the response body directly when it is already a list."""
         client = _make_async_odata_client()
         _seed_cache(client)
         rows = [{"a": 1}, {"b": 2}]
@@ -1086,18 +1206,21 @@ class TestAsyncODataQuerySql:
         assert result == rows
 
     async def test_raises_validation_error_for_non_string_sql(self):
+        """Raises ValidationError when sql is not a string."""
         client = _make_async_odata_client()
 
         with pytest.raises(ValidationError):
             await client._query_sql(123)
 
     async def test_raises_validation_error_for_empty_sql(self):
+        """Raises ValidationError when sql is blank or whitespace-only."""
         client = _make_async_odata_client()
 
         with pytest.raises(ValidationError):
             await client._query_sql("   ")
 
     async def test_sql_url_contains_encoded_query(self):
+        """The request URL contains the sql= parameter with the encoded query."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": []})
@@ -1109,6 +1232,7 @@ class TestAsyncODataQuerySql:
         assert "SELECT" in call_url or "%3A" in call_url or "SELECT" in call_url
 
     async def test_pagination_follows_next_link(self):
+        """Follows @odata.nextLink to retrieve and concatenate rows from multiple pages."""
         client = _make_async_odata_client()
         _seed_cache(client)
         page1 = [{"accountid": "g1"}]
@@ -1147,7 +1271,10 @@ class TestAsyncODataQuerySql:
 
 
 class TestAsyncODataTableInfo:
+    """Tests for _AsyncODataClient._get_table_info table metadata retrieval."""
+
     async def test_returns_mapped_dict_when_entity_found(self):
+        """Returns a fully-mapped info dict when the entity definition is found."""
         client = _make_async_odata_client()
         entity = {
             "SchemaName": "Account",
@@ -1171,6 +1298,7 @@ class TestAsyncODataTableInfo:
         assert result["columns_created"] == []
 
     async def test_returns_none_when_entity_not_found(self):
+        """Returns None when no entity definition matches the given table name."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -1185,7 +1313,10 @@ class TestAsyncODataTableInfo:
 
 
 class TestAsyncODataListTables:
+    """Tests for _AsyncODataClient._list_tables entity definitions listing."""
+
     async def test_returns_list_of_tables(self):
+        """Returns the list of entity definitions from the API response."""
         client = _make_async_odata_client()
         tables = [{"LogicalName": "account"}, {"LogicalName": "contact"}]
         client._request.return_value = _mock_response(json_data={"value": tables})
@@ -1195,6 +1326,7 @@ class TestAsyncODataListTables:
         assert result == tables
 
     async def test_returns_empty_list_when_no_tables(self):
+        """Returns an empty list when no entity definitions exist."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -1203,6 +1335,7 @@ class TestAsyncODataListTables:
         assert result == []
 
     async def test_list_tables_calls_entity_definitions(self):
+        """Sends the request to the EntityDefinitions endpoint."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -1218,7 +1351,10 @@ class TestAsyncODataListTables:
 
 
 class TestAsyncODataDeleteTable:
+    """Tests for _AsyncODataClient._delete_table table deletion by schema name."""
+
     async def test_deletes_entity_by_metadata_id(self):
+        """Issues a DELETE request keyed by the entity's MetadataId."""
         client = _make_async_odata_client()
         entity = {"MetadataId": "meta-999", "LogicalName": "account"}
         client._get_entity_by_table_schema_name = AsyncMock(return_value=entity)
@@ -1231,6 +1367,7 @@ class TestAsyncODataDeleteTable:
         assert "meta-999" in call_args[0][1]
 
     async def test_raises_metadata_error_when_table_not_found(self):
+        """Raises MetadataError when no entity matches the given table schema name."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -1238,6 +1375,7 @@ class TestAsyncODataDeleteTable:
             await client._delete_table("NonExistentTable")
 
     async def test_raises_metadata_error_when_no_metadata_id(self):
+        """Raises MetadataError when the found entity is missing its MetadataId."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"LogicalName": "account"})
 
@@ -1251,7 +1389,10 @@ class TestAsyncODataDeleteTable:
 
 
 class TestAsyncODataBulkFetchPicklists:
+    """Tests for _AsyncODataClient._bulk_fetch_picklists picklist metadata caching."""
+
     async def test_first_call_fetches_from_api(self):
+        """Makes exactly one HTTP request to populate the picklist cache on first call."""
         client = _make_async_odata_client()
         _seed_cache(client)
         body = {
@@ -1276,6 +1417,7 @@ class TestAsyncODataBulkFetchPicklists:
         client._request.assert_awaited_once()
 
     async def test_second_call_uses_cache(self):
+        """Second call for the same table uses the cached picklist data without re-fetching."""
         client = _make_async_odata_client()
         _seed_cache(client)
         body = {"value": []}
@@ -1288,6 +1430,7 @@ class TestAsyncODataBulkFetchPicklists:
         assert client._request.await_count == 1
 
     async def test_populates_label_to_int_mapping(self):
+        """Builds a normalised label-to-integer mapping for each picklist attribute."""
         client = _make_async_odata_client()
         _seed_cache(client)
         body = {
@@ -1323,6 +1466,7 @@ class TestAsyncODataBulkFetchPicklists:
         assert any(v == 2 for v in mapping.values())
 
     async def test_expired_cache_refetches(self):
+        """Re-fetches picklist metadata when the cached entry has expired."""
         client = _make_async_odata_client()
         _seed_cache(client)
         # Set cache with expired timestamp
@@ -1335,6 +1479,7 @@ class TestAsyncODataBulkFetchPicklists:
         client._request.assert_awaited_once()
 
     async def test_items_without_logical_name_skipped(self):
+        """Skips items with an empty LogicalName and does not add them to the cache."""
         client = _make_async_odata_client()
         _seed_cache(client)
         body = {
@@ -1360,7 +1505,10 @@ class TestAsyncODataBulkFetchPicklists:
 
 
 class TestAsyncODataConvertLabels:
+    """Tests for _AsyncODataClient._convert_labels_to_ints picklist label conversion."""
+
     async def test_no_string_values_skips_fetch(self):
+        """Skips the picklist fetch entirely when the record contains no string values."""
         client = _make_async_odata_client()
         _seed_cache(client)
         # Only non-string values — no candidates for picklist resolution
@@ -1373,6 +1521,7 @@ class TestAsyncODataConvertLabels:
         assert result == record
 
     async def test_matching_label_converts_to_int(self):
+        """Converts a string label to its integer picklist value when a mapping exists."""
         client = _make_async_odata_client()
         _seed_cache(client)
         # Pre-populate cache with a label mapping
@@ -1391,6 +1540,7 @@ class TestAsyncODataConvertLabels:
         assert result["statuscode"] == 1
 
     async def test_non_matching_label_left_as_string(self):
+        """Leaves a string value unchanged when it does not match any picklist label."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._picklist_label_cache["account"] = {
@@ -1408,6 +1558,7 @@ class TestAsyncODataConvertLabels:
         assert result["statuscode"] == "Unknown Status"
 
     async def test_odata_annotated_keys_skipped(self):
+        """Keys containing '@odata.' are skipped and their values are left unchanged."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._picklist_label_cache["account"] = {
@@ -1425,6 +1576,7 @@ class TestAsyncODataConvertLabels:
         assert result["statuscode@odata.community.display"] == "Active"
 
     async def test_empty_string_value_skipped(self):
+        """Whitespace-only string values are skipped and not converted."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._picklist_label_cache["account"] = {
@@ -1439,6 +1591,7 @@ class TestAsyncODataConvertLabels:
         assert result["statuscode"] == "   "
 
     async def test_returns_copy_not_original(self):
+        """Returns a dict with the same data as the input record."""
         client = _make_async_odata_client()
         _seed_cache(client)
         # Only non-string values — returns copy without fetching picklists
@@ -1456,7 +1609,10 @@ class TestAsyncODataConvertLabels:
 
 
 class TestAsyncODataExecuteRaw:
+    """Tests for _AsyncODataClient._execute_raw raw-request dispatch."""
+
     async def test_execute_raw_calls_request(self):
+        """Dispatches the _RawRequest to _request with the correct method and URL."""
         from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 
         client = _make_async_odata_client()
@@ -1471,6 +1627,7 @@ class TestAsyncODataExecuteRaw:
         assert call_args[0][1] == "https://example.com/api"
 
     async def test_execute_raw_with_headers(self):
+        """Forwards custom headers from the _RawRequest to the underlying _request call."""
         from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 
         client = _make_async_odata_client()
@@ -1488,6 +1645,7 @@ class TestAsyncODataExecuteRaw:
         assert call_kwargs.get("headers", {}).get("If-Match") == "*"
 
     async def test_execute_raw_no_body_no_data_kwarg(self):
+        """Does not pass a data kwarg when the _RawRequest has no body."""
         from PowerPlatform.Dataverse.data._raw_request import _RawRequest
 
         client = _make_async_odata_client()
@@ -1501,7 +1659,10 @@ class TestAsyncODataExecuteRaw:
 
 
 class TestAsyncODataGetEntityByTableSchemaName:
+    """Tests for _AsyncODataClient._get_entity_by_table_schema_name entity lookup."""
+
     async def test_returns_entity_dict_when_found(self):
+        """Returns the matching entity dict when the API finds the table schema name."""
         client = _make_async_odata_client()
         entity = {"MetadataId": "m1", "LogicalName": "account"}
         client._request.return_value = _mock_response(json_data={"value": [entity]})
@@ -1511,6 +1672,7 @@ class TestAsyncODataGetEntityByTableSchemaName:
         assert result == entity
 
     async def test_returns_none_when_not_found(self):
+        """Returns None when the API returns an empty value list for the schema name."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -1519,6 +1681,7 @@ class TestAsyncODataGetEntityByTableSchemaName:
         assert result is None
 
     async def test_passes_extra_headers(self):
+        """Forwards caller-supplied extra headers to the underlying request."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -1534,9 +1697,10 @@ class TestAsyncODataGetEntityByTableSchemaName:
 
 
 class TestAsyncODataRawRequest:
-    """Line 153 — _raw_request delegates to self._http._request."""
+    """_raw_request delegates HTTP execution to the underlying _http._request coroutine."""
 
     async def test_raw_request_delegates_to_http(self):
+        """_raw_request delegates the call to the underlying HTTP session."""
         client = _make_async_odata_client()
         expected_resp = _mock_response(status_code=200)
         client._http._request = AsyncMock(return_value=expected_resp)
@@ -1548,14 +1712,10 @@ class TestAsyncODataRawRequest:
 
 
 class TestAsyncODataRequestRetryAfter:
-    """Lines 209-210 — Retry-After header that cannot be parsed as int."""
+    """Returns None when the Retry-After header value cannot be parsed as an integer."""
 
     async def test_retry_after_non_numeric_sets_none(self):
-        """When Retry-After is 'not-a-number', the except branch is taken (retry_after stays None).
-
-        Lines 209-210: the ``int(ra)`` call raises, so the except branch sets retry_after = None,
-        and HttpError is raised with no retry_after in details.
-        """
+        """When Retry-After is 'not-a-number', the except branch sets retry_after to None and HttpError is raised without a retry_after value in details."""
         client = _make_async_odata_client()
         # We need _raw_request to return a 429 with a non-numeric Retry-After.
         bad_resp = _mock_response(
@@ -1579,7 +1739,7 @@ class TestAsyncODataRequestRetryAfter:
 
 
 class TestAsyncODataEntitySetFromSchemaNameValueError:
-    """Lines 263-264 — _entity_set_from_schema_name: json() raises ValueError → items=[]."""
+    """Raises MetadataError when the response body cannot be parsed as JSON in _entity_set_from_schema_name."""
 
     async def test_json_value_error_yields_metadata_error(self):
         client = _make_async_odata_client()
@@ -1592,9 +1752,10 @@ class TestAsyncODataEntitySetFromSchemaNameValueError:
 
 
 class TestAsyncODataRequestMetadataWithRetry:
-    """Lines 315-323 — _request_metadata_with_retry retry loop."""
+    """_request_metadata_with_retry retries on 404, propagates other errors immediately, and raises RuntimeError when retries are exhausted."""
 
     async def test_retries_on_404_then_succeeds(self):
+        """Retries on 404 HttpError and returns the response when a subsequent attempt succeeds."""
         client = _make_async_odata_client()
         ok_resp = _mock_response(json_data={"value": []})
         http_404 = HttpError("Not Found", status_code=404)
@@ -1608,6 +1769,7 @@ class TestAsyncODataRequestMetadataWithRetry:
         assert client._request.call_count == 3
 
     async def test_exhausted_retries_raise_runtime_error(self):
+        """Raises RuntimeError when all retry attempts fail with a 404."""
         client = _make_async_odata_client()
         http_404 = HttpError("Not Found", status_code=404)
         client._request.side_effect = [http_404] * 5
@@ -1617,6 +1779,7 @@ class TestAsyncODataRequestMetadataWithRetry:
                 await client._request_metadata_with_retry("get", "https://example.com/meta")
 
     async def test_non_404_http_error_propagates_immediately(self):
+        """Propagates non-404 HttpErrors immediately without retrying."""
         client = _make_async_odata_client()
         http_403 = HttpError("Forbidden", status_code=403)
         client._request.side_effect = http_403
@@ -1628,13 +1791,13 @@ class TestAsyncODataRequestMetadataWithRetry:
 
 
 class TestAsyncODataBulkFetchPicklists:
-    """Lines 340, 355, 365, 368 — _bulk_fetch_picklists double-checked lock and body parsing."""
+    """_bulk_fetch_picklists uses a double-checked lock and skips malformed items in the response body."""
 
     async def test_double_checked_lock_returns_early(self):
-        """Line 340: fast-path misses (cache stale), but cache is fresh inside the lock.
+        """Returns early without making an HTTP request when a concurrent coroutine populates the cache before the lock is acquired.
 
         We simulate this by populating the cache inside a custom __aenter__ before the
-        real body runs, so the double-check (line 339-340) returns early.
+        real body runs, so the inner double-check sees a fresh entry and returns early.
         """
         client = _make_async_odata_client()
         # Start with a stale/missing cache so the fast-path (333) does NOT return early
@@ -1659,7 +1822,7 @@ class TestAsyncODataBulkFetchPicklists:
         original_request_mock.assert_not_called()
 
     async def test_non_dict_item_skipped(self):
-        """Line 355: items contains a non-dict — skipped without error."""
+        """Skips non-dict items in the response value list without raising an error."""
         client = _make_async_odata_client()
         resp = _mock_response(
             json_data={"value": ["not-a-dict", {"LogicalName": "status", "OptionSet": {"Options": []}}]}
@@ -1671,7 +1834,7 @@ class TestAsyncODataBulkFetchPicklists:
         assert "account" in client._picklist_label_cache
 
     async def test_empty_logical_name_skipped(self):
-        """Line 357-358: item with empty LogicalName — skipped."""
+        """Skips items whose LogicalName is an empty string without adding them to the picklist cache."""
         client = _make_async_odata_client()
         resp = _mock_response(json_data={"value": [{"LogicalName": "", "OptionSet": {"Options": []}}]})
         client._request_metadata_with_retry = AsyncMock(return_value=resp)
@@ -1684,9 +1847,7 @@ class TestAsyncODataBulkFetchPicklists:
         assert cache_entry["picklists"] == {}
 
     async def test_non_dict_option_skipped(self):
-        """Line 364-365: options list contains a non-dict — skipped.
-        Line 367-368: option with non-int Value — skipped.
-        """
+        """Skips non-dict options and options with non-integer Value fields, and only stores valid integer-valued options in the cache."""
         client = _make_async_odata_client()
         resp = _mock_response(
             json_data={
@@ -1718,10 +1879,10 @@ class TestAsyncODataBulkFetchPicklists:
 
 
 class TestAsyncODataConvertLabelsToInts:
-    """Lines 399, 404, 406 — _convert_labels_to_ints edge cases."""
+    """_convert_labels_to_ints handles a non-dict cache entry, non-string field values, and @odata.-prefixed keys correctly."""
 
     async def test_table_entry_not_dict_returns_unchanged(self):
-        """Line 399: _bulk_fetch_picklists sets cache to non-dict value → returns record as-is."""
+        """Returns the record unchanged when the picklist cache entry for the table is not a dict."""
         client = _make_async_odata_client()
 
         # Force _bulk_fetch_picklists to put a non-dict into the cache
@@ -1735,10 +1896,10 @@ class TestAsyncODataConvertLabelsToInts:
         assert result == record
 
     async def test_non_string_value_skipped(self):
-        """Line 403-404: value is not a string (e.g. an int) — continue (skip conversion).
+        """Leaves a field unchanged when its value is not a string, while still processing other string fields in the same record.
 
         The record must also have at least one string value so has_candidates is True
-        and the for loop is entered. The non-string value hits the continue at line 404.
+        and the for loop is entered. The non-string value is skipped via continue.
         """
         client = _make_async_odata_client()
         client._picklist_label_cache["account"] = {
@@ -1759,7 +1920,7 @@ class TestAsyncODataConvertLabelsToInts:
         assert result["name"] == "SomeLabel"  # no mapping for it, also unchanged
 
     async def test_odata_key_skipped(self):
-        """Line 405-406: keys containing '@odata.' are skipped."""
+        """Leaves keys containing '@odata.' untouched and does not attempt label-to-int conversion on them."""
         client = _make_async_odata_client()
         # Seed cache with a picklist entry — but @odata. key should be skipped
         client._picklist_label_cache["account"] = {
@@ -1797,10 +1958,10 @@ class TestAsyncODataConvertLabelsToInts:
 
 
 class TestAsyncODataCreateMultiple:
-    """Lines 472-473, 475 — _create_multiple response parsing edge cases."""
+    """_create_multiple returns an empty list when the response body is not valid JSON or is not a dict."""
 
     async def test_json_raises_value_error_returns_empty(self):
-        """Lines 472-473: r.json() raises ValueError → body={} → return []."""
+        """Returns an empty list when r.json() raises ValueError, treating the body as empty."""
         client = _make_async_odata_client()
         _seed_cache(client)
         bad_resp = MagicMock()
@@ -1824,7 +1985,7 @@ class TestAsyncODataCreateMultiple:
         assert result == []
 
     async def test_body_not_dict_returns_empty(self):
-        """Line 475: body is a list (not dict) → return []."""
+        """Returns an empty list when the parsed response body is a list rather than a dict."""
         client = _make_async_odata_client()
         _seed_cache(client)
         list_resp = MagicMock()
@@ -1837,10 +1998,10 @@ class TestAsyncODataCreateMultiple:
 
 
 class TestAsyncODataGetMultiple:
-    """Lines 535-547, 561-562 — _get_multiple param branches and pagination."""
+    """_get_multiple correctly builds query parameters and stops pagination when the response body cannot be parsed."""
 
     async def test_all_optional_params_added(self):
-        """Lines 535, 537, 539, 541 — filter, orderby, expand, count params."""
+        """Includes $filter, $orderby, $expand, and $count query parameters when all optional arguments are supplied."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"accountid": "1"}]})
@@ -1864,7 +2025,7 @@ class TestAsyncODataGetMultiple:
         assert "$count" in params
 
     async def test_json_error_yields_nothing(self):
-        """Lines 546-547: r.json() raises ValueError → no pages yielded."""
+        """Yields no pages when the initial response body cannot be parsed as JSON."""
         client = _make_async_odata_client()
         _seed_cache(client)
         bad_resp = MagicMock()
@@ -1878,7 +2039,7 @@ class TestAsyncODataGetMultiple:
         assert pages == []
 
     async def test_pagination_next_link_json_error(self):
-        """Lines 561-562: second page r.json() raises ValueError → loop ends."""
+        """Stops pagination and yields only the first page when the second page response cannot be parsed as JSON."""
         client = _make_async_odata_client()
         _seed_cache(client)
         first_resp = _mock_response(
@@ -1899,7 +2060,7 @@ class TestAsyncODataGetMultiple:
 
 
 class TestAsyncODataUpdateMultiple:
-    """Line 592 — @odata.type injection when missing from record."""
+    """Injects the @odata.type field into each record that is missing it before sending the update request."""
 
     async def test_odata_type_injected_when_missing(self):
         client = _make_async_odata_client()
@@ -1928,7 +2089,7 @@ class TestAsyncODataUpdateByIds:
 
 
 class TestAsyncODataDeleteMultiple:
-    """Lines 685-686 — _delete_multiple: r.json() raises ValueError → body={}."""
+    """Returns None when the _delete_multiple response body cannot be parsed as JSON."""
 
     async def test_json_raises_value_error_returns_none(self):
         client = _make_async_odata_client()
@@ -1959,10 +2120,10 @@ class TestAsyncODataUpsertMultiple:
 
 
 class TestAsyncODataQuerySql:
-    """Lines 765-766, 772, 795-829 — _query_sql edge cases and pagination."""
+    """_query_sql handles JSON parse failures, non-dict bodies, and various pagination termination conditions."""
 
     async def test_json_raises_value_error_returns_empty(self):
-        """Lines 765-766: json() raises ValueError → return []."""
+        """Returns an empty list when the SQL response body cannot be parsed as JSON."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         bad_resp = MagicMock()
@@ -1973,7 +2134,7 @@ class TestAsyncODataQuerySql:
         assert result == []
 
     async def test_body_not_dict_returns_empty(self):
-        """Line 772: body is a non-dict string → return []."""
+        """Returns an empty list when the parsed SQL response body is not a dict."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         str_resp = _mock_response(json_data="a string")
@@ -1985,7 +2146,7 @@ class TestAsyncODataQuerySql:
         assert result == []
 
     async def test_pagination_same_next_link_warns_and_breaks(self):
-        """Lines 795-804: second call returns same nextLink → warning and break."""
+        """Emits a warning and stops pagination when the next page returns the same nextLink URL."""
         import warnings as _warnings
 
         client = _make_async_odata_client()
@@ -2003,7 +2164,7 @@ class TestAsyncODataQuerySql:
         assert len(result) >= 1
 
     async def test_pagination_request_raises_exception_warns_and_breaks(self):
-        """Lines 807-814: second _request raises → warning and break."""
+        """Emits a warning and stops pagination when the next-page request raises an exception."""
         import warnings as _warnings
 
         client = _make_async_odata_client()
@@ -2020,7 +2181,7 @@ class TestAsyncODataQuerySql:
         assert result == [{"id": "1"}]
 
     async def test_pagination_next_page_json_error_warns_and_breaks(self):
-        """Lines 817-824: second page json() raises ValueError → warning and break."""
+        """Emits a warning and stops pagination when the next page response body is not valid JSON."""
         import warnings as _warnings
 
         client = _make_async_odata_client()
@@ -2039,7 +2200,7 @@ class TestAsyncODataQuerySql:
         assert result == [{"id": "1"}]
 
     async def test_pagination_next_page_not_dict_breaks(self):
-        """Line 826: page_body is not a dict → break."""
+        """Stops pagination and returns only the first page when the next page body is not a dict."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         next_url = "https://example.com/next3"
@@ -2052,7 +2213,7 @@ class TestAsyncODataQuerySql:
         assert result == [{"id": "1"}]
 
     async def test_pagination_next_page_empty_value_breaks(self):
-        """Line 829: page_value is empty list → break."""
+        """Stops pagination and returns only the first page when the next page's value list is empty."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         next_url = "https://example.com/next4"
@@ -2065,9 +2226,10 @@ class TestAsyncODataQuerySql:
 
 
 class TestAsyncODataCreateEntity:
-    """Lines 865-892 — _create_entity success and error paths."""
+    """_create_entity returns the entity dict on success and raises RuntimeError when EntitySetName or MetadataId is missing."""
 
     async def test_success_returns_entity_dict(self):
+        """Returns the entity dict reported by the API after successful creation."""
         client = _make_async_odata_client()
         entity = {"MetadataId": "m1", "EntitySetName": "accounts", "LogicalName": "account"}
         client._request.return_value = _mock_response(status_code=200)
@@ -2078,7 +2240,7 @@ class TestAsyncODataCreateEntity:
         assert result == entity
 
     async def test_entity_not_found_after_create_raises(self):
-        """Lines 886-889: _get_entity_by_table_schema_name returns None → RuntimeError."""
+        """Raises RuntimeError when _get_entity_by_table_schema_name returns None after creation."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(status_code=200)
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
@@ -2087,7 +2249,7 @@ class TestAsyncODataCreateEntity:
             await client._create_entity("account", "Account", [])
 
     async def test_entity_missing_entity_set_name_raises(self):
-        """Lines 886-889: entity has no EntitySetName → RuntimeError."""
+        """Raises RuntimeError when the entity returned after creation has no EntitySetName field."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(status_code=200)
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2098,7 +2260,7 @@ class TestAsyncODataCreateEntity:
             await client._create_entity("account", "Account", [])
 
     async def test_entity_missing_metadata_id_raises(self):
-        """Lines 890-891: entity present but no MetadataId → RuntimeError."""
+        """Raises RuntimeError when the entity returned after creation has no MetadataId field."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(status_code=200)
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2110,9 +2272,10 @@ class TestAsyncODataCreateEntity:
 
 
 class TestAsyncODataGetAttributeMetadata:
-    """Lines 901-928 — _get_attribute_metadata."""
+    """_get_attribute_metadata returns the matching attribute dict, None when not found, and handles JSON parse errors."""
 
     async def test_returns_attribute_when_found(self):
+        """Returns the attribute metadata dict when the attribute is found."""
         attr = {"MetadataId": "a1", "LogicalName": "name", "SchemaName": "Name"}
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": [attr]}, text='{"value": [{}]}')
@@ -2121,6 +2284,7 @@ class TestAsyncODataGetAttributeMetadata:
         assert result == attr
 
     async def test_returns_none_when_not_found(self):
+        """Returns None when no attribute matches the given logical name."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []}, text="{}")
 
@@ -2143,7 +2307,7 @@ class TestAsyncODataGetAttributeMetadata:
         assert select_str.count("MetadataId") == 1
 
     async def test_json_value_error_returns_none(self):
-        """Lines 919-922: json() raises ValueError → return None."""
+        """Returns None when the attribute metadata response cannot be parsed as JSON."""
         client = _make_async_odata_client()
         bad_resp = MagicMock()
         bad_resp.text = "bad json"
@@ -2155,7 +2319,7 @@ class TestAsyncODataGetAttributeMetadata:
 
 
 class TestAsyncODataWaitForAttributeVisibility:
-    """Lines 937-952 — _wait_for_attribute_visibility."""
+    """_wait_for_attribute_visibility returns immediately on the first successful probe and raises RuntimeError when all probes fail."""
 
     async def test_succeeds_on_first_probe(self):
         """Returns immediately when first probe succeeds."""
@@ -2166,7 +2330,7 @@ class TestAsyncODataWaitForAttributeVisibility:
         await client._wait_for_attribute_visibility("accounts", "name", delays=(0,))
 
     async def test_raises_runtime_error_when_all_probes_fail(self):
-        """Lines 951-955: all probes fail → RuntimeError."""
+        """Raises RuntimeError when every visibility probe raises an exception before the attribute becomes visible."""
         client = _make_async_odata_client()
         client._request.side_effect = RuntimeError("probe failed")
 
@@ -2176,9 +2340,10 @@ class TestAsyncODataWaitForAttributeVisibility:
 
 
 class TestAsyncODataCreateTable:
-    """Lines 999-1036 — _create_table."""
+    """_create_table creates a new table, respects primary_column_schema_name overrides, and raises on duplicate table or unsupported column type."""
 
     async def test_creates_table_successfully(self):
+        """Creates a new table and returns a dict with the entity set name and created columns."""
         client = _make_async_odata_client()
         # Table does not exist yet
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
@@ -2197,7 +2362,7 @@ class TestAsyncODataCreateTable:
         assert "new_description" in result["columns_created"]
 
     async def test_primary_column_schema_name_override(self):
-        """Lines 1007-1008: primary_column_schema_name overrides default."""
+        """Uses the provided primary_column_schema_name as the SchemaName for the primary attribute instead of the default."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
         created_entity = {
@@ -2214,7 +2379,7 @@ class TestAsyncODataCreateTable:
         assert any(a.get("SchemaName") == "new_CustomName" for a in attrs)
 
     async def test_table_already_exists_raises_metadata_error(self):
-        """Lines 1001-1004: table exists → MetadataError."""
+        """Raises MetadataError when a table with the given schema name already exists."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "existing"}
@@ -2224,7 +2389,7 @@ class TestAsyncODataCreateTable:
             await client._create_table("ExistingTable", {})
 
     async def test_unsupported_column_type_raises_value_error(self):
-        """Lines 1019-1020: unsupported type raises ValueError."""
+        """Raises ValueError when a column definition uses an unrecognised type string."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2233,9 +2398,10 @@ class TestAsyncODataCreateTable:
 
 
 class TestAsyncODataCreateColumns:
-    """Lines 1052-1081 — _create_columns."""
+    """_create_columns creates columns on an existing table and raises on missing table or unsupported column type."""
 
     async def test_creates_columns_successfully(self):
+        """Returns the list of created column names on success."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts"}
@@ -2247,7 +2413,7 @@ class TestAsyncODataCreateColumns:
         assert "new_field" in result
 
     async def test_table_not_found_raises_metadata_error(self):
-        """Lines 1055-1059: table not found → MetadataError."""
+        """Raises MetadataError when the target table cannot be found by schema name."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2255,7 +2421,7 @@ class TestAsyncODataCreateColumns:
             await client._create_columns("nonexistent", {"new_field": "string"})
 
     async def test_unsupported_column_type_raises_validation_error(self):
-        """Lines 1065-1069: unsupported type raises ValidationError."""
+        """Raises ValidationError when a column definition uses an unrecognised type string."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts"}
@@ -2266,9 +2432,10 @@ class TestAsyncODataCreateColumns:
 
 
 class TestAsyncODataDeleteColumns:
-    """Lines 1089-1129 — _delete_columns."""
+    """_delete_columns removes columns by name or list and raises descriptive errors for missing table, missing column, or missing MetadataId."""
 
     async def test_deletes_single_string_column(self):
+        """Returns a list containing the deleted column name when given a string column."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -2281,6 +2448,7 @@ class TestAsyncODataDeleteColumns:
         assert result == ["name"]
 
     async def test_deletes_list_of_columns(self):
+        """Returns a list of all deleted column names when given a list of columns."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -2293,6 +2461,7 @@ class TestAsyncODataDeleteColumns:
         assert "telephone1" in result
 
     async def test_table_not_found_raises_metadata_error(self):
+        """Raises MetadataError when the table schema name cannot be resolved."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2300,6 +2469,7 @@ class TestAsyncODataDeleteColumns:
             await client._delete_columns("nonexistent", "name")
 
     async def test_column_not_found_raises_metadata_error(self):
+        """Raises MetadataError when the named column does not exist on the table."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -2310,6 +2480,7 @@ class TestAsyncODataDeleteColumns:
             await client._delete_columns("account", "missingcol")
 
     async def test_missing_attribute_metadata_id_raises_runtime_error(self):
+        """Raises RuntimeError when the attribute metadata is found but has no MetadataId."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -2322,9 +2493,10 @@ class TestAsyncODataDeleteColumns:
 
 
 class TestAsyncODataCreateAlternateKey:
-    """Lines 1139-1155 — _create_alternate_key."""
+    """_create_alternate_key creates a key and returns its schema name and attributes, raising MetadataError when the table is not found."""
 
     async def test_creates_key_successfully(self):
+        """Returns a dict with schema_name and key_attributes on successful creation."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "m1", "LogicalName": "account"})
         resp = _mock_response(status_code=200, headers={"OData-EntityId": "https://example.com/Keys(key-id-1)"})
@@ -2336,6 +2508,7 @@ class TestAsyncODataCreateAlternateKey:
         assert result["key_attributes"] == ["accountnumber"]
 
     async def test_table_not_found_raises_metadata_error(self):
+        """Raises MetadataError when the table does not exist."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2344,9 +2517,10 @@ class TestAsyncODataCreateAlternateKey:
 
 
 class TestAsyncODataGetAlternateKeys:
-    """Lines 1163-1173 — _get_alternate_keys."""
+    """_get_alternate_keys returns the list of key definitions for a table, raising MetadataError when the table is not found."""
 
     async def test_returns_keys_list(self):
+        """Returns the list of alternate key definitions from the API."""
         client = _make_async_odata_client()
         keys = [{"SchemaName": "account_altkey", "KeyAttributes": ["accountnumber"]}]
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "m1", "LogicalName": "account"})
@@ -2356,6 +2530,7 @@ class TestAsyncODataGetAlternateKeys:
         assert result == keys
 
     async def test_table_not_found_raises_metadata_error(self):
+        """Raises MetadataError when the table does not exist."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2364,9 +2539,10 @@ class TestAsyncODataGetAlternateKeys:
 
 
 class TestAsyncODataDeleteAlternateKey:
-    """Lines 1177-1185 — _delete_alternate_key."""
+    """_delete_alternate_key issues a DELETE request for a valid key and raises MetadataError when the table is not found."""
 
     async def test_deletes_key_successfully(self):
+        """Issues a DELETE request and completes without error for a valid key id."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "m1", "LogicalName": "account"})
         client._request.return_value = _mock_response(status_code=200)
@@ -2376,6 +2552,7 @@ class TestAsyncODataDeleteAlternateKey:
         client._request.assert_awaited_once()
 
     async def test_table_not_found_raises_metadata_error(self):
+        """Raises MetadataError when the table does not exist."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2384,9 +2561,10 @@ class TestAsyncODataDeleteAlternateKey:
 
 
 class TestAsyncODataCreateOneToManyRelationship:
-    """Lines 1198-1206 — _create_one_to_many_relationship."""
+    """_create_one_to_many_relationship creates a 1:N relationship and returns the relationship and lookup schema names."""
 
     async def test_creates_relationship_successfully(self):
+        """Returns a dict with relationship and lookup schema names on success."""
         client = _make_async_odata_client()
         lookup = MagicMock()
         lookup.to_dict.return_value = {"SchemaName": "account_contact_lookup"}
@@ -2409,9 +2587,10 @@ class TestAsyncODataCreateOneToManyRelationship:
 
 
 class TestAsyncODataCreateManyToManyRelationship:
-    """Lines 1220-1227 — _create_many_to_many_relationship."""
+    """_create_many_to_many_relationship creates an N:N relationship and returns the schema name and entity names."""
 
     async def test_creates_relationship_successfully(self):
+        """Returns a dict with relationship schema name and entity names on success."""
         client = _make_async_odata_client()
         relationship = MagicMock()
         relationship.to_dict.return_value = {"SchemaName": "account_tag_rel"}
@@ -2431,9 +2610,10 @@ class TestAsyncODataCreateManyToManyRelationship:
 
 
 class TestAsyncODataDeleteRelationship:
-    """Lines 1236-1237 — _delete_relationship."""
+    """_delete_relationship sends a DELETE request with an If-Match: * header for the given relationship id."""
 
     async def test_sends_delete_with_if_match_star(self):
+        """Sends a DELETE request with If-Match: * for the given relationship id."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(status_code=200)
 
@@ -2447,9 +2627,10 @@ class TestAsyncODataDeleteRelationship:
 
 
 class TestAsyncODataGetRelationship:
-    """Lines 1241-1246 — _get_relationship."""
+    """_get_relationship returns the matching relationship dict when found, or None when no match exists."""
 
     async def test_returns_relationship_when_found(self):
+        """Returns the relationship dict when the schema name is found."""
         client = _make_async_odata_client()
         rel = {"id": "r1", "SchemaName": "account_contact_rel"}
         client._request.return_value = _mock_response(json_data={"value": [rel]})
@@ -2458,6 +2639,7 @@ class TestAsyncODataGetRelationship:
         assert result == rel
 
     async def test_returns_none_when_not_found(self):
+        """Returns None when no relationship matches the given schema name."""
         client = _make_async_odata_client()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -2466,9 +2648,10 @@ class TestAsyncODataGetRelationship:
 
 
 class TestAsyncODataUploadFile:
-    """Lines 1263-1290 — _upload_file."""
+    """_upload_file dispatches to the correct upload helper based on mode and creates missing columns automatically."""
 
     async def test_small_mode_calls_upload_file_small(self):
+        """Delegates to _upload_file_small when mode is 'small'."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2484,6 +2667,7 @@ class TestAsyncODataUploadFile:
         client._upload_file_small.assert_awaited_once()
 
     async def test_chunk_mode_calls_upload_file_chunk(self):
+        """Delegates to _upload_file_chunk when mode is 'chunk'."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2499,6 +2683,7 @@ class TestAsyncODataUploadFile:
         client._upload_file_chunk.assert_awaited_once()
 
     async def test_auto_mode_small_file_calls_upload_file_small(self):
+        """Delegates to _upload_file_small in auto mode when the file is below the chunk threshold."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2514,6 +2699,7 @@ class TestAsyncODataUploadFile:
         client._upload_file_small.assert_awaited_once()
 
     async def test_invalid_mode_raises_value_error(self):
+        """Raises ValueError when an unrecognised mode string is supplied."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -2547,9 +2733,10 @@ class TestAsyncODataUploadFile:
 
 
 class TestAsyncODataUploadFileSmall:
-    """Lines 1302-1325 — _upload_file_small."""
+    """_upload_file_small uploads a file in a single request and raises for empty record_id, missing file, or oversized file."""
 
     async def test_uploads_small_file_successfully(self):
+        """Uploads a small file in a single request without raising."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -2566,16 +2753,19 @@ class TestAsyncODataUploadFileSmall:
             _os.unlink(tmp_path)
 
     async def test_empty_record_id_raises_value_error(self):
+        """Raises ValueError when record_id is an empty string."""
         client = _make_async_odata_client()
         with pytest.raises(ValueError, match="record_id required"):
             await client._upload_file_small("accounts", "", "filecolumn", "/some/path.txt")
 
     async def test_file_not_found_raises(self):
+        """Raises FileNotFoundError when the source file does not exist."""
         client = _make_async_odata_client()
         with pytest.raises(FileNotFoundError):
             await client._upload_file_small("accounts", "rec-1", "filecolumn", "/nonexistent/path.txt")
 
     async def test_file_too_large_raises_value_error(self):
+        """Raises ValueError when the file size exceeds the single-upload limit."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -2594,9 +2784,10 @@ class TestAsyncODataUploadFileSmall:
 
 
 class TestAsyncODataUploadFileChunk:
-    """Lines 1336-1379 — _upload_file_chunk."""
+    """_upload_file_chunk uploads a file in multiple chunks and raises for missing Location header, empty record_id, or missing file."""
 
     async def test_uploads_file_in_chunks_successfully(self):
+        """Uploads a file in at least two chunk requests without raising."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -2620,6 +2811,7 @@ class TestAsyncODataUploadFileChunk:
             _os.unlink(tmp_path)
 
     async def test_missing_location_header_raises_runtime_error(self):
+        """Raises RuntimeError when the session initiation response has no Location header."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -2639,11 +2831,13 @@ class TestAsyncODataUploadFileChunk:
             _os.unlink(tmp_path)
 
     async def test_empty_record_id_raises_value_error(self):
+        """Raises ValueError when record_id is an empty string."""
         client = _make_async_odata_client()
         with pytest.raises(ValueError, match="record_id required"):
             await client._upload_file_chunk("accounts", "", "filecolumn", "/some/path.txt")
 
     async def test_file_not_found_raises(self):
+        """Raises FileNotFoundError when the source file does not exist."""
         client = _make_async_odata_client()
         with pytest.raises(FileNotFoundError):
             await client._upload_file_chunk("accounts", "rec-1", "filecolumn", "/nonexistent/path.txt")
@@ -2655,10 +2849,10 @@ class TestAsyncODataUploadFileChunk:
 
 
 class TestAsyncODataBulkFetchPicklistsFastPath:
-    """Line 334 — fast-path return when cache is already fresh."""
+    """Returns immediately without acquiring the lock when the picklist cache is already fresh."""
 
     async def test_fast_path_returns_without_lock(self):
-        """Line 334: cache already fresh before acquiring lock."""
+        """Does not acquire the lock when the cache entry is already fresh at the fast-path check."""
         client = _make_async_odata_client()
         # Pre-seed a fresh cache entry
         client._picklist_label_cache["account"] = {"ts": time.time(), "picklists": {}}
@@ -2682,16 +2876,16 @@ class TestAsyncODataBulkFetchPicklistsFastPath:
 
 
 class TestAsyncODataCreateMultipleAdditional:
-    """Lines 455, 478, 481-488 — _create_multiple remaining paths."""
+    """_create_multiple raises TypeError for non-dict records and correctly extracts IDs from both 'Ids' and 'value' response shapes."""
 
     async def test_type_error_when_record_not_dict(self):
-        """Line 455: raise TypeError when records contains non-dict."""
+        """Raises TypeError when the records list contains a non-dict item."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="must be dicts"):
             await client._create_multiple("accounts", "account", ["not-a-dict"])
 
     async def test_ids_field_returned_directly(self):
-        """Line 478: body has 'Ids' list → return it directly."""
+        """Returns the 'Ids' list directly when the response body contains an 'Ids' key."""
         client = _make_async_odata_client()
         _seed_cache(client)
         # _convert_labels_to_ints needs _bulk_fetch_picklists — seed cache to skip HTTP
@@ -2705,7 +2899,7 @@ class TestAsyncODataCreateMultipleAdditional:
         assert result == ["id-1", "id-2"]
 
     async def test_value_field_parses_guid_from_dict(self):
-        """Lines 481-488: body has 'value' list of dicts with *id keys."""
+        """Extracts the GUID from each dict in the 'value' list by finding a key ending in 'id'."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._picklist_label_cache["account"] = {"ts": time.time(), "picklists": {}}
@@ -2720,10 +2914,10 @@ class TestAsyncODataCreateMultipleAdditional:
 
 
 class TestAsyncODataGetMultipleAdditional:
-    """Lines 519-525, 539, 565 — _get_multiple additional param branches."""
+    """_get_multiple sets the Prefer header for page_size and annotations, adds $top, and correctly yields subsequent pages."""
 
     async def test_page_size_and_include_annotations_set_prefer_header(self):
-        """Lines 519-525: page_size > 0 and include_annotations set Prefer header."""
+        """Includes odata.maxpagesize and odata.include-annotations directives in the Prefer header when page_size and include_annotations are provided."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"accountid": "1"}]})
@@ -2742,7 +2936,7 @@ class TestAsyncODataGetMultipleAdditional:
         assert "odata.include-annotations" in prefer_header
 
     async def test_top_param_added(self):
-        """Line 539: top is not None → $top is set."""
+        """Includes the $top query parameter when the top argument is provided."""
         client = _make_async_odata_client()
         _seed_cache(client)
         client._request.return_value = _mock_response(json_data={"value": [{"accountid": "1"}]})
@@ -2755,7 +2949,7 @@ class TestAsyncODataGetMultipleAdditional:
         assert call_params.get("$top") == 5
 
     async def test_pagination_yields_second_page(self):
-        """Line 565: yield in the pagination while loop."""
+        """Yields records from subsequent pages when a nextLink is present in the response."""
         client = _make_async_odata_client()
         _seed_cache(client)
         next_url = "https://example.com/accounts?page=2"
@@ -2778,32 +2972,32 @@ class TestAsyncODataGetMultipleAdditional:
 
 
 class TestAsyncODataUpdateMultipleAdditional:
-    """Line 592 — _update_multiple TypeError raise."""
+    """Raises TypeError when _update_multiple receives an empty list or a non-list records argument."""
 
     async def test_empty_records_raises_type_error(self):
-        """Line 592: empty list raises TypeError."""
+        """Raises TypeError when an empty list is passed as the records argument."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="non-empty list"):
             await client._update_multiple("accounts", "account", [])
 
     async def test_non_list_records_raises_type_error(self):
-        """Line 592: non-list raises TypeError."""
+        """Raises TypeError when a non-list value is passed as the records argument."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="non-empty list"):
             await client._update_multiple("accounts", "account", "not-a-list")
 
 
 class TestAsyncODataUpdateByIdsAdditional:
-    """Lines 616, 618, 622, 624-630, 633 — _update_by_ids paths."""
+    """_update_by_ids validates ids type, handles empty ids early-return, applies dict or list changes, and raises on mismatches."""
 
     async def test_ids_not_list_raises_type_error(self):
-        """Line 616: ids must be list."""
+        """Raises TypeError when ids is not a list."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="ids must be list"):
             await client._update_by_ids("account", "not-a-list", {})
 
     async def test_empty_ids_returns_early(self):
-        """Line 617-618: empty ids list returns without making requests."""
+        """Returns immediately without making any HTTP requests when the ids list is empty."""
         client = _make_async_odata_client()
         # Should return without errors
         await client._update_by_ids("account", [], {})
@@ -2853,17 +3047,17 @@ class TestAsyncODataUpdateByIdsAdditional:
 
 
 class TestAsyncODataDeleteMultipleAdditional:
-    """Line 654 — _delete_multiple empty targets returns None."""
+    """Returns None from _delete_multiple when all provided ids are empty strings, resulting in an empty targets list."""
 
     async def test_empty_ids_returns_none(self):
-        """Lines 652-654: all ids are empty strings → targets is empty → return None."""
+        """Returns None when all provided ids are empty strings, because the resulting targets list is empty."""
         client = _make_async_odata_client()
         result = await client._delete_multiple("account", ["", ""])
         assert result is None
 
 
 class TestAsyncODataUpsertMultipleAdditional:
-    """Lines 719, 734-745 — _upsert_multiple success path."""
+    """_upsert_multiple raises ValidationError on length mismatch and calls execute_raw with injected @odata.type on success."""
 
     async def test_length_mismatch_raises_value_error(self):
         """Different lengths raise ValidationError."""
@@ -2877,7 +3071,7 @@ class TestAsyncODataUpsertMultipleAdditional:
             )
 
     async def test_success_path(self):
-        """Lines 734-745: no conflict, @odata.type injected, execute_raw called."""
+        """Calls execute_raw with @odata.type injected into each record when there are no key conflicts."""
         client = _make_async_odata_client()
         client._execute_raw = AsyncMock(return_value=_mock_response(status_code=204))
         # Seed picklist cache to avoid HTTP call
@@ -2894,22 +3088,22 @@ class TestAsyncODataUpsertMultipleAdditional:
 
 
 class TestAsyncODataQuerySqlAdditional:
-    """Lines 754, 756, 770 — _query_sql validation and list body."""
+    """_query_sql validates that sql is a non-empty string and returns a list body directly when the response is a list."""
 
     async def test_non_string_sql_raises_validation_error(self):
-        """Line 753-754: sql must be string."""
+        """Raises ValidationError when the sql argument is not a string."""
         client = _make_async_odata_client()
         with pytest.raises(ValidationError):
             await client._query_sql(42)
 
     async def test_empty_sql_raises_validation_error(self):
-        """Line 755-756: sql must not be empty."""
+        """Raises ValidationError when the sql argument is blank or whitespace-only."""
         client = _make_async_odata_client()
         with pytest.raises(ValidationError):
             await client._query_sql("   ")
 
     async def test_list_body_returned_directly(self):
-        """Line 769-770: body is a list → return it directly."""
+        """Returns the parsed list directly when the SQL response body is a JSON array."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         rows = [{"accountid": "1"}, {"accountid": "2"}]
@@ -2920,10 +3114,10 @@ class TestAsyncODataQuerySqlAdditional:
 
 
 class TestAsyncODataCreateEntityAdditional:
-    """Line 880 — _create_entity with solution_unique_name."""
+    """Passes SolutionUniqueName as a query parameter when solution_unique_name is provided to _create_entity."""
 
     async def test_solution_param_passed_to_request(self):
-        """Line 880: params includes SolutionUniqueName when provided."""
+        """Includes SolutionUniqueName in the request params when solution_unique_name is provided."""
         client = _make_async_odata_client()
         entity = {"MetadataId": "m1", "EntitySetName": "accounts", "LogicalName": "account"}
         client._request.return_value = _mock_response(status_code=200)
@@ -2936,10 +3130,10 @@ class TestAsyncODataCreateEntityAdditional:
 
 
 class TestAsyncODataCreateTableAdditional:
-    """Lines 1025-1028 — _create_table solution_unique_name validation."""
+    """_create_table validates that solution_unique_name is a non-empty string when provided."""
 
     async def test_solution_not_string_raises_type_error(self):
-        """Line 1025-1026: solution_unique_name must be string."""
+        """Raises TypeError when solution_unique_name is provided as a non-string value."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2947,7 +3141,7 @@ class TestAsyncODataCreateTableAdditional:
             await client._create_table("new_MyTable", {}, solution_unique_name=123)
 
     async def test_empty_solution_raises_value_error(self):
-        """Line 1027-1028: solution_unique_name cannot be empty."""
+        """Raises ValueError when solution_unique_name is provided as an empty string."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
 
@@ -2956,10 +3150,10 @@ class TestAsyncODataCreateTableAdditional:
 
 
 class TestAsyncODataCreateColumnsAdditional:
-    """Lines 1071, 1080 — _create_columns picklist flush path."""
+    """Flushes the picklist label cache when a column type that generates an OptionSet payload is added."""
 
     async def test_boolean_column_with_option_set_flushes_cache(self):
-        """Lines 1070-1071, 1079-1080: adding boolean (has OptionSet) column flushes cache."""
+        """Clears the picklist label cache after successfully creating a boolean column whose payload includes an OptionSet."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts"}
@@ -2977,16 +3171,16 @@ class TestAsyncODataCreateColumnsAdditional:
 
 
 class TestAsyncODataDeleteColumnsAdditional:
-    """Lines 1094, 1097, 1123-1125, 1128 — _delete_columns edge cases."""
+    """_delete_columns raises for invalid columns type, empty column name, and flushes the picklist cache for picklist attribute types."""
 
     async def test_non_list_non_str_columns_raises_type_error(self):
-        """Line 1094: columns must be str or list."""
+        """Raises TypeError when the columns argument is neither a string nor a list."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="must be str or list"):
             await client._delete_columns("account", 42)
 
     async def test_empty_column_name_raises_value_error(self):
-        """Line 1096-1097: empty column name raises ValueError."""
+        """Raises ValueError when the columns list contains an empty string."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -2995,7 +3189,7 @@ class TestAsyncODataDeleteColumnsAdditional:
             await client._delete_columns("account", [""])
 
     async def test_picklist_attr_type_flushes_cache(self):
-        """Lines 1122-1125, 1127-1128: picklist attr type triggers cache flush."""
+        """Clears the picklist label cache after deleting a column whose @odata.type indicates a picklist attribute."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(
             return_value={"MetadataId": "m1", "EntitySetName": "accounts", "SchemaName": "Account"}
@@ -3017,10 +3211,10 @@ class TestAsyncODataDeleteColumnsAdditional:
 
 
 class TestAsyncODataCreateAlternateKeyAdditional:
-    """Line 1152 — _create_alternate_key with display_name_label."""
+    """Includes DisplayName in the request payload when display_name_label is provided to _create_alternate_key."""
 
     async def test_display_name_label_included_in_payload(self):
-        """Line 1151-1152: display_name_label.to_dict() added to payload when provided."""
+        """Adds the result of display_name_label.to_dict() as DisplayName in the request payload when the argument is provided."""
         client = _make_async_odata_client()
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "m1", "LogicalName": "account"})
         resp = _mock_response(status_code=200, headers={"OData-EntityId": "https://example.com/Keys(key-id-2)"})
@@ -3043,10 +3237,10 @@ class TestAsyncODataCreateAlternateKeyAdditional:
 
 
 class TestAsyncODataCreateOneToManyRelationshipAdditional:
-    """Line 1203 — _create_one_to_many_relationship with solution."""
+    """Sets the MSCRM.SolutionUniqueName request header when solution is provided to _create_one_to_many_relationship."""
 
     async def test_solution_adds_mscrm_header(self):
-        """Line 1202-1203: solution sets MSCRM.SolutionUniqueName header."""
+        """Includes the MSCRM.SolutionUniqueName header in the request when the solution argument is provided."""
         client = _make_async_odata_client()
         lookup = MagicMock()
         lookup.to_dict.return_value = {}
@@ -3068,10 +3262,10 @@ class TestAsyncODataCreateOneToManyRelationshipAdditional:
 
 
 class TestAsyncODataCreateManyToManyRelationshipAdditional:
-    """Line 1224 — _create_many_to_many_relationship with solution."""
+    """Sets the MSCRM.SolutionUniqueName request header when solution is provided to _create_many_to_many_relationship."""
 
     async def test_solution_adds_mscrm_header(self):
-        """Line 1223-1224: solution sets MSCRM.SolutionUniqueName header."""
+        """Includes the MSCRM.SolutionUniqueName header in the request when the solution argument is provided."""
         client = _make_async_odata_client()
         relationship = MagicMock()
         relationship.to_dict.return_value = {}
@@ -3090,10 +3284,10 @@ class TestAsyncODataCreateManyToManyRelationshipAdditional:
 
 
 class TestAsyncODataUploadFileAdditional:
-    """Line 1278 — _upload_file auto mode file-not-found."""
+    """Raises FileNotFoundError in auto mode when the specified path does not point to an existing file."""
 
     async def test_auto_mode_file_not_found_raises(self):
-        """Line 1277-1278: auto mode checks os.path.isfile → FileNotFoundError."""
+        """Raises FileNotFoundError in auto mode when os.path.isfile returns False for the given path."""
         client = _make_async_odata_client()
         _seed_cache(client, table="account", entity_set="accounts")
         client._get_entity_by_table_schema_name = AsyncMock(
@@ -3107,10 +3301,10 @@ class TestAsyncODataUploadFileAdditional:
 
 
 class TestAsyncODataUploadFileChunkAdditional:
-    """Lines 1350, 1358-1359, 1362, 1369 — _upload_file_chunk additional paths."""
+    """_upload_file_chunk uses If-Match: * when if_none_match=False, falls back to the default chunk size on parse error, and handles zero-byte files."""
 
     async def test_if_none_match_false_uses_if_match_header(self):
-        """Line 1349-1350: if_none_match=False sets If-Match: * header."""
+        """Sets the If-Match: * header on the session initiation request when if_none_match=False."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -3136,7 +3330,7 @@ class TestAsyncODataUploadFileChunkAdditional:
             _os.unlink(tmp_path)
 
     async def test_invalid_chunk_size_header_falls_back_to_default(self):
-        """Lines 1357-1359: non-parsable x-ms-chunk-size header → recommended_size=None → default 4MB."""
+        """Falls back to the default 4 MB chunk size when the x-ms-chunk-size response header cannot be parsed as an integer."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -3159,7 +3353,7 @@ class TestAsyncODataUploadFileChunkAdditional:
             _os.unlink(tmp_path)
 
     async def test_zero_byte_file_still_uploads_one_chunk(self):
-        """Line 1363: total_size=0 → total_chunks=1; line 1368-1369: chunk is empty → break."""
+        """Completes without error for a zero-byte file, breaking out of the chunk loop immediately when the first read returns empty bytes."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -3187,25 +3381,26 @@ class TestAsyncODataUploadFileChunkAdditional:
 
 
 class TestAsyncODataCreateColumnsEmptyDict:
-    """Line 1053 — _create_columns raises when columns is empty dict."""
+    """Raises TypeError when the columns argument to _create_columns is an empty dict or not a dict at all."""
 
     async def test_empty_columns_dict_raises_type_error(self):
-        """Line 1053: empty dict raises TypeError."""
+        """Raises TypeError when an empty dict is passed as the columns argument."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="non-empty dict"):
             await client._create_columns("account", {})
 
     async def test_non_dict_columns_raises_type_error(self):
-        """Line 1053: non-dict raises TypeError."""
+        """Raises TypeError when a non-dict value is passed as the columns argument."""
         client = _make_async_odata_client()
         with pytest.raises(TypeError, match="non-empty dict"):
             await client._create_columns("account", "not-a-dict")
 
 
 class TestAsyncODataUploadFileSmallIfMatch:
-    """Line 1324 — _upload_file_small with if_none_match=False sets If-Match: *."""
+    """_upload_file_small sends If-Match: * and omits If-None-Match when if_none_match=False."""
 
     async def test_if_none_match_false_sets_if_match_header(self):
+        """Sends If-Match: * and omits If-None-Match when if_none_match=False."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -3226,10 +3421,10 @@ class TestAsyncODataUploadFileSmallIfMatch:
 
 
 class TestAsyncODataUploadFileChunkNegativeChunkSize:
-    """Line 1362 — _upload_file_chunk raises when effective chunk size is <= 0."""
+    """Raises ValueError when the effective chunk size computed from the x-ms-chunk-size header is zero or negative."""
 
     async def test_negative_chunk_size_raises_value_error(self):
-        """Line 1361-1362: effective_size <= 0 → ValueError."""
+        """Raises ValueError when the effective chunk size is zero or negative after applying the server-recommended size."""
         import tempfile, os as _os
 
         client = _make_async_odata_client()
@@ -3255,10 +3450,10 @@ class TestAsyncODataUploadFileChunkNegativeChunkSize:
 
 
 class TestAsyncODataQuerySqlPagingCookie:
-    """Lines 795-804 — _query_sql pagination: same pagingcookie triggers warning."""
+    """Emits a warning and stops pagination when consecutive pages carry the same pagingcookie value."""
 
     async def test_same_pagingcookie_warns_and_breaks(self):
-        """Lines 794-804: two different URLs with same pagingcookie → warning and break."""
+        """Emits a pagingcookie warning and stops pagination when two different nextLink URLs share the same pagingcookie value."""
         import warnings as _warnings
         from urllib.parse import urlencode, quote as _quote
 

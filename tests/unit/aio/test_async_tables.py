@@ -85,7 +85,10 @@ _RAW_KEY = {
 
 
 class TestAsyncTableOperationsNamespace:
+    """Tests that the tables namespace is correctly exposed on the async client."""
+
     def test_namespace_exists(self):
+        """Verifies that client.tables is an instance of AsyncTableOperations."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.tables, AsyncTableOperations)
@@ -97,7 +100,10 @@ class TestAsyncTableOperationsNamespace:
 
 
 class TestAsyncTableCreate:
+    """Tests for AsyncTableOperations.create covering table creation with various optional arguments."""
+
     async def test_create_calls_create_table_and_returns_table_info(self):
+        """Returns a TableInfo model with correct fields when creating a table successfully."""
         client, od = _make_client_with_mock_odata()
         od._create_table.return_value = _RAW_TABLE
 
@@ -111,6 +117,7 @@ class TestAsyncTableCreate:
         assert result.metadata_id == "meta-1"
 
     async def test_create_with_solution_passes_through(self):
+        """Forwards the solution name to _create_table when the solution argument is provided."""
         client, od = _make_client_with_mock_odata()
         od._create_table.return_value = _RAW_TABLE
 
@@ -119,6 +126,7 @@ class TestAsyncTableCreate:
         od._create_table.assert_awaited_once_with("new_Product", {"new_Title": "string"}, "MySolution", None)
 
     async def test_create_with_primary_column_passes_through(self):
+        """Forwards the primary_column name to _create_table when the primary_column argument is provided."""
         client, od = _make_client_with_mock_odata()
         od._create_table.return_value = _RAW_TABLE
 
@@ -137,7 +145,10 @@ class TestAsyncTableCreate:
 
 
 class TestAsyncTableDelete:
+    """Tests for AsyncTableOperations.delete verifying the underlying call and return value."""
+
     async def test_delete_calls_delete_table(self):
+        """Calls _delete_table with the correct schema name when deleting a table."""
         client, od = _make_client_with_mock_odata()
 
         await client.tables.delete("new_Product")
@@ -145,6 +156,7 @@ class TestAsyncTableDelete:
         od._delete_table.assert_awaited_once_with("new_Product")
 
     async def test_delete_returns_none(self):
+        """Returns None after a successful table deletion."""
         client, od = _make_client_with_mock_odata()
 
         result = await client.tables.delete("new_Product")
@@ -158,7 +170,10 @@ class TestAsyncTableDelete:
 
 
 class TestAsyncTableGet:
+    """Tests for AsyncTableOperations.get covering found and not-found scenarios."""
+
     async def test_get_returns_table_info(self):
+        """Returns a TableInfo model with the correct logical name when the table exists."""
         client, od = _make_client_with_mock_odata()
         od._get_table_info.return_value = _RAW_TABLE
 
@@ -169,6 +184,7 @@ class TestAsyncTableGet:
         assert result.logical_name == "new_product"
 
     async def test_get_returns_none_when_not_found(self):
+        """Returns None when the table does not exist."""
         client, od = _make_client_with_mock_odata()
         od._get_table_info.return_value = None
 
@@ -183,7 +199,10 @@ class TestAsyncTableGet:
 
 
 class TestAsyncTableList:
+    """Tests for AsyncTableOperations.list covering default and filtered listing scenarios."""
+
     async def test_list_returns_list_of_dicts(self):
+        """Returns a list of table metadata dicts when called with no arguments."""
         client, od = _make_client_with_mock_odata()
         od._list_tables.return_value = [{"LogicalName": "account"}, {"LogicalName": "contact"}]
 
@@ -194,6 +213,7 @@ class TestAsyncTableList:
         assert len(result) == 2
 
     async def test_list_passes_filter_kwarg(self):
+        """Forwards the filter string to _list_tables when the filter argument is provided."""
         client, od = _make_client_with_mock_odata()
         od._list_tables.return_value = []
 
@@ -202,6 +222,7 @@ class TestAsyncTableList:
         od._list_tables.assert_awaited_once_with(filter="IsCustomEntity eq true", select=None)
 
     async def test_list_passes_select_kwarg(self):
+        """Forwards the select list to _list_tables when the select argument is provided."""
         client, od = _make_client_with_mock_odata()
         od._list_tables.return_value = []
 
@@ -216,7 +237,10 @@ class TestAsyncTableList:
 
 
 class TestAsyncTableColumns:
+    """Tests for AsyncTableOperations.add_columns and remove_columns."""
+
     async def test_add_columns_calls_create_columns(self):
+        """Returns the created column name list when add_columns delegates to _create_columns."""
         client, od = _make_client_with_mock_odata()
         od._create_columns.return_value = ["new_Notes"]
 
@@ -226,6 +250,7 @@ class TestAsyncTableColumns:
         assert result == ["new_Notes"]
 
     async def test_remove_columns_calls_delete_columns(self):
+        """Returns the deleted column name list when remove_columns delegates to _delete_columns with a single name."""
         client, od = _make_client_with_mock_odata()
         od._delete_columns.return_value = ["new_Notes"]
 
@@ -235,6 +260,7 @@ class TestAsyncTableColumns:
         assert result == ["new_Notes"]
 
     async def test_remove_columns_with_list(self):
+        """Returns the deleted column name list when remove_columns delegates to _delete_columns with a list of names."""
         client, od = _make_client_with_mock_odata()
         od._delete_columns.return_value = ["new_A", "new_B"]
 
@@ -250,7 +276,10 @@ class TestAsyncTableColumns:
 
 
 class TestAsyncTableRelationship:
+    """Tests for AsyncTableOperations relationship methods covering CRUD on one-to-many and many-to-many relationships."""
+
     async def test_delete_relationship_calls_delete_relationship(self):
+        """Calls _delete_relationship with the correct relationship GUID."""
         client, od = _make_client_with_mock_odata()
 
         await client.tables.delete_relationship("rel-guid-1")
@@ -258,6 +287,7 @@ class TestAsyncTableRelationship:
         od._delete_relationship.assert_awaited_once_with("rel-guid-1")
 
     async def test_delete_relationship_returns_none(self):
+        """Returns None after a successful relationship deletion."""
         client, od = _make_client_with_mock_odata()
 
         result = await client.tables.delete_relationship("rel-guid-1")
@@ -265,6 +295,7 @@ class TestAsyncTableRelationship:
         assert result is None
 
     async def test_get_relationship_returns_relationship_info(self):
+        """Returns a RelationshipInfo model with correct fields for a one-to-many relationship."""
         client, od = _make_client_with_mock_odata()
         od._get_relationship.return_value = _RAW_REL_ONE_TO_MANY
 
@@ -278,6 +309,7 @@ class TestAsyncTableRelationship:
         assert result.referencing_entity == "contact"
 
     async def test_get_relationship_returns_none_when_not_found(self):
+        """Returns None when the relationship does not exist."""
         client, od = _make_client_with_mock_odata()
         od._get_relationship.return_value = None
 
@@ -286,6 +318,7 @@ class TestAsyncTableRelationship:
         assert result is None
 
     async def test_create_one_to_many_relationship_returns_relationship_info(self):
+        """Returns a RelationshipInfo model with one_to_many type after creating a one-to-many relationship."""
         client, od = _make_client_with_mock_odata()
         od._create_one_to_many_relationship.return_value = {
             "relationship_id": "rel-1",
@@ -306,6 +339,7 @@ class TestAsyncTableRelationship:
         assert result.relationship_schema_name == "new_account_contact"
 
     async def test_create_many_to_many_relationship_returns_relationship_info(self):
+        """Returns a RelationshipInfo model with many_to_many type after creating a many-to-many relationship."""
         client, od = _make_client_with_mock_odata()
         od._create_many_to_many_relationship.return_value = {
             "relationship_id": "rel-2",
@@ -324,6 +358,7 @@ class TestAsyncTableRelationship:
         assert result.entity2_logical_name == "new_tag"
 
     async def test_create_one_to_many_with_solution_passes_through(self):
+        """Forwards the solution name to _create_one_to_many_relationship when the solution argument is provided."""
         client, od = _make_client_with_mock_odata()
         od._create_one_to_many_relationship.return_value = {
             "relationship_id": "rel-1",
@@ -346,7 +381,10 @@ class TestAsyncTableRelationship:
 
 
 class TestAsyncTableCreateLookupField:
+    """Tests for AsyncTableOperations.create_lookup_field covering model building and solution forwarding."""
+
     async def test_create_lookup_field_builds_models_and_creates_relationship(self):
+        """Builds lookup and relationship models then returns a RelationshipInfo with one_to_many type."""
         client, od = _make_client_with_mock_odata()
         mock_lookup = MagicMock(spec=LookupAttributeMetadata)
         mock_relationship = MagicMock(spec=OneToManyRelationshipMetadata)
@@ -371,6 +409,7 @@ class TestAsyncTableCreateLookupField:
         assert result.relationship_type == "one_to_many"
 
     async def test_create_lookup_field_with_display_name_and_solution(self):
+        """Forwards the solution name to _create_one_to_many_relationship when both display_name and solution are provided."""
         client, od = _make_client_with_mock_odata()
         mock_lookup = MagicMock(spec=LookupAttributeMetadata)
         mock_relationship = MagicMock(spec=OneToManyRelationshipMetadata)
@@ -400,7 +439,10 @@ class TestAsyncTableCreateLookupField:
 
 
 class TestAsyncTableAlternateKeys:
+    """Tests for AsyncTableOperations alternate key methods covering create, get, and delete operations."""
+
     async def test_create_alternate_key_returns_alternate_key_info(self):
+        """Returns an AlternateKeyInfo model with correct fields after creating an alternate key."""
         client, od = _make_client_with_mock_odata()
         od._create_alternate_key.return_value = {
             "metadata_id": "key-1",
@@ -422,6 +464,7 @@ class TestAsyncTableAlternateKeys:
         assert result.status == "Pending"
 
     async def test_get_alternate_keys_returns_list(self):
+        """Returns a list of AlternateKeyInfo models with correct fields when keys exist for the table."""
         client, od = _make_client_with_mock_odata()
         od._get_alternate_keys.return_value = [_RAW_KEY]
 
@@ -437,6 +480,7 @@ class TestAsyncTableAlternateKeys:
         assert result[0].status == "Active"
 
     async def test_get_alternate_keys_empty_returns_empty_list(self):
+        """Returns an empty list when no alternate keys exist for the table."""
         client, od = _make_client_with_mock_odata()
         od._get_alternate_keys.return_value = []
 
@@ -445,6 +489,7 @@ class TestAsyncTableAlternateKeys:
         assert result == []
 
     async def test_delete_alternate_key_calls_delete(self):
+        """Calls _delete_alternate_key with the correct table name and key GUID."""
         client, od = _make_client_with_mock_odata()
 
         await client.tables.delete_alternate_key("new_Product", "key-guid-1")
@@ -452,6 +497,7 @@ class TestAsyncTableAlternateKeys:
         od._delete_alternate_key.assert_awaited_once_with("new_Product", "key-guid-1")
 
     async def test_delete_alternate_key_returns_none(self):
+        """Returns None after a successful alternate key deletion."""
         client, od = _make_client_with_mock_odata()
 
         result = await client.tables.delete_alternate_key("new_Product", "key-guid-1")

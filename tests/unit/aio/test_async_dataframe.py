@@ -51,7 +51,10 @@ def _make_record(table: str, data: dict) -> Record:
 
 
 class TestAsyncDataFrameOperationsNamespace:
+    """Tests that the dataframe namespace is correctly exposed on the client."""
+
     def test_namespace_exists(self):
+        """Verifies that client.dataframe is an AsyncDataFrameOperations instance."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.dataframe, AsyncDataFrameOperations)
@@ -63,7 +66,10 @@ class TestAsyncDataFrameOperationsNamespace:
 
 
 class TestAsyncDataFrameGetSingle:
+    """Tests for AsyncDataFrameOperations.get with a single record ID."""
+
     async def test_get_single_returns_dataframe_with_one_row(self):
+        """Returns a one-row DataFrame when a single record is fetched by ID."""
         client = _make_client_with_mock_records()
         record = _make_record("account", {"accountid": "guid-1", "name": "Contoso"})
         client.records.get = AsyncMock(return_value=record)
@@ -76,6 +82,7 @@ class TestAsyncDataFrameGetSingle:
         assert result.iloc[0]["name"] == "Contoso"
 
     async def test_get_single_passes_select(self):
+        """Passes the select columns through to records.get when fetching by ID."""
         client = _make_client_with_mock_records()
         record = _make_record("account", {"accountid": "guid-1", "name": "Contoso"})
         client.records.get = AsyncMock(return_value=record)
@@ -85,26 +92,31 @@ class TestAsyncDataFrameGetSingle:
         client.records.get.assert_awaited_once_with("account", "guid-1", select=["name"])
 
     async def test_get_single_with_filter_raises(self):
+        """Raises ValueError when filter is combined with a record ID."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.get("account", "guid-1", filter="statecode eq 0")
 
     async def test_get_single_with_orderby_raises(self):
+        """Raises ValueError when orderby is combined with a record ID."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.get("account", "guid-1", orderby=["name asc"])
 
     async def test_get_single_with_top_raises(self):
+        """Raises ValueError when top is combined with a record ID."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.get("account", "guid-1", top=10)
 
     async def test_get_single_blank_record_id_raises(self):
+        """Raises ValueError when the record ID is blank whitespace."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.get("account", "  ")
 
     async def test_get_single_empty_string_record_id_raises(self):
+        """Raises ValueError when the record ID is an empty string."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.get("account", "")
@@ -116,7 +128,10 @@ class TestAsyncDataFrameGetSingle:
 
 
 class TestAsyncDataFrameGetMultiPage:
+    """Tests for AsyncDataFrameOperations.get with multi-page results."""
+
     async def test_get_multipage_collects_all_rows(self):
+        """Collects rows from all pages into a single DataFrame."""
         client = _make_client_with_mock_records()
         page1 = [_make_record("account", {"accountid": "1", "name": "A"})]
         page2 = [_make_record("account", {"accountid": "2", "name": "B"})]
@@ -129,6 +144,7 @@ class TestAsyncDataFrameGetMultiPage:
         assert list(result["name"]) == ["A", "B"]
 
     async def test_get_multipage_no_rows_returns_empty_dataframe(self):
+        """Returns an empty DataFrame when no rows are returned across all pages."""
         client = _make_client_with_mock_records()
         client.records.get = AsyncMock(return_value=_agen())
 
@@ -138,6 +154,7 @@ class TestAsyncDataFrameGetMultiPage:
         assert result.empty
 
     async def test_get_multipage_no_rows_with_select_returns_columns(self):
+        """Returns an empty DataFrame with select columns when no rows exist."""
         client = _make_client_with_mock_records()
         client.records.get = AsyncMock(return_value=_agen())
 
@@ -148,6 +165,7 @@ class TestAsyncDataFrameGetMultiPage:
         assert list(result.columns) == ["name"]
 
     async def test_get_multipage_passes_kwargs(self):
+        """Passes all query keyword arguments through to records.get."""
         client = _make_client_with_mock_records()
         client.records.get = AsyncMock(return_value=_agen())
 
@@ -180,7 +198,10 @@ class TestAsyncDataFrameGetMultiPage:
 
 
 class TestAsyncDataFrameCreate:
+    """Tests for AsyncDataFrameOperations.create with DataFrame input."""
+
     async def test_create_returns_series_of_guids(self):
+        """Returns a Series of GUIDs corresponding to the created records."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
         client.records.create = AsyncMock(return_value=["guid-1", "guid-2"])
@@ -192,6 +213,7 @@ class TestAsyncDataFrameCreate:
         assert list(result) == ["guid-1", "guid-2"]
 
     async def test_create_series_aligned_to_df_index(self):
+        """The returned Series index matches the original DataFrame's index."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"name": "A"}, {"name": "B"}], index=[10, 20])
         client.records.create = AsyncMock(return_value=["g-1", "g-2"])
@@ -201,22 +223,26 @@ class TestAsyncDataFrameCreate:
         assert list(result.index) == [10, 20]
 
     async def test_create_non_dataframe_raises_type_error(self):
+        """Raises TypeError when the data argument is not a DataFrame."""
         client = _make_client_with_mock_records()
         with pytest.raises(TypeError):
             await client.dataframe.create("account", [{"name": "Contoso"}])
 
     async def test_create_empty_dataframe_raises_value_error(self):
+        """Raises ValueError when an empty DataFrame is passed to create."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.create("account", pd.DataFrame())
 
     async def test_create_all_null_rows_raises_value_error(self):
+        """Raises ValueError when every row in the DataFrame has all-null values."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"name": None}, {"name": None}])
         with pytest.raises(ValueError):
             await client.dataframe.create("account", df)
 
     async def test_create_calls_records_create_with_list_of_dicts(self):
+        """Delegates to records.create with a list of dicts derived from the DataFrame."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"name": "Contoso"}])
         client.records.create = AsyncMock(return_value=["guid-1"])
@@ -235,7 +261,10 @@ class TestAsyncDataFrameCreate:
 
 
 class TestAsyncDataFrameUpdate:
+    """Tests for AsyncDataFrameOperations.update with DataFrame input."""
+
     async def test_update_multiple_rows_passes_list(self):
+        """Passes a list of IDs and payloads to records.update for multiple rows."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame(
             [
@@ -254,6 +283,7 @@ class TestAsyncDataFrameUpdate:
         )
 
     async def test_update_single_row_passes_string_id(self):
+        """Passes a single string ID and dict payload to records.update for one row."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"accountid": "guid-1", "telephone1": "555-0100"}])
         client.records.update = AsyncMock()
@@ -267,28 +297,33 @@ class TestAsyncDataFrameUpdate:
         )
 
     async def test_update_non_dataframe_raises_type_error(self):
+        """Raises TypeError when the data argument is not a DataFrame."""
         client = _make_client_with_mock_records()
         with pytest.raises(TypeError):
             await client.dataframe.update("account", [{"accountid": "g1", "name": "A"}], "accountid")
 
     async def test_update_empty_dataframe_raises_value_error(self):
+        """Raises ValueError when an empty DataFrame is passed to update."""
         client = _make_client_with_mock_records()
         with pytest.raises(ValueError):
             await client.dataframe.update("account", pd.DataFrame(), "accountid")
 
     async def test_update_missing_id_column_raises_value_error(self):
+        """Raises ValueError when the specified ID column is absent from the DataFrame."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"name": "Contoso"}])
         with pytest.raises(ValueError):
             await client.dataframe.update("account", df, id_column="accountid")
 
     async def test_update_invalid_guid_values_raises_value_error(self):
+        """Raises ValueError when the ID column contains null or invalid values."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"accountid": None, "name": "Contoso"}])
         with pytest.raises(ValueError):
             await client.dataframe.update("account", df, id_column="accountid")
 
     async def test_update_only_id_column_raises_value_error(self):
+        """Raises ValueError when the DataFrame contains only the ID column and no payload columns."""
         client = _make_client_with_mock_records()
         df = pd.DataFrame([{"accountid": "guid-1"}])
         with pytest.raises(ValueError):
@@ -301,7 +336,10 @@ class TestAsyncDataFrameUpdate:
 
 
 class TestAsyncDataFrameDelete:
+    """Tests for AsyncDataFrameOperations.delete with a Series of IDs."""
+
     async def test_delete_multiple_calls_delete_with_list(self):
+        """Calls records.delete with a list of IDs and use_bulk_delete=True for multiple records."""
         client = _make_client_with_mock_records()
         ids = pd.Series(["guid-1", "guid-2", "guid-3"])
         client.records.delete = AsyncMock(return_value="job-guid-456")
@@ -311,6 +349,7 @@ class TestAsyncDataFrameDelete:
         client.records.delete.assert_awaited_once_with("account", ["guid-1", "guid-2", "guid-3"], use_bulk_delete=True)
 
     async def test_delete_single_guid_uses_string_form(self):
+        """Calls records.delete with a plain string ID when the Series contains one entry."""
         client = _make_client_with_mock_records()
         ids = pd.Series(["guid-1"])
         client.records.delete = AsyncMock(return_value=None)
@@ -321,6 +360,7 @@ class TestAsyncDataFrameDelete:
         assert result is None
 
     async def test_delete_empty_series_returns_none(self):
+        """Returns None without calling records.delete when the Series is empty."""
         client = _make_client_with_mock_records()
         ids = pd.Series([], dtype=str)
 
@@ -330,17 +370,20 @@ class TestAsyncDataFrameDelete:
         assert result is None
 
     async def test_delete_non_series_raises_type_error(self):
+        """Raises TypeError when the IDs argument is not a pandas Series."""
         client = _make_client_with_mock_records()
         with pytest.raises(TypeError):
             await client.dataframe.delete("account", ["guid-1", "guid-2"])
 
     async def test_delete_series_with_bad_values_raises_value_error(self):
+        """Raises ValueError when the IDs Series contains null entries."""
         client = _make_client_with_mock_records()
         ids = pd.Series(["guid-1", None])
         with pytest.raises(ValueError):
             await client.dataframe.delete("account", ids)
 
     async def test_delete_series_with_blank_string_raises_value_error(self):
+        """Raises ValueError when the IDs Series contains blank-string entries."""
         client = _make_client_with_mock_records()
         ids = pd.Series(["guid-1", "  "])
         with pytest.raises(ValueError):

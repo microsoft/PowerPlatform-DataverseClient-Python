@@ -62,7 +62,10 @@ def _tmp_file(content: bytes = b"hello world") -> str:
 
 
 class TestUploadFileMode:
+    """Tests for _upload_file mode dispatch to small or chunk upload helpers."""
+
     async def test_small_mode_calls_upload_file_small(self):
+        """Passing mode='small' delegates to _upload_file_small."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -70,6 +73,7 @@ class TestUploadFileMode:
         client._upload_file_small.assert_awaited_once()
 
     async def test_chunk_mode_calls_upload_file_chunk(self):
+        """Passing mode='chunk' delegates to _upload_file_chunk."""
         client = _MockUploadClient()
         client._upload_file_chunk = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -77,6 +81,7 @@ class TestUploadFileMode:
         client._upload_file_chunk.assert_awaited_once()
 
     async def test_auto_mode_small_file_uses_small(self):
+        """mode='auto' with a file under the threshold delegates to _upload_file_small."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=1024):
@@ -84,6 +89,7 @@ class TestUploadFileMode:
         client._upload_file_small.assert_awaited_once()
 
     async def test_auto_mode_large_file_uses_chunk(self):
+        """mode='auto' with a file over the threshold delegates to _upload_file_chunk."""
         client = _MockUploadClient()
         client._upload_file_chunk = AsyncMock()
         large = 128 * 1024 * 1024 + 1
@@ -92,12 +98,14 @@ class TestUploadFileMode:
         client._upload_file_chunk.assert_awaited_once()
 
     async def test_invalid_mode_raises_value_error(self):
+        """An unrecognised mode string raises ValueError."""
         client = _MockUploadClient()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
             with pytest.raises(ValueError, match="Invalid mode"):
                 await client._upload_file("account", "rec-1", "filecolumn", "/fake/path.txt", mode="badmode")
 
     async def test_mode_is_case_insensitive(self):
+        """Mode matching is case-insensitive so 'Small' behaves like 'small'."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -106,7 +114,10 @@ class TestUploadFileMode:
 
 
 class TestUploadFileColumnCreation:
+    """Tests for automatic file column creation inside _upload_file."""
+
     async def test_creates_column_when_attr_metadata_missing(self):
+        """Calls _create_columns and waits for visibility when the column does not exist yet."""
         client = _MockUploadClient()
         client._get_attribute_metadata = AsyncMock(return_value=None)
         client._upload_file_small = AsyncMock()
@@ -116,6 +127,7 @@ class TestUploadFileColumnCreation:
         client._wait_for_attribute_visibility.assert_awaited_once()
 
     async def test_skips_column_creation_when_attr_metadata_present(self):
+        """Does not call _create_columns when the column already exists in metadata."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -133,6 +145,7 @@ class TestUploadFileColumnCreation:
         assert call_kwargs[0][2] == "filecolumn"
 
     async def test_mime_type_forwarded_to_upload_file_small(self):
+        """Passes the mime_type kwarg as content_type to the delegated upload helper."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -143,6 +156,7 @@ class TestUploadFileColumnCreation:
         assert call_kwargs.get("content_type") == "image/png"
 
     async def test_if_none_match_forwarded(self):
+        """Passes the if_none_match kwarg through to the delegated upload helper."""
         client = _MockUploadClient()
         client._upload_file_small = AsyncMock()
         with patch("os.path.isfile", return_value=True), patch("os.path.getsize", return_value=100):
@@ -159,7 +173,10 @@ class TestUploadFileColumnCreation:
 
 
 class TestUploadFileSmall:
+    """Tests for _upload_file_small single-request binary upload."""
+
     async def test_uploads_successfully(self):
+        """Issues a PATCH request and completes without error for a valid file."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"file content")
@@ -170,16 +187,19 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_empty_record_id_raises(self):
+        """Raises ValueError when record_id is an empty string."""
         client = _MockUploadClient()
         with pytest.raises(ValueError, match="record_id required"):
             await client._upload_file_small("accounts", "", "filecolumn", "/some/path.txt")
 
     async def test_file_not_found_raises(self):
+        """Raises FileNotFoundError when the specified file path does not exist."""
         client = _MockUploadClient()
         with pytest.raises(FileNotFoundError):
             await client._upload_file_small("accounts", "rec-1", "filecolumn", "/nonexistent/path.txt")
 
     async def test_file_too_large_raises(self):
+        """Raises ValueError when the file exceeds the 128 MB single-upload limit."""
         path = _tmp_file(b"x")
         try:
             client = _MockUploadClient()
@@ -191,6 +211,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_default_content_type_is_octet_stream(self):
+        """Uses application/octet-stream as the default Content-Type header."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -202,6 +223,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_custom_content_type_used(self):
+        """Passes a caller-supplied content_type as the Content-Type header."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -213,6 +235,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_if_none_match_true_sets_if_none_match_header(self):
+        """Sets If-None-Match: null and omits If-Match when if_none_match=True."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -225,6 +248,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_if_none_match_false_sets_if_match_star(self):
+        """Sets If-Match: * and omits If-None-Match when if_none_match=False."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -237,6 +261,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_x_ms_file_name_header_set(self):
+        """Sets the x-ms-file-name header to the base name of the uploaded file."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -248,6 +273,7 @@ class TestUploadFileSmall:
             os.unlink(path)
 
     async def test_uses_patch_method(self):
+        """Issues the upload via the HTTP PATCH method."""
         client = _MockUploadClient()
         client._request.return_value = _mock_response(status_code=204)
         path = _tmp_file(b"data")
@@ -264,7 +290,10 @@ class TestUploadFileSmall:
 
 
 class TestUploadFileChunk:
+    """Tests for _upload_file_chunk chunked upload session."""
+
     async def test_uploads_successfully_in_chunks(self):
+        """Completes without error and issues at least an init and one chunk request."""
         client = _MockUploadClient()
         path = _tmp_file(b"A" * 100)
         try:
@@ -282,6 +311,7 @@ class TestUploadFileChunk:
             os.unlink(path)
 
     async def test_missing_location_header_raises(self):
+        """Raises RuntimeError when the init response has no Location header."""
         client = _MockUploadClient()
         path = _tmp_file(b"data")
         try:
@@ -292,16 +322,19 @@ class TestUploadFileChunk:
             os.unlink(path)
 
     async def test_empty_record_id_raises(self):
+        """Raises ValueError when record_id is an empty string."""
         client = _MockUploadClient()
         with pytest.raises(ValueError, match="record_id required"):
             await client._upload_file_chunk("accounts", "", "filecolumn", "/some/path.txt")
 
     async def test_file_not_found_raises(self):
+        """Raises FileNotFoundError when the specified file path does not exist."""
         client = _MockUploadClient()
         with pytest.raises(FileNotFoundError):
             await client._upload_file_chunk("accounts", "rec-1", "filecolumn", "/nonexistent/path.txt")
 
     async def test_if_none_match_true_sets_header_on_init(self):
+        """Sets If-None-Match: null on the init request when if_none_match=True."""
         client = _MockUploadClient()
         path = _tmp_file(b"data")
         try:
@@ -318,6 +351,7 @@ class TestUploadFileChunk:
             os.unlink(path)
 
     async def test_if_none_match_false_sets_if_match_star_on_init(self):
+        """Sets If-Match: * on the init request when if_none_match=False."""
         client = _MockUploadClient()
         path = _tmp_file(b"data")
         try:

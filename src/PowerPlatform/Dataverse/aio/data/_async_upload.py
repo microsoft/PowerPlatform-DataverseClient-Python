@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+from pathlib import Path
 from typing import Dict, Optional
 from urllib.parse import quote as _url_quote
 
@@ -88,13 +89,12 @@ class _AsyncFileUploadMixin:
         # Convert schema name to lowercase logical name for URL usage
         logical_name = file_name_attribute.lower()
         if mode == "small":
-            await self._upload_file_small(
+            return await self._upload_file_small(
                 entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
             )
-        elif mode == "chunk":
-            await self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
-        else:
-            raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
+        if mode == "chunk":
+            return await self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
+        raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
 
     async def _upload_file_small(  # type: ignore[override]
         self,
@@ -128,7 +128,7 @@ class _AsyncFileUploadMixin:
         if size > limit:
             raise ValueError(f"File size {size} exceeds single-upload limit {limit}; use chunk mode.")
         # Read entire file in a thread pool to avoid blocking the event loop.
-        data = await asyncio.to_thread(_read_file, path)
+        data = await asyncio.to_thread(Path(path).read_bytes)
         fname = os.path.basename(path)  # pure string operation, no I/O
         key = self._format_key(record_id)
         url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
@@ -142,6 +142,7 @@ class _AsyncFileUploadMixin:
             headers["If-Match"] = "*"
         # Single PATCH upload; allow default success codes (includes 204)
         await self._request("patch", url, headers=headers, data=data)
+        return None
 
     async def _upload_file_chunk(  # type: ignore[override]
         self,
@@ -203,10 +204,8 @@ class _AsyncFileUploadMixin:
             raise ValueError("effective chunk size must be positive")
         total_chunks = int(math.ceil(total_size / effective_size)) if total_size else 1
         uploaded_bytes = 0
-        # Open the file handle synchronously (fast fd acquisition), then read
-        # each chunk in a thread pool to keep the event loop unblocked.
-        fh = open(path, "rb")
-        try:
+        fh = await asyncio.to_thread(open, path, "rb")
+        with fh:
             for _ in range(total_chunks):
                 chunk = await asyncio.to_thread(fh.read, effective_size)
                 if not chunk:
@@ -222,11 +221,4 @@ class _AsyncFileUploadMixin:
                 # Each chunk returns 206 (partial) or 204 (final). Accept both.
                 await self._request("patch", location, headers=chunk_headers, data=chunk, expected=(206, 204))
                 uploaded_bytes += len(chunk)
-        finally:
-            fh.close()
-
-
-def _read_file(path: str) -> bytes:
-    """Read an entire file as bytes (runs in a thread pool worker)."""
-    with open(path, "rb") as fh:
-        return fh.read()
+        return None
