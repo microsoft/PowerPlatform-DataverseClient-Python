@@ -30,11 +30,7 @@ class _AsyncAuthManager:
 
     def __init__(self, credential: AsyncTokenCredential) -> None:
         if not isinstance(credential, AsyncTokenCredential):
-            raise TypeError(
-                "credential must implement AsyncTokenCredential with an async get_token() method. "
-                "For async usage, pass a credential from azure.identity.aio "
-                "(e.g. azure.identity.aio.DefaultAzureCredential)."
-            )
+            raise TypeError("credential must implement AsyncTokenCredential.")
         self.credential: AsyncTokenCredential = credential
 
     async def _acquire_token(self, scope: str) -> _TokenPair:

@@ -9,7 +9,7 @@
 
 Adding async support touches every layer of the SDK. The HTTP transport, authentication, data layer, operations, and public client entry point all require async versions. The query builder needs only minimal changes (the fluent chain stays sync; only `execute()` becomes a coroutine). The models layer (`Record`, `TableInfo`, filters, etc.) requires **no changes** — pure dataclasses are shared between sync and async as-is. The existing sync client and all sync behaviour are **untouched**. See Part 3 for a full layer-by-layer breakdown.
 
-Two decisions are open and require team input before implementation begins. Everything else — HTTP transport, auth, operations, query builder — follows directly from these two choices and has no meaningful alternatives.
+Two decisions are open. Everything else — HTTP transport, auth, operations, query builder — follows directly from these two choices and has no meaningful alternatives.
 
 1. **How should the async data layer relate to the sync data layer?** The data layer contains a mix of pure logic (payload building, parsing, validation) and I/O calls. The question is whether the async client *inherits* from the sync client and overrides I/O methods, or whether pure logic is *extracted into a shared base* that both sync and async inherit from as siblings. See Part 1.
 
