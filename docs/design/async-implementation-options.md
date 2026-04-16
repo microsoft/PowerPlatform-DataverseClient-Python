@@ -5,6 +5,18 @@
 
 ---
 
+## Background
+
+Adding async support touches every layer of the SDK. The HTTP transport, authentication, data layer, operations, and public client entry point all require async versions. The query builder needs only minimal changes (the fluent chain stays sync; only `execute()` becomes a coroutine). The models layer (`Record`, `TableInfo`, filters, etc.) requires **no changes** — pure dataclasses are shared between sync and async as-is. The existing sync client and all sync behaviour are **untouched**. See Part 3 for a full layer-by-layer breakdown.
+
+Two decisions are open and require team input before implementation begins. Everything else — HTTP transport, auth, operations, query builder — follows directly from these two choices and has no meaningful alternatives.
+
+1. **How should the async data layer relate to the sync data layer?** The data layer contains a mix of pure logic (payload building, parsing, validation) and I/O calls. The question is whether the async client *inherits* from the sync client and overrides I/O methods, or whether pure logic is *extracted into a shared base* that both sync and async inherit from as siblings. See Part 1.
+
+2. **Where should async files live in the package tree?** Either all async files go under a dedicated `aio/` sub-package (the Azure SDK convention), or they are placed alongside their sync counterparts in the existing folders. See Part 2.
+
+---
+
 ## Part 1 — Implementation Design
 
 Two options were explored for how the async data layer relates to the sync data layer.
@@ -82,19 +94,23 @@ All async code lives under a separate `aio/` sub-package, mirroring the sync lay
 
 ```
 src/PowerPlatform/Dataverse/
-├── core/               # HTTP, config, errors (sync)
-├── data/               # sync data layer
+├── core/                   # sync
+│   ├── _auth.py
+│   └── _http.py
+├── data/                   # sync data layer
 │   ├── _odata.py
-│   ├── _odata_base.py  # (if using Implementation Option B)
+│   ├── _odata_base.py      # (if using Implementation Option B)
 │   ├── _batch.py
 │   └── _batch_base.py
-├── operations/         # sync public operations (records, tables, …)
-└── aio/                # ALL async code
-    ├── core/           # async HTTP client
-    ├── data/           # async data layer
+├── operations/             # sync public operations (records, tables, …)
+└── aio/                    # ALL async code
+    ├── core/               # async counterparts to core/
+    │   ├── _async_auth.py
+    │   └── _async_http.py
+    ├── data/               # async data layer
     │   ├── _async_odata.py
     │   └── _async_batch.py
-    └── operations/     # async public operations
+    └── operations/         # async public operations
 ```
 
 **Pros**
@@ -118,6 +134,9 @@ Async files live alongside their sync counterparts, distinguished by a naming pr
 ```
 src/PowerPlatform/Dataverse/
 ├── core/
+│   ├── _auth.py
+│   ├── _async_auth.py        # next to _auth.py
+│   ├── _http.py
 │   └── _async_http.py        # next to _http.py
 ├── data/
 │   ├── _odata.py
