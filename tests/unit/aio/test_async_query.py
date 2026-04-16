@@ -38,18 +38,23 @@ def _make_client_with_mock_odata():
 
 
 class TestAsyncQueryOperationsNamespace:
+    """Tests that the query namespace and builder factory are correctly exposed on the client."""
+
     def test_namespace_exists(self):
+        """client.query exposes an AsyncQueryOperations instance."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.query, AsyncQueryOperations)
 
     def test_builder_returns_async_query_builder(self):
+        """client.query.builder() returns an AsyncQueryBuilder for the given table."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_builder_binds_query_ops(self):
+        """The builder returned by client.query.builder() is bound back to client.query."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account")
@@ -62,7 +67,10 @@ class TestAsyncQueryOperationsNamespace:
 
 
 class TestAsyncQuerySql:
+    """Tests for AsyncQueryOperations.sql() — raw SQL execution and result mapping."""
+
     async def test_sql_returns_list_of_records(self):
+        """sql() returns a list of Record objects hydrated from the OData response rows."""
         client, od = _make_client_with_mock_odata()
         od._query_sql.return_value = [
             {"accountid": "1", "name": "Contoso"},
@@ -78,6 +86,7 @@ class TestAsyncQuerySql:
         assert result[1]["name"] == "Fabrikam"
 
     async def test_sql_empty_result_returns_empty_list(self):
+        """sql() returns an empty list when the OData layer returns no rows."""
         client, od = _make_client_with_mock_odata()
         od._query_sql.return_value = []
 
@@ -92,25 +101,31 @@ class TestAsyncQuerySql:
 
 
 class TestAsyncQueryBuilderFluent:
+    """Tests for the fluent builder API on AsyncQueryBuilder."""
+
     def test_select_returns_builder(self):
+        """select() returns the builder for chaining."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name", "telephone1")
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_filter_eq_returns_builder(self):
+        """filter_eq() returns the builder for chaining."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name").filter_eq("statecode", 0)
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_top_returns_builder(self):
+        """top() returns the builder for chaining."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         qb = client.query.builder("account").select("name").top(10)
         assert isinstance(qb, AsyncQueryBuilder)
 
     def test_build_produces_params_dict(self):
+        """build() returns a dict containing the table, select list, and top value."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         params = client.query.builder("account").select("name", "telephone1").filter_eq("statecode", 0).top(50).build()
@@ -141,7 +156,10 @@ class TestAsyncQueryBuilderFluent:
 
 
 class TestAsyncQueryBuilderExecute:
+    """Tests for AsyncQueryBuilder.execute() — individual-record and by-page modes."""
+
     async def test_execute_yields_individual_records(self):
+        """execute() returns an async generator that yields individual Record objects across pages."""
         client, od = _make_client_with_mock_odata()
         page_1 = [{"accountid": "1", "name": "A"}]
         page_2 = [{"accountid": "2", "name": "B"}]
@@ -161,6 +179,7 @@ class TestAsyncQueryBuilderExecute:
         assert records[1]["name"] == "B"
 
     async def test_execute_by_page_yields_pages(self):
+        """execute(by_page=True) returns an async generator that yields one list of Records per page."""
         client, od = _make_client_with_mock_odata()
         page_1 = [{"accountid": "1", "name": "A"}]
         page_2 = [{"accountid": "2", "name": "B"}]
@@ -184,7 +203,10 @@ class TestAsyncQueryBuilderExecute:
 
 
 class TestAsyncQueryBuilderToDataframe:
+    """Tests for AsyncQueryBuilder.to_dataframe() — builder delegation to dataframe.get."""
+
     async def test_to_dataframe_calls_dataframe_get(self):
+        """to_dataframe() delegates to client.dataframe.get and returns its DataFrame."""
         import pandas as pd
 
         credential = AsyncMock(spec=AsyncTokenCredential)
@@ -202,6 +224,7 @@ class TestAsyncQueryBuilderToDataframe:
         assert list(result["name"]) == ["Contoso"]
 
     async def test_to_dataframe_without_builder_raises(self):
+        """to_dataframe() raises RuntimeError when called on an unbound AsyncQueryBuilder."""
         qb = AsyncQueryBuilder("account")
         with pytest.raises(RuntimeError):
             await qb.to_dataframe()

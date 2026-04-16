@@ -41,7 +41,10 @@ def _mock_response(json_data=None, status_code=200, headers=None):
 
 
 class TestCreateOneToManyRelationship:
+    """Tests for _create_one_to_many_relationship posting and result parsing."""
+
     async def test_returns_correct_dict(self):
+        """Returns a dict with relationship_id, schema names, and entity names parsed from the response."""
         client = _MockRelationshipClient()
         lookup = MagicMock(schema_name="account_contact_lookup")
         lookup.to_dict.return_value = {"SchemaName": "account_contact_lookup"}
@@ -64,6 +67,7 @@ class TestCreateOneToManyRelationship:
         assert result["referencing_entity"] == "contact"
 
     async def test_posts_to_relationship_definitions_url(self):
+        """Issues a POST request to the /RelationshipDefinitions endpoint."""
         client = _MockRelationshipClient()
         lookup = MagicMock(schema_name="lk")
         lookup.to_dict.return_value = {}
@@ -80,6 +84,7 @@ class TestCreateOneToManyRelationship:
         assert call[0][1].endswith("/RelationshipDefinitions")
 
     async def test_solution_header_set_when_provided(self):
+        """Adds MSCRM.SolutionUniqueName header when a solution name is supplied."""
         client = _MockRelationshipClient()
         lookup = MagicMock(schema_name="lk")
         lookup.to_dict.return_value = {}
@@ -95,6 +100,7 @@ class TestCreateOneToManyRelationship:
         assert headers.get("MSCRM.SolutionUniqueName") == "MySolution"
 
     async def test_no_solution_header_when_not_provided(self):
+        """Omits MSCRM.SolutionUniqueName header when no solution name is supplied."""
         client = _MockRelationshipClient()
         lookup = MagicMock(schema_name="lk")
         lookup.to_dict.return_value = {}
@@ -110,6 +116,7 @@ class TestCreateOneToManyRelationship:
         assert "MSCRM.SolutionUniqueName" not in headers
 
     async def test_relationship_id_none_when_header_missing(self):
+        """Returns relationship_id as None when OData-EntityId header is absent."""
         client = _MockRelationshipClient()
         lookup = MagicMock(schema_name="lk")
         lookup.to_dict.return_value = {}
@@ -128,7 +135,10 @@ class TestCreateOneToManyRelationship:
 
 
 class TestCreateManyToManyRelationship:
+    """Tests for _create_many_to_many_relationship posting and result parsing."""
+
     async def test_returns_correct_dict(self):
+        """Returns a dict with relationship_id and both entity logical names."""
         client = _MockRelationshipClient()
         relationship = MagicMock(
             schema_name="account_tag_rel",
@@ -148,6 +158,7 @@ class TestCreateManyToManyRelationship:
         assert result["entity2_logical_name"] == "tag"
 
     async def test_solution_header_set_when_provided(self):
+        """Adds MSCRM.SolutionUniqueName header when a solution name is supplied."""
         client = _MockRelationshipClient()
         relationship = MagicMock(schema_name="rel", entity1_logical_name="a", entity2_logical_name="b")
         relationship.to_dict.return_value = {}
@@ -161,6 +172,7 @@ class TestCreateManyToManyRelationship:
         assert headers.get("MSCRM.SolutionUniqueName") == "AnotherSolution"
 
     async def test_no_solution_header_when_not_provided(self):
+        """Omits MSCRM.SolutionUniqueName header when no solution name is supplied."""
         client = _MockRelationshipClient()
         relationship = MagicMock(schema_name="rel", entity1_logical_name="a", entity2_logical_name="b")
         relationship.to_dict.return_value = {}
@@ -180,7 +192,10 @@ class TestCreateManyToManyRelationship:
 
 
 class TestDeleteRelationship:
+    """Tests for _delete_relationship sending a DELETE request."""
+
     async def test_sends_delete_to_correct_url(self):
+        """Issues a DELETE request to a URL containing the relationship id."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(status_code=204)
 
@@ -191,6 +206,7 @@ class TestDeleteRelationship:
         assert "rel-id-99" in call[0][1]
 
     async def test_sends_if_match_star_header(self):
+        """Includes an If-Match: * header in the DELETE request."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(status_code=204)
 
@@ -200,6 +216,7 @@ class TestDeleteRelationship:
         assert headers.get("If-Match") == "*"
 
     async def test_returns_none(self):
+        """Returns None after a successful delete."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(status_code=204)
 
@@ -214,7 +231,10 @@ class TestDeleteRelationship:
 
 
 class TestGetRelationship:
+    """Tests for _get_relationship querying by schema name."""
+
     async def test_returns_first_result_when_found(self):
+        """Returns the first item from the OData value list when a match exists."""
         client = _MockRelationshipClient()
         rel = {"SchemaName": "account_contact_rel", "id": "r1"}
         client._request.return_value = _mock_response(json_data={"value": [rel]})
@@ -224,6 +244,7 @@ class TestGetRelationship:
         assert result == rel
 
     async def test_returns_none_when_not_found(self):
+        """Returns None when the OData response contains an empty value list."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -232,6 +253,7 @@ class TestGetRelationship:
         assert result is None
 
     async def test_filter_param_contains_schema_name(self):
+        """Sends the schema name inside the $filter query parameter."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -241,6 +263,7 @@ class TestGetRelationship:
         assert "my_rel" in params.get("$filter", "")
 
     async def test_single_quotes_in_schema_name_escaped(self):
+        """Escapes single quotes in the schema name before embedding in the $filter."""
         client = _MockRelationshipClient()
         client._request.return_value = _mock_response(json_data={"value": []})
 
@@ -256,19 +279,25 @@ class TestGetRelationship:
 
 
 class TestExtractIdFromHeader:
+    """Tests for _extract_id_from_header parsing a GUID from an OData-EntityId URL."""
+
     def test_extracts_guid_from_url(self):
+        """Returns the content inside parentheses from an OData entity URL."""
         client = _MockRelationshipClient()
         result = client._extract_id_from_header("https://example.com/RelationshipDefinitions(abc123-def456)")
         assert result == "abc123-def456"
 
     def test_returns_none_for_none_input(self):
+        """Returns None when the input header value is None."""
         client = _MockRelationshipClient()
         assert client._extract_id_from_header(None) is None
 
     def test_returns_none_for_empty_string(self):
+        """Returns None when the input header value is an empty string."""
         client = _MockRelationshipClient()
         assert client._extract_id_from_header("") is None
 
     def test_returns_none_when_no_parens(self):
+        """Returns None when the URL contains no parenthesised segment."""
         client = _MockRelationshipClient()
         assert client._extract_id_from_header("https://example.com/no-guid-here") is None

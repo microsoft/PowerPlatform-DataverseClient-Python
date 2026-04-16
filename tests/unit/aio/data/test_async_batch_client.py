@@ -247,7 +247,10 @@ def _make_client(od=None):
 
 
 class TestAsyncBatchClientExecute:
+    """Tests for _AsyncBatchClient.execute dispatching and HTTP call."""
+
     async def test_execute_empty_returns_empty_batch_result(self):
+        """An empty item list returns a BatchResult with no responses without calling _request."""
         bc, od = _make_client()
         result = await bc.execute([])
         assert isinstance(result, BatchResult)
@@ -255,6 +258,7 @@ class TestAsyncBatchClientExecute:
         od._request.assert_not_called()
 
     async def test_execute_with_items_sends_post_request(self):
+        """Non-empty item list sends a POST to the /$batch endpoint and returns a BatchResult."""
         bc, od = _make_client()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -272,6 +276,7 @@ class TestAsyncBatchClientExecute:
         assert isinstance(result, BatchResult)
 
     async def test_execute_continue_on_error_sets_prefer_header(self):
+        """continue_on_error=True adds a Prefer: odata.continue-on-error header to the batch request."""
         bc, od = _make_client()
         mock_response = MagicMock()
         od._request.return_value = mock_response
@@ -284,6 +289,7 @@ class TestAsyncBatchClientExecute:
         assert call_kwargs.get("headers", {}).get("Prefer") == "odata.continue-on-error"
 
     async def test_execute_without_continue_on_error_no_prefer_header(self):
+        """continue_on_error omitted means no Prefer header is sent."""
         bc, od = _make_client()
         mock_response = MagicMock()
         od._request.return_value = mock_response
@@ -296,6 +302,7 @@ class TestAsyncBatchClientExecute:
         assert "Prefer" not in call_kwargs.get("headers", {})
 
     async def test_execute_exceeding_1000_raises_validation_error(self):
+        """Resolving more than 1000 raw requests raises ValidationError with the actual count."""
         bc, od = _make_client()
         # 1001 items resolved to 1001 raw requests
         big_list = [_RawRequest("POST", f"http://x.com/{i}") for i in range(1001)]
@@ -310,13 +317,17 @@ class TestAsyncBatchClientExecute:
 
 
 class TestAsyncBatchClientResolveAll:
+    """Tests for _AsyncBatchClient._resolve_all item dispatch and changeset wrapping."""
+
     async def test_empty_changeset_is_skipped(self):
+        """A _ChangeSet with no operations produces an empty result list."""
         bc, od = _make_client()
         cs = _ChangeSet()  # no operations
         result = await bc._resolve_all([cs])
         assert result == []
 
     async def test_changeset_with_one_op_produces_changeset_batch_item(self):
+        """A _ChangeSet with one operation wraps it in a single _ChangeSetBatchItem."""
         from PowerPlatform.Dataverse.data._batch import _ChangeSetBatchItem
 
         bc, od = _make_client()
@@ -330,6 +341,7 @@ class TestAsyncBatchClientResolveAll:
         assert len(result[0].requests) == 1
 
     async def test_non_changeset_item_is_extended(self):
+        """A plain batch operation is resolved to a single _RawRequest in the result."""
         bc, od = _make_client()
         op = _RecordCreate(table="account", data={"name": "Acme"})
         result = await bc._resolve_all([op])
@@ -338,6 +350,7 @@ class TestAsyncBatchClientResolveAll:
         assert isinstance(result[0], _RawRequest)
 
     async def test_mixed_items_both_resolved(self):
+        """A changeset and a plain operation in the same list are both resolved and returned."""
         from PowerPlatform.Dataverse.data._batch import _ChangeSetBatchItem
 
         bc, od = _make_client()
@@ -357,7 +370,10 @@ class TestAsyncBatchClientResolveAll:
 
 
 class TestAsyncBatchClientResolveRecordCreate:
+    """Tests for _AsyncBatchClient._resolve_record_create single and bulk create paths."""
+
     async def test_single_dict_returns_post_to_entity_set(self):
+        """A single-record dict produces a POST request to the entity set URL."""
         bc, od = _make_client()
         op = _RecordCreate(table="account", data={"name": "Acme"})
         result = await bc._resolve_record_create(op)
@@ -370,6 +386,7 @@ class TestAsyncBatchClientResolveRecordCreate:
         od._build_create.assert_called_once_with("accounts", "account", {"name": "Acme"}, content_id=None)
 
     async def test_list_data_returns_create_multiple(self):
+        """A list of records produces a CreateMultiple POST request with a Targets body."""
         bc, od = _make_client()
         op = _RecordCreate(table="account", data=[{"name": "A"}, {"name": "B"}])
         result = await bc._resolve_record_create(op)
@@ -383,6 +400,7 @@ class TestAsyncBatchClientResolveRecordCreate:
         assert all("@odata.type" in t for t in body["Targets"])
 
     async def test_list_data_includes_odata_type(self):
+        """Each target in a CreateMultiple request body includes the @odata.type annotation."""
         bc, od = _make_client()
         op = _RecordCreate(table="account", data=[{"name": "A"}])
         result = await bc._resolve_record_create(op)
@@ -390,6 +408,7 @@ class TestAsyncBatchClientResolveRecordCreate:
         assert body["Targets"][0]["@odata.type"] == "Microsoft.Dynamics.CRM.account"
 
     async def test_content_id_is_passed_through(self):
+        """A content_id on the operation is propagated to the resulting _RawRequest."""
         bc, od = _make_client()
         op = _RecordCreate(table="account", data={"name": "X"}, content_id=5)
         result = await bc._resolve_record_create(op)
@@ -402,7 +421,10 @@ class TestAsyncBatchClientResolveRecordCreate:
 
 
 class TestAsyncBatchClientResolveRecordUpdate:
+    """Tests for _AsyncBatchClient._resolve_record_update single, content-id, and bulk update paths."""
+
     async def test_single_str_id_returns_patch(self):
+        """A single string record id produces a PATCH request with an If-Match: * header."""
         bc, od = _make_client()
         op = _RecordUpdate(table="account", ids="guid-1", changes={"name": "New"})
         result = await bc._resolve_record_update(op)
@@ -414,6 +436,7 @@ class TestAsyncBatchClientResolveRecordUpdate:
         assert req.headers.get("If-Match") == "*"
 
     async def test_content_id_reference_uses_content_id_as_url(self):
+        """A content-id reference ($N) is used verbatim as the URL without resolving an entity set."""
         bc, od = _make_client()
         op = _RecordUpdate(table="account", ids="$1", changes={"name": "New"})
         result = await bc._resolve_record_update(op)
@@ -425,6 +448,7 @@ class TestAsyncBatchClientResolveRecordUpdate:
         od._entity_set_from_schema_name.assert_not_called()
 
     async def test_list_ids_broadcast_dict_returns_update_multiple(self):
+        """A list of ids with a single dict produces an UpdateMultiple request with all targets."""
         bc, od = _make_client()
         op = _RecordUpdate(table="account", ids=["id-1", "id-2"], changes={"name": "X"})
         result = await bc._resolve_record_update(op)
@@ -437,6 +461,7 @@ class TestAsyncBatchClientResolveRecordUpdate:
         assert len(body["Targets"]) == 2
 
     async def test_list_ids_paired_list_returns_update_multiple(self):
+        """A list of ids paired with a same-length list of change dicts produces an UpdateMultiple request."""
         bc, od = _make_client()
         op = _RecordUpdate(
             table="account",
@@ -450,12 +475,14 @@ class TestAsyncBatchClientResolveRecordUpdate:
         assert len(body["Targets"]) == 2
 
     async def test_mismatched_ids_changes_lengths_raises_validation_error(self):
+        """ids and changes lists of unequal length raise ValidationError."""
         bc, od = _make_client()
         op = _RecordUpdate(table="account", ids=["id-1", "id-2"], changes=[{"name": "A"}])
         with pytest.raises(ValidationError, match="equal length"):
             await bc._resolve_record_update(op)
 
     async def test_invalid_changes_type_raises_validation_error(self):
+        """Passing a non-dict, non-list changes value raises ValidationError."""
         bc, od = _make_client()
         op = _RecordUpdate(table="account", ids=["id-1"], changes="invalid")  # type: ignore[arg-type]
         with pytest.raises(ValidationError, match="changes must be"):
@@ -468,7 +495,10 @@ class TestAsyncBatchClientResolveRecordUpdate:
 
 
 class TestAsyncBatchClientResolveRecordDelete:
+    """Tests for _AsyncBatchClient._resolve_record_delete single, bulk, and edge-case delete paths."""
+
     async def test_single_str_id_returns_delete(self):
+        """A single string record id produces a DELETE request with an If-Match: * header."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids="guid-1")
         result = await bc._resolve_record_delete(op)
@@ -480,6 +510,7 @@ class TestAsyncBatchClientResolveRecordDelete:
         assert req.headers.get("If-Match") == "*"
 
     async def test_content_id_reference_uses_content_id_as_url(self):
+        """A content-id reference ($N) is used verbatim as the DELETE URL."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids="$2")
         result = await bc._resolve_record_delete(op)
@@ -488,6 +519,7 @@ class TestAsyncBatchClientResolveRecordDelete:
         assert result[0].url == "$2"
 
     async def test_list_use_bulk_delete_true_returns_single_bulk_delete_post(self):
+        """use_bulk_delete=True with a list of ids produces a single POST to /BulkDelete."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids=["id-1", "id-2"], use_bulk_delete=True)
         result = await bc._resolve_record_delete(op)
@@ -498,6 +530,7 @@ class TestAsyncBatchClientResolveRecordDelete:
         assert req.url.endswith("/BulkDelete")
 
     async def test_list_use_bulk_delete_false_returns_one_delete_per_id(self):
+        """use_bulk_delete=False with a list of ids produces one DELETE request per id."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids=["id-1", "id-2"], use_bulk_delete=False)
         result = await bc._resolve_record_delete(op)
@@ -506,12 +539,14 @@ class TestAsyncBatchClientResolveRecordDelete:
         assert all(r.method == "DELETE" for r in result)
 
     async def test_empty_list_returns_empty(self):
+        """An empty ids list produces an empty result with no requests."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids=[])
         result = await bc._resolve_record_delete(op)
         assert result == []
 
     async def test_all_empty_string_ids_returns_empty(self):
+        """A list containing only empty-string ids produces an empty result."""
         bc, od = _make_client()
         op = _RecordDelete(table="account", ids=["", ""])
         result = await bc._resolve_record_delete(op)
@@ -524,7 +559,10 @@ class TestAsyncBatchClientResolveRecordDelete:
 
 
 class TestAsyncBatchClientResolveRecordGet:
+    """Tests for _AsyncBatchClient._resolve_record_get building GET requests."""
+
     async def test_returns_get_request(self):
+        """A record get operation produces a GET request targeting the correct record URL."""
         bc, od = _make_client()
         op = _RecordGet(table="account", record_id="guid-1")
         result = await bc._resolve_record_get(op)
@@ -536,6 +574,7 @@ class TestAsyncBatchClientResolveRecordGet:
         assert "(guid-1)" in req.url
 
     async def test_with_select_includes_select_param(self):
+        """Providing a select list appends a $select query parameter with lowercased column names."""
         bc, od = _make_client()
         od._lowercase_list = MagicMock(side_effect=lambda lst: [s.lower() for s in lst])
         op = _RecordGet(table="account", record_id="guid-1", select=["Name", "Email"])
@@ -551,7 +590,10 @@ class TestAsyncBatchClientResolveRecordGet:
 
 
 class TestAsyncBatchClientResolveRecordUpsert:
+    """Tests for _AsyncBatchClient._resolve_record_upsert single and bulk upsert paths."""
+
     async def test_single_item_returns_patch_to_alternate_key(self):
+        """A single UpsertItem produces a PATCH request keyed on the alternate key string."""
         bc, od = _make_client()
         item = UpsertItem(alternate_key={"accountnumber": "ACC-1"}, record={"name": "Acme"})
         op = _RecordUpsert(table="account", items=[item])
@@ -564,6 +606,7 @@ class TestAsyncBatchClientResolveRecordUpsert:
         od._build_alternate_key_str.assert_called_once()
 
     async def test_multiple_items_returns_upsert_multiple(self):
+        """Multiple UpsertItems produce a single UpsertMultiple POST request with all targets."""
         bc, od = _make_client()
         items = [
             UpsertItem(alternate_key={"accountnumber": "ACC-1"}, record={"name": "Acme"}),
@@ -586,7 +629,10 @@ class TestAsyncBatchClientResolveRecordUpsert:
 
 
 class TestAsyncBatchClientResolveTableOps:
+    """Tests for _AsyncBatchClient table metadata operations (create, delete, get, columns, relationships)."""
+
     async def test_table_create_calls_build_create_entity(self):
+        """_TableCreate delegates to _build_create_entity and returns a single request."""
         bc, od = _make_client()
         op = _TableCreate(table="new_Account", columns={"new_Name": "string"})
         result = await bc._resolve_table_create(op)
@@ -596,6 +642,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert isinstance(result[0], _RawRequest)
 
     async def test_table_delete_calls_get_entity_and_build_delete_entity(self):
+        """_TableDelete fetches entity metadata then builds a DELETE request using the MetadataId."""
         bc, od = _make_client()
         op = _TableDelete(table="account")
         result = await bc._resolve_table_delete(op)
@@ -605,6 +652,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_delete_entity_not_found_raises_metadata_error(self):
+        """_TableDelete raises MetadataError when the table is not found in Dataverse metadata."""
         bc, od = _make_client()
         od._get_entity_by_table_schema_name.return_value = None
         op = _TableDelete(table="missing_table")
@@ -612,6 +660,7 @@ class TestAsyncBatchClientResolveTableOps:
             await bc._resolve_table_delete(op)
 
     async def test_table_delete_missing_metadata_id_raises_metadata_error(self):
+        """_TableDelete raises MetadataError when entity metadata exists but lacks a MetadataId."""
         bc, od = _make_client()
         od._get_entity_by_table_schema_name.return_value = {"EntitySetName": "accounts"}  # no MetadataId
         op = _TableDelete(table="account")
@@ -619,6 +668,7 @@ class TestAsyncBatchClientResolveTableOps:
             await bc._resolve_table_delete(op)
 
     async def test_table_get_calls_build_get_entity(self):
+        """_TableGet delegates to _build_get_entity and returns a single request."""
         bc, od = _make_client()
         op = _TableGet(table="account")
         result = await bc._resolve_table_get(op)
@@ -627,6 +677,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_list_calls_build_list_entities(self):
+        """_TableList delegates to _build_list_entities forwarding filter and select arguments."""
         bc, od = _make_client()
         op = _TableList(filter="IsCustomEntity eq true", select=["SchemaName"])
         result = await bc._resolve_table_list(op)
@@ -635,6 +686,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_add_columns_returns_list_of_requests(self):
+        """_TableAddColumns produces one create-column request per column in the operation."""
         bc, od = _make_client()
         op = _TableAddColumns(table="account", columns={"new_col1": "string", "new_col2": "int"})
         result = await bc._resolve_table_add_columns(op)
@@ -644,6 +696,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 2
 
     async def test_table_remove_columns_calls_get_attribute_metadata_per_column(self):
+        """_TableRemoveColumns fetches attribute metadata and builds a delete request for each column."""
         bc, od = _make_client()
         op = _TableRemoveColumns(table="account", columns=["col1", "col2"])
         result = await bc._resolve_table_remove_columns(op)
@@ -653,6 +706,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 2
 
     async def test_table_remove_columns_column_not_found_raises_metadata_error(self):
+        """_TableRemoveColumns raises MetadataError when attribute metadata returns None."""
         bc, od = _make_client()
         od._get_attribute_metadata.return_value = None
         op = _TableRemoveColumns(table="account", columns=["missing_col"])
@@ -660,6 +714,7 @@ class TestAsyncBatchClientResolveTableOps:
             await bc._resolve_table_remove_columns(op)
 
     async def test_table_remove_columns_missing_metadata_id_raises_metadata_error(self):
+        """_TableRemoveColumns raises MetadataError when attribute metadata lacks a MetadataId."""
         bc, od = _make_client()
         od._get_attribute_metadata.return_value = {"AttributeType": "String"}  # no MetadataId
         op = _TableRemoveColumns(table="account", columns=["col1"])
@@ -667,6 +722,7 @@ class TestAsyncBatchClientResolveTableOps:
             await bc._resolve_table_remove_columns(op)
 
     async def test_table_create_one_to_many_calls_build_create_relationship(self):
+        """_TableCreateOneToMany delegates to _build_create_relationship and returns a single request."""
         bc, od = _make_client()
         from PowerPlatform.Dataverse.models.relationship import (
             LookupAttributeMetadata,
@@ -684,6 +740,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_create_many_to_many_calls_build_create_relationship(self):
+        """_TableCreateManyToMany delegates to _build_create_relationship and returns a single request."""
         bc, od = _make_client()
         from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
 
@@ -696,6 +753,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_delete_relationship_calls_build_delete_relationship(self):
+        """_TableDeleteRelationship delegates to _build_delete_relationship with the relationship id."""
         bc, od = _make_client()
         op = _TableDeleteRelationship(relationship_id="rel-1")
         result = await bc._resolve_table_delete_relationship(op)
@@ -704,6 +762,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_get_relationship_calls_build_get_relationship(self):
+        """_TableGetRelationship delegates to _build_get_relationship with the schema name."""
         bc, od = _make_client()
         op = _TableGetRelationship(schema_name="schema")
         result = await bc._resolve_table_get_relationship(op)
@@ -712,6 +771,7 @@ class TestAsyncBatchClientResolveTableOps:
         assert len(result) == 1
 
     async def test_table_create_lookup_field_calls_build_lookup_field_models(self):
+        """_TableCreateLookupField builds the lookup/relationship model pair and produces a create-relationship request."""
         bc, od = _make_client()
         # Set up mock return values for the lookup/relationship pair
         lookup_mock = MagicMock()
@@ -738,7 +798,10 @@ class TestAsyncBatchClientResolveTableOps:
 
 
 class TestAsyncBatchClientResolveQuerySql:
+    """Tests for _AsyncBatchClient._resolve_query_sql SQL-to-GET request building."""
+
     async def test_query_sql_returns_get_with_encoded_sql(self):
+        """A SQL string is URL-encoded and embedded in a GET request via the ?sql= parameter."""
         bc, od = _make_client()
         sql = "SELECT accountid FROM account"
         op = _QuerySql(sql=sql)
@@ -754,6 +817,7 @@ class TestAsyncBatchClientResolveQuerySql:
         assert " " not in req.url.split("?sql=", 1)[1]
 
     async def test_query_sql_url_contains_entity_set(self):
+        """The resolved GET URL contains the entity set name derived from the SQL table."""
         bc, od = _make_client()
         op = _QuerySql(sql="SELECT name FROM account")
         result = await bc._resolve_query_sql(op)
@@ -767,13 +831,17 @@ class TestAsyncBatchClientResolveQuerySql:
 
 
 class TestAsyncBatchClientResolveOne:
+    """Tests for _AsyncBatchClient._resolve_one enforcing single-request resolution."""
+
     async def test_single_request_item_returns_that_request(self):
+        """An item that resolves to exactly one request returns that _RawRequest directly."""
         bc, od = _make_client()
         op = _RecordGet(table="account", record_id="guid-1")
         result = await bc._resolve_one(op)
         assert isinstance(result, _RawRequest)
 
     async def test_multi_request_item_raises_validation_error(self):
+        """An item that resolves to more than one request raises ValidationError."""
         bc, od = _make_client()
         # _TableAddColumns with two columns resolves to 2 requests
         op = _TableAddColumns(table="account", columns={"col1": "string", "col2": "string"})
@@ -787,7 +855,10 @@ class TestAsyncBatchClientResolveOne:
 
 
 class TestAsyncBatchClientUnknownItem:
+    """Tests for _AsyncBatchClient._resolve_item rejection of unrecognised item types."""
+
     async def test_unknown_item_type_raises_validation_error(self):
+        """Passing an object of an unrecognised type raises ValidationError."""
         bc, od = _make_client()
 
         class _Sentinel:

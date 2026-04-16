@@ -50,27 +50,35 @@ class _async_ctx:
 
 
 class TestAsyncClientNamespaces:
+    """Tests that each operation namespace is correctly instantiated on AsyncDataverseClient."""
+
     def test_records_namespace(self):
+        """client.records is an AsyncRecordOperations instance."""
         client = _make_client()
         assert isinstance(client.records, AsyncRecordOperations)
 
     def test_query_namespace(self):
+        """client.query is an AsyncQueryOperations instance."""
         client = _make_client()
         assert isinstance(client.query, AsyncQueryOperations)
 
     def test_tables_namespace(self):
+        """client.tables is an AsyncTableOperations instance."""
         client = _make_client()
         assert isinstance(client.tables, AsyncTableOperations)
 
     def test_files_namespace(self):
+        """client.files is an AsyncFileOperations instance."""
         client = _make_client()
         assert isinstance(client.files, AsyncFileOperations)
 
     def test_dataframe_namespace(self):
+        """client.dataframe is an AsyncDataFrameOperations instance."""
         client = _make_client()
         assert isinstance(client.dataframe, AsyncDataFrameOperations)
 
     def test_batch_namespace(self):
+        """client.batch is an AsyncBatchOperations instance."""
         client = _make_client()
         assert isinstance(client.batch, AsyncBatchOperations)
 
@@ -81,11 +89,15 @@ class TestAsyncClientNamespaces:
 
 
 class TestAsyncClientConstruction:
+    """Tests for AsyncDataverseClient constructor validation and attribute storage."""
+
     def test_empty_base_url_raises(self):
+        """An empty base_url raises ValueError."""
         with pytest.raises(ValueError):
             AsyncDataverseClient("", AsyncMock(spec=AsyncTokenCredential))
 
     def test_whitespace_only_base_url_raises(self):
+        """A whitespace-only base_url is accepted (not empty after rstrip) and stored as-is."""
         # "   ".rstrip("/") = "   " which is truthy — client won't raise on whitespace.
         # Only truly empty string (or None-equivalent) raises.
         # This verifies the current behavior: whitespace alone does NOT raise.
@@ -93,10 +105,12 @@ class TestAsyncClientConstruction:
         assert client._base_url == "   "
 
     def test_trailing_slash_stripped(self):
+        """A trailing slash in the base_url is stripped during construction."""
         client = AsyncDataverseClient("https://example.crm.dynamics.com/", AsyncMock(spec=AsyncTokenCredential))
         assert client._base_url == "https://example.crm.dynamics.com"
 
     def test_custom_config_stored(self):
+        """A custom DataverseConfig passed at construction is stored on the client."""
         from PowerPlatform.Dataverse.core.config import DataverseConfig
 
         cfg = DataverseConfig()
@@ -112,7 +126,10 @@ class TestAsyncClientConstruction:
 
 
 class TestAsyncClientLifecycle:
+    """Tests for AsyncDataverseClient async context manager, close, and cache-flush lifecycle."""
+
     async def test_context_manager_creates_session(self):
+        """Entering the async context manager creates an aiohttp ClientSession."""
         client = _make_client()
         with patch("aiohttp.ClientSession") as mock_session_cls:
             mock_session_cls.return_value = AsyncMock()
@@ -121,6 +138,7 @@ class TestAsyncClientLifecycle:
             mock_session_cls.assert_called_once()
 
     async def test_context_manager_closes_on_exit(self):
+        """Exiting the async context manager closes the session and marks the client closed."""
         client = _make_client()
         mock_session = AsyncMock()
         with patch("aiohttp.ClientSession", return_value=mock_session):
@@ -139,6 +157,7 @@ class TestAsyncClientLifecycle:
         await client.close()  # second call — should be a no-op
 
     async def test_check_closed_raises_after_close(self):
+        """_check_closed() raises RuntimeError when called on an already-closed client."""
         client = _make_client()
         mock_session = AsyncMock()
         with patch("aiohttp.ClientSession", return_value=mock_session):
@@ -148,6 +167,7 @@ class TestAsyncClientLifecycle:
             client._check_closed()
 
     async def test_flush_cache_delegates_to_odata(self):
+        """flush_cache() delegates to the OData client's _flush_cache and returns its result."""
         client = _make_client()
         od = _make_mock_odata()
         # _flush_cache is called synchronously (no await) in flush_cache():

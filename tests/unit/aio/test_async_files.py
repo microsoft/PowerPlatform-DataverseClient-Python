@@ -42,7 +42,10 @@ def _make_client_with_mock_odata():
 
 
 class TestAsyncFileOperationsNamespace:
+    """Tests that the files namespace is correctly exposed on the client."""
+
     def test_namespace_exists(self):
+        """client.files exposes an AsyncFileOperations instance."""
         credential = AsyncMock(spec=AsyncTokenCredential)
         client = AsyncDataverseClient("https://example.crm.dynamics.com", credential)
         assert isinstance(client.files, AsyncFileOperations)
@@ -54,7 +57,10 @@ class TestAsyncFileOperationsNamespace:
 
 
 class TestAsyncFileUpload:
+    """Tests for files.upload() — parameter forwarding to the OData layer."""
+
     async def test_upload_calls_upload_file_with_defaults(self):
+        """upload() with only required args calls _upload_file with mode=None, mime_type=None, if_none_match=True."""
         client, od = _make_client_with_mock_odata()
 
         result = await client.files.upload("account", "record-guid-1", "new_Document", "/path/to/file.pdf")
@@ -71,6 +77,7 @@ class TestAsyncFileUpload:
         assert result is None
 
     async def test_upload_returns_none(self):
+        """upload() returns None on success."""
         client, od = _make_client_with_mock_odata()
         od._upload_file.return_value = None
 
@@ -79,6 +86,7 @@ class TestAsyncFileUpload:
         assert result is None
 
     async def test_upload_passes_mime_type(self):
+        """upload() forwards a custom mime_type to _upload_file."""
         client, od = _make_client_with_mock_odata()
 
         await client.files.upload(
@@ -100,6 +108,7 @@ class TestAsyncFileUpload:
         )
 
     async def test_upload_passes_if_none_match_false(self):
+        """upload() forwards if_none_match=False to _upload_file."""
         client, od = _make_client_with_mock_odata()
 
         await client.files.upload(
@@ -121,6 +130,7 @@ class TestAsyncFileUpload:
         )
 
     async def test_upload_passes_mode_chunk(self):
+        """upload() forwards mode='chunk' to _upload_file."""
         client, od = _make_client_with_mock_odata()
 
         await client.files.upload(
@@ -142,6 +152,7 @@ class TestAsyncFileUpload:
         )
 
     async def test_upload_all_params_combined(self):
+        """upload() correctly forwards all optional parameters together."""
         client, od = _make_client_with_mock_odata()
 
         await client.files.upload(
@@ -165,6 +176,7 @@ class TestAsyncFileUpload:
         )
 
     async def test_upload_different_tables_and_columns(self):
+        """upload() works correctly with non-standard table and column names."""
         client, od = _make_client_with_mock_odata()
 
         await client.files.upload("new_contract", "contract-guid-1", "new_Attachment", "/tmp/doc.docx")
