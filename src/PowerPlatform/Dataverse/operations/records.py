@@ -13,7 +13,7 @@ from ..models.entity import resolve_table, resolve_table_pair
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
-    from ..models.entity import Entity
+    from ..models.entity import Entity, Field
 
 
 __all__ = ["RecordOperations"]
@@ -352,7 +352,7 @@ class RecordOperations:
         table: Union[str, "type[Entity]"],
         record_id: Optional[str] = None,
         *,
-        select: Optional[List[str]] = None,
+        select: "Optional[List[Union[str, Field]]]" = None,
         filter: Optional[str] = None,
         orderby: Optional[List[str]] = None,
         top: Optional[int] = None,
@@ -443,6 +443,9 @@ class RecordOperations:
                         print(record["name"])
         """
         table_str, entity_cls = resolve_table_pair(table)
+        from ..models.entity import Field as _Field
+        if select is not None:
+            select = [c.name if isinstance(c, _Field) else c for c in select]
         if record_id is not None:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")

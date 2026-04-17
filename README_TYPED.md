@@ -342,12 +342,13 @@ df = (client.query.builder(Account)
       .to_dataframe())
 
 # Fetch a single record as a one-row DataFrame
-df = client.dataframe.get(Account, record_id=account_id, select=[Account.name.name])
+df = client.dataframe.get(Account, record_id=account_id, select=[Account.name])
 
 # Create records from a DataFrame (returns a Series of GUIDs)
+# Account(...) validates field names at construction time; .to_dict() produces the row
 new_accounts = pd.DataFrame([
-    {"name": "Contoso", "telephone1": "555-0100"},
-    {"name": "Fabrikam", "telephone1": "555-0200"},
+    Account(name="Contoso",  telephone1="555-0100").to_dict(),
+    Account(name="Fabrikam", telephone1="555-0200").to_dict(),
 ])
 new_accounts["accountid"] = client.dataframe.create(Account, new_accounts)
 
@@ -493,7 +494,7 @@ for record in results:
 ```python
 for page in client.records.get(
     Account,
-    select=[Account.name.name],          # records.get() select takes strings; use .name to extract
+    select=[Account.name],               # Field objects accepted — resolved to logical names
     filter=(Account.statecode == 0).to_odata(),  # Raw OData: column names must be lowercase
     expand=["primarycontactid"],          # Navigation properties are case-sensitive
     top=100,
@@ -706,14 +707,17 @@ from Types.account import Account
 
 batch = client.batch.new()
 
-# Create records from a DataFrame
-df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+# Create records from a DataFrame — Account(...) validates field names at construction time
+df = pd.DataFrame([
+    Account(name="Contoso").to_dict(),
+    Account(name="Fabrikam").to_dict(),
+])
 batch.dataframe.create(Account, df)
 
 # Update records from a DataFrame
 updates = pd.DataFrame([
-    {"accountid": id1, "telephone1": "555-0100"},
-    {"accountid": id2, "telephone1": "555-0200"},
+    {**Account(telephone1="555-0100").to_dict(), "accountid": id1},
+    {**Account(telephone1="555-0200").to_dict(), "accountid": id2},
 ])
 batch.dataframe.update(Account, updates, id_column="accountid")
 
