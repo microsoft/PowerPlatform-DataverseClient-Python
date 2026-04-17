@@ -137,87 +137,76 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 
 ### Generate entity types
 
-Before using the typed API, generate Python entity classes from your live Dataverse environment. The generator connects to Dataverse, downloads entity metadata, and writes strongly typed Python classes to a `Types/` folder.
+Before using the typed API, generate Python entity classes from your live Dataverse environment.
+The generator connects to Dataverse, downloads entity metadata, and writes strongly typed Python
+classes to a `Types/` folder.
+
+Pass an authenticated `DataverseClient` and the list of tables you want:
 
 ```python
-from PowerPlatform.Dataverse.generator import generate
 from azure.identity import InteractiveBrowserCredential
+from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.generator import generate
+
+credential = InteractiveBrowserCredential()
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
 generate(
-    org_url="https://yourorg.crm.dynamics.com",
-    entities=["account", "contact", "lead"],
-    credential=InteractiveBrowserCredential(),
+    client,
+    entities=["account", "contact", "lead"],  # None = all non-private tables
+    output_dir="Types/",
 )
 ```
 
-Or use the CLI:
+Or use the CLI (opens a browser for authentication):
 
 ```bash
 python -m PowerPlatform.Dataverse.generator \
     --url      https://yourorg.crm.dynamics.com \
-    --entities account contact lead
+    --entities account contact lead \
+    --output   Types/
+
+# Headless / SSH environments — use device-code flow instead:
+python -m PowerPlatform.Dataverse.generator --auth device --url ...
 ```
 
-This creates one class per entity under `Types/`:
+This creates one file per entity plus an `__init__.py` that re-exports everything:
 
 ```
 Types/
-  account.py       — Account(Entity) with typed fields
+  __init__.py      — re-exports all classes (from Types import Account, Contact)
+  account.py       — class Account(Entity, …) with typed Field descriptors
   contact.py
   lead.py
-  picklists/       — option set enums
-  booleans/        — boolean (two-option) types
-  __init__.py
 ```
 
 A generated class looks like this:
 
 ```python
-# Types/account.py  (auto-generated — do not edit)
-from PowerPlatform.Dataverse.models.entity import Entity, Field
+# Types/account.py  (auto-generated — do not edit by hand)
+from PowerPlatform.Dataverse.models.entity import Entity, Field, NavField
 
 class Account(Entity, table="account", primary_key="accountid"):
-    accountid:  str
-    name:       str
-    telephone1: str
-    revenue:    float
-    statecode:  int
-    statuscode: int
-    websiteurl: str
+    accountid  = Field("accountid",  str)
+    name       = Field("name",       str,   schema_name="Name",       dataverse_type="string")
+    telephone1 = Field("telephone1", str,   schema_name="Telephone1", dataverse_type="string")
+    revenue    = Field("revenue",    float, schema_name="Revenue",    dataverse_type="decimal")
+    statecode  = Field("statecode",  int,   dataverse_type="picklist")
+    websiteurl = Field("websiteurl", str,   schema_name="WebSiteURL", dataverse_type="string")
+
+    # --- Navigation properties (expand) ---
+    # primarycontactid_nav = NavField("primarycontact")  # uncomment to enable .expand()
 ```
 
-> **Note**: The generator uses annotation-only syntax — sufficient for all query and CRUD operations.
-> If you also want `tables.create(Account)` to work without a columns dict, switch to explicit
-> `Field()` definitions that carry `schema_name` and `dataverse_type`.
+Each `Field` descriptor serves two roles:
 
-Plain type annotations are all that's needed for query and CRUD operations — the SDK wires up `Field` descriptors automatically from those annotations. Each annotated field serves two roles:
+- **On the class** (`Account.statecode`): overloads Python operators to produce filter expressions — `Account.statecode == 0` compiles to `statecode eq 0` in OData
+- **On an instance** (`account.statecode`): returns the stored field value
 
-- **On the class** (`Account.statecode`): returns a `Field` that overloads Python operators to produce filter expressions (`Account.statecode == 0` → `statecode eq 0`)
-- **On an instance** (`account.statecode`): returns the stored field value (`0`, `1`, etc.)
+`schema_name` and `dataverse_type` on each `Field` also enable `client.tables.create(Account)` to
+derive the full column schema without a separate columns dict.
 
-For **table creation** (`client.tables.create(EntityClass)`), use explicit `Field()` definitions that carry `schema_name` and `dataverse_type` — these give the SDK everything it needs to derive the column schema automatically:
-
-```python
-from PowerPlatform.Dataverse.models.entity import Entity, Field
-
-class Product(Entity, table="new_Product", primary_key="new_productid"):
-    new_productid = Field("new_productid", str)
-    new_title     = Field("new_title",  str,   schema_name="new_Title",  dataverse_type="string")
-    new_price     = Field("new_price",  float, schema_name="new_Price",  dataverse_type="decimal")
-
-# columns dict derived automatically from Field.schema_name / Field.dataverse_type
-client.tables.create(Product)
-```
-
-Annotation-only syntax (no explicit `Field()`) is sufficient when you only need queries and CRUD, not table creation.
-
-The generator also automatically discovers and fetches dependencies:
-
-- **Lookup dependencies** — entities referenced by Lookup fields fetched automatically
-- **M2M participants** — both sides of many-to-many relationships fetched automatically
-- **OneToMany referencers** — entities that have a Lookup back to this entity (opt-in prompt)
-
-> **Note**: After creating or modifying a custom table, re-run the entity generator to keep your
+> **Tip**: After creating or modifying a custom table, re-run the generator to keep your
 > `Types/` classes in sync with the latest schema.
 
 ### Quick start

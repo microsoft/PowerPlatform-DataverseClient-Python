@@ -40,6 +40,7 @@ from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 from PowerPlatform.Dataverse.models.entity import Entity, Field, NavField
+from PowerPlatform.Dataverse.generator import generate
 import requests
 
 
@@ -151,10 +152,92 @@ def main():
 
 def _run_walkthrough(client):
     # ============================================================================
-    # 2. TABLE CREATION (METADATA)
+    # 2. GENERATE ENTITY CLASSES
+    # ============================================================================
+    # The generator introspects the live environment and writes typed Python
+    # entity files.  You run it once (or in CI), commit the Types/ folder, and
+    # import the classes everywhere else in your project:
+    #
+    #   from Types import Account, Contact
+    #
+    # This section runs the generator live, previews the output, then immediately
+    # imports the generated Account class and uses it in a real query — so you
+    # can see the full round-trip in one place.
     # ============================================================================
     print("\n" + "=" * 80)
-    print("2. Table Creation (Metadata)")
+    print("2. Entity Class Generator")
+    print("=" * 80)
+
+    import os
+    import sys
+    import importlib
+    import importlib.util
+
+    TYPES_DIR = "Types_demo"
+
+    log_call(f'generate(client, entities=["account"], output_dir="{TYPES_DIR}/")')
+    written = generate(
+        client,
+        entities=["account"],
+        output_dir=TYPES_DIR,
+        verbose=True,
+    )
+    print(f"[OK] Generator wrote {len(written)} file(s):")
+    for path in written:
+        print(f"  {path}")
+
+    # ------------------------------------------------------------------
+    # Preview the generated source
+    # ------------------------------------------------------------------
+    account_path = os.path.join(TYPES_DIR, "account.py")
+    if os.path.exists(account_path):
+        with open(account_path, encoding="utf-8") as fh:
+            preview_lines = fh.readlines()[:30]
+        print(f"\n[Preview: {account_path} (first 30 lines)]")
+        print("".join(preview_lines))
+
+    # ------------------------------------------------------------------
+    # Import the generated class and use it in a real query
+    # ------------------------------------------------------------------
+    # Add the Types_demo directory to sys.path so Python can find it.
+    types_abs = os.path.abspath(TYPES_DIR)
+    if types_abs not in sys.path:
+        sys.path.insert(0, os.path.abspath(os.path.dirname(TYPES_DIR)))
+
+    # Dynamically import — in a real project this would be a normal top-level
+    # import: ``from Types import Account``
+    spec = importlib.util.spec_from_file_location("Types_demo.account", account_path)
+    mod  = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    GeneratedAccount = mod.Account
+
+    print(f"\n[OK] Imported generated class: {GeneratedAccount}")
+    print(f"     table        = {GeneratedAccount.__table__!r}")
+    print(f"     primary_key  = {GeneratedAccount.__primary_key__!r}")
+    print(f"     fields       = {[f for f in vars(GeneratedAccount) if not f.startswith('_')]}")
+
+    # Run a real query using the generated class — identical to using a hand-
+    # written entity class.  No SDK changes needed; generate() output is a
+    # drop-in replacement.
+    log_call("client.query.builder(GeneratedAccount).select(GeneratedAccount.name).top(3).execute()")
+    rows = list(
+        client.query.builder(GeneratedAccount)
+        .select(GeneratedAccount.name)
+        .where(GeneratedAccount.statecode == 0)
+        .top(3)
+        .execute()
+    )
+    print(f"[OK] Query returned {len(rows)} account(s) using generated class:")
+    for row in rows:
+        # Use typed attribute access — works exactly like a hand-written class.
+        acct = GeneratedAccount.from_record(row)
+        print(f"  name={acct.name!r}")
+
+    # ============================================================================
+    # 3. TABLE CREATION (METADATA)
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("3. Table Creation (Metadata)")
     print("=" * 80)
 
     # Pass the entity class directly — the SDK resolves WalkthroughDemo.__table__
@@ -175,10 +258,97 @@ def _run_walkthrough(client):
         print(f"  Columns created: {', '.join(table_info.columns_created or [])}")
 
     # ============================================================================
-    # 3. CREATE OPERATIONS
+    # 4. DEFAULT VALUES — COLUMN CREATION AND ROW CREATION
+    # ============================================================================
+    # Verify what Dataverse actually stored for column constraints (e.g. MaxLength,
+    # MinValue) and what values unspecified fields receive on a new record.
     # ============================================================================
     print("\n" + "=" * 80)
-    print("3. Create Operations")
+    print("4. Default Values — Column and Row")
+    print("=" * 80)
+
+    # --- Part A: column-level defaults ----------------------------------------
+    # Fetch attribute metadata for a representative set of columns and print the
+    # type-specific constraints Dataverse stored.  SDK sends these values during
+    # table creation; this confirms what the backend actually persisted.
+    print("\n[Part A] Column-level defaults (constraints stored by Dataverse)")
+
+    odata = client._get_odata()
+    meta_id = table_info.metadata_id
+
+    # Fetch without $select so Dataverse returns all properties for the concrete
+    # derived type (MaxLength on StringAttributeMetadata, MinValue/MaxValue on
+    # IntegerAttributeMetadata, etc.).  Using $select on the base collection
+    # only allows base-type properties and rejects type-specific ones.
+    def _fetch_attr_full(col_name):
+        url = f"{odata.api}/EntityDefinitions({meta_id})/Attributes"
+        escaped = odata._escape_odata_quotes(col_name.lower())
+        r = odata._request("get", url, params={"$filter": f"LogicalName eq '{escaped}'"})
+        items = r.json().get("value", [])
+        return items[0] if items else None
+
+    column_checks = [
+        "new_title",
+        "new_quantity",
+        "new_amount",
+        "new_completed",
+        "new_notes",
+    ]
+
+    for col_name in column_checks:
+        attr = backoff(lambda c=col_name: _fetch_attr_full(c))
+        if attr:
+            summary = {
+                k: attr[k]
+                for k in ("AttributeType", "MaxLength", "MinValue", "MaxValue",
+                          "Precision", "Format", "RequiredLevel")
+                if k in attr
+            }
+            # RequiredLevel is a nested dict — flatten to its Value string
+            if "RequiredLevel" in summary and isinstance(summary["RequiredLevel"], dict):
+                summary["RequiredLevel"] = summary["RequiredLevel"].get("Value")
+            print(f"  {col_name}: {json.dumps(summary)}")
+        else:
+            print(f"  {col_name}: (not found)")
+
+    # --- Part B: row-level defaults --------------------------------------------
+    # Create a record with ONLY new_title set.  Retrieve it with all WalkthroughDemo
+    # fields selected and print every value — unspecified fields should be null.
+    print("\n[Part B] Row-level defaults (unspecified fields on a new record)")
+
+    log_call("client.records.create(WalkthroughDemo(new_title='Defaults test'))  # only title set")
+    defaults_id = backoff(lambda: client.records.create(
+        WalkthroughDemo(new_title="Defaults test")
+    ))
+    print(f"[OK] Created record: {defaults_id}")
+
+    log_call("client.records.get(WalkthroughDemo, defaults_id)  # retrieve all fields")
+    defaults_demo = backoff(lambda: client.records.get(WalkthroughDemo, defaults_id))
+    print("[OK] All field values on the new record:")
+    print(
+        json.dumps(
+            {
+                "new_walkthroughdemoid": defaults_demo.new_walkthroughdemoid,
+                "new_title":            defaults_demo.new_title,
+                "new_quantity":         defaults_demo.new_quantity,
+                "new_amount":           defaults_demo.new_amount,
+                "new_completed":        defaults_demo.new_completed,
+                "new_notes":            defaults_demo.new_notes,
+                "new_priority":         defaults_demo.new_priority,
+            },
+            indent=2,
+        )
+    )
+
+    # Clean up the defaults test record before continuing
+    client.records.delete(WalkthroughDemo, defaults_id)
+    print(f"[OK] Cleaned up defaults test record: {defaults_id}")
+
+    # ============================================================================
+    # 5. CREATE OPERATIONS
+    # ============================================================================
+    print("\n" + "=" * 80)
+    print("5. Create Operations")
     print("=" * 80)
 
     # Pass a WalkthroughDemo instance — table is inferred, field names validated.
@@ -224,10 +394,10 @@ def _run_walkthrough(client):
     print(f"[OK] Created {len(ids)} records: {ids}")
 
     # ============================================================================
-    # 4. READ OPERATIONS
+    # 6. READ OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("4. Read Operations")
+    print("6. Read Operations")
     print("=" * 80)
 
     # Single read by ID — returns a WalkthroughDemo instance directly
@@ -266,10 +436,10 @@ def _run_walkthrough(client):
         print(f"  - new_title='{d.new_title}', new_quantity={d.new_quantity}")
 
     # ============================================================================
-    # 5. UPDATE OPERATIONS
+    # 7. UPDATE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("5. Update Operations")
+    print("7. Update Operations")
     print("=" * 80)
 
     log_call("client.records.update(WalkthroughDemo, id1, WalkthroughDemo(...))")
@@ -291,10 +461,10 @@ def _run_walkthrough(client):
     print(f"[OK] Updated {len(ids)} records to new_completed=True")
 
     # ============================================================================
-    # 6. PAGING DEMO
+    # 8. PAGING DEMO
     # ============================================================================
     print("\n" + "=" * 80)
-    print("6. Paging Demo")
+    print("8. Paging Demo")
     print("=" * 80)
 
     log_call("client.records.create([20 × WalkthroughDemo(...)])")
@@ -328,10 +498,10 @@ def _run_walkthrough(client):
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
     # ============================================================================
-    # 7. QUERYBUILDER — TYPED FLUENT QUERIES
+    # 9. QUERYBUILDER — TYPED FLUENT QUERIES
     # ============================================================================
     print("\n" + "=" * 80)
-    print("7. QueryBuilder — Typed Fluent Queries")
+    print("9. QueryBuilder — Typed Fluent Queries")
     print("=" * 80)
 
     # Basic typed query: field descriptors in select, typed condition in where
@@ -438,10 +608,10 @@ def _run_walkthrough(client):
         print("  (empty DataFrame)")
 
     # ============================================================================
-    # 8. EXPAND (NAVIGATION PROPERTIES)
+    # 10. EXPAND (NAVIGATION PROPERTIES)
     # ============================================================================
     print("\n" + "=" * 80)
-    print("8. Expand (Navigation Properties)")
+    print("10. Expand (Navigation Properties)")
     print("=" * 80)
 
     # Simple expand — pass NavField directly (no string needed)
@@ -494,10 +664,10 @@ def _run_walkthrough(client):
         print(f"[SKIP] Nested expand demo skipped: {e}")
 
     # ============================================================================
-    # 9. SQL QUERY
+    # 11. SQL QUERY
     # ============================================================================
     print("\n" + "=" * 80)
-    print("9. SQL Query")
+    print("11. SQL Query")
     print("=" * 80)
 
     # SQL is string-based — unchanged. Results are Record objects (dict-like).
@@ -512,10 +682,10 @@ def _run_walkthrough(client):
         print(f"[WARN] SQL query failed (known server-side bug): {str(e)}")
 
     # ============================================================================
-    # 10. PICKLIST LABEL CONVERSION
+    # 12. PICKLIST LABEL CONVERSION
     # ============================================================================
     print("\n" + "=" * 80)
-    print("10. Picklist Label Conversion")
+    print("12. Picklist Label Conversion")
     print("=" * 80)
 
     log_call("client.records.create(WalkthroughDemo(new_priority='High'))")
@@ -539,10 +709,10 @@ def _run_walkthrough(client):
     print(f"  new_priority stored as integer: {updated_label.new_priority}")
 
     # ============================================================================
-    # 11. COLUMN MANAGEMENT
+    # 13. COLUMN MANAGEMENT
     # ============================================================================
     print("\n" + "=" * 80)
-    print("11. Column Management")
+    print("13. Column Management")
     print("=" * 80)
 
     # Column management is schema-level work — unchanged from the string-based API.
@@ -555,10 +725,10 @@ def _run_walkthrough(client):
     print("[OK] Deleted column: new_Tags")
 
     # ============================================================================
-    # 12. DELETE OPERATIONS
+    # 14. DELETE OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("12. Delete Operations")
+    print("14. Delete Operations")
     print("=" * 80)
 
     log_call(f"client.records.delete(WalkthroughDemo, id1)")
@@ -571,10 +741,10 @@ def _run_walkthrough(client):
     print(f"  (Deleting {len(paging_ids)} paging demo records)")
 
     # ============================================================================
-    # 13. BATCH OPERATIONS
+    # 15. BATCH OPERATIONS
     # ============================================================================
     print("\n" + "=" * 80)
-    print("13. Batch Operations")
+    print("15. Batch Operations")
     print("=" * 80)
 
     # Batch create using entity instances — validated payloads in one HTTP request
@@ -638,10 +808,10 @@ def _run_walkthrough(client):
     print(f"[OK] Batch delete: {len(result.succeeded)} records deleted in one HTTP request")
 
     # ============================================================================
-    # 14. CLEANUP
+    # 16. CLEANUP
     # ============================================================================
     print("\n" + "=" * 80)
-    print("14. Cleanup")
+    print("16. Cleanup")
     print("=" * 80)
 
     log_call("client.tables.delete(WalkthroughDemo)")
