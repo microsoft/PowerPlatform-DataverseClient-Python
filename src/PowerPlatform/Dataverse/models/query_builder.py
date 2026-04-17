@@ -52,9 +52,10 @@ import pandas as pd
 
 from . import filters
 from .record import Record
+from .entity import resolve_table_pair, Field
 
 if TYPE_CHECKING:
-    from .entity import Entity, FieldDescriptor
+    from .entity import Entity, NavField
 
 __all__ = ["QueryBuilder", "QueryParams", "ExpandOption"]
 
@@ -109,13 +110,16 @@ class ExpandOption:
         self._orderby: List[str] = []
         self._top: Optional[int] = None
 
-    def select(self, *columns: str) -> ExpandOption:
+    def select(self, *columns: "Union[str, Field]") -> ExpandOption:
         """Select specific columns from the expanded entity.
 
-        :param columns: Column names to select.
+        Accepts plain column name strings or :class:`~PowerPlatform.Dataverse.models.entity.Field`
+        descriptors from a typed entity class.
+
+        :param columns: Column names (str) or field descriptors.
         :return: Self for method chaining.
         """
-        self._select.extend(columns)
+        self._select.extend(c.name if isinstance(c, Field) else c for c in columns)
         return self
 
     def filter(self, filter_str: str) -> ExpandOption:
@@ -127,14 +131,16 @@ class ExpandOption:
         self._filter = filter_str
         return self
 
-    def order_by(self, column: str, descending: bool = False) -> ExpandOption:
+    def order_by(self, column: "Union[str, Field]", descending: bool = False) -> ExpandOption:
         """Sort the expanded collection.
 
-        :param column: Column name to sort by.
+        :param column: Column name (str) or :class:`~PowerPlatform.Dataverse.models.entity.Field`
+            descriptor.
         :param descending: Sort descending if ``True``.
         :return: Self for method chaining.
         """
-        order = f"{column} desc" if descending else column
+        col = column.name if isinstance(column, Field) else column
+        order = f"{col} desc" if descending else col
         self._orderby.append(order)
         return self
 
@@ -195,22 +201,13 @@ class QueryBuilder:
         # generated Entity subclass (typed path).  Both paths are equivalent
         # at the OData layer; the entity class additionally enables typed
         # .select() columns and typed result hydration in .execute().
-        from .entity import Entity as _Entity, FieldDescriptor as _FieldDescriptor  # noqa: F401
-
         if isinstance(table, str):
             table = table.strip()
-            if not table:
-                raise ValueError("table name is required")
-            self.table = table
-            self._entity_cls: Optional[type] = None
-        elif isinstance(table, type) and issubclass(table, _Entity):
-            if not table.__table__:
-                raise ValueError(f"{table.__name__} has no __table__ set. "
-                                 "Pass table= when defining the entity class.")
-            self.table = table.__table__
-            self._entity_cls = table
-        else:
-            raise TypeError("table must be a string or an Entity subclass")
+        table_str, entity_cls = resolve_table_pair(table)
+        if not table_str:
+            raise ValueError("table name is required")
+        self.table = table_str
+        self._entity_cls: Optional[type] = entity_cls
 
         self._select: List[str] = []
         self._filter_parts: List[Union[str, filters.FilterExpression]] = []
@@ -224,11 +221,11 @@ class QueryBuilder:
 
     # ----------------------------------------------------------------- select
 
-    def select(self, *columns: "Union[str, FieldDescriptor]") -> QueryBuilder:
+    def select(self, *columns: "Union[str, Field]") -> QueryBuilder:
         """Select specific columns to retrieve.
 
         Accepts plain column name strings (existing behaviour) or
-        :class:`~PowerPlatform.Dataverse.models.entity.FieldDescriptor`
+        :class:`~PowerPlatform.Dataverse.models.entity.Field`
         objects from a generated entity class (typed path).  Both forms
         can be mixed freely.  Can be called multiple times (additive).
 
@@ -243,9 +240,9 @@ class QueryBuilder:
             # Typed (new)
             query = QueryBuilder(Account).select(Account.name, Account.telephone1)
         """
-        from .entity import FieldDescriptor as _FieldDescriptor
+        from .entity import Field as _Field
         self._select.extend(
-            c.name if isinstance(c, _FieldDescriptor) else c for c in columns
+            c.name if isinstance(c, _Field) else c for c in columns
         )
         return self
 
@@ -486,11 +483,11 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- ordering
 
-    def order_by(self, column: "Union[str, FieldDescriptor]", descending: bool = False) -> QueryBuilder:
+    def order_by(self, column: "Union[str, Field]", descending: bool = False) -> QueryBuilder:
         """Add sorting order.
 
         Accepts a plain column name string (existing behaviour) or a
-        :class:`~PowerPlatform.Dataverse.models.entity.FieldDescriptor`
+        :class:`~PowerPlatform.Dataverse.models.entity.Field`
         from a generated entity class (typed path).
 
         Can be called multiple times for multi-column sorting.
@@ -499,8 +496,8 @@ class QueryBuilder:
         :param descending: Sort in descending order.
         :return: Self for method chaining.
         """
-        from .entity import FieldDescriptor as _FieldDescriptor
-        col = column.name if isinstance(column, _FieldDescriptor) else column
+        from .entity import Field as _Field
+        col = column.name if isinstance(column, _Field) else column
         order = f"{col.lower()} desc" if descending else col.lower()
         self._orderby.append(order)
         return self
@@ -611,32 +608,46 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- expand
 
-    def expand(self, *relations: Union[str, ExpandOption]) -> QueryBuilder:
+    def expand(self, *relations: "Union[str, ExpandOption, NavField]") -> QueryBuilder:
         """Expand navigation properties.
 
-        Accepts plain navigation property names (case-sensitive, passed
-        as-is) or :class:`ExpandOption` objects for nested options like
-        ``$select``, ``$filter``, ``$orderby``, and ``$top``.
+        Accepts:
 
-        :param relations: Navigation property names or
-            :class:`ExpandOption` objects.
+        - Plain navigation property name strings (case-sensitive).
+        - :class:`ExpandOption` objects for nested ``$select``, ``$filter``,
+          ``$orderby``, ``$top`` options.
+        - :class:`~PowerPlatform.Dataverse.models.entity.NavField` descriptors
+          from a typed entity class — passed alone for a simple expand, or
+          chained with ``.select()``, ``.filter_where()``, ``.order_by()``,
+          ``.top()`` to produce a nested :class:`ExpandOption`.
+
+        :param relations: Navigation property names, :class:`ExpandOption`
+            objects, or :class:`~PowerPlatform.Dataverse.models.entity.NavField`
+            descriptors.
         :return: Self for method chaining.
 
         Example::
 
-            # Simple expand
+            # String — unchanged
             query = QueryBuilder("account").expand("primarycontactid")
 
-            # Nested expand with options
-            query = (QueryBuilder("account")
-                     .expand(ExpandOption("Account_Tasks")
-                             .select("subject")
-                             .filter("contains(subject,'Task')")
+            # NavField — simple expand
+            query = QueryBuilder(Account).expand(Account.primarycontactid)
+
+            # NavField — with nested options
+            query = (QueryBuilder(Account)
+                     .expand(Account.Account_Tasks
+                             .select(Task.subject, Task.createdon)
+                             .filter_where(Task.statecode == 0)
                              .top(5)))
         """
+        from .entity import NavField as _NavField
         for rel in relations:
             if isinstance(rel, ExpandOption):
                 self._expand.append(rel.to_odata())
+            elif isinstance(rel, _NavField):
+                # Simple NavField expand — just use the property name
+                self._expand.append(rel.name)
             else:
                 self._expand.append(rel)
         return self

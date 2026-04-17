@@ -18,7 +18,7 @@ from ..models.table_info import AlternateKeyInfo
 from ..models.labels import Label, LocalizedLabel
 from ..models.table_info import TableInfo
 from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
-from ..models.entity import resolve_table
+from ..models.entity import resolve_table, resolve_table_pair
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -72,25 +72,31 @@ class TableOperations:
     def create(
         self,
         table: Union[str, "type[Entity]"],
-        columns: Dict[str, Any],
+        columns: Optional[Dict[str, Any]] = None,
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
     ) -> TableInfo:
         """Create a custom table with the specified columns.
 
+        *columns* may be omitted when *table* is an :class:`~PowerPlatform.Dataverse.models.entity.Entity`
+        subclass whose :class:`~PowerPlatform.Dataverse.models.entity.Field` attributes carry
+        ``dataverse_type`` metadata — in that case the column schema is derived
+        automatically via :meth:`~PowerPlatform.Dataverse.models.entity.Entity.columns_schema`.
+
         :param table: Schema name of the table with customization prefix
-            (e.g. ``"new_MyTestTable"``).
-        :type table: :class:`str`
+            (e.g. ``"new_MyTestTable"``) or an Entity subclass.
+        :type table: :class:`str` or type[Entity]
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
             (or ``"text"``), ``"memo"`` (or ``"multiline"``),
             ``"int"`` (or ``"integer"``), ``"decimal"``
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
-            ``Enum`` subclasses
-            (for local option sets).
-        :type columns: :class:`dict`
+            ``Enum`` subclasses (for local option sets).  Required when
+            *table* is a plain string.  Optional when *table* is an Entity
+            class with ``dataverse_type`` set on its descriptors.
+        :type columns: :class:`dict` or None
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.
         :type solution: :class:`str` or None
@@ -107,9 +113,11 @@ class TableOperations:
 
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
+        :raises ValueError: If *columns* is omitted and cannot be derived from
+            the entity class.
 
-        Example:
-            Create a table with simple columns::
+        Examples:
+            String-based (explicit columns dict)::
 
                 from enum import IntEnum
 
@@ -127,12 +135,36 @@ class TableOperations:
                     solution="MySolution",
                     primary_column="new_ProductName",
                 )
-                print(f"Created: {result['table_schema_name']}")
+
+            Typed (columns derived from entity class)::
+
+                from PowerPlatform.Dataverse.models.entity import Entity, Field
+
+                class Product(Entity, table="new_Product", primary_key="new_productid"):
+                    new_title  = Field("new_title",  str,   schema_name="new_Title",  dataverse_type="string")
+                    new_price  = Field("new_price",  float, schema_name="new_Price",  dataverse_type="decimal")
+                    new_status = Field("new_status", int,   schema_name="new_Status", dataverse_type=ItemStatus)
+
+                result = client.tables.create(Product, solution="MySolution")
         """
-        table = resolve_table(table)
+        from ..models.entity import Entity as _Entity
+        table_str, entity_cls = resolve_table_pair(table)
+        if columns is None:
+            if entity_cls is not None:
+                columns = entity_cls.columns_schema()
+                if not columns:
+                    raise ValueError(
+                        f"{entity_cls.__name__}.columns_schema() returned an empty dict. "
+                        "Set dataverse_type on each Field, or pass an explicit columns dict."
+                    )
+            else:
+                raise ValueError(
+                    "columns is required when table is a string. "
+                    "Pass an explicit columns dict or use an Entity subclass with dataverse_type set."
+                )
         with self._client._scoped_odata() as od:
             raw = od._create_table(
-                table,
+                table_str,
                 columns,
                 solution,
                 primary_column,

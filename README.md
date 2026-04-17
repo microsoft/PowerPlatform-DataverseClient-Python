@@ -471,7 +471,7 @@ relationship = OneToManyRelationshipMetadata(
 )
 
 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-print(f"Created lookup field: {result['lookup_schema_name']}")
+print(f"Created lookup field: {result.lookup_schema_name}")
 
 # Create a many-to-many relationship: Employee (N) <-> Project (N)
 # Employees work on multiple projects; projects have multiple team members
@@ -482,15 +482,15 @@ m2m_relationship = ManyToManyRelationshipMetadata(
 )
 
 result = client.tables.create_many_to_many_relationship(m2m_relationship)
-print(f"Created M:N relationship: {result['relationship_schema_name']}")
+print(f"Created M:N relationship: {result.relationship_schema_name}")
 
 # Query relationship metadata
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
-    print(f"Found: {rel['SchemaName']}")
+    print(f"Found: {rel.relationship_schema_name}")
 
 # Delete a relationship
-client.tables.delete_relationship(result['relationship_id'])
+client.tables.delete_relationship(result.relationship_id)
 ```
 
 For simpler scenarios, use the convenience method:

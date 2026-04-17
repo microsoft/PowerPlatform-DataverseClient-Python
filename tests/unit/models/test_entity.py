@@ -1,16 +1,16 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Unit tests for Entity and FieldDescriptor."""
+"""Unit tests for Entity and Field."""
 
 from __future__ import annotations
 
 import pytest
 
-from PowerPlatform.Dataverse.models.entity import Entity, FieldDescriptor
+from PowerPlatform.Dataverse.models.entity import Entity, Field, NavField, resolve_table, resolve_table_pair
 from PowerPlatform.Dataverse.models.filters import FilterExpression
 from PowerPlatform.Dataverse.models.record import Record
-from PowerPlatform.Dataverse.models.query_builder import QueryBuilder
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption, QueryBuilder
 
 
 # ---------------------------------------------------------------------------
@@ -19,20 +19,20 @@ from PowerPlatform.Dataverse.models.query_builder import QueryBuilder
 
 
 class Account(Entity, table="account", primary_key="accountid"):
-    accountid  = FieldDescriptor("accountid",  str)
-    name       = FieldDescriptor("name",       str)
-    revenue    = FieldDescriptor("revenue",    float)
-    statecode  = FieldDescriptor("statecode",  int)
-    telephone1 = FieldDescriptor("telephone1", str)
+    accountid  = Field("accountid",  str)
+    name       = Field("name",       str)
+    revenue    = Field("revenue",    float)
+    statecode  = Field("statecode",  int)
+    telephone1 = Field("telephone1", str)
 
 
 # ---------------------------------------------------------------------------
-# Annotation-based entity (no explicit FieldDescriptor assignments)
+# Annotation-based entity (no explicit Field assignments)
 # ---------------------------------------------------------------------------
 
 
 class Contact(Entity, table="contact", primary_key="contactid"):
-    """Entity defined with plain annotations — FieldDescriptors are auto-created."""
+    """Entity defined with plain annotations — Fields are auto-created."""
     contactid:  str
     firstname:  str
     lastname:   str
@@ -41,11 +41,11 @@ class Contact(Entity, table="contact", primary_key="contactid"):
 
 
 class TestAnnotationBasedEntity:
-    """FieldDescriptors are auto-created from type annotations."""
+    """Fields are auto-created from type annotations."""
 
     def test_class_attribute_is_field_descriptor(self):
-        """Annotated fields become FieldDescriptor instances on the class."""
-        assert isinstance(Contact.firstname, FieldDescriptor)
+        """Annotated fields become Field instances on the class."""
+        assert isinstance(Contact.firstname, Field)
         assert Contact.firstname.name == "firstname"
 
     def test_filter_dsl_works(self):
@@ -70,16 +70,16 @@ class TestAnnotationBasedEntity:
 
 
 # ---------------------------------------------------------------------------
-# FieldDescriptor — class-level access produces FilterExpression
+# Field — class-level access produces FilterExpression
 # ---------------------------------------------------------------------------
 
 
-class TestFieldDescriptorClassAccess:
-    """FieldDescriptor returns itself on class access and produces FilterExpression via operators."""
+class TestFieldClassAccess:
+    """Field returns itself on class access and produces FilterExpression via operators."""
 
     def test_class_access_returns_descriptor(self):
-        """Account.statecode on the class returns the FieldDescriptor itself."""
-        assert isinstance(Account.statecode, FieldDescriptor)
+        """Account.statecode on the class returns the Field itself."""
+        assert isinstance(Account.statecode, Field)
 
     def test_eq_produces_filter_expression(self):
         """== on a descriptor produces a FilterExpression."""
@@ -171,18 +171,18 @@ class TestFieldDescriptorClassAccess:
         assert "revenue le 500000" in odata
 
     def test_descriptor_is_hashable(self):
-        """FieldDescriptor instances are hashable and can be used in sets."""
+        """Field instances are hashable and can be used in sets."""
         s = {Account.name, Account.revenue, Account.statecode}
         assert len(s) == 3
 
 
 # ---------------------------------------------------------------------------
-# FieldDescriptor — instance-level access returns stored value
+# Field — instance-level access returns stored value
 # ---------------------------------------------------------------------------
 
 
-class TestFieldDescriptorInstanceAccess:
-    """FieldDescriptor returns the stored value on instance access."""
+class TestFieldInstanceAccess:
+    """Field returns the stored value on instance access."""
 
     def test_instance_access_returns_value(self):
         """account.statecode returns the int value stored on the instance."""
@@ -228,7 +228,7 @@ class TestEntityRow:
         assert Account.row() == {}
 
     def test_all_fields_accepted(self):
-        """row() accepts every FieldDescriptor defined on the class."""
+        """row() accepts every Field defined on the class."""
         d = Account.row(
             accountid="guid-1",
             name="Contoso",
@@ -283,7 +283,7 @@ class TestEntityFromRecord:
 
 
 class TestQueryBuilderTypedPath:
-    """QueryBuilder accepts Entity classes and FieldDescriptors alongside strings."""
+    """QueryBuilder accepts Entity classes and Fields alongside strings."""
 
     def test_builder_accepts_entity_class(self):
         """QueryBuilder(Account) sets table to Account.__table__."""
@@ -298,7 +298,7 @@ class TestQueryBuilderTypedPath:
         assert qb._entity_cls is None
 
     def test_select_accepts_field_descriptors(self):
-        """select() with FieldDescriptor arguments extracts field names."""
+        """select() with Field arguments extracts field names."""
         qb = QueryBuilder(Account).select(Account.name, Account.revenue)
         assert qb._select == ["name", "revenue"]
 
@@ -308,12 +308,12 @@ class TestQueryBuilderTypedPath:
         assert qb._select == ["name", "revenue"]
 
     def test_select_mixed_strings_and_descriptors(self):
-        """select() accepts a mix of strings and FieldDescriptors."""
+        """select() accepts a mix of strings and Fields."""
         qb = QueryBuilder(Account).select(Account.name, "telephone1")
         assert qb._select == ["name", "telephone1"]
 
     def test_order_by_accepts_field_descriptor(self):
-        """order_by() with a FieldDescriptor extracts the field name."""
+        """order_by() with a Field extracts the field name."""
         qb = QueryBuilder(Account).select(Account.name).order_by(Account.revenue, descending=True)
         assert qb._orderby == ["revenue desc"]
 
@@ -323,7 +323,7 @@ class TestQueryBuilderTypedPath:
         assert qb._orderby == ["revenue desc"]
 
     def test_where_accepts_descriptor_expression(self):
-        """where() accepts a FilterExpression produced by a FieldDescriptor."""
+        """where() accepts a FilterExpression produced by a Field."""
         qb = QueryBuilder(Account).select(Account.name).where(Account.statecode == 0)
         params = qb.build()
         assert params["filter"] == "statecode eq 0"
@@ -395,3 +395,354 @@ class TestQueryBuilderTypedPath:
         assert string_params["orderby"] == typed_params["orderby"]
         assert string_params["top"] == typed_params["top"]
         assert string_params["table"] == typed_params["table"]
+
+
+# ---------------------------------------------------------------------------
+# Field — schema_name and dataverse_type
+# ---------------------------------------------------------------------------
+
+
+class TypedProduct(Entity, table="new_Product", primary_key="new_productid"):
+    """Entity with full metadata for table creation."""
+    new_productid = Field("new_productid", str)
+    new_title     = Field("new_title",     str,   schema_name="new_Title",  dataverse_type="string")
+    new_price     = Field("new_price",     float, schema_name="new_Price",  dataverse_type="decimal")
+    new_quantity  = Field("new_quantity",  int,   schema_name="new_Quantity", dataverse_type="int")
+
+
+class TestFieldMetadata:
+    """Field carries schema_name and dataverse_type for table creation."""
+
+    def test_schema_name_defaults_to_name(self):
+        """When schema_name is omitted, it defaults to the logical name."""
+        d = Field("statecode", int)
+        assert d.schema_name == "statecode"
+
+    def test_schema_name_explicit(self):
+        """Explicit schema_name is stored correctly."""
+        d = Field("new_title", str, schema_name="new_Title")
+        assert d.schema_name == "new_Title"
+
+    def test_dataverse_type_none_by_default(self):
+        """dataverse_type is None when not provided."""
+        d = Field("statecode", int)
+        assert d.dataverse_type is None
+
+    def test_dataverse_type_string(self):
+        """dataverse_type stores a string type."""
+        d = Field("new_title", str, dataverse_type="string")
+        assert d.dataverse_type == "string"
+
+    def test_dataverse_type_enum(self):
+        """dataverse_type stores an IntEnum subclass."""
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 3
+
+        d = Field("new_priority", int, dataverse_type=Priority)
+        assert d.dataverse_type is Priority
+
+    def test_filter_dsl_still_works_with_metadata(self):
+        """Adding schema_name/dataverse_type doesn't break the filter DSL."""
+        expr = TypedProduct.new_price > 100.0
+        assert isinstance(expr, FilterExpression)
+        assert expr.to_odata() == "new_price gt 100.0"
+
+
+# ---------------------------------------------------------------------------
+# Entity.columns_schema()
+# ---------------------------------------------------------------------------
+
+
+class TestEntityColumnsSchema:
+    """Entity.columns_schema() derives a column dict from Fields."""
+
+    def test_returns_schema_name_keys(self):
+        """columns_schema() uses the schema_name (not the logical name) as keys."""
+        schema = TypedProduct.columns_schema()
+        assert "new_Title" in schema
+        assert "new_Price" in schema
+        assert "new_Quantity" in schema
+
+    def test_returns_dataverse_type_values(self):
+        """columns_schema() maps schema names to their dataverse_type."""
+        schema = TypedProduct.columns_schema()
+        assert schema["new_Title"] == "string"
+        assert schema["new_Price"] == "decimal"
+        assert schema["new_Quantity"] == "int"
+
+    def test_omits_fields_without_dataverse_type(self):
+        """Fields with no dataverse_type (e.g. primary key) are excluded."""
+        schema = TypedProduct.columns_schema()
+        # new_productid has no dataverse_type
+        assert "new_productid" not in schema
+        assert "new_Product" not in schema  # schema_name of pk is also absent
+
+    def test_empty_when_no_typed_descriptors(self):
+        """Returns empty dict when no descriptors carry dataverse_type."""
+
+        class Bare(Entity, table="new_Bare", primary_key="new_bareid"):
+            new_bareid = Field("new_bareid", str)
+
+        assert Bare.columns_schema() == {}
+
+    def test_annotation_only_fields_excluded(self):
+        """Annotation-only descriptors (auto-created) have no dataverse_type — excluded."""
+
+        class AnnotOnly(Entity, table="new_AnnotOnly", primary_key="new_annotid"):
+            new_annotid: str
+            new_name: str
+
+        assert AnnotOnly.columns_schema() == {}
+
+
+# ---------------------------------------------------------------------------
+# resolve_table_pair()
+# ---------------------------------------------------------------------------
+
+
+class TestResolveTablePair:
+    """resolve_table_pair() returns (table_str, entity_cls)."""
+
+    def test_string_returns_string_and_none(self):
+        table_str, entity_cls = resolve_table_pair("account")
+        assert table_str == "account"
+        assert entity_cls is None
+
+    def test_entity_class_returns_table_and_class(self):
+        table_str, entity_cls = resolve_table_pair(Account)
+        assert table_str == "account"
+        assert entity_cls is Account
+
+    def test_invalid_type_raises_type_error(self):
+        with pytest.raises(TypeError):
+            resolve_table_pair(123)  # type: ignore[arg-type]
+
+    def test_entity_without_table_raises_value_error(self):
+        class NoTable(Entity):
+            pass
+
+        with pytest.raises(ValueError, match="__table__"):
+            resolve_table_pair(NoTable)
+
+    def test_resolve_table_still_works(self):
+        """resolve_table() still returns just the string (backward compat)."""
+        assert resolve_table(Account) == "account"
+        assert resolve_table("contact") == "contact"
+
+
+# ---------------------------------------------------------------------------
+# NavField — navigation property descriptor
+# ---------------------------------------------------------------------------
+
+
+class Contact2(Entity, table="contact", primary_key="contactid"):
+    contactid = Field("contactid", str)
+    firstname = Field("firstname", str)
+
+
+class AccountWithNav(Entity, table="account", primary_key="accountid"):
+    accountid        = Field("accountid", str)
+    name             = Field("name", str)
+    primarycontactid = NavField("primarycontactid", Contact2)
+    Account_Tasks    = NavField("Account_Tasks")
+
+
+class TestNavFieldClassAccess:
+    """NavField returns itself on class-level access."""
+
+    def test_class_access_returns_descriptor(self):
+        """AccountWithNav.primarycontactid on the class returns the NavField itself."""
+        assert isinstance(AccountWithNav.primarycontactid, NavField)
+
+    def test_name_attribute(self):
+        """NavField stores the OData navigation property name."""
+        assert AccountWithNav.primarycontactid.name == "primarycontactid"
+        assert AccountWithNav.Account_Tasks.name == "Account_Tasks"
+
+    def test_related_entity_stored(self):
+        """related_entity is stored when provided."""
+        assert AccountWithNav.primarycontactid.related_entity is Contact2
+
+    def test_related_entity_none_when_omitted(self):
+        """related_entity is None when not provided."""
+        assert AccountWithNav.Account_Tasks.related_entity is None
+
+    def test_repr_with_related_entity(self):
+        """__repr__ includes related entity name."""
+        assert "primarycontactid" in repr(AccountWithNav.primarycontactid)
+        assert "Contact2" in repr(AccountWithNav.primarycontactid)
+
+    def test_repr_without_related_entity(self):
+        """__repr__ shows None for missing related entity."""
+        assert "None" in repr(AccountWithNav.Account_Tasks)
+
+
+class TestNavFieldInstanceAccess:
+    """NavField stores and retrieves per-instance data."""
+
+    def test_unset_returns_none(self):
+        """Accessing a NavField that was never set returns None."""
+        account = AccountWithNav.__new__(AccountWithNav)
+        assert account.primarycontactid is None
+
+    def test_set_and_get_dict(self):
+        """Setting a NavField to a dict and reading it back works."""
+        account = AccountWithNav.__new__(AccountWithNav)
+        data = {"contactid": "c-1", "firstname": "Jane"}
+        AccountWithNav.primarycontactid.__set__(account, data)
+        assert account.primarycontactid == data
+
+    def test_set_and_get_list(self):
+        """Setting a NavField to a list (collection) and reading it back works."""
+        account = AccountWithNav.__new__(AccountWithNav)
+        tasks = [{"subject": "Call"}, {"subject": "Email"}]
+        AccountWithNav.Account_Tasks.__set__(account, tasks)
+        assert account.Account_Tasks == tasks
+
+    def test_different_instances_independent(self):
+        """Setting a NavField on one instance does not affect another."""
+        a1 = AccountWithNav.__new__(AccountWithNav)
+        a2 = AccountWithNav.__new__(AccountWithNav)
+        AccountWithNav.primarycontactid.__set__(a1, {"contactid": "c-1"})
+        assert a1.primarycontactid == {"contactid": "c-1"}
+        assert a2.primarycontactid is None
+
+
+class TestNavFieldFromRecord:
+    """NavField values are populated via Entity.from_record()."""
+
+    def test_nav_field_populated_from_record_data(self):
+        """from_record() populates NavField from expanded data in record.data."""
+        contact_data = {"contactid": "c-1", "firstname": "Jane"}
+        record = Record(
+            id="a-1",
+            table="account",
+            data={"name": "Contoso", "primarycontactid": contact_data},
+        )
+        account = AccountWithNav.from_record(record)
+        assert account.primarycontactid == contact_data
+
+    def test_nav_field_none_when_not_expanded(self):
+        """NavField is None when no expanded data is present in the record."""
+        record = Record(id="a-1", table="account", data={"name": "Contoso"})
+        account = AccountWithNav.from_record(record)
+        assert account.primarycontactid is None
+
+    def test_nav_field_list_value(self):
+        """from_record() handles collection NavField (list) correctly."""
+        tasks = [{"subject": "Call"}, {"subject": "Email"}]
+        record = Record(
+            id="a-1",
+            table="account",
+            data={"name": "Contoso", "Account_Tasks": tasks},
+        )
+        account = AccountWithNav.from_record(record)
+        assert account.Account_Tasks == tasks
+
+
+class TestNavFieldFluentMethods:
+    """NavField fluent methods produce correct ExpandOption objects."""
+
+    def test_select_with_strings_returns_expand_option(self):
+        """select() with string column names returns an ExpandOption."""
+        opt = AccountWithNav.Account_Tasks.select("subject", "createdon")
+        assert isinstance(opt, ExpandOption)
+
+    def test_select_odata_contains_relation_name(self):
+        """ExpandOption from select() uses the NavField name as the relation."""
+        opt = AccountWithNav.Account_Tasks.select("subject")
+        odata = opt.to_odata()
+        assert "Account_Tasks" in odata
+
+    def test_select_odata_contains_columns(self):
+        """ExpandOption from select() includes the requested columns."""
+        opt = AccountWithNav.Account_Tasks.select("subject", "createdon")
+        odata = opt.to_odata()
+        assert "subject" in odata
+        assert "createdon" in odata
+
+    def test_select_with_field_descriptors(self):
+        """select() accepts Field descriptors and extracts their names."""
+        opt = AccountWithNav.primarycontactid.select(Contact2.firstname)
+        odata = opt.to_odata()
+        assert "firstname" in odata
+
+    def test_filter_where_returns_expand_option(self):
+        """filter_where() returns an ExpandOption with a nested $filter."""
+        expr = Contact2.firstname == "Jane"
+        opt = AccountWithNav.primarycontactid.filter_where(expr)
+        assert isinstance(opt, ExpandOption)
+        odata = opt.to_odata()
+        assert "firstname eq 'Jane'" in odata
+
+    def test_order_by_with_string(self):
+        """order_by() with a string column returns ExpandOption with $orderby."""
+        opt = AccountWithNav.Account_Tasks.order_by("createdon", descending=True)
+        assert isinstance(opt, ExpandOption)
+        odata = opt.to_odata()
+        assert "createdon desc" in odata
+
+    def test_order_by_with_field_descriptor(self):
+        """order_by() with a Field descriptor extracts the field name."""
+        opt = AccountWithNav.primarycontactid.order_by(Contact2.firstname)
+        odata = opt.to_odata()
+        assert "firstname" in odata
+
+    def test_top_returns_expand_option(self):
+        """top() returns an ExpandOption with $top."""
+        opt = AccountWithNav.Account_Tasks.top(3)
+        assert isinstance(opt, ExpandOption)
+        odata = opt.to_odata()
+        assert "$top=3" in odata
+
+    def test_chained_fluent_methods(self):
+        """Chained select().order_by().top() produces valid ExpandOption odata."""
+        opt = (AccountWithNav.Account_Tasks
+               .select("subject", "createdon")
+               .order_by("createdon", descending=True)
+               .top(5))
+        odata = opt.to_odata()
+        assert "Account_Tasks" in odata
+        assert "subject" in odata
+        assert "createdon desc" in odata
+        assert "$top=5" in odata
+
+
+class TestNavFieldInQueryBuilder:
+    """QueryBuilder.expand() accepts NavField and NavField-derived ExpandOption."""
+
+    def test_expand_with_nav_field_adds_relation_name(self):
+        """expand(NavField) adds the navigation property name as a plain expand."""
+        qb = QueryBuilder(AccountWithNav).expand(AccountWithNav.primarycontactid)
+        params = qb.build()
+        assert "primarycontactid" in params["expand"]
+
+    def test_expand_with_nav_field_collection(self):
+        """expand() works with a collection NavField too."""
+        qb = QueryBuilder(AccountWithNav).expand(AccountWithNav.Account_Tasks)
+        params = qb.build()
+        assert "Account_Tasks" in params["expand"]
+
+    def test_expand_with_nav_field_select_option(self):
+        """expand() with a NavField.select() result produces nested $select."""
+        opt = AccountWithNav.Account_Tasks.select("subject", "createdon")
+        qb = QueryBuilder(AccountWithNav).expand(opt)
+        params = qb.build()
+        expand_str = " ".join(params["expand"])
+        assert "subject" in expand_str
+        assert "Account_Tasks" in expand_str
+
+    def test_expand_accepts_mixed_types(self):
+        """expand() can mix plain strings, NavFields, and ExpandOptions."""
+        qb = (QueryBuilder(AccountWithNav)
+              .expand("revenue")
+              .expand(AccountWithNav.primarycontactid)
+              .expand(AccountWithNav.Account_Tasks.top(3)))
+        params = qb.build()
+        expand_str = " ".join(params["expand"])
+        assert "revenue" in expand_str
+        assert "primarycontactid" in expand_str
+        assert "Account_Tasks" in expand_str

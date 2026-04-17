@@ -32,15 +32,14 @@ Prerequisites:
 - pip install azure-identity
 """
 
-import sys
+import argparse
 import json
 import time
 from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
-from PowerPlatform.Dataverse.models.entity import Entity
-from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.models.entity import Entity, Field, NavField
 import requests
 
 
@@ -65,25 +64,38 @@ class Priority(IntEnum):
 # ---------------------------------------------------------------------------
 
 class WalkthroughDemo(Entity, table="new_WalkthroughDemo", primary_key="new_walkthroughdemoid"):
-    """Typed entity for the new_WalkthroughDemo custom table."""
-    new_walkthroughdemoid: str
-    new_title:             str
-    new_quantity:          int
-    new_amount:            float
-    new_completed:         bool
-    new_notes:             str
-    new_priority:          int
+    """Typed entity for the new_WalkthroughDemo custom table.
+
+    Explicit Field calls carry schema_name (for table creation) and
+    dataverse_type (for column type mapping), so the entity class is the single
+    source of truth for both query-time and metadata-creation operations.
+    """
+    # Primary key — no dataverse_type; Dataverse manages this column automatically.
+    new_walkthroughdemoid = Field("new_walkthroughdemoid", str)
+    # Data columns — schema_name is the PascalCase variant used in metadata APIs.
+    new_title     = Field("new_title",     str,   schema_name="new_Title",     dataverse_type="string")
+    new_quantity  = Field("new_quantity",  int,   schema_name="new_Quantity",  dataverse_type="int")
+    new_amount    = Field("new_amount",    float, schema_name="new_Amount",    dataverse_type="decimal")
+    new_completed = Field("new_completed", bool,  schema_name="new_Completed", dataverse_type="bool")
+    new_notes     = Field("new_notes",     str,   schema_name="new_Notes",     dataverse_type="memo")
+    new_priority  = Field("new_priority",  int,   schema_name="new_Priority",  dataverse_type=Priority)
+
+
+class Task(Entity, table="task", primary_key="activityid"):
+    """Typed entity for the built-in task table (used in nested expand demo)."""
+    activityid  = Field("activityid",  str)
+    subject     = Field("subject",     str)
+    createdon   = Field("createdon",   str)
+    statecode   = Field("statecode",   int)
 
 
 class Account(Entity, table="account", primary_key="accountid"):
     """Typed entity for the built-in account table (used in expand demo)."""
-    accountid:        str
-    name:             str
-    # When .expand("primarycontactid") is used, this holds the nested contact
-    # dict rather than the lookup ID string.
-    primarycontactid: str
-    # Navigation collection — populated when .expand("Account_Tasks") is used.
-    Account_Tasks:    list
+    accountid = Field("accountid", str)
+    name      = Field("name",      str)
+    # Navigation properties — typed with NavField; appear on instances after expand.
+    primarycontactid = NavField("primarycontactid")   # single-value lookup
+    Account_Tasks    = NavField("Account_Tasks")       # collection
 
 
 def backoff(op, *, delays=(0, 2, 5, 10, 20, 20)):
@@ -123,12 +135,10 @@ def main():
     print("1. Setup & Authentication")
     print("=" * 80)
 
-    base_url = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
-    if not base_url:
-        print("No URL entered; exiting.")
-        sys.exit(1)
-
-    base_url = base_url.rstrip("/")
+    parser = argparse.ArgumentParser(description="Typed Dataverse SDK walkthrough")
+    parser.add_argument("--url", required=True, help="Dataverse org URL (e.g. https://yourorg.crm.dynamics.com)")
+    args = parser.parse_args()
+    base_url = args.url.rstrip("/")
 
     log_call("InteractiveBrowserCredential()")
     credential = InteractiveBrowserCredential()
@@ -153,22 +163,16 @@ def _run_walkthrough(client):
     table_info = backoff(lambda: client.tables.get(WalkthroughDemo))
 
     if table_info:
-        print(f"[OK] Table already exists: {table_info.get('table_schema_name')}")
-        print(f"  Logical Name: {table_info.get('table_logical_name')}")
-        print(f"  Entity Set: {table_info.get('entity_set_name')}")
+        print(f"[OK] Table already exists: {table_info.schema_name}")
+        print(f"  Logical Name: {table_info.logical_name}")
+        print(f"  Entity Set: {table_info.entity_set_name}")
     else:
-        log_call("client.tables.create(WalkthroughDemo, columns={...})")
-        columns = {
-            "new_Title": "string",
-            "new_Quantity": "int",
-            "new_Amount": "decimal",
-            "new_Completed": "bool",
-            "new_Notes": "memo",
-            "new_Priority": Priority,
-        }
-        table_info = backoff(lambda: client.tables.create(WalkthroughDemo, columns))
-        print(f"[OK] Created table: {table_info.get('table_schema_name')}")
-        print(f"  Columns created: {', '.join(table_info.get('columns_created', []))}")
+        # columns are derived automatically from WalkthroughDemo.columns_schema()
+        # because every Field carries schema_name and dataverse_type.
+        log_call("client.tables.create(WalkthroughDemo)  # no columns dict needed")
+        table_info = backoff(lambda: client.tables.create(WalkthroughDemo))
+        print(f"[OK] Created table: {table_info.schema_name}")
+        print(f"  Columns created: {', '.join(table_info.columns_created or [])}")
 
     # ============================================================================
     # 3. CREATE OPERATIONS
@@ -226,11 +230,10 @@ def _run_walkthrough(client):
     print("4. Read Operations")
     print("=" * 80)
 
-    # Single read by ID — client.records.get() returns a Record.
-    # WalkthroughDemo.from_record() hydrates it into a typed instance.
-    log_call(f"client.records.get(WalkthroughDemo, id1)  →  WalkthroughDemo.from_record(record)")
-    record = backoff(lambda: client.records.get(WalkthroughDemo, id1))
-    demo = WalkthroughDemo.from_record(record)
+    # Single read by ID — returns a WalkthroughDemo instance directly
+    # because an Entity class was passed (no manual from_record() needed).
+    log_call("client.records.get(WalkthroughDemo, id1)  →  WalkthroughDemo instance")
+    demo = backoff(lambda: client.records.get(WalkthroughDemo, id1))
     print("[OK] Retrieved single record (typed attribute access):")
     print(
         json.dumps(
@@ -242,10 +245,6 @@ def _run_walkthrough(client):
                 "new_completed":        demo.new_completed,
                 "new_notes":            demo.new_notes,
                 "new_priority":         demo.new_priority,
-                # Formatted annotation still accessed via dict key (OData annotation)
-                "new_priority@FormattedValue": record.get(
-                    "new_priority@OData.Community.Display.V1.FormattedValue"
-                ),
             },
             indent=2,
         )
@@ -282,8 +281,7 @@ def _run_walkthrough(client):
             new_notes="Updated memo field.\nNow with revised content across multiple lines.",
         ),
     ))
-    updated_record = backoff(lambda: client.records.get(WalkthroughDemo, id1))
-    updated = WalkthroughDemo.from_record(updated_record)
+    updated = backoff(lambda: client.records.get(WalkthroughDemo, id1))
     print(f"[OK] Updated single record new_quantity: {updated.new_quantity}")
     print(f"  new_notes: {repr(updated.new_notes)}")
 
@@ -353,7 +351,7 @@ def _run_walkthrough(client):
     for d in demos[:5]:
         print(f"  - '{d.new_title}' amount={d.new_amount}")
 
-    # in_() method on a FieldDescriptor
+    # in_() method on a Field
     log_call("WalkthroughDemo.new_priority.in_([Priority.HIGH, Priority.LOW])")
     print("Querying records with HIGH or LOW priority (typed in_())...")
     demos = list(
@@ -368,7 +366,7 @@ def _run_walkthrough(client):
     for d in demos[:5]:
         print(f"  - '{d.new_title}' priority={d.new_priority}")
 
-    # between() method on a FieldDescriptor
+    # between() method on a Field
     log_call("WalkthroughDemo.new_amount.between(500, 1500)")
     print("Querying records with amount between 500 and 1500 (typed between())...")
     demos = list(
@@ -446,50 +444,48 @@ def _run_walkthrough(client):
     print("8. Expand (Navigation Properties)")
     print("=" * 80)
 
-    # Typed builder for account; navigation property expand is still string-based
-    log_call("client.query.builder(Account).select(Account.name).expand('primarycontactid').top(3).execute()")
+    # Simple expand — pass NavField directly (no string needed)
+    log_call("client.query.builder(Account).select(Account.name).expand(Account.primarycontactid).top(3).execute()")
     print("Querying accounts with primary contact expanded...")
     try:
         accounts = list(
             backoff(
                 lambda: client.query.builder(Account)
                 .select(Account.name)
-                .expand("primarycontactid")
+                .expand(Account.primarycontactid)
                 .top(3)
                 .execute()
             )
         )
         print(f"[OK] Found {len(accounts)} accounts with expanded contact:")
         for acc in accounts:
-            # When expanded, primarycontactid holds the nested contact dict.
+            # NavField value on instance: raw dict from server (or None if not expanded)
             contact = acc.primarycontactid
             contact_name = contact.get("fullname", "(none)") if contact else "(no contact)"
             print(f"  - '{acc.name}' -> Contact: {contact_name}")
     except Exception as e:  # noqa: BLE001
         print(f"[SKIP] Expand demo skipped (no accounts in org): {e}")
 
-    # ExpandOption with nested $select, $filter, $orderby, $top
-    log_call("ExpandOption('Account_Tasks').select('subject').order_by('createdon', descending=True).top(3)")
+    # Nested expand via NavField fluent methods — no ExpandOption import needed
+    log_call("Account.Account_Tasks.select(...).order_by(...).top(3)  →  ExpandOption")
     print("Querying accounts with nested expand options on tasks...")
     try:
-        tasks_opt = (
-            ExpandOption("Account_Tasks")
-            .select("subject", "createdon")
-            .order_by("createdon", descending=True)
-            .top(3)
-        )
         accounts = list(
             backoff(
                 lambda: client.query.builder(Account)
                 .select(Account.name)
-                .expand(tasks_opt)
+                .expand(
+                    Account.Account_Tasks
+                    .select(Task.subject, Task.createdon)
+                    .order_by(Task.createdon, descending=True)
+                    .top(3)
+                )
                 .top(3)
                 .execute()
             )
         )
         print(f"[OK] Found {len(accounts)} accounts with nested task expansion:")
         for acc in accounts:
-            # Account_Tasks is a FieldDescriptor that captures the expanded collection.
             tasks = acc.Account_Tasks or []
             print(f"  - '{acc.name}' has {len(tasks)} task(s)")
             for task in tasks:
@@ -532,19 +528,15 @@ def _run_walkthrough(client):
             new_priority="High",   # string label — SDK resolves to int
         )
     ))
-    retrieved_record = backoff(lambda: client.records.get(WalkthroughDemo, label_id))
-    retrieved = WalkthroughDemo.from_record(retrieved_record)
+    retrieved = backoff(lambda: client.records.get(WalkthroughDemo, label_id))
     print("[OK] Created record with string label 'High' for new_priority")
     print(f"  new_priority stored as integer: {retrieved.new_priority}")
-    print(f"  new_priority@FormattedValue: {retrieved_record.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
 
     log_call("client.records.update(WalkthroughDemo, label_id, WalkthroughDemo(new_priority='Low'))")
     backoff(lambda: client.records.update(WalkthroughDemo, label_id, WalkthroughDemo(new_priority="Low")))
-    updated_label_record = backoff(lambda: client.records.get(WalkthroughDemo, label_id))
-    updated_label = WalkthroughDemo.from_record(updated_label_record)
+    updated_label = backoff(lambda: client.records.get(WalkthroughDemo, label_id))
     print("[OK] Updated record with string label 'Low' for new_priority")
     print(f"  new_priority stored as integer: {updated_label.new_priority}")
-    print(f"  new_priority@FormattedValue: {updated_label_record.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
 
     # ============================================================================
     # 11. COLUMN MANAGEMENT
@@ -610,7 +602,7 @@ def _run_walkthrough(client):
     log_call("client.batch.new() + batch.records.get(...) x2 + batch.execute()")
     batch = client.batch.new()
     for bid in batch_ids:
-        batch.records.get(WalkthroughDemo, bid, select=[WalkthroughDemo.new_title.name, WalkthroughDemo.new_quantity.name])
+        batch.records.get(WalkthroughDemo, bid, select=[WalkthroughDemo.new_title, WalkthroughDemo.new_quantity])
     result = batch.execute()
     print(f"[OK] Batch get: {len(result.succeeded)} reads in one HTTP request")
     for resp in result.succeeded:

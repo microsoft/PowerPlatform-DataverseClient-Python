@@ -124,7 +124,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | **Context Manager** | Use `with DataverseClient(...) as client:` for automatic cleanup and HTTP connection pooling |
 | **Namespaces** | Operations are organized into `client.records` (CRUD & OData queries), `client.query` (typed QueryBuilder & SQL), `client.tables` (metadata), `client.files` (file uploads), and `client.batch` (batch requests) |
 | **Entity classes** | Generated Python classes aligned to your Dataverse schema — each class has typed field descriptors (`Account.name`, `Account.statecode`) that provide IDE autocomplete and catch invalid field names at authoring time |
-| **FieldDescriptor** | Auto-created from each type annotation on an entity class. Supports Python operator overloads (`==`, `!=`, `>`, `>=`, `<`, `<=`) that produce filter expressions, so `Account.statecode == 0` compiles to `statecode eq 0` in OData |
+| **Field** | A typed field definition on an entity class. Auto-created from plain type annotations, or defined explicitly via `Field("name", str, schema_name="Name", dataverse_type="string")`. Supports Python operator overloads (`==`, `!=`, `>`, `>=`, `<`, `<=`) that produce filter expressions, so `Account.statecode == 0` compiles to `statecode eq 0` in OData. Explicit `Field()` definitions also carry `schema_name` and `dataverse_type`, enabling `tables.create(EntityClass)` without a separate columns dict. |
 | **Entity instances** | Constructed via `Account(name="Contoso")` and passed directly to `client.records.create()` / `client.records.update()` — field names are validated at construction time |
 | **Typed query results** | When `client.query.builder(Account)` is used, `.execute()` yields typed `Account` instances with attribute access (`account.name`) instead of dict lookup |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
@@ -174,7 +174,7 @@ A generated class looks like this:
 
 ```python
 # Types/account.py  (auto-generated — do not edit)
-from PowerPlatform.Dataverse.models.entity import Entity
+from PowerPlatform.Dataverse.models.entity import Entity, Field
 
 class Account(Entity, table="account", primary_key="accountid"):
     accountid:  str
@@ -186,10 +186,30 @@ class Account(Entity, table="account", primary_key="accountid"):
     websiteurl: str
 ```
 
-Plain type annotations are all that's needed — the SDK wires up typed field descriptors automatically from those annotations. Each annotated field serves two roles:
+> **Note**: The generator uses annotation-only syntax — sufficient for all query and CRUD operations.
+> If you also want `tables.create(Account)` to work without a columns dict, switch to explicit
+> `Field()` definitions that carry `schema_name` and `dataverse_type`.
 
-- **On the class** (`Account.statecode`): returns a field descriptor that overloads Python operators to produce filter expressions (`Account.statecode == 0` → `statecode eq 0`)
+Plain type annotations are all that's needed for query and CRUD operations — the SDK wires up `Field` descriptors automatically from those annotations. Each annotated field serves two roles:
+
+- **On the class** (`Account.statecode`): returns a `Field` that overloads Python operators to produce filter expressions (`Account.statecode == 0` → `statecode eq 0`)
 - **On an instance** (`account.statecode`): returns the stored field value (`0`, `1`, etc.)
+
+For **table creation** (`client.tables.create(EntityClass)`), use explicit `Field()` definitions that carry `schema_name` and `dataverse_type` — these give the SDK everything it needs to derive the column schema automatically:
+
+```python
+from PowerPlatform.Dataverse.models.entity import Entity, Field
+
+class Product(Entity, table="new_Product", primary_key="new_productid"):
+    new_productid = Field("new_productid", str)
+    new_title     = Field("new_title",  str,   schema_name="new_Title",  dataverse_type="string")
+    new_price     = Field("new_price",  float, schema_name="new_Price",  dataverse_type="decimal")
+
+# columns dict derived automatically from Field.schema_name / Field.dataverse_type
+client.tables.create(Product)
+```
+
+Annotation-only syntax (no explicit `Field()`) is sufficient when you only need queries and CRUD, not table creation.
 
 The generator also automatically discovers and fetches dependencies:
 
@@ -234,7 +254,7 @@ from Types.account import Account
 # Create a record — Account(...) validates field names at construction time
 account_id = client.records.create(Account(name="Contoso Ltd"))
 
-# Read a record — account.name is typed str, not Any
+# Read a record — returns a typed Account instance directly when Entity class is passed
 for account in (client.query.builder(Account)
                 .select(Account.name)
                 .where(Account.accountid == account_id)
@@ -436,20 +456,25 @@ for record in (client.query.builder("account")
 
 **Nested expand with options** — expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
 
-> Navigation properties populated by `expand` are accessible as typed attributes if the field is
-> declared on the entity class (e.g. `Account_Tasks: list`). Declare any navigation properties
-> you plan to expand in your entity class.
+> Declare navigation properties on the entity class using `NavField`. Expanded data is then
+> accessible as a typed attribute on result instances.
 
 ```python
-from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.models.entity import NavField
+from Types.account import Account
+from Types.task import Task
 
-# Account_Tasks must be declared on Account (e.g. Account_Tasks: list)
+# Declare Account_Tasks as a NavField on Account (in the generated class or manually):
+# class Account(Entity, table="account", primary_key="accountid"):
+#     Account_Tasks = NavField("Account_Tasks")
+
+# NavField fluent methods build the nested expand — no ExpandOption import needed
 for account in (client.query.builder(Account)
                 .select(Account.name)
-                .expand(ExpandOption("Account_Tasks")
-                        .select("subject", "createdon")
-                        .filter("contains(subject,'Task')")
-                        .order_by("createdon", descending=True)
+                .expand(Account.Account_Tasks
+                        .select(Task.subject, Task.createdon)
+                        .filter_where(Task.statecode == 0)
+                        .order_by(Task.createdon, descending=True)
                         .top(5))
                 .execute()):
     print(account.name, account.Account_Tasks)
@@ -479,9 +504,9 @@ for record in results:
 ```python
 for page in client.records.get(
     Account,
-    select=[Account.name.name],
+    select=[Account.name.name],          # records.get() select takes strings; use .name to extract
     filter=(Account.statecode == 0).to_odata(),  # Raw OData: column names must be lowercase
-    expand=["primarycontactid"],                  # Navigation properties are case-sensitive
+    expand=["primarycontactid"],          # Navigation properties are case-sensitive
     top=100,
 ):
     for record in page:
@@ -497,8 +522,8 @@ from Types.account import Account
 
 # Get table information using an entity class
 info = client.tables.get(Account)
-print(f"Logical name: {info['table_logical_name']}")
-print(f"Entity set: {info['entity_set_name']}")
+print(f"Logical name: {info.logical_name}")
+print(f"Entity set: {info.entity_set_name}")
 
 # Add and remove columns using an entity class
 client.tables.add_columns(Account, {"new_Rating": "int"})
@@ -510,32 +535,32 @@ for table in tables:
     print(table)
 ```
 
-When creating a new custom table there is no entity class yet — use a string, then re-run the generator to produce the class:
+**Option 1 — typed** (recommended when you have an entity class with explicit `Field()` definitions):
 
 ```python
-# Create a custom table (no entity class exists yet; use a string)
+from PowerPlatform.Dataverse.models.entity import Entity, Field
+
+class Product(Entity, table="new_Product", primary_key="new_productid"):
+    new_productid   = Field("new_productid",   str)
+    new_code        = Field("new_code",        str,   schema_name="new_Code",        dataverse_type="string")
+    new_description = Field("new_description", str,   schema_name="new_Description", dataverse_type="memo")
+    new_price       = Field("new_price",       float, schema_name="new_Price",       dataverse_type="decimal")
+    new_active      = Field("new_active",      bool,  schema_name="new_Active",      dataverse_type="bool")
+
+# columns dict derived automatically — no separate dict needed
+table_info = client.tables.create(Product, solution="MyPublisher")
+```
+
+**Option 2 — string-based** (when no entity class exists yet; use a string, then re-run the generator):
+
+```python
+# Create a custom table with an explicit columns dict
 table_info = client.tables.create("new_Product", {
     "new_Code": "string",
     "new_Description": "memo",
     "new_Price": "decimal",
-    "new_Active": "bool"
-})
-
-# Create with custom primary column name and solution assignment
-table_info = client.tables.create(
-    "new_Product",
-    columns={
-        "new_Code": "string",
-        "new_Price": "decimal"
-    },
-    solution="MyPublisher",
-    primary_column="new_ProductName",
-)
-
-# Add/remove columns and delete while still working with the new table string
-client.tables.add_columns("new_Product", {"new_Category": "string"})
-client.tables.remove_columns("new_Product", ["new_Category"])
-client.tables.delete("new_Product")
+    "new_Active": "bool",
+}, solution="MyPublisher", primary_column="new_ProductName")
 ```
 
 > **Important**: All custom column names must include the customization prefix value (e.g., `"new_"`).
@@ -558,7 +583,7 @@ result = client.tables.create_lookup_field(
     referenced_table=Account,          # Parent table being referenced
     display_name="Account",
 )
-print(f"Created lookup: {result['lookup_schema_name']}")
+print(f"Created lookup: {result.lookup_schema_name}")
 ```
 
 For full control over relationship metadata:
@@ -586,7 +611,7 @@ relationship = OneToManyRelationshipMetadata(
 )
 
 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-print(f"Created lookup field: {result['lookup_schema_name']}")
+print(f"Created lookup field: {result.lookup_schema_name}")
 
 # Create a many-to-many relationship: Employee (N) <-> Project (N)
 m2m_relationship = ManyToManyRelationshipMetadata(
@@ -596,14 +621,14 @@ m2m_relationship = ManyToManyRelationshipMetadata(
 )
 
 result = client.tables.create_many_to_many_relationship(m2m_relationship)
-print(f"Created M:N relationship: {result['relationship_schema_name']}")
+print(f"Created M:N relationship: {result.relationship_schema_name}")
 
 # Query and delete relationships (identified by schema name / ID, not table)
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
-    print(f"Found: {rel['SchemaName']}")
+    print(f"Found: {rel.relationship_schema_name}")
 
-client.tables.delete_relationship(result['relationship_id'])
+client.tables.delete_relationship(result.relationship_id)
 ```
 
 ### File operations
@@ -633,7 +658,7 @@ batch.records.create(Account, Account(name="Contoso"))
 batch.records.create(Account, [Account(name="Fabrikam"), Account(name="Woodgrove")])
 batch.records.update(Account, account_id, Account(telephone1="555-0100"))
 batch.records.delete(Account, old_id)
-batch.records.get(Account, account_id, select=[Account.name.name])
+batch.records.get(Account, account_id, select=[Account.name])
 
 result = batch.execute()
 for item in result.responses:

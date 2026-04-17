@@ -44,7 +44,7 @@ from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
-    from ..models.entity import Entity
+    from ..models.entity import Entity, Field
 
 __all__ = [
     "BatchRecordOperations",
@@ -272,7 +272,7 @@ class BatchRecordOperations:
         table: Union[str, "type[Entity]"],
         record_id: str,
         *,
-        select: Optional[List[str]] = None,
+        select: "Optional[List[Union[str, Field]]]" = None,
     ) -> None:
         """
         Add a single-record get operation to the batch.
@@ -292,11 +292,17 @@ class BatchRecordOperations:
         :type table: :class:`str`
         :param record_id: GUID of the record to retrieve.
         :type record_id: :class:`str`
-        :param select: Optional list of column names to include.
-        :type select: list[str] or None
+        :param select: Optional list of column names or :class:`~PowerPlatform.Dataverse.models.entity.Field`
+            descriptors to include.
+        :type select: list[str | Field] or None
         """
+        from ..models.entity import Field as _Field
         table = resolve_table(table)
-        self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
+        resolved_select: Optional[List[str]] = (
+            [c.name if isinstance(c, _Field) else c for c in select]
+            if select is not None else None
+        )
+        self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=resolved_select))
 
     def upsert(
         self,

@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CH
 
 from ..models.record import Record
 from ..models.upsert import UpsertItem
-from ..models.entity import resolve_table
+from ..models.entity import resolve_table, resolve_table_pair
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -259,35 +259,23 @@ class RecordOperations:
     @overload
     def get(
         self,
-        table: Union[str, "type[Entity]"],
+        table: str,
         record_id: str,
         *,
         select: Optional[List[str]] = None,
     ) -> Record:
-        """Fetch a single record by its GUID.
+        """Fetch a single record by its GUID (string table → Record)."""
+        ...
 
-        :param table: Schema name of the table (e.g. ``"account"``).
-        :type table: :class:`str`
-        :param record_id: GUID of the record to retrieve.
-        :type record_id: :class:`str`
-        :param select: Optional list of column logical names to include in the
-            response.
-        :type select: list[str] or None
-
-        :return: Typed record with dict-like access for backward compatibility.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.record.Record`
-
-        :raises TypeError: If ``record_id`` is not a string.
-
-        Example:
-            Fetch a record with selected columns::
-
-                record = client.records.get(
-                    "account", account_id, select=["name", "telephone1"]
-                )
-                print(record["name"])       # dict-like access
-                print(record.id)            # structured access
-        """
+    @overload
+    def get(
+        self,
+        table: "type[Entity]",
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> "Entity":
+        """Fetch a single record by its GUID (Entity class → typed instance)."""
         ...
 
     @overload
@@ -454,7 +442,7 @@ class RecordOperations:
                     for record in page:
                         print(record["name"])
         """
-        table = resolve_table(table)
+        table_str, entity_cls = resolve_table_pair(table)
         if record_id is not None:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
@@ -473,13 +461,17 @@ class RecordOperations:
                     "fetching a single record by ID"
                 )
             with self._client._scoped_odata() as od:
-                raw = od._get(table, record_id, select=select)
-                return Record.from_api_response(table, raw, record_id=record_id)
+                raw = od._get(table_str, record_id, select=select)
+                record = Record.from_api_response(table_str, raw, record_id=record_id)
+                # When an entity class was passed, hydrate into a typed instance
+                if entity_cls is not None:
+                    return entity_cls.from_record(record)
+                return record
 
         def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
                 for page in od._get_multiple(
-                    table,
+                    table_str,
                     select=select,
                     filter=filter,
                     orderby=orderby,
@@ -489,7 +481,7 @@ class RecordOperations:
                     count=count,
                     include_annotations=include_annotations,
                 ):
-                    yield [Record.from_api_response(table, row) for row in page]
+                    yield [Record.from_api_response(table_str, row) for row in page]
 
         return _paged()
 
