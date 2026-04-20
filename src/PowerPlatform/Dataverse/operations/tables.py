@@ -74,6 +74,7 @@ class TableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> TableInfo:
         """Create a custom table with the specified columns.
 
@@ -96,6 +97,10 @@ class TableOperations:
             customization prefix (e.g. ``"new_ProductName"``). If not provided,
             defaults to ``"{prefix}_Name"``.
         :type primary_column: :class:`str` or None
+        :param display_name: Human-readable display name shown in the Power
+            Platform UI (e.g. ``"Product"``). When omitted, defaults to the
+            table schema name.
+        :type display_name: :class:`str` or None
 
         :return: Table metadata with ``schema_name``, ``entity_set_name``,
             ``logical_name``, ``metadata_id``, and ``columns_created``.
@@ -124,6 +129,7 @@ class TableOperations:
                     },
                     solution="MySolution",
                     primary_column="new_ProductName",
+                    display_name="Product",
                 )
                 print(f"Created: {result['table_schema_name']}")
         """
@@ -133,6 +139,7 @@ class TableOperations:
                 columns,
                 solution,
                 primary_column,
+                display_name,
             )
             return TableInfo.from_dict(raw)
 

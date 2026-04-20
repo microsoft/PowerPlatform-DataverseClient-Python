@@ -1824,6 +1824,22 @@ class TestCreateTable(unittest.TestCase):
         self.assertIsNotNone(primary_attr)
         self.assertEqual(primary_attr["SchemaName"], "new_CustomName")
 
+    def test_display_name_used_in_payload_when_provided(self):
+        """_create_table uses provided display_name in the POST payload DisplayName."""
+        self._setup_for_create()
+        self.od._create_table("new_TestTable", {}, display_name="My Test Table")
+        post_json = self.od._request.call_args.kwargs["json"]
+        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        self.assertEqual(label_value, "My Test Table")
+
+    def test_display_name_defaults_to_schema_name(self):
+        """_create_table defaults DisplayName to table_schema_name when display_name is omitted."""
+        self._setup_for_create()
+        self.od._create_table("new_TestTable", {})
+        post_json = self.od._request.call_args.kwargs["json"]
+        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        self.assertEqual(label_value, "new_TestTable")
+
 
 class TestCreateColumns(unittest.TestCase):
     """Unit tests for _ODataClient._create_columns."""

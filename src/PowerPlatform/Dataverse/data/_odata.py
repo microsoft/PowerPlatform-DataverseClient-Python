@@ -1636,6 +1636,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         schema: Dict[str, Any],
         solution_unique_name: Optional[str] = None,
         primary_column_schema_name: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a custom table with specified columns.
 
@@ -1647,6 +1648,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type solution_unique_name: ``str`` | ``None``
         :param primary_column_schema_name: Optional primary column schema name.
         :type primary_column_schema_name: ``str`` | ``None``
+        :param display_name: Optional display name shown in the Power Platform UI. Defaults to ``table_schema_name``.
+        :type display_name: ``str`` | ``None``
 
         :return: Metadata summary for the created table including created column schema names.
         :rtype: ``dict[str, Any]``
@@ -1692,7 +1695,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         metadata = self._create_entity(
             table_schema_name=table_schema_name,
-            display_name=table_schema_name,
+            display_name=display_name or table_schema_name,
             attributes=attributes,
             solution_unique_name=solution_unique_name,
         )
@@ -2099,6 +2102,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         columns: Dict[str, Any],
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> _RawRequest:
         """Build an EntityDefinitions POST request without sending it."""
         if primary_column:
@@ -2114,12 +2118,13 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                     subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
                 )
             attributes.append(attr)
+        label = display_name or table
         body = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
             "SchemaName": table,
-            "DisplayName": self._label(table),
-            "DisplayCollectionName": self._label(table + "s"),
-            "Description": self._label(f"Custom entity for {table}"),
+            "DisplayName": self._label(label),
+            "DisplayCollectionName": self._label(label + "s"),
+            "Description": self._label(f"Custom entity for {label}"),
             "OwnershipType": "UserOwned",
             "HasActivities": False,
             "HasNotes": True,

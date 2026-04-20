@@ -691,7 +691,7 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_create_entity.return_value = MagicMock()
         op = _TableCreate(table="new_Widget", columns={"new_name": str})
         result = client._resolve_item(op)
-        od._build_create_entity.assert_called_once_with("new_Widget", {"new_name": str}, None, None)
+        od._build_create_entity.assert_called_once_with("new_Widget", {"new_name": str}, None, None, None)
         self.assertEqual(len(result), 1)
 
     def test_dispatch_table_delete(self):
