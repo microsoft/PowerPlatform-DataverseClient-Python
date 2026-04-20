@@ -2887,6 +2887,92 @@ class TestBuildCreateEntity(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.od._build_create_entity("new_TestTable", {}, display_name=123)
 
+    # --- HTTP request structure -------------------------------------------
+
+    def test_returns_post_request(self):
+        """_build_create_entity returns a POST _RawRequest."""
+        req = self.od._build_create_entity("new_TestTable", {})
+        self.assertEqual(req.method, "POST")
+
+    def test_url_targets_entity_definitions(self):
+        """_build_create_entity URL ends with /EntityDefinitions."""
+        req = self.od._build_create_entity("new_TestTable", {})
+        self.assertTrue(req.url.endswith("/EntityDefinitions"))
+
+    def test_solution_appended_to_url(self):
+        """_build_create_entity appends SolutionUniqueName to URL when solution is given."""
+        req = self.od._build_create_entity("new_TestTable", {}, solution="MySolution")
+        self.assertIn("SolutionUniqueName=MySolution", req.url)
+
+    def test_no_solution_no_query_string(self):
+        """_build_create_entity URL has no query string when solution is omitted."""
+        req = self.od._build_create_entity("new_TestTable", {})
+        self.assertNotIn("?", req.url)
+
+    # --- Payload structure ------------------------------------------------
+
+    def test_schema_name_in_payload(self):
+        """_build_create_entity sets SchemaName in the payload."""
+        body = self._body()
+        self.assertEqual(body["SchemaName"], "new_TestTable")
+
+    def test_static_payload_fields(self):
+        """_build_create_entity sets fixed metadata fields correctly."""
+        body = self._body()
+        self.assertEqual(body["OwnershipType"], "UserOwned")
+        self.assertFalse(body["HasActivities"])
+        self.assertFalse(body["IsActivity"])
+        self.assertTrue(body["HasNotes"])
+
+    def test_description_uses_label(self):
+        """_build_create_entity Description reflects the display label."""
+        body = self._body(display_name="My Table")
+        label = body["Description"]["LocalizedLabels"][0]["Label"]
+        self.assertIn("My Table", label)
+
+    # --- Primary column derivation ----------------------------------------
+
+    def test_primary_column_derived_from_table_prefix(self):
+        """Primary column SchemaName uses table prefix when no primary_column given."""
+        body = self._body()
+        attrs = body["Attributes"]
+        primary = next(a for a in attrs if a.get("IsPrimaryName"))
+        self.assertEqual(primary["SchemaName"], "new_Name")
+
+    def test_primary_column_explicit(self):
+        """_build_create_entity uses explicit primary_column when provided."""
+        req = self.od._build_create_entity("new_TestTable", {}, primary_column="new_CustomName")
+        body = json.loads(req.body)
+        attrs = body["Attributes"]
+        primary = next(a for a in attrs if a.get("IsPrimaryName"))
+        self.assertEqual(primary["SchemaName"], "new_CustomName")
+
+    def test_primary_column_derived_no_prefix(self):
+        """Primary column defaults to 'new_Name' when table has no underscore."""
+        req = self.od._build_create_entity("TestTable", {})
+        body = json.loads(req.body)
+        primary = next(a for a in body["Attributes"] if a.get("IsPrimaryName"))
+        self.assertEqual(primary["SchemaName"], "new_Name")
+
+    # --- Column inclusion -------------------------------------------------
+
+    def test_columns_included_in_attributes(self):
+        """_build_create_entity includes provided columns in Attributes."""
+        body = (
+            self._body.__func__(self, **{})
+            if False
+            else json.loads(self.od._build_create_entity("new_TestTable", {"new_Price": "decimal"}).body)
+        )
+        schemas = [a["SchemaName"] for a in body["Attributes"]]
+        self.assertIn("new_Price", schemas)
+
+    def test_unsupported_column_type_raises(self):
+        """_build_create_entity raises ValidationError for unsupported column type."""
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
+
 
 if __name__ == "__main__":
     unittest.main()
