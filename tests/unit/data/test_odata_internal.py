@@ -2829,5 +2829,31 @@ class TestBuildUpsertMultiple(unittest.TestCase):
         self.assertEqual(req.method, "POST")
 
 
+class TestBuildCreateEntity(unittest.TestCase):
+    """Unit tests for _ODataClient._build_create_entity (batch deferred build)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+
+    def _body(self, **kwargs):
+        req = self.od._build_create_entity("new_TestTable", {}, **kwargs)
+        return json.loads(req.body)
+
+    def test_display_name_used_in_payload_when_provided(self):
+        """_build_create_entity uses the provided display_name in DisplayName."""
+        body = self._body(display_name="Test Table")
+        self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "Test Table")
+
+    def test_display_name_defaults_to_schema_name(self):
+        """_build_create_entity falls back to table schema name when display_name is omitted."""
+        body = self._body()
+        self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "new_TestTable")
+
+    def test_display_collection_name_derived_from_display_name(self):
+        """_build_create_entity appends 's' to display_name for DisplayCollectionName."""
+        body = self._body(display_name="Test Table")
+        self.assertEqual(body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"], "Test Tables")
+
+
 if __name__ == "__main__":
     unittest.main()

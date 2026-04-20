@@ -694,6 +694,14 @@ class TestResolveItemDispatch(unittest.TestCase):
         od._build_create_entity.assert_called_once_with("new_Widget", {"new_name": str}, None, None, None)
         self.assertEqual(len(result), 1)
 
+    def test_dispatch_table_create_forwards_display_name(self):
+        """_resolve_item forwards display_name to _build_create_entity."""
+        client, od = self._client_and_od()
+        od._build_create_entity.return_value = MagicMock()
+        op = _TableCreate(table="new_Widget", columns={}, display_name="Widget")
+        client._resolve_item(op)
+        od._build_create_entity.assert_called_once_with("new_Widget", {}, None, None, "Widget")
+
     def test_dispatch_table_delete(self):
         """_resolve_item routes _TableDelete, resolving MetadataId before calling _build_delete_entity."""
         client, od = self._client_and_od()
