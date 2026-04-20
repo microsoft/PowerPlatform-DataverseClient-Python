@@ -1693,9 +1693,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not solution_unique_name:
                 raise ValueError("solution_unique_name cannot be empty")
 
+        if display_name is not None:
+            if not isinstance(display_name, str):
+                raise TypeError("display_name must be a string when provided")
+            if not display_name.strip():
+                raise ValueError("display_name cannot be empty")
+
         metadata = self._create_entity(
             table_schema_name=table_schema_name,
-            display_name=display_name or table_schema_name,
+            display_name=display_name if display_name is not None else table_schema_name,
             attributes=attributes,
             solution_unique_name=solution_unique_name,
         )
@@ -2118,7 +2124,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                     subcode=VALIDATION_UNSUPPORTED_COLUMN_TYPE,
                 )
             attributes.append(attr)
-        label = display_name or table
+        if display_name is not None:
+            if not isinstance(display_name, str):
+                raise TypeError("display_name must be a string when provided")
+            if not display_name.strip():
+                raise ValueError("display_name cannot be empty")
+        label = display_name if display_name is not None else table
         body = {
             "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
             "SchemaName": table,
