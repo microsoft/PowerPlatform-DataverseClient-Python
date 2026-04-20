@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
 
@@ -55,7 +55,7 @@ class DataFrameOperations:
 
     def get(
         self,
-        table: str,
+        table: "Union[str, type]",
         record_id: Optional[str] = None,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
@@ -122,6 +122,7 @@ class DataFrameOperations:
 
                 df = client.dataframe.get("account", select=["name"], top=100)
         """
+        table = table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
         if record_id is not None:
             if not isinstance(record_id, str) or not record_id.strip():
                 raise ValueError("record_id must be a non-empty string")
@@ -160,7 +161,7 @@ class DataFrameOperations:
 
     def create(
         self,
-        table: str,
+        table: "Union[str, type]",
         records: pd.DataFrame,
     ) -> pd.Series:
         """Create records from a pandas DataFrame.
@@ -193,6 +194,7 @@ class DataFrameOperations:
                 ])
                 df["accountid"] = client.dataframe.create("account", df)
         """
+        table = table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
 
@@ -220,7 +222,7 @@ class DataFrameOperations:
 
     def update(
         self,
-        table: str,
+        table: "Union[str, type]",
         changes: pd.DataFrame,
         id_column: str,
         clear_nulls: bool = False,
@@ -279,6 +281,7 @@ class DataFrameOperations:
                 df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
                 client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
         """
+        table = table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
         if changes.empty:
@@ -318,7 +321,7 @@ class DataFrameOperations:
 
     def delete(
         self,
-        table: str,
+        table: "Union[str, type]",
         ids: pd.Series,
         use_bulk_delete: bool = True,
     ) -> Optional[str]:
@@ -349,6 +352,7 @@ class DataFrameOperations:
                 ids = pd.Series(["guid-1", "guid-2", "guid-3"])
                 client.dataframe.delete("account", ids)
         """
+        table = table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
 

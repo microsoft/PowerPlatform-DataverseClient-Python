@@ -46,14 +46,19 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, TypedDict, Union
+from typing import Any, Collection, Dict, Generic, Iterable, List, Optional, Sequence, TYPE_CHECKING, TypedDict, TypeVar, Union
 
 import pandas as pd
 
 from . import filters
-from .record import Record
+
+if TYPE_CHECKING:
+    from .entity import Entity, _EntityT
+    from .datatypes import _FieldBase
 
 __all__ = ["QueryBuilder", "QueryParams", "ExpandOption"]
+
+_QT = TypeVar("_QT")
 
 
 class QueryParams(TypedDict, total=False):
@@ -164,16 +169,20 @@ class ExpandOption:
         return self.relation
 
 
-class QueryBuilder:
+class QueryBuilder(Generic[_QT]):
     """Fluent interface for building OData queries.
 
     Provides method chaining for constructing complex queries with
     type-safe filter operations. Can be used standalone (via :meth:`build`)
     or bound to a client (via :meth:`execute`).
 
-    :param table: Table schema name to query.
-    :type table: str
-    :raises ValueError: If ``table`` is empty.
+    When constructed with an :class:`~PowerPlatform.Dataverse.models.entity.Entity`
+    subclass, results are hydrated as typed instances.  When constructed with a
+    plain string, results are :class:`~PowerPlatform.Dataverse.models.record.Record`
+    instances (existing behaviour).
+
+    :param table: Table logical name string, or an Entity subclass.
+    :raises ValueError: If the table name is empty.
 
     Example:
         Standalone query construction::
@@ -185,13 +194,26 @@ class QueryBuilder:
             params = query.build()
             # {"table": "account", "select": ["name"],
             #  "filter": "statecode eq 0", "top": 10}
+
+        Typed query with Entity class::
+
+            query = (QueryBuilder(Account)
+                     .where(Account.name == "Contoso")
+                     .top(10))
     """
 
-    def __init__(self, table: str) -> None:
-        table = table.strip() if table else ""
-        if not table:
+    def __init__(self, table: Union[str, type]) -> None:
+        from .entity import Entity as _Entity
+        if isinstance(table, type) and issubclass(table, _Entity):
+            self._entity_cls: Optional[type] = table
+            table_name = table._logical_name
+        else:
+            self._entity_cls = None
+            table_name = table  # type: ignore[assignment]
+        table_name = table_name.strip() if table_name else ""
+        if not table_name:
             raise ValueError("table name is required")
-        self.table = table
+        self.table = table_name
         self._select: List[str] = []
         self._filter_parts: List[Union[str, filters.FilterExpression]] = []
         self._orderby: List[str] = []
@@ -204,20 +226,26 @@ class QueryBuilder:
 
     # ----------------------------------------------------------------- select
 
-    def select(self, *columns: str) -> QueryBuilder:
+    def select(self, *columns: "Union[str, _FieldBase]") -> "QueryBuilder[_QT]":
         """Select specific columns to retrieve.
 
-        Column names are passed as-is; the OData layer lowercases them
-        automatically.  Can be called multiple times (additive).
+        Accepts column logical name strings or field descriptor instances
+        (e.g. ``Account.name``).  Can be called multiple times (additive).
 
-        :param columns: Column names to select.
+        :param columns: Column names or field descriptors.
         :return: Self for method chaining.
 
         Example::
 
-            query = QueryBuilder("account").select("name", "telephone1", "revenue")
+            query = QueryBuilder("account").select("name", "telephone1")
+            # or with typed descriptors:
+            query = QueryBuilder(Account).select(Account.name, Account.revenue)
         """
-        self._select.extend(columns)
+        for col in columns:
+            if hasattr(col, "_logical_name"):
+                self._select.append(col._logical_name)  # type: ignore[union-attr]
+            else:
+                self._select.append(col)  # type: ignore[arg-type]
         return self
 
     # ----------------------------------------------------------- filter: comparison
@@ -457,16 +485,18 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- ordering
 
-    def order_by(self, column: str, descending: bool = False) -> QueryBuilder:
+    def order_by(self, column: "Union[str, _FieldBase]", descending: bool = False) -> "QueryBuilder[_QT]":
         """Add sorting order.
 
+        Accepts a column name string or a field descriptor (e.g. ``Account.revenue``).
         Can be called multiple times for multi-column sorting.
 
-        :param column: Column name to sort by (will be lowercased).
+        :param column: Column name or field descriptor.
         :param descending: Sort in descending order.
         :return: Self for method chaining.
         """
-        order = f"{column.lower()} desc" if descending else column.lower()
+        col_name = column._logical_name if hasattr(column, "_logical_name") else column  # type: ignore[union-attr]
+        order = f"{col_name.lower()} desc" if descending else col_name.lower()
         self._orderby.append(order)
         return self
 
@@ -664,7 +694,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- execute
 
-    def execute(self, *, by_page: bool = False) -> Union[Iterable[Record], Iterable[List[Record]]]:
+    def execute(self, *, by_page: bool = False) -> Union[Iterable[Any], Iterable[List[Any]]]:
         """Execute the query and return results.
 
         By default, returns a flat iterator over individual records,
@@ -719,8 +749,10 @@ class QueryBuilder:
         params = self.build()
         client = self._query_ops._client
 
+        # Use entity class as table arg so records.get() returns typed instances
+        table_arg: Any = self._entity_cls if self._entity_cls is not None else params["table"]
         pages = client.records.get(
-            params["table"],
+            table_arg,
             select=params.get("select"),
             filter=params.get("filter"),
             orderby=params.get("orderby"),
@@ -734,7 +766,7 @@ class QueryBuilder:
         if by_page:
             return pages
 
-        def _flat() -> Iterable[Record]:
+        def _flat() -> Iterable[Any]:
             for page in pages:
                 yield from page
 

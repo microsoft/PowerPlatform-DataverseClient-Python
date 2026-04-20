@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
@@ -39,7 +39,7 @@ class FileOperations:
 
     def upload(
         self,
-        table: str,
+        table: "Union[str, type]",
         record_id: str,
         file_column: str,
         path: str,
@@ -101,9 +101,10 @@ class FileOperations:
                     "/path/to/large_file.zip",
                 )
         """
+        table_str = table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
         with self._client._scoped_odata() as od:
             od._upload_file(
-                table,
+                table_str,
                 record_id,
                 file_column,
                 path,

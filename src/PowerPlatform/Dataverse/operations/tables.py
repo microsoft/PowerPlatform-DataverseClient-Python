@@ -26,6 +26,71 @@ if TYPE_CHECKING:
 __all__ = ["TableOperations"]
 
 
+def _t(table: "Union[str, type]") -> str:
+    """Resolve an Entity class or string to a logical name string."""
+    return table if isinstance(table, str) else getattr(table, "_logical_name", str(table))
+
+
+def _columns_from_entity(entity_cls: type) -> Dict[str, Any]:
+    """Derive a columns dict from an Entity class's field descriptors.
+
+    Skips: Guid (primary key), BigInt (no _odata support), Lookup,
+    CustomerLookup, MultiPicklist.  PicklistBase subclasses are converted to
+    a synthetic IntEnum so _odata._attribute_payload() can process them.
+    """
+    from enum import IntEnum as _IntEnum
+
+    from ..models.datatypes import (
+        BigInt,
+        DateTime,
+        DecimalNumber,
+        Double,
+        Integer,
+        Memo,
+        Money,
+        Text,
+    )
+    from ..models.datatypes import Guid
+    from ..models.lookup import CustomerLookup, Lookup
+    from ..models.picklist import MultiPicklist, PicklistBase
+    from ..models.boolean import BooleanBase
+
+    _PRIMITIVE = [
+        (Text, "string"),
+        (Memo, "memo"),
+        (Integer, "int"),
+        (BigInt, None),
+        (Money, "decimal"),
+        (DecimalNumber, "decimal"),
+        (Double, "float"),
+        (DateTime, "datetime"),
+    ]
+    _SKIP = (Guid, Lookup, CustomerLookup, MultiPicklist)
+
+    columns: Dict[str, Any] = {}
+    for attr_name, descriptor in entity_cls.fields().items():
+        if isinstance(descriptor, _SKIP):
+            continue
+        if isinstance(descriptor, PicklistBase):
+            opts = type(descriptor).options()
+            if opts:
+                synthetic = _IntEnum(
+                    type(descriptor).__name__,
+                    {name: int(opt) for name, opt in opts.items()},
+                )
+                columns[attr_name] = synthetic
+            continue
+        if isinstance(descriptor, BooleanBase):
+            columns[attr_name] = "bool"
+            continue
+        for base_cls, col_type in _PRIMITIVE:
+            if isinstance(descriptor, base_cls):
+                if col_type is not None:
+                    columns[attr_name] = col_type
+                break
+    return columns
+
+
 class TableOperations:
     """Namespace for table-level metadata operations.
 
@@ -69,26 +134,31 @@ class TableOperations:
 
     def create(
         self,
-        table: str,
-        columns: Dict[str, Any],
+        table: "Union[str, type]",
+        columns: Optional[Dict[str, Any]] = None,
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
     ) -> TableInfo:
         """Create a custom table with the specified columns.
 
+        When ``table`` is a typed :class:`~PowerPlatform.Dataverse.models.entity.Entity`
+        subclass and ``columns`` is omitted, the column schema is derived
+        automatically from the class's field descriptors.
+
         :param table: Schema name of the table with customization prefix
-            (e.g. ``"new_MyTestTable"``).
-        :type table: :class:`str`
+            (e.g. ``"new_MyTestTable"``), or a typed Entity subclass.
+        :type table: :class:`str` or Entity subclass
         :param columns: Mapping of column schema names (with customization
             prefix) to their types. Supported types include ``"string"``
             (or ``"text"``), ``"memo"`` (or ``"multiline"``),
             ``"int"`` (or ``"integer"``), ``"decimal"``
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
-            ``Enum`` subclasses
-            (for local option sets).
-        :type columns: :class:`dict`
+            ``Enum`` subclasses (for local option sets).
+            When omitted and ``table`` is an Entity subclass, derived
+            automatically from the class's field descriptors.
+        :type columns: :class:`dict` or None
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.
         :type solution: :class:`str` or None
@@ -103,11 +173,17 @@ class TableOperations:
             compatibility.
         :rtype: :class:`~PowerPlatform.Dataverse.models.table_info.TableInfo`
 
+        :raises ValueError: If ``columns`` is omitted and ``table`` is a plain
+            string (cannot derive column schema from a string).
         :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
             If table creation fails or the table already exists.
 
         Example:
-            Create a table with simple columns::
+            Create a table from a typed Entity class (columns derived automatically)::
+
+                info = client.tables.create(WalkthroughDemo, solution="MySolution")
+
+            Create a table with an explicit columns dict::
 
                 from enum import IntEnum
 
@@ -127,9 +203,16 @@ class TableOperations:
                 )
                 print(f"Created: {result['table_schema_name']}")
         """
+        if columns is None:
+            if not isinstance(table, type) or not hasattr(table, "fields"):
+                raise ValueError(
+                    "columns must be provided when table is a string; "
+                    "pass an Entity subclass to derive columns automatically."
+                )
+            columns = _columns_from_entity(table)
         with self._client._scoped_odata() as od:
             raw = od._create_table(
-                table,
+                _t(table),
                 columns,
                 solution,
                 primary_column,
@@ -138,7 +221,7 @@ class TableOperations:
 
     # ----------------------------------------------------------------- delete
 
-    def delete(self, table: str) -> None:
+    def delete(self, table: "Union[str, type]") -> None:
         """Delete a custom table by schema name.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``).
@@ -156,11 +239,11 @@ class TableOperations:
             client.tables.delete("new_MyTestTable")
         """
         with self._client._scoped_odata() as od:
-            od._delete_table(table)
+            od._delete_table(_t(table))
 
     # -------------------------------------------------------------------- get
 
-    def get(self, table: str) -> Optional[TableInfo]:
+    def get(self, table: "Union[str, type]") -> Optional[TableInfo]:
         """Get basic metadata for a table if it exists.
 
         :param table: Schema name of the table (e.g. ``"new_MyTestTable"``
@@ -181,7 +264,7 @@ class TableOperations:
                 print(f"Entity set: {info['entity_set_name']}")
         """
         with self._client._scoped_odata() as od:
-            raw = od._get_table_info(table)
+            raw = od._get_table_info(_t(table))
             if raw is None:
                 return None
             return TableInfo.from_dict(raw)
@@ -243,7 +326,7 @@ class TableOperations:
 
     def add_columns(
         self,
-        table: str,
+        table: "Union[str, type]",
         columns: Dict[str, Any],
     ) -> List[str]:
         """Add one or more columns to an existing table.
@@ -270,13 +353,13 @@ class TableOperations:
             print(created)  # ['new_Notes', 'new_Active']
         """
         with self._client._scoped_odata() as od:
-            return od._create_columns(table, columns)
+            return od._create_columns(_t(table), columns)
 
     # ---------------------------------------------------------- remove_columns
 
     def remove_columns(
         self,
-        table: str,
+        table: "Union[str, type]",
         columns: Union[str, List[str]],
     ) -> List[str]:
         """Remove one or more columns from a table.
@@ -303,7 +386,7 @@ class TableOperations:
             print(removed)  # ['new_Notes', 'new_Active']
         """
         with self._client._scoped_odata() as od:
-            return od._delete_columns(table, columns)
+            return od._delete_columns(_t(table), columns)
 
     # ------------------------------------------------------ create_one_to_many
 
@@ -494,9 +577,9 @@ class TableOperations:
 
     def create_lookup_field(
         self,
-        referencing_table: str,
+        referencing_table: "Union[str, type]",
         lookup_field_name: str,
-        referenced_table: str,
+        referenced_table: "Union[str, type]",
         *,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
@@ -560,9 +643,9 @@ class TableOperations:
         """
         with self._client._scoped_odata() as od:
             lookup, relationship = od._build_lookup_field_models(
-                referencing_table=referencing_table,
+                referencing_table=_t(referencing_table),
                 lookup_field_name=lookup_field_name,
-                referenced_table=referenced_table,
+                referenced_table=_t(referenced_table),
                 display_name=display_name,
                 description=description,
                 required=required,
@@ -576,7 +659,7 @@ class TableOperations:
 
     def create_alternate_key(
         self,
-        table: str,
+        table: "Union[str, type]",
         key_name: str,
         columns: List[str],
         *,
@@ -627,7 +710,7 @@ class TableOperations:
         """
         label = Label(localized_labels=[LocalizedLabel(label=display_name or key_name, language_code=language_code)])
         with self._client._scoped_odata() as od:
-            raw = od._create_alternate_key(table, key_name, columns, label)
+            raw = od._create_alternate_key(_t(table), key_name, columns, label)
             return AlternateKeyInfo(
                 metadata_id=raw["metadata_id"],
                 schema_name=raw["schema_name"],
@@ -637,7 +720,7 @@ class TableOperations:
 
     # --------------------------------------------------- get_alternate_keys
 
-    def get_alternate_keys(self, table: str) -> List[AlternateKeyInfo]:
+    def get_alternate_keys(self, table: "Union[str, type]") -> List[AlternateKeyInfo]:
         """List all alternate keys defined on a table.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).
@@ -660,12 +743,12 @@ class TableOperations:
                     print(f"{key.schema_name}: {key.status}")
         """
         with self._client._scoped_odata() as od:
-            raw_list = od._get_alternate_keys(table)
+            raw_list = od._get_alternate_keys(_t(table))
             return [AlternateKeyInfo.from_api_response(item) for item in raw_list]
 
     # ------------------------------------------------ delete_alternate_key
 
-    def delete_alternate_key(self, table: str, key_id: str) -> None:
+    def delete_alternate_key(self, table: "Union[str, type]", key_id: str) -> None:
         """Delete an alternate key by its metadata ID.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).
@@ -690,4 +773,4 @@ class TableOperations:
             )
         """
         with self._client._scoped_odata() as od:
-            od._delete_alternate_key(table, key_id)
+            od._delete_alternate_key(_t(table), key_id)

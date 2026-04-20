@@ -12,9 +12,40 @@ from ..models.upsert import UpsertItem
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity, _EntityT
 
 
 __all__ = ["RecordOperations"]
+
+
+def _table_name(table: "Union[str, type]") -> str:
+    """Extract the logical name string from a table argument."""
+    if isinstance(table, str):
+        return table
+    return getattr(table, "_logical_name", "") or str(table)
+
+
+def _is_entity_cls(table: "Union[str, type]") -> bool:
+    """Return True if table is an Entity subclass (duck-type check)."""
+    return (
+        isinstance(table, type)
+        and getattr(table, "_is_field_descriptor", None) is None  # not a descriptor
+        and hasattr(table, "_logical_name")
+        and hasattr(table, "from_dict")
+        and hasattr(table, "fields")
+    )
+
+
+def _serialize_data(data: Any, for_create: bool = True) -> Any:
+    """Convert Entity instances to dicts; pass dicts through unchanged."""
+    if hasattr(data, "to_create_payload") and hasattr(data, "as_dict"):
+        payload = data.to_create_payload() if for_create else data.to_update_payload()
+        return payload.as_dict()
+    if isinstance(data, list) and data and hasattr(data[0], "to_create_payload"):
+        if for_create:
+            return [e.to_create_payload().as_dict() for e in data]
+        return [e.to_update_payload().as_dict() for e in data]
+    return data
 
 
 class RecordOperations:
@@ -49,14 +80,14 @@ class RecordOperations:
     # ------------------------------------------------------------------ create
 
     @overload
-    def create(self, table: str, data: Dict[str, Any]) -> str: ...
+    def create(self, table: "Union[str, type]", data: Dict[str, Any]) -> str: ...
 
     @overload
-    def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
+    def create(self, table: "Union[str, type]", data: List[Dict[str, Any]]) -> List[str]: ...
 
     def create(
         self,
-        table: str,
+        table: "Union[str, type]",
         data: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> Union[str, List[str]]:
         """Create one or more records in a Dataverse table.
@@ -91,15 +122,17 @@ class RecordOperations:
                 ])
                 print(f"Created {len(guids)} accounts")
         """
+        table_str = _table_name(table)
+        data = _serialize_data(data, for_create=True)
         with self._client._scoped_odata() as od:
-            entity_set = od._entity_set_from_schema_name(table)
+            entity_set = od._entity_set_from_schema_name(table_str)
             if isinstance(data, dict):
-                rid = od._create(entity_set, table, data)
+                rid = od._create(entity_set, table_str, data)
                 if not isinstance(rid, str):
                     raise TypeError("_create (single) did not return GUID string")
                 return rid
             if isinstance(data, list):
-                ids = od._create_multiple(entity_set, table, data)
+                ids = od._create_multiple(entity_set, table_str, data)
                 if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
                     raise TypeError("_create (multi) did not return list[str]")
                 return ids
@@ -109,7 +142,7 @@ class RecordOperations:
 
     def update(
         self,
-        table: str,
+        table: "Union[str, type]",
         ids: Union[str, List[str]],
         changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
@@ -152,28 +185,30 @@ class RecordOperations:
                     [{"name": "Name A"}, {"name": "Name B"}],
                 )
         """
+        table_str = _table_name(table)
+        changes = _serialize_data(changes, for_create=False)
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
                     raise TypeError("For single id, changes must be a dict")
-                od._update(table, ids, changes)
+                od._update(table_str, ids, changes)
                 return None
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
-            od._update_by_ids(table, ids, changes)
+            od._update_by_ids(table_str, ids, changes)
             return None
 
     # ------------------------------------------------------------------ delete
 
     @overload
-    def delete(self, table: str, ids: str) -> None: ...
+    def delete(self, table: "Union[str, type]", ids: str) -> None: ...
 
     @overload
-    def delete(self, table: str, ids: List[str], *, use_bulk_delete: bool = True) -> Optional[str]: ...
+    def delete(self, table: "Union[str, type]", ids: List[str], *, use_bulk_delete: bool = True) -> Optional[str]: ...
 
     def delete(
         self,
-        table: str,
+        table: "Union[str, type]",
         ids: Union[str, List[str]],
         *,
         use_bulk_delete: bool = True,
@@ -207,9 +242,10 @@ class RecordOperations:
 
                 job_id = client.records.delete("account", [id1, id2, id3])
         """
+        table_str = _table_name(table)
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
-                od._delete(table, ids)
+                od._delete(table_str, ids)
                 return None
             if not isinstance(ids, list):
                 raise TypeError("ids must be str or list[str]")
@@ -218,12 +254,36 @@ class RecordOperations:
             if not all(isinstance(rid, str) for rid in ids):
                 raise TypeError("ids must contain string GUIDs")
             if use_bulk_delete:
-                return od._delete_multiple(table, ids)
+                return od._delete_multiple(table_str, ids)
             for rid in ids:
-                od._delete(table, rid)
+                od._delete(table_str, rid)
             return None
 
     # -------------------------------------------------------------------- get
+
+    @overload
+    def get(
+        self,
+        table: "type[_EntityT]",
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> "_EntityT": ...
+
+    @overload
+    def get(
+        self,
+        table: "type[_EntityT]",
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
+    ) -> "Iterable[List[_EntityT]]": ...
 
     @overload
     def get(
@@ -330,7 +390,7 @@ class RecordOperations:
 
     def get(
         self,
-        table: str,
+        table: "Union[str, type]",
         record_id: Optional[str] = None,
         *,
         select: Optional[List[str]] = None,
@@ -341,7 +401,7 @@ class RecordOperations:
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
-    ) -> Union[Record, Iterable[List[Record]]]:
+    ) -> "Union[Record, Any, Iterable[List[Record]], Iterable[List[Any]]]":
         """Fetch a single record by ID, or fetch multiple records with pagination.
 
         This method has two usage patterns:
@@ -423,6 +483,9 @@ class RecordOperations:
                     for record in page:
                         print(record["name"])
         """
+        entity_cls = table if _is_entity_cls(table) else None
+        table_str = _table_name(table)
+
         if record_id is not None:
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
@@ -441,13 +504,15 @@ class RecordOperations:
                     "fetching a single record by ID"
                 )
             with self._client._scoped_odata() as od:
-                raw = od._get(table, record_id, select=select)
-                return Record.from_api_response(table, raw, record_id=record_id)
+                raw = od._get(table_str, record_id, select=select)
+                if entity_cls is not None:
+                    return entity_cls.from_dict(raw)
+                return Record.from_api_response(table_str, raw, record_id=record_id)
 
-        def _paged() -> Iterable[List[Record]]:
+        def _paged() -> Iterable[List[Any]]:
             with self._client._scoped_odata() as od:
                 for page in od._get_multiple(
-                    table,
+                    table_str,
                     select=select,
                     filter=filter,
                     orderby=orderby,
@@ -457,13 +522,16 @@ class RecordOperations:
                     count=count,
                     include_annotations=include_annotations,
                 ):
-                    yield [Record.from_api_response(table, row) for row in page]
+                    if entity_cls is not None:
+                        yield [entity_cls.from_dict(row) for row in page]
+                    else:
+                        yield [Record.from_api_response(table_str, row) for row in page]
 
         return _paged()
 
     # ------------------------------------------------------------------ upsert
 
-    def upsert(self, table: str, items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
+    def upsert(self, table: "Union[str, type]", items: List[Union[UpsertItem, Dict[str, Any]]]) -> None:
         """Upsert one or more records identified by alternate keys.
 
         When ``items`` contains a single entry, performs a single upsert via PATCH
@@ -539,6 +607,7 @@ class RecordOperations:
             alternate key is composite, e.g.
             ``{"accountnumber": "ACC-001", "address1_postalcode": "98052"}``.
         """
+        table_str = _table_name(table)
         if not isinstance(items, list) or not items:
             raise TypeError("items must be a non-empty list of UpsertItem or dicts")
         normalized: List[UpsertItem] = []
@@ -550,12 +619,12 @@ class RecordOperations:
             else:
                 raise TypeError("Each item must be an UpsertItem or a dict with 'alternate_key' and 'record' keys")
         with self._client._scoped_odata() as od:
-            entity_set = od._entity_set_from_schema_name(table)
+            entity_set = od._entity_set_from_schema_name(table_str)
             if len(normalized) == 1:
                 item = normalized[0]
-                od._upsert(entity_set, table, item.alternate_key, item.record)
+                od._upsert(entity_set, table_str, item.alternate_key, item.record)
             else:
                 alternate_keys = [i.alternate_key for i in normalized]
                 records = [i.record for i in normalized]
-                od._upsert_multiple(entity_set, table, alternate_keys, records)
+                od._upsert_multiple(entity_set, table_str, alternate_keys, records)
         return None

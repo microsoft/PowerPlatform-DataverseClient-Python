@@ -409,5 +409,123 @@ class TestTableOperations(unittest.TestCase):
         self.client._odata._delete_alternate_key.assert_called_once_with("new_Product", "key-guid-1")
 
 
+class TestColumnsFromEntity(unittest.TestCase):
+    """Unit tests for the _columns_from_entity() helper."""
+
+    def _make_entity(self):
+        from enum import IntEnum
+
+        from PowerPlatform.Dataverse.models.boolean import BooleanBase
+        from PowerPlatform.Dataverse.models.datatypes import (
+            DateTime,
+            DecimalNumber,
+            Double,
+            Integer,
+            Memo,
+            Money,
+            Text,
+        )
+        from PowerPlatform.Dataverse.models.datatypes import Guid
+        from PowerPlatform.Dataverse.models.entity import Entity
+        from PowerPlatform.Dataverse.models.lookup import Lookup
+        from PowerPlatform.Dataverse.models.picklist import MultiPicklist, PicklistBase, PicklistOption
+
+        class Priority(PicklistBase):
+            Low = PicklistOption(1, "Low")
+            High = PicklistOption(2, "High")
+
+        class Completed(BooleanBase):
+            Yes = True
+            No = False
+
+        class Demo(Entity):
+            _logical_name = "new_demo"
+            _primary_id = "new_demoid"
+
+            new_demoid = Guid()
+            new_title = Text()
+            new_notes = Memo()
+            new_qty = Integer()
+            new_price = Money()
+            new_cost = DecimalNumber()
+            new_rate = Double()
+            new_due = DateTime()
+            new_priority = Priority()
+            new_done = Completed()
+            new_owner = Lookup(target="contact")
+            new_tags = MultiPicklist()
+
+        return Demo
+
+    def test_primitive_columns_derived(self):
+        from PowerPlatform.Dataverse.operations.tables import _columns_from_entity
+
+        cols = _columns_from_entity(self._make_entity())
+        self.assertEqual(cols["new_title"], "string")
+        self.assertEqual(cols["new_notes"], "memo")
+        self.assertEqual(cols["new_qty"], "int")
+        self.assertEqual(cols["new_price"], "decimal")
+        self.assertEqual(cols["new_cost"], "decimal")
+        self.assertEqual(cols["new_rate"], "float")
+        self.assertEqual(cols["new_due"], "datetime")
+
+    def test_boolean_derived(self):
+        from PowerPlatform.Dataverse.operations.tables import _columns_from_entity
+
+        cols = _columns_from_entity(self._make_entity())
+        self.assertEqual(cols["new_done"], "bool")
+
+    def test_picklist_becomes_intenum(self):
+        from enum import IntEnum
+
+        from PowerPlatform.Dataverse.operations.tables import _columns_from_entity
+
+        cols = _columns_from_entity(self._make_entity())
+        self.assertIn("new_priority", cols)
+        self.assertTrue(issubclass(cols["new_priority"], IntEnum))
+        self.assertEqual(cols["new_priority"]["Low"], 1)
+        self.assertEqual(cols["new_priority"]["High"], 2)
+
+    def test_skipped_columns(self):
+        from PowerPlatform.Dataverse.operations.tables import _columns_from_entity
+
+        cols = _columns_from_entity(self._make_entity())
+        self.assertNotIn("new_demoid", cols)
+        self.assertNotIn("new_owner", cols)
+        self.assertNotIn("new_tags", cols)
+
+    def test_create_with_entity_class_no_columns(self):
+        """create(EntityClass) without columns should derive them automatically."""
+        raw = {
+            "table_schema_name": "new_Demo",
+            "entity_set_name": "new_demos",
+            "table_logical_name": "new_demo",
+            "metadata_id": "meta-1",
+            "columns_created": ["new_title"],
+        }
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        client._odata = MagicMock()
+        client._odata._create_table.return_value = raw
+
+        entity_cls = self._make_entity()
+        result = client.tables.create(entity_cls)
+
+        self.assertIsInstance(result, TableInfo)
+        call_args = client._odata._create_table.call_args
+        passed_columns = call_args[0][1]
+        self.assertIn("new_title", passed_columns)
+        self.assertNotIn("new_demoid", passed_columns)
+
+    def test_create_string_without_columns_raises(self):
+        """create('new_Foo') without columns should raise ValueError."""
+        from PowerPlatform.Dataverse.operations.tables import TableOperations
+
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        with self.assertRaises(ValueError, msg="columns must be provided"):
+            client.tables.create("new_Foo")
+
+
 if __name__ == "__main__":
     unittest.main()

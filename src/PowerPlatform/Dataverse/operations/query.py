@@ -5,14 +5,14 @@
 
 from __future__ import annotations
 
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Union, overload
 
 from ..models.record import Record
-
-from ..models.query_builder import QueryBuilder
+from ..models.query_builder import QueryBuilder, _QT
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.entity import Entity, _EntityT
 
 
 __all__ = ["QueryOperations"]
@@ -51,7 +51,13 @@ class QueryOperations:
 
     # ----------------------------------------------------------------- builder
 
-    def builder(self, table: str) -> QueryBuilder:
+    @overload
+    def builder(self, table: "type[_EntityT]") -> "QueryBuilder[_EntityT]": ...
+
+    @overload
+    def builder(self, table: str) -> "QueryBuilder[Record]": ...
+
+    def builder(self, table: "Union[str, type]") -> QueryBuilder:
         """Create a fluent query builder for the specified table.
 
         Returns a :class:`~PowerPlatform.Dataverse.models.query_builder.QueryBuilder`
