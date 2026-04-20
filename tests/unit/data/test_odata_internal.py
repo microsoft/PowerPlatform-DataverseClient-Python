@@ -1840,6 +1840,24 @@ class TestCreateTable(unittest.TestCase):
         label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
         self.assertEqual(label_value, "new_TestTable")
 
+    def test_display_name_empty_string_raises(self):
+        """_create_table raises TypeError when display_name is an empty string."""
+        self._setup_for_create()
+        with self.assertRaises(TypeError):
+            self.od._create_table("new_TestTable", {}, display_name="")
+
+    def test_display_name_whitespace_raises(self):
+        """_create_table raises TypeError when display_name is whitespace only."""
+        self._setup_for_create()
+        with self.assertRaises(TypeError):
+            self.od._create_table("new_TestTable", {}, display_name="   ")
+
+    def test_display_name_non_string_raises(self):
+        """_create_table raises TypeError when display_name is not a string."""
+        self._setup_for_create()
+        with self.assertRaises(TypeError):
+            self.od._create_table("new_TestTable", {}, display_name=123)
+
 
 class TestCreateColumns(unittest.TestCase):
     """Unit tests for _ODataClient._create_columns."""
@@ -2853,6 +2871,21 @@ class TestBuildCreateEntity(unittest.TestCase):
         """_build_create_entity appends 's' to display_name for DisplayCollectionName."""
         body = self._body(display_name="Test Table")
         self.assertEqual(body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"], "Test Tables")
+
+    def test_display_name_empty_string_raises(self):
+        """_build_create_entity raises TypeError when display_name is an empty string."""
+        with self.assertRaises(TypeError):
+            self.od._build_create_entity("new_TestTable", {}, display_name="")
+
+    def test_display_name_whitespace_raises(self):
+        """_build_create_entity raises TypeError when display_name is whitespace only."""
+        with self.assertRaises(TypeError):
+            self.od._build_create_entity("new_TestTable", {}, display_name="   ")
+
+    def test_display_name_non_string_raises(self):
+        """_build_create_entity raises TypeError when display_name is not a string."""
+        with self.assertRaises(TypeError):
+            self.od._build_create_entity("new_TestTable", {}, display_name=123)
 
 
 if __name__ == "__main__":
