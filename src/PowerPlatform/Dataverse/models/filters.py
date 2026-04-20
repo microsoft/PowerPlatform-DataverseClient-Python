@@ -84,7 +84,9 @@ def _format_value(value: Any) -> str:
     if isinstance(value, enum.Enum):
         return _format_value(value.value)
     if isinstance(value, int):
-        return str(value)
+        # Use int(value) explicitly to bypass subclass __str__ overrides
+        # (e.g. PicklistOption.__str__ returns the label, not the integer code).
+        return str(int(value))
     if isinstance(value, float):
         return str(value)
     if isinstance(value, str):
