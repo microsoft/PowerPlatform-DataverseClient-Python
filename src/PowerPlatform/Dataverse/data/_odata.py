@@ -1648,7 +1648,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type solution_unique_name: ``str`` | ``None``
         :param primary_column_schema_name: Optional primary column schema name.
         :type primary_column_schema_name: ``str`` | ``None``
-        :param display_name: Optional display name shown in the Power Platform UI. Defaults to ``table_schema_name``.
+        :param display_name: Human-readable display name for the table. Defaults to ``table_schema_name``.
         :type display_name: ``str`` | ``None``
 
         :return: Metadata summary for the created table including created column schema names.

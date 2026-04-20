@@ -97,9 +97,8 @@ class TableOperations:
             customization prefix (e.g. ``"new_ProductName"``). If not provided,
             defaults to ``"{prefix}_Name"``.
         :type primary_column: :class:`str` or None
-        :param display_name: Human-readable display name shown in the Power
-            Platform UI (e.g. ``"Product"``). When omitted, defaults to the
-            table schema name.
+        :param display_name: Human-readable display name for the table
+            (e.g. ``"Product"``). When omitted, defaults to the table schema name.
         :type display_name: :class:`str` or None
 
         :return: Table metadata with ``schema_name``, ``entity_set_name``,

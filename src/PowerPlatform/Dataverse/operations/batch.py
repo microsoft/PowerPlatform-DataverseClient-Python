@@ -376,7 +376,7 @@ class BatchTableOperations:
         :type solution: str or None
         :param primary_column: Optional primary column schema name.
         :type primary_column: str or None
-        :param display_name: Human-readable display name shown in the Power Platform UI.
+        :param display_name: Human-readable display name for the table.
             When omitted, defaults to the table schema name.
         :type display_name: str or None
         """
