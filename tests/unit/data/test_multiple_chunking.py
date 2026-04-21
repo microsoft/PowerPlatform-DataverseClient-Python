@@ -710,14 +710,21 @@ class TestDispatchChunksSequential(unittest.TestCase):
         self.assertEqual(called, [])
 
     def test_single_chunk_with_high_workers_still_sequential(self):
-        """Single chunk should skip ThreadPoolExecutor even when max_workers > 1."""
+        """Single chunk should skip ThreadPoolExecutor even when max_workers > 1.
+
+        No warning is emitted because capping has no effect on a single chunk
+        (no concurrency would be used regardless).
+        """
+        import warnings as _warnings
+
         call_count = [0]
 
         def fn(_):
             call_count[0] += 1
             return "result"
 
-        with self.assertWarns(UserWarning):
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error")
             results = self._dispatch(fn, [["only"]], max_workers=4)
         self.assertEqual(results, ["result"])
         self.assertEqual(call_count[0], 1)
