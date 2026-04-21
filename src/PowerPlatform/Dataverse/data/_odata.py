@@ -840,6 +840,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
+        prefetch_pages: int = 0,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
@@ -861,6 +862,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type count: ``bool``
         :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
         :type include_annotations: ``str`` | ``None``
+        :param prefetch_pages: Number of pages to pre-fetch ahead of the caller. ``0`` (default) is
+            fully sequential. ``1`` submits the next HTTP request immediately after receiving the
+            current page, overlapping network I/O with the caller's processing time. Values above
+            ``1`` are capped at ``1``.
+        :type prefetch_pages: ``int``
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
@@ -905,21 +911,42 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if count:
             params["$count"] = "true"
 
-        data = _do_request(base_url, params=params)
-        items = data.get("value") if isinstance(data, dict) else None
-        if isinstance(items, list) and items:
-            yield [x for x in items if isinstance(x, dict)]
-
-        next_link = None
-        if isinstance(data, dict):
-            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
-
-        while next_link:
-            data = _do_request(next_link)
+        if prefetch_pages <= 0:
+            data = _do_request(base_url, params=params)
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
                 yield [x for x in items if isinstance(x, dict)]
-            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
+
+            next_link = None
+            if isinstance(data, dict):
+                next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
+
+            while next_link:
+                data = _do_request(next_link)
+                items = data.get("value") if isinstance(data, dict) else None
+                if isinstance(items, list) and items:
+                    yield [x for x in items if isinstance(x, dict)]
+                next_link = (
+                    data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
+                )
+        else:
+            # Submit the next request before yielding the current page so
+            # network I/O overlaps with the caller's processing time.
+            ctx = copy_context()
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
+                pending = executor.submit(ctx.run, _do_request, base_url, params=params)
+                while pending is not None:
+                    data = pending.result()
+                    items = data.get("value") if isinstance(data, dict) else None
+                    next_link = (
+                        (data.get("@odata.nextLink") or data.get("odata.nextLink")) if isinstance(data, dict) else None
+                    )
+                    pending = executor.submit(ctx.run, _do_request, next_link) if next_link else None
+                    if isinstance(items, list) and items:
+                        yield [x for x in items if isinstance(x, dict)]
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
     # --------------------------- SQL Custom API -------------------------
     def _query_sql(self, sql: str) -> list[dict[str, Any]]:

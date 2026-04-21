@@ -301,6 +301,7 @@ class RecordOperations:
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
+        prefetch_pages: int = 0,
     ) -> Iterable[List[Record]]:
         """Fetch multiple records from a Dataverse table with pagination.
 
@@ -338,6 +339,11 @@ class RecordOperations:
             ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
             ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
         :type include_annotations: :class:`str` or None
+        :param prefetch_pages: When ``1``, the next page is fetched in a
+            background thread while the caller processes the current page,
+            overlapping network I/O with processing. ``0`` (default) is fully
+            sequential. Values above ``1`` are capped at ``1``.
+        :type prefetch_pages: :class:`int`
 
         :return: Generator yielding pages, where each page is a list of
             :class:`~PowerPlatform.Dataverse.models.record.Record` objects.
@@ -370,6 +376,7 @@ class RecordOperations:
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
+        prefetch_pages: int = 0,
     ) -> Union[Record, Iterable[List[Record]]]:
         """Fetch a single record by ID, or fetch multiple records with pagination.
 
@@ -485,6 +492,7 @@ class RecordOperations:
                     page_size=page_size,
                     count=count,
                     include_annotations=include_annotations,
+                    **({"prefetch_pages": prefetch_pages} if prefetch_pages else {}),
                 ):
                     yield [Record.from_api_response(table, row) for row in page]
 
