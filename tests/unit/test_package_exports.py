@@ -8,9 +8,14 @@ import unittest
 
 
 class TestCoreExports(unittest.TestCase):
-    """Every name in PowerPlatform.Dataverse.core.__all__ must be importable."""
+    """Verify package-level exports for PowerPlatform.Dataverse.core.
+
+    Checks that every symbol in __all__ is reachable from the package namespace
+    and that each re-export is the identical object as its source definition.
+    """
 
     def test_all_symbols_importable(self):
+        """Every name listed in __all__ is accessible as an attribute of the package."""
         import PowerPlatform.Dataverse.core as m
 
         for name in m.__all__:
@@ -39,9 +44,14 @@ class TestCoreExports(unittest.TestCase):
 
 
 class TestModelsExports(unittest.TestCase):
-    """Every name in PowerPlatform.Dataverse.models.__all__ must be importable."""
+    """Verify package-level exports for PowerPlatform.Dataverse.models.
+
+    Checks that every symbol in __all__ is reachable from the package namespace
+    and that each re-export is the identical object as its source definition.
+    """
 
     def test_all_symbols_importable(self):
+        """Every name listed in __all__ is accessible as an attribute of the package."""
         import PowerPlatform.Dataverse.models as m
 
         for name in m.__all__:
@@ -81,9 +91,14 @@ class TestModelsExports(unittest.TestCase):
 
 
 class TestOperationsExports(unittest.TestCase):
-    """Every name in PowerPlatform.Dataverse.operations.__all__ must be importable."""
+    """Verify package-level exports for PowerPlatform.Dataverse.operations.
+
+    Checks that every symbol in __all__ is reachable from the package namespace
+    and that each re-export is the identical object as its source definition.
+    """
 
     def test_all_symbols_importable(self):
+        """Every name listed in __all__ is accessible as an attribute of the package."""
         import PowerPlatform.Dataverse.operations as m
 
         for name in m.__all__:
