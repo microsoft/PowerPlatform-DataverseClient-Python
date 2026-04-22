@@ -237,11 +237,11 @@ def _run_example(client):
         )
     )
 
-    print(f"[OK] Created relationship: {result['relationship_schema_name']}")
-    print(f"  Lookup field: {result['lookup_schema_name']}")
-    print(f"  Relationship ID: {result['relationship_id']}")
+    print(f"[OK] Created relationship: {result.relationship_schema_name}")
+    print(f"  Lookup field: {result.lookup_schema_name}")
+    print(f"  Relationship ID: {result.relationship_id}")
 
-    rel_id_1 = result["relationship_id"]
+    rel_id_1 = result.relationship_id
 
     # ============================================================================
     # 5. CREATE LOOKUP FIELD (Convenience Method)
@@ -266,10 +266,10 @@ def _run_example(client):
         )
     )
 
-    print(f"[OK] Created lookup using convenience method: {result2['lookup_schema_name']}")
-    print(f"  Relationship: {result2['relationship_schema_name']}")
+    print(f"[OK] Created lookup using convenience method: {result2.lookup_schema_name}")
+    print(f"  Relationship: {result2.relationship_schema_name}")
 
-    rel_id_2 = result2["relationship_id"]
+    rel_id_2 = result2.relationship_id
 
     # ============================================================================
     # 6. CREATE MANY-TO-MANY RELATIONSHIP
@@ -293,10 +293,10 @@ def _run_example(client):
         )
     )
 
-    print(f"[OK] Created M:N relationship: {result3['relationship_schema_name']}")
-    print(f"  Relationship ID: {result3['relationship_id']}")
+    print(f"[OK] Created M:N relationship: {result3.relationship_schema_name}")
+    print(f"  Relationship ID: {result3.relationship_id}")
 
-    rel_id_3 = result3["relationship_id"]
+    rel_id_3 = result3.relationship_id
 
     # ============================================================================
     # 7. QUERY RELATIONSHIP METADATA
