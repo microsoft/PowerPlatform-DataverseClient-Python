@@ -43,7 +43,7 @@ def delete_relationship_if_exists(client, schema_name):
     """Delete a relationship by schema name if it exists."""
     rel = client.tables.get_relationship(schema_name)
     if rel:
-        rel_id = rel.get("MetadataId")
+        rel_id = rel.relationship_id
         if rel_id:
             client.tables.delete_relationship(rel_id)
             print(f"   (Cleaned up existing relationship: {schema_name})")
@@ -309,10 +309,10 @@ def _run_example(client):
 
     rel_metadata = client.tables.get_relationship("new_Department_Employee")
     if rel_metadata:
-        print(f"[OK] Found relationship: {rel_metadata.get('SchemaName')}")
-        print(f"  Type: {rel_metadata.get('@odata.type')}")
-        print(f"  Referenced Entity: {rel_metadata.get('ReferencedEntity')}")
-        print(f"  Referencing Entity: {rel_metadata.get('ReferencingEntity')}")
+        print(f"[OK] Found relationship: {rel_metadata.relationship_schema_name}")
+        print(f"  Type: {rel_metadata.relationship_type}")
+        print(f"  Referenced Entity: {rel_metadata.referenced_entity}")
+        print(f"  Referencing Entity: {rel_metadata.referencing_entity}")
     else:
         print("  Relationship not found")
 
@@ -320,10 +320,10 @@ def _run_example(client):
 
     m2m_metadata = client.tables.get_relationship("new_employee_project")
     if m2m_metadata:
-        print(f"[OK] Found relationship: {m2m_metadata.get('SchemaName')}")
-        print(f"  Type: {m2m_metadata.get('@odata.type')}")
-        print(f"  Entity 1: {m2m_metadata.get('Entity1LogicalName')}")
-        print(f"  Entity 2: {m2m_metadata.get('Entity2LogicalName')}")
+        print(f"[OK] Found relationship: {m2m_metadata.relationship_schema_name}")
+        print(f"  Type: {m2m_metadata.relationship_type}")
+        print(f"  Entity 1: {m2m_metadata.entity1_logical_name}")
+        print(f"  Entity 2: {m2m_metadata.entity2_logical_name}")
     else:
         print("  Relationship not found")
 
