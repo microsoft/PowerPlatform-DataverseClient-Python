@@ -147,15 +147,22 @@ class TestQueryOperations(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.client._odata._query_sql.assert_called_once()
 
-    def test_sql_select_star(self):
-        """sql() should handle SELECT * (auto-expanded by _query_sql)."""
-        raw = [{"accountid": "1", "name": "Contoso", "revenue": 1000}]
-        self.client._odata._query_sql.return_value = raw
+    def test_sql_select_star_raises_validation_error(self):
+        """sql() must propagate ValidationError when SELECT * is used.
 
-        result = self.client.query.sql("SELECT * FROM account")
+        SELECT * is intentionally rejected -- not a technical limitation but
+        a deliberate design decision to prevent expensive wildcard queries on
+        wide entities.  The guardrail fires inside _query_sql and the
+        ValidationError bubbles up through query.sql() unchanged.
+        """
+        from PowerPlatform.Dataverse.core.errors import ValidationError
 
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["name"], "Contoso")
+        self.client._odata._query_sql.side_effect = ValidationError(
+            "SELECT * is not supported.",
+            subcode="validation_sql_unsupported_syntax",
+        )
+        with self.assertRaises(ValidationError):
+            self.client.query.sql("SELECT * FROM account")
 
     # ----------------------------------------------------------------- builder
 

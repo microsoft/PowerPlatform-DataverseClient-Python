@@ -791,12 +791,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 yield [x for x in items if isinstance(x, dict)]
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
-    # ----------------------- SELECT * detection -----------------------
-    _SELECT_STAR_RE = re.compile(
-        r"\bSELECT\b(\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?)\*\s",
-        re.IGNORECASE,
-    )
-
     # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
         r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
@@ -808,7 +802,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
         re.IGNORECASE,
     )
-    _SQL_HAS_JOIN_RE = re.compile(r"\bJOIN\b", re.IGNORECASE)
     # Server-blocked SQL patterns (save the round-trip by catching early)
     _SQL_UNSUPPORTED_JOIN_RE = re.compile(
         r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
@@ -821,44 +814,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         r"\bIN\s*\(\s*SELECT\b|\bEXISTS\s*\(\s*SELECT\b|\(\s*SELECT\b.*\bFROM\b",
         re.IGNORECASE,
     )
-
-    def _expand_select_star(self, sql: str, table: str) -> str:
-        """Replace ``SELECT *`` with explicit column names.
-
-        When the Dataverse SQL endpoint receives ``SELECT *`` it returns
-        an error ("SELECT * is not supported").  This helper resolves all
-        columns via ``_list_columns`` and rewrites the query so the user
-        never has to know the server limitation.
-
-        For JOIN queries, the expansion only includes columns from the first
-        (FROM) table.  A warning is emitted so the user knows to specify
-        columns explicitly for multi-table queries.
-        """
-        if not self._SELECT_STAR_RE.search(sql):
-            return sql
-
-        # Warn on SELECT * with JOINs -- expansion uses only the FROM table
-        if self._SQL_HAS_JOIN_RE.search(sql):
-            warnings.warn(
-                "SELECT * with JOIN: the SDK expands * using columns from "
-                "the first table only. Columns from joined tables will not "
-                "be included. Specify columns explicitly for JOINs "
-                "(e.g. SELECT a.name, c.fullname FROM account a "
-                "JOIN contact c ON ...).",
-                UserWarning,
-                stacklevel=4,
-            )
-
-        cols = self._list_columns(
-            table,
-            select=["LogicalName"],
-            filter="AttributeType ne 'Virtual'",
-        )
-        col_names = sorted({c["LogicalName"] for c in cols if "LogicalName" in c})
-        if not col_names:
-            return sql  # Fallback: let the server decide
-        col_list = ", ".join(col_names)
-        return self._SELECT_STAR_RE.sub(lambda m: f"SELECT{m.group(1)}{col_list} ", sql, count=1)
+    # SELECT * is intentionally rejected -- not a technical limitation but a
+    # deliberate design decision.  Wide entities (e.g. account has 307 columns)
+    # make SELECT * extremely expensive on shared database infrastructure.
+    # COUNT(*) is NOT matched because COUNT appears before the *.
+    _SQL_SELECT_STAR_RE = re.compile(
+        r"\bSELECT\b\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?\*\s",
+        re.IGNORECASE,
+    )
 
     def _sql_guardrails(self, sql: str) -> str:
         """Apply safety guardrails to a SQL query before sending to the server.
@@ -873,11 +836,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         4. HAVING clause (server rejects)
         5. CTE / WITH clause (server rejects)
         6. Subqueries -- IN (SELECT ...), EXISTS (SELECT ...) (server rejects)
+        7. SELECT * -- intentional design decision, not a technical limitation.
+           Wide entities make wildcard selects extremely expensive on shared
+           database infrastructure.  ``COUNT(*)`` is not affected.
 
         **Warned** (``UserWarning`` -- query still executes):
 
-        7. Leading-wildcard LIKE (full table scan)
-        8. Implicit cross join FROM a, b (cartesian product)
+        8. Leading-wildcard LIKE (full table scan)
+        9. Implicit cross join FROM a, b (cartesian product)
 
         All blocked patterns are also blocked by the server, but catching
         them here saves the network round-trip and provides clearer error
@@ -885,7 +851,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         support in the future), all checks are in this single method.
 
         :param sql: The SQL string (already stripped).
-        :return: The SQL string (unchanged unless rewritten).
+        :return: The SQL string (unchanged).
         :raises ValidationError: If the SQL contains a blocked pattern.
         """
         # --- BLOCKED (save server round-trip) ---
@@ -944,9 +910,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
 
+        # 7. Block SELECT * -- intentional design decision.
+        # Wide entities (e.g. account has 307 columns) make wildcard selects
+        # extremely expensive on shared database infrastructure.
+        # COUNT(*) is NOT matched: _SQL_SELECT_STAR_RE requires * to be the
+        # first token after SELECT/DISTINCT/TOP N, so COUNT appears before *.
+        if self._SQL_SELECT_STAR_RE.search(sql):
+            raise ValidationError(
+                "SELECT * is not supported. Specify column names explicitly "
+                "(e.g. SELECT name, revenue FROM account). "
+                "Use client.query.sql_columns('account') to discover available columns.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
         # --- WARNED (query still executes) ---
 
-        # 7. Warn on leading-wildcard LIKE
+        # 8. Warn on leading-wildcard LIKE
         if self._SQL_LEADING_WILDCARD_RE.search(sql):
             warnings.warn(
                 "Query contains a leading-wildcard LIKE pattern "
@@ -957,7 +936,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 stacklevel=4,
             )
 
-        # 8. Warn on implicit cross joins (server allows but risky)
+        # 9. Warn on implicit cross joins (server allows but risky)
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
             warnings.warn(
                 "Query uses an implicit cross join (FROM table1, table2). "
@@ -987,8 +966,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         .. note::
            Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client
            extracts the logical table name, resolves the entity set (metadata
-           cached), then issues the request.  ``SELECT *`` is automatically
-           expanded into explicit column names because the server blocks it.
+           cached), then issues the request.  ``SELECT *`` raises
+           :class:`~PowerPlatform.Dataverse.core.errors.ValidationError` --
+           it is deliberately rejected, not silently rewritten.
         """
         if not isinstance(sql, str):
             raise ValidationError("sql must be a string", subcode=VALIDATION_SQL_NOT_STRING)
@@ -1008,13 +988,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 subcode=VALIDATION_SQL_WRITE_BLOCKED,
             )
 
-        # Extract logical table name via helper (robust to identifiers ending with 'from')
-        logical = self._extract_logical_table(sql)
-
-        # Auto-expand SELECT * into explicit column names
-        sql = self._expand_select_star(sql, logical)
-
-        # Apply safety guardrails (block unsupported syntax, warn on risky patterns)
+        # Apply safety guardrails (block unsupported syntax, warn on risky patterns).
+        # SELECT * raises ValidationError here before any table resolution.
         sql = self._sql_guardrails(sql)
 
         r = self._execute_raw(self._build_sql(sql))

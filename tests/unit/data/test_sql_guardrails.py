@@ -293,48 +293,46 @@ class TestImplicitCrossJoinWarning:
 
 
 # ===================================================================
-# 5. SELECT * with JOIN warning (from _expand_select_star)
+# 5. SELECT * is blocked (intentional design decision)
 # ===================================================================
 
 
-class TestSelectStarJoinWarning:
-    """SELECT * with JOIN should warn that only first table columns are used."""
+class TestSelectStarBlocked:
+    """SELECT * must raise ValidationError -- deliberately rejected, not a technical limitation."""
 
-    def test_select_star_with_join_warns(self):
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * FROM account",
+            "SELECT DISTINCT * FROM account",
+            "SELECT TOP 10 * FROM account",
+            "SELECT DISTINCT TOP 5 * FROM account",
+            "SELECT TOP 50 PERCENT * FROM account",
+            "select * from account",
+        ],
+    )
+    def test_select_star_raises(self, sql):
         c = _client()
-        c._list_columns = MagicMock(return_value=[{"LogicalName": "name"}, {"LogicalName": "accountid"}])
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            c._expand_select_star(
-                "SELECT * FROM account a JOIN contact c ON a.accountid = c.parentcustomerid",
-                "account",
-            )
-            join_warnings = [x for x in w if "JOIN" in str(x.message)]
-            assert len(join_warnings) == 1
-            assert "first table only" in str(join_warnings[0].message)
+        with pytest.raises(ValidationError, match="SELECT \\*"):
+            c._sql_guardrails(sql)
 
-    def test_select_star_no_join_no_warning(self):
+    def test_count_star_not_blocked(self):
+        """COUNT(*) must NOT be blocked -- it is an aggregate, not a wildcard select."""
         c = _client()
-        c._list_columns = MagicMock(return_value=[{"LogicalName": "name"}])
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            c._expand_select_star("SELECT * FROM account", "account")
-            join_warnings = [x for x in w if "JOIN" in str(x.message)]
-            assert len(join_warnings) == 0
+        result = c._sql_guardrails("SELECT COUNT(*) FROM account")
+        assert "COUNT(*)" in result
 
-    def test_no_star_with_join_no_warning(self):
+    def test_explicit_columns_not_blocked(self):
+        """Named columns must pass through without raising."""
         c = _client()
-        c._list_columns = MagicMock()
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            c._expand_select_star(
-                "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid",
-                "account",
-            )
-            # _list_columns not called (no star), so no JOIN warning
-            c._list_columns.assert_not_called()
-            join_warnings = [x for x in w if "JOIN" in str(x.message)]
-            assert len(join_warnings) == 0
+        result = c._sql_guardrails("SELECT name, revenue FROM account")
+        assert "name" in result
+
+    def test_select_star_with_join_raises(self):
+        """SELECT * with a JOIN also raises ValidationError (not just a warning)."""
+        c = _client()
+        with pytest.raises(ValidationError, match="SELECT \\*"):
+            c._sql_guardrails("SELECT * FROM account a JOIN contact c ON a.accountid = c.parentcustomerid")
 
 
 # ===================================================================

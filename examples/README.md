@@ -45,7 +45,6 @@ Deep-dive into production-ready patterns and specialized functionality:
   - Full SQL capabilities: SELECT, WHERE, TOP, ORDER BY, LIKE, IN, BETWEEN
   - JOINs (INNER, LEFT, multi-table), GROUP BY, DISTINCT, aggregates
   - OFFSET FETCH for server-side pagination
-  - SELECT * auto-expansion (SDK rewrites for server compatibility)
   - Polymorphic lookups via SQL (ownerid, customerid, createdby)
   - SQL read -> DataFrame transform -> SDK write-back (full round-trip)
   - SQL-driven bulk create, update, and delete patterns

@@ -400,9 +400,6 @@ results = client.query.sql(
     "GROUP BY a.name"
 )
 
-# SELECT * is auto-expanded by the SDK
-results = client.query.sql("SELECT * FROM account")
-
 # SQL results directly as a DataFrame
 df = client.dataframe.sql(
     "SELECT name, revenue FROM account ORDER BY revenue DESC"

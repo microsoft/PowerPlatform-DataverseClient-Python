@@ -107,12 +107,13 @@ class QueryOperations:
             OFFSET n ROWS FETCH NEXT m ROWS ONLY
             COUNT(*), SUM(), AVG(), MIN(), MAX()
 
-        ``SELECT *`` is automatically expanded into explicit column names
-        by the SDK (the server rejects ``*`` directly).
+        ``SELECT *`` is not supported -- specify column names explicitly.
+        Use :meth:`sql_columns` to discover available column names for a table.
 
-        Not supported: subqueries, CTE, HAVING, UNION, RIGHT/FULL/CROSS
-        JOIN, CASE, COALESCE, window functions, string/date/math functions,
-        INSERT/UPDATE/DELETE. For writes, use ``client.records`` methods.
+        Not supported: SELECT *, subqueries, CTE, HAVING, UNION,
+        RIGHT/FULL/CROSS JOIN, CASE, COALESCE, window functions,
+        string/date/math functions, INSERT/UPDATE/DELETE. For writes, use
+        ``client.records`` methods.
 
         :param sql: Supported SQL SELECT statement.
         :type sql: :class:`str`
@@ -140,11 +141,6 @@ class QueryOperations:
                     "GROUP BY a.name"
                 )
 
-            SELECT * (auto-expanded by SDK)::
-
-                rows = client.query.sql(
-                    "SELECT * FROM account"
-                )
         """
         with self._client._scoped_odata() as od:
             rows = od._query_sql(sql)

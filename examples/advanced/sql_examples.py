@@ -9,7 +9,7 @@ Python SDK's ``client.query.sql()`` and ``client.dataframe.sql()`` methods,
 based on extensive testing of the Dataverse SQL endpoint (353 test queries).
 
 Capabilities PROVEN to work:
-- SELECT with specific columns, SELECT * (auto-expanded by SDK)
+- SELECT with specific columns
 - INNER JOIN, LEFT JOIN (up to 6+ tables)
 - COUNT(*), SUM(), AVG(), MIN(), MAX() aggregates
 - GROUP BY, DISTINCT, DISTINCT TOP
@@ -304,19 +304,23 @@ def _run_examples(client):
             print(f"  {r.get('new_code', ''):<12s}  Budget={r.get('new_budget')}  Active={r.get('new_active')}")
 
         # ==============================================================
-        # 5. SELECT * (auto-expanded by SDK)
+        # 5. SELECT * -- Rejected by Design
         # ==============================================================
-        heading(5, "SELECT * (Auto-Expanded by SDK)")
+        heading(5, "SELECT * -- Rejected by Design")
         print(
-            "The server blocks SELECT * directly. The SDK auto-resolves\n"
-            "all column names via list_columns() and rewrites the query."
+            "SELECT * is deliberately rejected -- not a server workaround,\n"
+            "but an intentional design decision. Wide entities (e.g. account\n"
+            "has 307 columns) make SELECT * extremely expensive on shared\n"
+            "infrastructure. Specify columns explicitly instead.\n"
+            "Use client.query.sql_columns('account') to discover column names."
         )
-        sql = f"SELECT * FROM {parent_table}"
-        log_call(f'client.query.sql("{sql}")')
-        results = backoff(lambda: client.query.sql(sql))
-        if results:
-            keys = [k for k in results[0].keys() if not k.startswith("@")]
-            print(f"[OK] {len(results)} rows, {len(keys)} columns")
+        from PowerPlatform.Dataverse.core.errors import ValidationError as _VE
+
+        try:
+            client.query.sql(f"SELECT * FROM {parent_table}")
+            print("[UNEXPECTED] SELECT * did not raise -- check SDK version")
+        except _VE as exc:
+            print(f"[OK] ValidationError raised as expected: {exc}")
 
         # ==============================================================
         # 6. WHERE clause
@@ -1102,19 +1106,15 @@ When to use OData (records.get):
          can have 5000+ rows. Unfiltered queries return max rows.
    FIX:  Always add WHERE filters and TOP when querying system tables.
 
-4. SELECT * ON WIDE TABLES
-   BAD:  SELECT * FROM account  (307 columns!)
-   WHY:  The SDK auto-expands * into all 260+ non-virtual columns.
-         Every column is transferred over the network.
-   NOTE: With JOINs, SELECT * only expands the FIRST (FROM) table's
-         columns -- joined table columns will NOT be included.
-         Example: SELECT * FROM account a JOIN contact c ON ...
-         expands to account columns only; contact columns are missing.
+4. SELECT * (BLOCKED -- ValidationError)
+   BAD:  SELECT * FROM account
+   WHY:  SELECT * is intentionally rejected -- not a technical limitation.
+         Wide entities (account has 307 columns) make wildcard selects
+         extremely expensive on shared database infrastructure.
    FIX:  List only the columns you need: SELECT name, revenue FROM account
-         Or use the SDK helper:
-           cols = client.query.sql_select("account")
-           sql = f"SELECT TOP 10 {{cols}} FROM account"
-         For JOINs, always specify columns from each table explicitly:
+         Or discover columns first:
+           cols = client.query.sql_columns("account")
+         For JOINs, always qualify columns from each table:
            SELECT a.name, c.fullname FROM account a JOIN contact c ON ...
 
 5. DEEP JOINS WITHOUT TOP
@@ -1125,10 +1125,10 @@ When to use OData (records.get):
    FIX:  Always include TOP N for multi-table JOINs.
 
 SDK guardrails:
-  - Patterns #1 (writes) and unsupported syntax (CROSS/RIGHT/FULL JOIN,
-    UNION, HAVING, CTE, subqueries) -> ValidationError (blocked).
-  - Pattern #2 (cartesian FROM a, b) and #4 (SELECT * + JOIN)
-    -> UserWarning (advisory).
+  - Patterns #1 (writes), unsupported syntax (CROSS/RIGHT/FULL JOIN,
+    UNION, HAVING, CTE, subqueries), and #4 (SELECT *)
+    -> ValidationError (blocked).
+  - Pattern #2 (cartesian FROM a, b) -> UserWarning (advisory).
   - Server enforces 5000-row cap on all queries (#3, #5).
   - Use sql_columns() or sql_select() to discover valid column names.
   - Use sql_joins() or sql_join() to discover valid JOIN clauses.
@@ -1143,7 +1143,7 @@ SDK guardrails:
 | Feature                       | SQL      | Notes / SDK Fallback                   |
 +-------------------------------+----------+----------------------------------------+
 | SELECT col1, col2             | YES      | Use LogicalName (lowercase)            |
-| SELECT *                      | YES (*)  | SDK auto-expands via list_columns()    |
+| SELECT *                      | NO       | Specify columns explicitly             |
 | WHERE =, !=, >, <, LIKE, IN   | YES      |                                        |
 | AND, OR, parentheses          | YES      | Full boolean logic                     |
 | NOT IN, NOT LIKE              | YES      |                                        |

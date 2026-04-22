@@ -110,14 +110,22 @@ class TestDataFrameSql(unittest.TestCase):
         df = self.client.dataframe.sql("SELECT DISTINCT name FROM account")
         self.assertEqual(len(df), 2)
 
-    def test_sql_select_star(self):
-        """sql() should handle SELECT * (auto-expanded) as DataFrame."""
-        raw = [{"accountid": "1", "name": "Contoso", "revenue": 1000}]
-        self.client._odata._query_sql.return_value = raw
-        df = self.client.dataframe.sql("SELECT * FROM account")
-        self.assertEqual(len(df), 1)
-        self.assertIn("accountid", df.columns)
-        self.assertIn("name", df.columns)
+    def test_sql_select_star_raises_validation_error(self):
+        """dataframe.sql() must propagate ValidationError when SELECT * is used.
+
+        SELECT * is intentionally rejected -- not a technical limitation but
+        a deliberate design decision to prevent expensive wildcard queries on
+        wide entities.  The guardrail fires inside _query_sql and the
+        ValidationError bubbles up through dataframe.sql() unchanged.
+        """
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        self.client._odata._query_sql.side_effect = ValidationError(
+            "SELECT * is not supported.",
+            subcode="validation_sql_unsupported_syntax",
+        )
+        with self.assertRaises(ValidationError):
+            self.client.dataframe.sql("SELECT * FROM account")
 
     def test_sql_polymorphic_owner_join(self):
         """sql() should handle polymorphic lookup JOIN to DataFrame."""
