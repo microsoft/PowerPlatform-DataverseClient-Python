@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core.errors import MetadataError
 from PowerPlatform.Dataverse.models.record import Record
 from PowerPlatform.Dataverse.operations.query import QueryOperations
 
@@ -836,6 +837,28 @@ class TestOdataExpands(unittest.TestCase):
         self.assertEqual(len(expands), 2)
         nav_props = {e["nav_property"] for e in expands}
         self.assertEqual(nav_props, {"customerid_account", "customerid_contact"})
+
+    def test_metadata_error_on_entity_set_resolution_is_swallowed(self):
+        """MetadataError from entity-set resolution must not propagate -- target_entity_set stays empty."""
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                    "SchemaName": "contact_customer_accounts",
+                },
+            ]
+        )
+        self.client._odata._entity_set_from_schema_name.side_effect = MetadataError(
+            "Unable to resolve entity set for 'account'.",
+            subcode="metadata_entityset_not_found",
+        )
+        expands = self.client.query.odata_expands("contact")
+        self.assertEqual(len(expands), 1)
+        self.assertEqual(expands[0]["target_entity_set"], "")
 
 
 class TestOdataExpand(unittest.TestCase):

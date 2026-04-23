@@ -218,19 +218,28 @@ class _RelationshipOperationsMixin:
             )
 
         metadata_id = ent["MetadataId"]
-        params: Dict[str, str] = {}
+        # OneToMany/ManyToOne share the same property surface (ReferencedEntity,
+        # ReferencingEntity, etc.).  ManyToManyRelationshipMetadata has a
+        # different schema -- it only exposes SchemaName plus Entity1/Entity2
+        # fields, not ReferencedEntity or ReferencingEntity.  Sending a $select
+        # that includes those properties to the ManyToMany endpoint causes a
+        # 400: "Could not find a property named 'ReferencedEntity' on type
+        # 'ManyToManyRelationshipMetadata'".  Use separate param dicts.
+        one_to_many_params: Dict[str, str] = {}
+        many_to_many_params: Dict[str, str] = {}
         if filter:
-            params["$filter"] = filter
+            one_to_many_params["$filter"] = filter
+            many_to_many_params["$filter"] = filter
         if select:
-            params["$select"] = ",".join(select)
+            one_to_many_params["$select"] = ",".join(select)
 
         one_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/OneToManyRelationships"
         many_to_one_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToOneRelationships"
         many_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToManyRelationships"
 
-        r1 = self._request("get", one_to_many_url, headers=self._headers(), params=params)
-        r2 = self._request("get", many_to_one_url, headers=self._headers(), params=params)
-        r3 = self._request("get", many_to_many_url, headers=self._headers(), params=params)
+        r1 = self._request("get", one_to_many_url, headers=self._headers(), params=one_to_many_params)
+        r2 = self._request("get", many_to_one_url, headers=self._headers(), params=one_to_many_params)
+        r3 = self._request("get", many_to_many_url, headers=self._headers(), params=many_to_many_params)
 
         return r1.json().get("value", []) + r2.json().get("value", []) + r3.json().get("value", [])
 

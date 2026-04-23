@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from ..core.errors import MetadataError
 from ..models.record import Record
-
 from ..models.query_builder import QueryBuilder
 
 if TYPE_CHECKING:
@@ -484,7 +484,7 @@ class QueryOperations:
             try:
                 with self._client._scoped_odata() as od:
                     target_set = od._entity_set_from_schema_name(target)
-            except (KeyError, AttributeError, ValueError):
+            except (KeyError, AttributeError, ValueError, MetadataError):
                 pass  # Entity set resolution failed; target_set stays empty
 
             result.append(

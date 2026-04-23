@@ -44,7 +44,6 @@ ALL_HTTP_SUBCODES = {
 VALIDATION_SQL_NOT_STRING = "validation_sql_not_string"
 VALIDATION_SQL_EMPTY = "validation_sql_empty"
 VALIDATION_SQL_WRITE_BLOCKED = "validation_sql_write_blocked"
-VALIDATION_SQL_CROSS_JOIN_BLOCKED = "validation_sql_cross_join_blocked"
 VALIDATION_SQL_UNSUPPORTED_SYNTAX = "validation_sql_unsupported_syntax"
 VALIDATION_ENUM_NO_MEMBERS = "validation_enum_no_members"
 VALIDATION_ENUM_NON_INT_VALUE = "validation_enum_non_int_value"

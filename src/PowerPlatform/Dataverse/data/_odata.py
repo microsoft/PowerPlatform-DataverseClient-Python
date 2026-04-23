@@ -976,20 +976,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
 
-        # Block write statements FIRST (before table extraction, since
-        # UPDATE/INSERT/DELETE don't have FROM clauses).
-        # Strip SQL comments to catch e.g. /**/DELETE or --\\nDELETE.
-        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
-        if self._SQL_WRITE_RE.search(sql_no_comments):
-            raise ValidationError(
-                "SQL endpoint is read-only. Use client.records or "
-                "client.dataframe for write operations "
-                "(INSERT/UPDATE/DELETE are not supported).",
-                subcode=VALIDATION_SQL_WRITE_BLOCKED,
-            )
-
-        # Apply safety guardrails (block unsupported syntax, warn on risky patterns).
-        # SELECT * raises ValidationError here before any table resolution.
+        # Apply safety guardrails (block unsupported syntax including writes,
+        # warn on risky patterns). SELECT * raises ValidationError here before
+        # any table resolution.
         sql = self._sql_guardrails(sql)
 
         r = self._execute_raw(self._build_sql(sql))

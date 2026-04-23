@@ -612,7 +612,7 @@ def _run_examples(client):
             lookup_names = sorted(
                 c.get("LogicalName", "")
                 for c in acct_cols
-                if c.get("LogicalName", "").startswith("_") and c.get("LogicalName", "").endswith("_value")
+                if c.get("LogicalName", "")
             )
             print(f"[OK] Lookup columns on account ({len(lookup_names)} found):")
             for ln in lookup_names[:10]:
@@ -626,12 +626,7 @@ def _run_examples(client):
         print("\n-- 23b. Discover which entities a polymorphic lookup targets --")
         log_call("client.tables.list_table_relationships('account', ...)")
         try:
-            acct_rels = backoff(
-                lambda: client.tables.list_table_relationships(
-                    "account",
-                    select=["SchemaName", "ReferencedEntity", "ReferencingEntity", "ReferencingAttribute"],
-                )
-            )
+            acct_rels = backoff(lambda: client.tables.list_table_relationships("account"))
             by_attr = defaultdict(list)
             for rel in acct_rels:
                 attr = rel.get("ReferencingAttribute", "")
@@ -650,23 +645,23 @@ def _run_examples(client):
         print("ownerid is polymorphic (systemuser or team). Use separate\n" "JOINs and combine in a DataFrame.")
         try:
             # Records owned by users
-            log_call("SQL: account JOIN systemuser ON _ownerid_value")
+            log_call("SQL: account JOIN systemuser ON ownerid")
             df_user_owned = backoff(
                 lambda: client.dataframe.sql(
                     "SELECT TOP 5 a.name, su.fullname as owner_name "
                     "FROM account a "
-                    "INNER JOIN systemuser su ON a._ownerid_value = su.systemuserid"
+                    "INNER JOIN systemuser su ON a.ownerid = su.systemuserid"
                 )
             )
             df_user_owned["owner_type"] = "User"
 
             # Records owned by teams
-            log_call("SQL: account JOIN team ON _ownerid_value")
+            log_call("SQL: account JOIN team ON ownerid")
             df_team_owned = backoff(
                 lambda: client.dataframe.sql(
                     "SELECT TOP 5 a.name, t.name as owner_name "
                     "FROM account a "
-                    "INNER JOIN team t ON a._ownerid_value = t.teamid"
+                    "INNER JOIN team t ON a.ownerid = t.teamid"
                 )
             )
             df_team_owned["owner_type"] = "Team"
@@ -690,8 +685,8 @@ def _run_examples(client):
                     "creator.fullname as created_by, "
                     "modifier.fullname as modified_by "
                     "FROM account a "
-                    "JOIN systemuser creator ON a._createdby_value = creator.systemuserid "
-                    "JOIN systemuser modifier ON a._modifiedby_value = modifier.systemuserid"
+                    "JOIN systemuser creator ON a.createdby = creator.systemuserid "
+                    "JOIN systemuser modifier ON a.modifiedby = modifier.systemuserid"
                 )
             )
             print(f"[OK] Audit trail: {len(results)} rows")

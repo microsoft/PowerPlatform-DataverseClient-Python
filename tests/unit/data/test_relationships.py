@@ -478,20 +478,30 @@ class TestListTableRelationships(unittest.TestCase):
             params = call[1].get("params", {})
             self.assertEqual(params["$filter"], "IsManaged eq false")
 
-    def test_select_param_is_forwarded(self):
-        """Test that $select is sent to all three sub-requests."""
+    def test_select_param_forwarded_to_one_to_many_only(self):
+        """$select is sent to OneToMany and ManyToOne but NOT ManyToMany.
+
+        ManyToManyRelationshipMetadata has a different property surface --
+        it does not expose ReferencedEntity or ReferencingEntity.  Sending a
+        $select with those names to the ManyToMany endpoint causes a 400 from
+        the server.
+        """
         self.client._mock_request.side_effect = [
             self._make_response([]),
             self._make_response([]),
             self._make_response([]),
         ]
 
-        self.client._list_table_relationships("account", select=["SchemaName", "MetadataId"])
+        self.client._list_table_relationships("account", select=["SchemaName", "ReferencedEntity"])
 
         calls = self.client._mock_request.call_args_list
-        for call in calls:
-            params = call[1].get("params", {})
-            self.assertEqual(params["$select"], "SchemaName,MetadataId")
+        self.assertEqual(len(calls), 3)
+        one_to_many_params = calls[0][1].get("params", {})
+        many_to_one_params = calls[1][1].get("params", {})
+        many_to_many_params = calls[2][1].get("params", {})
+        self.assertEqual(one_to_many_params["$select"], "SchemaName,ReferencedEntity")
+        self.assertEqual(many_to_one_params["$select"], "SchemaName,ReferencedEntity")
+        self.assertNotIn("$select", many_to_many_params)
 
     def test_raises_metadata_error_when_table_not_found(self):
         """Test that MetadataError is raised when entity is not found."""
