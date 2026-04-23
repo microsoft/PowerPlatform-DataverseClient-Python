@@ -53,11 +53,33 @@ class TestTableOperations(unittest.TestCase):
             columns,
             "MySolution",
             "new_ProductName",
+            None,
         )
         self.assertIsInstance(result, TableInfo)
         self.assertEqual(result.schema_name, "new_Product")
         self.assertEqual(result["table_schema_name"], "new_Product")
         self.assertEqual(result["entity_set_name"], "new_products")
+
+    def test_create_with_display_name(self):
+        """create() should forward display_name to _create_table."""
+        raw = {
+            "table_schema_name": "new_Product",
+            "entity_set_name": "new_products",
+            "table_logical_name": "new_product",
+            "metadata_id": "meta-guid-1",
+            "columns_created": [],
+        }
+        self.client._odata._create_table.return_value = raw
+
+        self.client.tables.create("new_Product", {}, display_name="Product")
+
+        self.client._odata._create_table.assert_called_once_with(
+            "new_Product",
+            {},
+            None,
+            None,
+            "Product",
+        )
 
     # ------------------------------------------------------------------ delete
 

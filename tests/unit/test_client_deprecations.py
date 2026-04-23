@@ -203,6 +203,7 @@ class TestClientDeprecations(unittest.TestCase):
             {"new_Price": "decimal"},
             "MySolution",
             "new_ProductName",
+            None,
         )
         self.assertEqual(result["table_schema_name"], "new_Product")
         self.assertEqual(result["columns_created"], ["new_Price"])

@@ -86,6 +86,7 @@ class _TableCreate:
     columns: Dict[str, Any]
     solution: Optional[str] = None
     primary_column: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 @dataclass
@@ -409,7 +410,7 @@ class _BatchClient:
         return ent["MetadataId"]
 
     def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:
-        return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column)]
+        return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column, op.display_name)]
 
     def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:
         metadata_id = self._require_entity_metadata(op.table)

@@ -358,6 +358,7 @@ class BatchTableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> None:
         """
         Add a table-create operation to the batch.
@@ -375,6 +376,9 @@ class BatchTableOperations:
         :type solution: str or None
         :param primary_column: Optional primary column schema name.
         :type primary_column: str or None
+        :param display_name: Human-readable display name for the table.
+            When omitted, defaults to the table schema name.
+        :type display_name: str or None
         """
         self._batch._items.append(
             _TableCreate(
@@ -382,6 +386,7 @@ class BatchTableOperations:
                 columns=columns,
                 solution=solution,
                 primary_column=primary_column,
+                display_name=display_name,
             )
         )
 
