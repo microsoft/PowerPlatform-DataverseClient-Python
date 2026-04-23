@@ -405,7 +405,7 @@ def test_extract_pagingcookie_malformed_url_returns_none():
 
 def test_extract_pagingcookie_exception_returns_none():
     """Returns None when an unexpected exception is raised during URL parsing (except branch)."""
-    with patch("PowerPlatform.Dataverse.data._odata.urlparse", side_effect=RuntimeError("boom")):
+    with patch("PowerPlatform.Dataverse.data._odata_base.urlparse", side_effect=RuntimeError("boom")):
         assert _extract_pagingcookie("https://org.example/?$skiptoken=x") is None
 
 
