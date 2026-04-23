@@ -697,3 +697,143 @@ class TableOperations:
         """
         with self._client._scoped_odata() as od:
             od._delete_alternate_key(table, key_id)
+
+    # -------------------------------------------------------- list_columns
+
+    def list_columns(
+        self,
+        table: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all attribute (column) definitions for a table.
+
+        :param table: Schema name of the table (e.g. ``"account"`` or
+            ``"new_Product"``).
+        :type table: :class:`str`
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: list[str] or None
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"AttributeType eq 'String'"`` returns only string columns.
+        :type filter: :class:`str` or None
+
+        :return: List of raw attribute metadata dictionaries.
+        :rtype: list[dict[str, typing.Any]]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table is not found.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example::
+
+            # List all columns on the account table
+            columns = client.tables.list_columns("account")
+            for col in columns:
+                print(f"{col['LogicalName']} ({col.get('AttributeType')})")
+
+            # List only specific properties
+            columns = client.tables.list_columns(
+                "account",
+                select=["LogicalName", "SchemaName", "AttributeType"],
+            )
+
+            # Filter to only string attributes
+            columns = client.tables.list_columns(
+                "account",
+                filter="AttributeType eq 'String'",
+            )
+        """
+        with self._client._scoped_odata() as od:
+            return od._list_columns(table, select=select, filter=filter)
+
+    # ------------------------------------------------- list_relationships
+
+    def list_relationships(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all relationship definitions in the environment.
+
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"RelationshipType eq Microsoft.Dynamics.CRM.RelationshipType'OneToManyRelationship'"``
+            returns only one-to-many relationships.
+        :type filter: :class:`str` or None
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: list[str] or None
+
+        :return: List of raw relationship metadata dictionaries.
+        :rtype: list[dict[str, typing.Any]]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example::
+
+            # List all relationships
+            rels = client.tables.list_relationships()
+            for rel in rels:
+                print(f"{rel['SchemaName']} ({rel.get('@odata.type')})")
+
+            # Filter by type
+            one_to_many = client.tables.list_relationships(
+                filter="RelationshipType eq Microsoft.Dynamics.CRM.RelationshipType'OneToManyRelationship'"
+            )
+
+            # Select specific properties
+            rels = client.tables.list_relationships(
+                select=["SchemaName", "ReferencedEntity", "ReferencingEntity"]
+            )
+        """
+        with self._client._scoped_odata() as od:
+            return od._list_relationships(filter=filter, select=select)
+
+    # --------------------------------------------- list_table_relationships
+
+    def list_table_relationships(
+        self,
+        table: str,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all relationships for a specific table.
+
+        Combines one-to-many, many-to-one, and many-to-many relationships
+        for the given table by querying
+        ``EntityDefinitions({id})/OneToManyRelationships``,
+        ``EntityDefinitions({id})/ManyToOneRelationships``, and
+        ``EntityDefinitions({id})/ManyToManyRelationships``.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param filter: Optional OData ``$filter`` expression applied to each
+            sub-request.
+        :type filter: :class:`str` or None
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: list[str] or None
+
+        :return: Combined list of one-to-many, many-to-one, and many-to-many
+            relationship metadata dictionaries.
+        :rtype: list[dict[str, typing.Any]]
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table is not found.
+        :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
+            If the Web API request fails.
+
+        Example::
+
+            # List all relationships for the account table
+            rels = client.tables.list_table_relationships("account")
+            for rel in rels:
+                print(f"{rel['SchemaName']} -> {rel.get('@odata.type')}")
+        """
+        with self._client._scoped_odata() as od:
+            return od._list_table_relationships(table, filter=filter, select=select)

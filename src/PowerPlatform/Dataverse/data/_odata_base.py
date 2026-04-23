@@ -13,6 +13,7 @@ import json
 import re
 import unicodedata
 import uuid
+import warnings
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from ..core.errors import ValidationError
 from ..core._error_codes import (
     VALIDATION_UNSUPPORTED_COLUMN_TYPE,
     VALIDATION_UNSUPPORTED_CACHE_KIND,
+    VALIDATION_SQL_WRITE_BLOCKED,
+    VALIDATION_SQL_UNSUPPORTED_SYNTAX,
 )
 from ..models.relationship import (
     LookupAttributeMetadata,
@@ -654,7 +657,17 @@ class _ODataBase:
         Returns ``(LookupAttributeMetadata, OneToManyRelationshipMetadata)``.
         Used by both the batch resolver and ``TableOperations.create_lookup_field``
         to avoid duplicating the metadata assembly logic.
+
+        Note: ``referencing_table`` and ``referenced_table`` are lowercased
+        automatically because Dataverse stores entity logical names in
+        lowercase.  ``lookup_field_name`` is kept as-is (it is a SchemaName).
         """
+        # Dataverse logical names are always lowercase.  Callers may pass
+        # SchemaName-cased values (e.g. "new_SQLTeam"); normalise here so
+        # the relationship metadata uses valid logical names.
+        referencing_lower = referencing_table.lower()
+        referenced_lower = referenced_table.lower()
+
         lookup = LookupAttributeMetadata(
             schema_name=lookup_field_name,
             display_name=Label(
@@ -671,12 +684,12 @@ class _ODataBase:
             lookup.description = Label(
                 localized_labels=[LocalizedLabel(label=description, language_code=language_code)]
             )
-        rel_name = f"{referenced_table}_{referencing_table}_{lookup_field_name}"
+        rel_name = f"{referenced_lower}_{referencing_lower}_{lookup_field_name}"
         relationship = OneToManyRelationshipMetadata(
             schema_name=rel_name,
-            referenced_entity=referenced_table,
-            referencing_entity=referencing_table,
-            referenced_attribute=f"{referenced_table}id",
+            referenced_entity=referenced_lower,
+            referencing_entity=referencing_lower,
+            referenced_attribute=f"{referenced_lower}id",
             cascade_configuration=CascadeConfiguration(delete=cascade_delete),
         )
         return lookup, relationship
@@ -713,6 +726,140 @@ class _ODataBase:
             method="GET",
             url=f"{self.api}/RelationshipDefinitions?$filter=SchemaName eq '{escaped}'",
         )
+
+    # ------------------------------------------------------------------
+    # SQL guardrails
+    # ------------------------------------------------------------------
+
+    _SQL_WRITE_RE = re.compile(
+        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        re.IGNORECASE,
+    )
+    _SQL_COMMENT_RE = re.compile(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/|--[^\n]*", re.DOTALL)
+    _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
+    _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
+        r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
+        re.IGNORECASE,
+    )
+    _SQL_UNSUPPORTED_JOIN_RE = re.compile(
+        r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
+        re.IGNORECASE,
+    )
+    _SQL_UNION_RE = re.compile(r"\bUNION\b", re.IGNORECASE)
+    _SQL_HAVING_RE = re.compile(r"\bHAVING\b", re.IGNORECASE)
+    _SQL_CTE_RE = re.compile(r"^\s*WITH\b", re.IGNORECASE)
+    _SQL_SUBQUERY_RE = re.compile(
+        r"\bIN\s*\(\s*SELECT\b|\bEXISTS\s*\(\s*SELECT\b|\(\s*SELECT\b.*\bFROM\b",
+        re.IGNORECASE,
+    )
+    # SELECT * is intentionally rejected -- not a technical limitation but a
+    # deliberate design decision.  Wide entities (e.g. account has 307 columns)
+    # make SELECT * extremely expensive on shared database infrastructure.
+    # COUNT(*) is NOT matched because COUNT appears before the *.
+    _SQL_SELECT_STAR_RE = re.compile(
+        r"\bSELECT\b\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?\*\s",
+        re.IGNORECASE,
+    )
+
+    def _sql_guardrails(self, sql: str) -> str:
+        """Apply safety guardrails to a SQL query before sending to the server.
+
+        Checks split into two categories:
+
+        **Blocked** (``ValidationError`` -- saves a server round-trip):
+
+        1. Write statements (INSERT/UPDATE/DELETE/DROP/etc.)
+        2. CROSS JOIN, RIGHT JOIN, FULL OUTER JOIN (server rejects these)
+        3. UNION / UNION ALL (server rejects)
+        4. HAVING clause (server rejects)
+        5. CTE / WITH clause (server rejects)
+        6. Subqueries -- IN (SELECT ...), EXISTS (SELECT ...) (server rejects)
+        7. SELECT * -- intentional design decision, not a technical limitation.
+           Wide entities make wildcard selects extremely expensive on shared
+           database infrastructure.  ``COUNT(*)`` is not affected.
+
+        **Warned** (``UserWarning`` -- query still executes):
+
+        8. Leading-wildcard LIKE (full table scan)
+        9. Implicit cross join FROM a, b (cartesian product)
+
+        All blocked patterns are also blocked by the server, but catching
+        them here saves the network round-trip and provides clearer error
+        messages.
+
+        :param sql: The SQL string (already stripped).
+        :return: The SQL string (unchanged).
+        :raises ValidationError: If the SQL contains a blocked pattern.
+        """
+        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
+        if self._SQL_WRITE_RE.search(sql_no_comments):
+            raise ValidationError(
+                "SQL endpoint is read-only. Use client.records or "
+                "client.dataframe for write operations "
+                "(INSERT/UPDATE/DELETE are not supported).",
+                subcode=VALIDATION_SQL_WRITE_BLOCKED,
+            )
+        m = self._SQL_UNSUPPORTED_JOIN_RE.search(sql)
+        if m:
+            raise ValidationError(
+                f"Unsupported JOIN type: '{m.group(0).strip()}'. "
+                "Only INNER JOIN and LEFT JOIN are supported by the "
+                "Dataverse SQL endpoint.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_UNION_RE.search(sql):
+            raise ValidationError(
+                "UNION is not supported by the Dataverse SQL endpoint. "
+                "Execute separate queries and combine results in Python "
+                "(e.g. pd.concat([df1, df2])).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_HAVING_RE.search(sql):
+            raise ValidationError(
+                "HAVING is not supported by the Dataverse SQL endpoint. "
+                "Use WHERE to filter before GROUP BY instead.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_CTE_RE.search(sql):
+            raise ValidationError(
+                "CTE (WITH ... AS) is not supported by the Dataverse SQL "
+                "endpoint. Use separate queries and combine in Python.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_SUBQUERY_RE.search(sql):
+            raise ValidationError(
+                "Subqueries are not supported by the Dataverse SQL "
+                "endpoint. Use separate SQL calls and combine results "
+                "in Python (e.g. step 1: get IDs, step 2: WHERE IN).",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_SELECT_STAR_RE.search(sql):
+            raise ValidationError(
+                "SELECT * is not supported. Specify column names explicitly "
+                "(e.g. SELECT name, revenue FROM account). "
+                "Use client.query.sql_columns('account') to discover available columns.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+        if self._SQL_LEADING_WILDCARD_RE.search(sql):
+            warnings.warn(
+                "Query contains a leading-wildcard LIKE pattern "
+                "(e.g. LIKE '%value'). This forces a full table scan "
+                "and may degrade performance on large tables. "
+                "Prefer trailing wildcards (LIKE 'value%') when possible.",
+                UserWarning,
+                stacklevel=4,
+            )
+        if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
+            warnings.warn(
+                "Query uses an implicit cross join (FROM table1, table2). "
+                "This produces a cartesian product that can generate "
+                "millions of intermediate rows and degrade shared database "
+                "performance. Use explicit JOIN...ON syntax instead: "
+                "FROM table1 a JOIN table2 b ON a.column = b.column",
+                UserWarning,
+                stacklevel=4,
+            )
+        return sql
 
     # ------------------------------------------------------------------
     # Cache maintenance

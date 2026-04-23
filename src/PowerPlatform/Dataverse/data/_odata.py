@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+__all__ = []
+
 from typing import Any, Dict, Optional, List, Union, Iterable
 import time
 import json
@@ -416,8 +418,8 @@ class _ODataClient(_ODataBase, _FileUploadMixin, _RelationshipOperationsMixin):
     ) -> Optional[str]:
         """Delete many records by GUID list via the ``BulkDelete`` action.
 
-        :param logical_name: Logical (singular) entity name.
-        :type logical_name: ``str``
+        :param table_schema_name: Schema name of the table.
+        :type table_schema_name: ``str``
         :param ids: GUIDs of records to delete.
         :type ids: ``list[str]``
 
@@ -611,13 +613,23 @@ class _ODataClient(_ODataBase, _FileUploadMixin, _RelationshipOperationsMixin):
         :raises MetadataError: If logical table name resolution fails.
 
         .. note::
-           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client extracts the logical table name, resolves the entity set (metadata cached), then issues the request. Only a constrained SELECT subset is supported by the platform.
+           Endpoint form: ``GET /{entity_set}?sql=<encoded select>``. The client
+           extracts the logical table name, resolves the entity set (metadata
+           cached), then issues the request.  ``SELECT *`` raises
+           :class:`~PowerPlatform.Dataverse.core.errors.ValidationError` --
+           it is deliberately rejected, not silently rewritten.
         """
         if not isinstance(sql, str):
             raise ValidationError("sql must be a string", subcode=VALIDATION_SQL_NOT_STRING)
         if not sql.strip():
             raise ValidationError("sql must be a non-empty string", subcode=VALIDATION_SQL_EMPTY)
         sql = sql.strip()
+
+        # Apply safety guardrails (block unsupported syntax including writes,
+        # warn on risky patterns). SELECT * raises ValidationError here before
+        # any table resolution.
+        sql = self._sql_guardrails(sql)
+
         r = self._execute_raw(self._build_sql(sql))
         try:
             body = r.json()
@@ -850,6 +862,50 @@ class _ODataClient(_ODataBase, _FileUploadMixin, _RelationshipOperationsMixin):
             if isinstance(item, dict):
                 return item
         return None
+
+    def _list_columns(
+        self,
+        table_schema_name: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all attribute (column) definitions for a table.
+
+        Issues ``GET EntityDefinitions({MetadataId})/Attributes`` with optional
+        ``$select`` and ``$filter`` query parameters.
+
+        :param table_schema_name: Schema name of the table
+            (e.g. ``"account"`` or ``"new_Product"``).
+        :type table_schema_name: ``str``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: ``list[str]`` or ``None``
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"AttributeType eq 'String'"`` returns only string columns.
+        :type filter: ``str`` or ``None``
+
+        :return: List of raw attribute metadata dictionaries (may be empty).
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table is not found.
+        :raises HttpError: If the Web API request fails.
+        """
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        metadata_id = ent["MetadataId"]
+        url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes"
+        params: Dict[str, str] = {}
+        if select:
+            params["$select"] = ",".join(select)
+        if filter:
+            params["$filter"] = filter
+        r = self._request("get", url, params=params)
+        return r.json().get("value", [])
 
     def _wait_for_attribute_visibility(
         self,
