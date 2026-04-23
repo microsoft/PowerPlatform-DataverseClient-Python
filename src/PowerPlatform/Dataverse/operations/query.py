@@ -309,6 +309,7 @@ class QueryOperations:
         table_lower = table.lower()
         rels = self._client.tables.list_table_relationships(table)
 
+        used_aliases: set = set()
         result: List[Dict[str, Any]] = []
         for r in rels:
             ref_entity = (r.get("ReferencingEntity") or "").lower()
@@ -321,9 +322,19 @@ class QueryOperations:
             if not all([col, target, target_pk]):
                 continue
 
-            # Generate a short alias for the target table
-            alias = target[0] if target else "j"
-            join_clause = f"JOIN {target} {alias} " f"ON {table_lower}.{col} = {alias}.{target_pk}"
+            # Generate a unique alias — add a numeric suffix on collision so
+            # two lookups to tables starting with the same letter (e.g.
+            # "account" and "annotation") or two lookups to the same table
+            # (e.g. "ownerid" and "createdby" both to "systemuser") produce
+            # distinct aliases and valid SQL.
+            base = target[0] if target else "j"
+            alias = base
+            counter = 2
+            while alias in used_aliases:
+                alias = f"{base}{counter}"
+                counter += 1
+            used_aliases.add(alias)
+            join_clause = f"JOIN {target} {alias} ON {table_lower}.{col} = {alias}.{target_pk}"
 
             result.append(
                 {

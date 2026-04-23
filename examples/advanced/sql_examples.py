@@ -935,6 +935,29 @@ def _run_examples(client):
         for j in joins[:5]:
             print(f"  {j['column']:25s} -> {j['target']}.{j['target_pk']}")
 
+        # sql_joins -- alias uniqueness: multiple lookups to the same target
+        # table (e.g. ownerid + createdby + modifiedby all point to systemuser)
+        # must each get a distinct alias so the combined SQL is valid.
+        # Expected output:
+        #   ownerid    -> systemuser  alias=s
+        #   createdby  -> systemuser  alias=s2
+        #   modifiedby -> systemuser  alias=s3
+        log_call("client.query.sql_joins('contact') -- distinct aliases for same target table")
+        try:
+            contact_joins = client.query.sql_joins("contact")
+            systemuser_joins = [j for j in contact_joins if j["target"] == "systemuser"]
+            print(f"[OK] {len(systemuser_joins)} lookup(s) from contact -> systemuser:")
+            for j in systemuser_joins:
+                alias = j["join_clause"].split()[2]
+                print(f"  {j['column']:30s} -> {j['target']}  alias={alias}")
+            aliases = [j["join_clause"].split()[2] for j in contact_joins]
+            if len(aliases) != len(set(aliases)):
+                print("[WARN] Duplicate aliases detected")
+            else:
+                print(f"[OK] All {len(contact_joins)} aliases unique")
+        except Exception as e:
+            print(f"[INFO] Alias check skipped: {e}")
+
         # sql_join (auto-generate JOIN clause)
         log_call(f"client.query.sql_join('{child_table}', '{parent_table}', ...)")
         try:

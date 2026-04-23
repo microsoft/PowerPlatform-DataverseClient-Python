@@ -644,6 +644,58 @@ class TestSqlJoins(unittest.TestCase):
         joins = self.client.query.sql_joins("account")
         self.assertEqual(joins, [])
 
+    def test_alias_collision_same_first_letter(self):
+        """Two targets starting with the same letter get distinct aliases."""
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "parentcustomerid",
+                    "ReferencedEntity": "account",
+                    "ReferencedAttribute": "accountid",
+                    "SchemaName": "contact_customer_accounts",
+                },
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "regardingobjectid",
+                    "ReferencedEntity": "annotation",
+                    "ReferencedAttribute": "annotationid",
+                    "SchemaName": "contact_annotation",
+                },
+            ]
+        )
+        joins = self.client.query.sql_joins("contact")
+        self.assertEqual(len(joins), 2)
+        aliases = [j["join_clause"].split()[2] for j in joins]
+        self.assertEqual(len(set(aliases)), 2, "aliases must be unique")
+        self.assertNotEqual(aliases[0], aliases[1])
+
+    def test_alias_collision_same_target_table(self):
+        """Two lookups to the same table (e.g. ownerid + createdby -> systemuser) get distinct aliases."""
+        self._mock_rels(
+            [
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "ownerid",
+                    "ReferencedEntity": "systemuser",
+                    "ReferencedAttribute": "systemuserid",
+                    "SchemaName": "contact_ownerid_systemuser",
+                },
+                {
+                    "ReferencingEntity": "contact",
+                    "ReferencingAttribute": "createdby",
+                    "ReferencedEntity": "systemuser",
+                    "ReferencedAttribute": "systemuserid",
+                    "SchemaName": "contact_createdby_systemuser",
+                },
+            ]
+        )
+        joins = self.client.query.sql_joins("contact")
+        self.assertEqual(len(joins), 2)
+        aliases = [j["join_clause"].split()[2] for j in joins]
+        self.assertEqual(len(set(aliases)), 2, "aliases must be unique")
+        self.assertNotEqual(aliases[0], aliases[1])
+
 
 class TestSqlJoin(unittest.TestCase):
     """Tests for client.query.sql_join()."""
