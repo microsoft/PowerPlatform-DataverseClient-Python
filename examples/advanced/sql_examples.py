@@ -609,11 +609,7 @@ def _run_examples(client):
                     filter="AttributeType eq 'Lookup' or AttributeType eq 'Owner' or AttributeType eq 'Customer'",
                 )
             )
-            lookup_names = sorted(
-                c.get("LogicalName", "")
-                for c in acct_cols
-                if c.get("LogicalName", "")
-            )
+            lookup_names = sorted(c.get("LogicalName", "") for c in acct_cols if c.get("LogicalName", ""))
             print(f"[OK] Lookup columns on account ({len(lookup_names)} found):")
             for ln in lookup_names[:10]:
                 print(f"  {ln}")
