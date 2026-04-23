@@ -184,7 +184,7 @@ class _ODataBase:
     def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
         """Convert all strings in a list to lowercase for case-insensitive column names.
 
-        Used for $select, $orderby, $expand parameters where column names must be lowercase.
+        Used for $select and $orderby parameters where column names must be lowercase.
         """
         if not items:
             return items
@@ -731,6 +731,7 @@ class _ODataBase:
     # SQL guardrails
     # ------------------------------------------------------------------
 
+    # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
         r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
         re.IGNORECASE,
@@ -741,6 +742,7 @@ class _ODataBase:
         r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
         re.IGNORECASE,
     )
+    # Server-blocked SQL patterns (save the round-trip by catching early)
     _SQL_UNSUPPORTED_JOIN_RE = re.compile(
         r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
         re.IGNORECASE,
@@ -785,12 +787,16 @@ class _ODataBase:
 
         All blocked patterns are also blocked by the server, but catching
         them here saves the network round-trip and provides clearer error
-        messages.
+        messages. To bypass a specific check (e.g., if the server adds
+        support in the future), all checks are in this single method.
 
         :param sql: The SQL string (already stripped).
         :return: The SQL string (unchanged).
         :raises ValidationError: If the SQL contains a blocked pattern.
         """
+        # --- BLOCKED (save server round-trip) ---
+
+        # 1. Block writes (strip SQL comments first to catch comment-prefixed writes)
         sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
         if self._SQL_WRITE_RE.search(sql_no_comments):
             raise ValidationError(
@@ -799,6 +805,8 @@ class _ODataBase:
                 "(INSERT/UPDATE/DELETE are not supported).",
                 subcode=VALIDATION_SQL_WRITE_BLOCKED,
             )
+
+        # 2. Block unsupported JOIN types
         m = self._SQL_UNSUPPORTED_JOIN_RE.search(sql)
         if m:
             raise ValidationError(
@@ -807,6 +815,8 @@ class _ODataBase:
                 "Dataverse SQL endpoint.",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # 3. Block UNION
         if self._SQL_UNION_RE.search(sql):
             raise ValidationError(
                 "UNION is not supported by the Dataverse SQL endpoint. "
@@ -814,18 +824,24 @@ class _ODataBase:
                 "(e.g. pd.concat([df1, df2])).",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # 4. Block HAVING
         if self._SQL_HAVING_RE.search(sql):
             raise ValidationError(
                 "HAVING is not supported by the Dataverse SQL endpoint. "
                 "Use WHERE to filter before GROUP BY instead.",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # 5. Block CTE / WITH
         if self._SQL_CTE_RE.search(sql):
             raise ValidationError(
                 "CTE (WITH ... AS) is not supported by the Dataverse SQL "
                 "endpoint. Use separate queries and combine in Python.",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # 6. Block subqueries
         if self._SQL_SUBQUERY_RE.search(sql):
             raise ValidationError(
                 "Subqueries are not supported by the Dataverse SQL "
@@ -833,6 +849,12 @@ class _ODataBase:
                 "in Python (e.g. step 1: get IDs, step 2: WHERE IN).",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # 7. Block SELECT * -- intentional design decision.
+        # Wide entities (e.g. account has 307 columns) make wildcard selects
+        # extremely expensive on shared database infrastructure.
+        # COUNT(*) is NOT matched: _SQL_SELECT_STAR_RE requires * to be the
+        # first token after SELECT/DISTINCT/TOP N, so COUNT appears before *.
         if self._SQL_SELECT_STAR_RE.search(sql):
             raise ValidationError(
                 "SELECT * is not supported. Specify column names explicitly "
@@ -840,6 +862,10 @@ class _ODataBase:
                 "Use client.query.sql_columns('account') to discover available columns.",
                 subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
             )
+
+        # --- WARNED (query still executes) ---
+
+        # 8. Warn on leading-wildcard LIKE
         if self._SQL_LEADING_WILDCARD_RE.search(sql):
             warnings.warn(
                 "Query contains a leading-wildcard LIKE pattern "
@@ -849,6 +875,8 @@ class _ODataBase:
                 UserWarning,
                 stacklevel=4,
             )
+
+        # 9. Warn on implicit cross joins (server allows but risky)
         if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
             warnings.warn(
                 "Query uses an implicit cross join (FROM table1, table2). "
@@ -859,6 +887,7 @@ class _ODataBase:
                 UserWarning,
                 stacklevel=4,
             )
+
         return sql
 
     # ------------------------------------------------------------------
