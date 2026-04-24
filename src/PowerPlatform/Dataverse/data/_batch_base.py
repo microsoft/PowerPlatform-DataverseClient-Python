@@ -28,7 +28,7 @@ from ._raw_request import _RawRequest
 from ._odata_base import _GUID_RE
 
 if TYPE_CHECKING:
-    from ._odata import _ODataClient
+    from ._odata_base import _ODataBase
 
 __all__ = []
 
@@ -369,7 +369,7 @@ class _BatchBase:
     :param od: The active OData client (provides helpers and HTTP transport).
     """
 
-    def __init__(self, od: "_ODataClient") -> None:
+    def __init__(self, od: "_ODataBase") -> None:
         self._od = od
 
     # ------------------------------------------------------------------
