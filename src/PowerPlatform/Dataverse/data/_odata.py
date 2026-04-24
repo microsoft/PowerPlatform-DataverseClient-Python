@@ -43,7 +43,7 @@ from ._odata_base import (
 )
 
 
-class _ODataClient(_ODataBase, _FileUploadMixin, _RelationshipOperationsMixin):
+class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     def __init__(
@@ -83,14 +83,9 @@ class _ODataClient(_ODataBase, _FileUploadMixin, _RelationshipOperationsMixin):
         Clears all internal caches and closes the underlying HTTP client.
         Safe to call multiple times.
         """
-        self._logical_to_entityset_cache.clear()
-        self._logical_primaryid_cache.clear()
-        self._picklist_label_cache.clear()
+        super().close()
         if self._http is not None:
             self._http.close()
-        if self._http_logger is not None:
-            self._http_logger.close()
-            self._http_logger = None
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""

@@ -891,6 +891,22 @@ class _ODataBase:
         return sql
 
     # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Clear in-memory caches and close the HTTP diagnostic logger.
+
+        Called by subclass ``close()`` via ``super()``. Safe to call multiple times.
+        """
+        self._logical_to_entityset_cache.clear()
+        self._logical_primaryid_cache.clear()
+        self._picklist_label_cache.clear()
+        if self._http_logger is not None:
+            self._http_logger.close()
+            self._http_logger = None
+
+    # ------------------------------------------------------------------
     # Cache maintenance
     # ------------------------------------------------------------------
 
