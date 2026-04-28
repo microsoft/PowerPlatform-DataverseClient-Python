@@ -1,0 +1,195 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+"""Async file upload helpers."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+
+class _AsyncFileUploadMixin:
+    """Async file upload capabilities (small + chunk) with auto selection."""
+
+    async def _upload_file(
+        self,
+        table_schema_name: str,
+        record_id: str,
+        file_name_attribute: str,
+        path: str,
+        mode: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        if_none_match: bool = True,
+    ) -> None:
+        """Upload a file to a Dataverse file column with automatic method selection.
+
+        Parameters
+        ----------
+        table_schema_name : :class:`str`
+            Table schema name, e.g. "account" or "new_MyTestTable".
+        record_id : :class:`str`
+            GUID of the target record.
+        file_name_attribute : :class:`str`
+            Schema name of the file column attribute (e.g., "new_Document"). If the column doesn't exist, it will be created.
+        path : :class:`str`
+            Local filesystem path to the file.
+        mode : :class:`str` | None
+            Upload strategy: "auto" (default), "small", or "chunk".
+        mime_type : :class:`str` | None
+            Explicit MIME type. If omitted falls back to application/octet-stream.
+        if_none_match : :class:`bool`
+            When True (default) only succeeds if column empty. When False overwrites (If-Match: *).
+        """
+        import os
+
+        # Resolve entity set from table schema name
+        entity_set = await self._entity_set_from_schema_name(table_schema_name)
+
+        # Check if the file column exists, create it if it doesn't
+        entity_metadata = await self._get_entity_by_table_schema_name(table_schema_name)
+        if entity_metadata:
+            metadata_id = entity_metadata.get("MetadataId")
+            if metadata_id:
+                attr_metadata = await self._get_attribute_metadata(metadata_id, file_name_attribute)
+                if not attr_metadata:
+                    # Attribute doesn't exist, create it
+                    await self._create_columns(table_schema_name, {file_name_attribute: "file"})
+                    # Wait for the attribute to become visible in the data API
+                    # Raises RuntimeError with underlying exception if timeout occurs
+                    await self._wait_for_attribute_visibility(entity_set, file_name_attribute)
+
+        mode = (mode or "auto").lower()
+
+        if mode == "auto":
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"File not found: {path}")
+            size = os.path.getsize(path)
+            mode = "small" if size < 128 * 1024 * 1024 else "chunk"
+
+        # Convert schema name to lowercase logical name for URL usage
+        logical_name = file_name_attribute.lower()
+
+        if mode == "small":
+            return await self._upload_file_small(
+                entity_set, record_id, logical_name, path, content_type=mime_type, if_none_match=if_none_match
+            )
+        if mode == "chunk":
+            return await self._upload_file_chunk(entity_set, record_id, logical_name, path, if_none_match=if_none_match)
+        raise ValueError(f"Invalid mode '{mode}'. Use 'auto', 'small', or 'chunk'.")
+
+    async def _upload_file_small(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+        path: str,
+        content_type: Optional[str] = None,
+        if_none_match: bool = True,
+    ) -> None:
+        """Upload a file (<128MB) via single PATCH."""
+        import os
+
+        if not record_id:
+            raise ValueError("record_id required")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"File not found: {path}")
+        size = os.path.getsize(path)
+        limit = 128 * 1024 * 1024
+        if size > limit:
+            raise ValueError(f"File size {size} exceeds single-upload limit {limit}; use chunk mode.")
+        with open(path, "rb") as fh:
+            data = fh.read()
+        fname = os.path.basename(path)
+        key = self._format_key(record_id)
+        url = f"{self.api}/{entity_set}{key}/{file_name_attribute}"
+        headers = {
+            "Content-Type": content_type or "application/octet-stream",
+            "x-ms-file-name": fname,
+        }
+        if if_none_match:
+            headers["If-None-Match"] = "null"
+        else:
+            headers["If-Match"] = "*"
+        # Single PATCH upload; allow default success codes (includes 204)
+        await self._request("patch", url, headers=headers, data=data)
+        return None
+
+    async def _upload_file_chunk(
+        self,
+        entity_set: str,
+        record_id: str,
+        file_name_attribute: str,
+        path: str,
+        if_none_match: bool = True,
+    ) -> None:
+        """Stream a local file using Dataverse native chunked PATCH protocol.
+        1. Initial PATCH with header x-ms-transfer-mode: chunked (empty body) to start session.
+        2. Subsequent PATCH calls to Location URL including sessiontoken with binary body segments and headers. Returns 206 for partial chunks and 204 on final.
+
+        Parameters
+        ----------
+        entity_set : :class:`str`
+            Target entity set (plural logical name), e.g. "accounts".
+        record_id : :class:`str`
+            GUID of the target record.
+        file_name_attribute : :class:`str`
+            Logical name of the file column attribute.
+        path : :class:`str`
+            Local filesystem path to the file.
+        if_none_match : :class:`bool`
+            When True sends ``If-None-Match: null`` to only succeed if the column is currently empty.
+            Set False to always overwrite (uses ``If-Match: *``).
+        Returns
+        -------
+        None
+            Returns nothing on success. Any failure raises an exception.
+        """
+        import os, math
+        from urllib.parse import quote
+
+        if not record_id:
+            raise ValueError("record_id required")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"File not found: {path}")
+        total_size = os.path.getsize(path)
+        fname = os.path.basename(path)
+        key = self._format_key(record_id)
+        init_url = f"{self.api}/{entity_set}{key}/{file_name_attribute}?x-ms-file-name={quote(fname)}"
+        headers = {
+            "x-ms-transfer-mode": "chunked",
+        }
+        if if_none_match:
+            headers["If-None-Match"] = "null"
+        else:
+            headers["If-Match"] = "*"
+        r_init = await self._request("patch", init_url, headers=headers, data=b"")
+        location = r_init.headers.get("Location") or r_init.headers.get("location")
+        if not location:
+            raise RuntimeError("Missing Location header with sessiontoken for chunked upload")
+        rec_hdr = r_init.headers.get("x-ms-chunk-size") or r_init.headers.get("X-MS-CHUNK-SIZE")
+        try:
+            recommended_size = int(rec_hdr) if rec_hdr else None
+        except Exception:  # noqa: BLE001
+            recommended_size = None
+        effective_size = recommended_size or (4 * 1024 * 1024)
+        if effective_size <= 0:
+            raise ValueError("effective chunk size must be positive")
+        total_chunks = int(math.ceil(total_size / effective_size)) if total_size else 1
+        uploaded_bytes = 0
+        with open(path, "rb") as fh:
+            for idx in range(total_chunks):
+                chunk = fh.read(effective_size)
+                if not chunk:
+                    break
+                start = uploaded_bytes
+                end = start + len(chunk) - 1
+                c_headers = {
+                    "x-ms-file-name": fname,
+                    "Content-Type": "application/octet-stream",
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Content-Length": str(len(chunk)),
+                }
+                # Each chunk returns 206 (partial) or 204 (final). Accept both.
+                await self._request("patch", location, headers=c_headers, data=chunk, expected=(206, 204))
+                uploaded_bytes += len(chunk)
+        return None
