@@ -12,12 +12,14 @@ from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.aio.operations.async_batch import (
     AsyncBatchOperations,
     AsyncBatchRequest,
-    AsyncBatchRecordOperations,
-    AsyncBatchTableOperations,
-    AsyncBatchQueryOperations,
-    AsyncBatchDataFrameOperations,
     AsyncChangeSet,
-    AsyncChangeSetRecordOperations,
+)
+from PowerPlatform.Dataverse.operations.batch import (
+    BatchRecordOperations,
+    BatchTableOperations,
+    BatchQueryOperations,
+    BatchDataFrameOperations,
+    ChangeSetRecordOperations,
 )
 from PowerPlatform.Dataverse.data._batch_base import (
     _RecordCreate,
@@ -79,10 +81,10 @@ class TestAsyncBatchOperationsNamespace:
 
     def test_batch_request_namespaces(self, async_client):
         batch = async_client.batch.new()
-        assert isinstance(batch.records, AsyncBatchRecordOperations)
-        assert isinstance(batch.tables, AsyncBatchTableOperations)
-        assert isinstance(batch.query, AsyncBatchQueryOperations)
-        assert isinstance(batch.dataframe, AsyncBatchDataFrameOperations)
+        assert isinstance(batch.records, BatchRecordOperations)
+        assert isinstance(batch.tables, BatchTableOperations)
+        assert isinstance(batch.query, BatchQueryOperations)
+        assert isinstance(batch.dataframe, BatchDataFrameOperations)
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +387,7 @@ class TestAsyncChangeSet:
     def test_changeset_records_namespace(self, async_client):
         batch = _make_batch(async_client)
         cs = batch.changeset()
-        assert isinstance(cs.records, AsyncChangeSetRecordOperations)
+        assert isinstance(cs.records, ChangeSetRecordOperations)
 
     def test_changeset_appended_to_items(self, async_client):
         batch = _make_batch(async_client)
