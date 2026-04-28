@@ -28,6 +28,8 @@ from PowerPlatform.Dataverse.data._batch import (
     _TableGetRelationship,
     _TableCreateLookupField,
     _QuerySql,
+)
+from PowerPlatform.Dataverse.data._batch_base import (
     _extract_boundary,
     _raise_top_level_batch_error,
     _parse_mime_part,
