@@ -53,7 +53,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ### Prerequisites
 
-- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  
+- **Python 3.10+** (3.10, 3.11, 3.12, 3.13, 3.14 supported)  
 - **Microsoft Dataverse environment** with appropriate permissions
 - **OAuth authentication configured** for your application
 
@@ -62,7 +62,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 Install the PowerPlatform Dataverse Client using [pip](https://pypi.org/project/pip/):
 
 ```bash
-# Install the latest stable release
+# Install the latest release
 pip install PowerPlatform-Dataverse-Client
 ```
 
@@ -76,7 +76,7 @@ This installs two Claude Skills that enable Claude Code to:
 - **dataverse-sdk-use**: Apply SDK best practices for using the SDK in your applications
 - **dataverse-sdk-dev**: Provide guidance for developing/contributing to the SDK itself
 
-The skills work with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use the appropriate skill when working with Dataverse operations. For more information on Claude Skill see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definitions here: [.claude/skills/dataverse-sdk-use/SKILL.md](.claude/skills/dataverse-sdk-use/SKILL.md) and [.claude/skills/dataverse-sdk-dev/SKILL.md](.claude/skills/dataverse-sdk-dev/SKILL.md).
+The skills work with both the Claude Code CLI and VSCode extension. Once installed, Claude will automatically use the appropriate skill when working with Dataverse operations. For more information on Claude Skills, see https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview. See skill definitions here: [.claude/skills/dataverse-sdk-use/SKILL.md](.claude/skills/dataverse-sdk-use/SKILL.md) and [.claude/skills/dataverse-sdk-dev/SKILL.md](.claude/skills/dataverse-sdk-dev/SKILL.md).
 
 For development from source (Claude Skill auto loaded):
 
