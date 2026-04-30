@@ -1,26 +1,29 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Dataverse Web API client with CRUD, SQL query, and table/column metadata management."""
+"""Async Dataverse Web API client with CRUD, SQL query, and table/column metadata management."""
 
 from __future__ import annotations
 
 __all__ = []
 
-from typing import Any, Dict, Optional, List, Union, Iterable
-import time
+import asyncio
 import json
+import time
 import warnings
 from datetime import datetime, timezone
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from urllib.parse import quote as _url_quote
 
-from ..core._http import _HttpClient
-from ._upload import _FileUploadMixin
-from ._relationships import _RelationshipOperationsMixin
-from ..core.errors import *
-from ._raw_request import _RawRequest
-from ..core._error_codes import (
+import aiohttp
+
+from ..core._async_http import _AsyncHttpClient
+from ._async_upload import _AsyncFileUploadMixin
+from ._async_relationships import _AsyncRelationshipOperationsMixin
+from ...core.errors import *
+from ...data._raw_request import _RawRequest
+from ...core._error_codes import (
     _http_subcode,
     _is_transient_status,
     VALIDATION_SQL_NOT_STRING,
@@ -33,7 +36,7 @@ from ..core._error_codes import (
     METADATA_COLUMN_NOT_FOUND,
 )
 
-from ._odata_base import (
+from ...data._odata_base import (
     _ODataBase,
     _GUID_RE,
     _extract_pagingcookie,
@@ -43,54 +46,57 @@ from ._odata_base import (
 )
 
 
-class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
-    """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
+class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin, _ODataBase):
+    """Async Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
 
     def __init__(
         self,
         auth,
         base_url: str,
         config=None,
-        session=None,
+        session: Optional[aiohttp.ClientSession] = None,
     ) -> None:
-        """Initialize the OData client.
+        """Initialize the async OData client.
 
         Sets up authentication, base URL, configuration, and internal caches.
 
-        :param auth: Authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
-        :type auth: ~PowerPlatform.Dataverse.core._auth._AuthManager
+        :param auth: Async authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
+        :type auth: ~PowerPlatform.Dataverse.aio.core._async_auth._AsyncAuthManager
         :param base_url: Organization base URL (e.g. ``"https://<org>.crm.dynamics.com"``).
         :type base_url: ``str``
         :param config: Optional Dataverse configuration (HTTP retry, backoff, timeout, language code). If omitted ``DataverseConfig.from_env()`` is used.
         :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig | ``None``
-        :param session: Optional ``requests.Session`` for HTTP connection pooling.
-        :type session: :class:`requests.Session` | ``None``
+        :param session: ``aiohttp.ClientSession`` for HTTP connection pooling. Must remain open for the lifetime of this client.
+        :type session: :class:`aiohttp.ClientSession` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
         super().__init__(base_url, config)
         self.auth = auth
-        self._http = _HttpClient(
+        self._http = _AsyncHttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
             timeout=self.config.http_timeout,
             session=session,
             logger=self._http_logger,
         )
+        # Prevents concurrent coroutines from racing through the picklist TTL check
+        # and issuing redundant metadata fetches.
+        self._picklist_cache_lock: asyncio.Lock = asyncio.Lock()
 
-    def close(self) -> None:
-        """Close the OData client and release resources.
+    async def close(self) -> None:
+        """Close the async OData client and release resources.
 
         Clears all internal caches and closes the underlying HTTP client.
         Safe to call multiple times.
         """
-        super().close()
+        super().close()  # sync: clears caches, closes logger
         if self._http is not None:
-            self._http.close()
+            await self._http.close()
 
-    def _headers(self) -> Dict[str, str]:
+    async def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
-        token = self.auth._acquire_token(scope).access_token
+        token = (await self.auth._acquire_token(scope)).access_token
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
@@ -100,35 +106,52 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "User-Agent": _USER_AGENT,
         }
 
-    def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        base = self._headers()
-        if not headers:
-            return base
-        merged = base.copy()
-        merged.update(headers)
-        return merged
+    async def _raw_request(self, method: str, url: str, **kwargs) -> aiohttp.ClientResponse:
+        return await self._http._request(method, url, **kwargs)
 
-    def _raw_request(self, method: str, url: str, **kwargs):
-        return self._http._request(method, url, **kwargs)
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES,
+        **kwargs,
+    ) -> aiohttp.ClientResponse:
+        # Acquire base headers once (async), then use a sync closure for _RequestContext.build.
+        # _RequestContext.build is a sync classmethod defined in _ODataBase and shared by both
+        # sync and async clients — keeping it sync avoids duplicating the header-injection logic.
+        base_headers = await self._headers()
 
-    def _request(self, method: str, url: str, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES, **kwargs):
+        def _merge(h: Optional[Dict[str, str]]) -> Dict[str, str]:
+            if not h:
+                return base_headers.copy()
+            merged = base_headers.copy()
+            merged.update(h)
+            return merged
+
         request_context = _RequestContext.build(
             method,
             url,
             expected=expected,
-            merge_headers=self._merge_headers,
+            merge_headers=_merge,
             **kwargs,
         )
 
-        r = self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
-        if r.status_code in request_context.expected:
+        r = await self._raw_request(request_context.method, request_context.url, **request_context.kwargs)
+        if r.status in request_context.expected:
             return r
-        response_headers = getattr(r, "headers", {}) or {}
-        body_excerpt = (getattr(r, "text", "") or "")[:200]
-        svc_code = None
-        msg = f"HTTP {r.status_code}"
+
+        response_headers = dict(r.headers) if r.headers else {}
+        raw_text = ""
         try:
-            data = r.json() if getattr(r, "text", None) else {}
+            raw_text = await r.text()
+        except Exception:
+            pass
+        body_excerpt = raw_text[:200]
+        svc_code = None
+        msg = f"HTTP {r.status}"
+        try:
+            data = json.loads(raw_text) if raw_text else {}
             if isinstance(data, dict):
                 inner = data.get("error")
                 if isinstance(inner, dict):
@@ -142,7 +165,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                         msg = imsg2.strip()
         except Exception:
             pass
-        sc = r.status_code
+        sc = r.status
         subcode = _http_subcode(sc)
         request_id = (
             response_headers.get("x-ms-service-request-id")
@@ -176,7 +199,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             is_transient=is_transient,
         )
 
-    def _execute_raw(self, req: _RawRequest, *, expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES):
+    async def _execute_raw(
+        self,
+        req: _RawRequest,
+        *,
+        expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES,
+    ) -> aiohttp.ClientResponse:
         """Execute a ``_RawRequest`` and return the HTTP response.
 
         Encodes the pre-serialised body (if present) as UTF-8 and merges any
@@ -187,10 +215,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             kwargs["data"] = req.body.encode("utf-8")
         if req.headers:
             kwargs["headers"] = req.headers
-        return self._request(req.method.lower(), req.url, expected=expected, **kwargs)
+        return await self._request(req.method.lower(), req.url, expected=expected, **kwargs)
 
     # --- CRUD Internal functions ---
-    def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
+    async def _create(self, entity_set: str, table_schema_name: str, record: Dict[str, Any]) -> str:
         """Create a single record and return its GUID.
 
         :param entity_set: Resolved entity set (plural) name.
@@ -206,7 +234,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         .. note::
            Relies on ``OData-EntityId`` (canonical) or ``Location`` response header. No response body parsing is performed. Raises ``RuntimeError`` if neither header contains a GUID.
         """
-        r = self._execute_raw(self._build_create(entity_set, table_schema_name, record))
+        r = await self._execute_raw(await self._build_create(entity_set, table_schema_name, record))
         ent_loc = r.headers.get("OData-EntityId") or r.headers.get("OData-EntityID")
         if ent_loc:
             m = _GUID_RE.search(ent_loc)
@@ -219,10 +247,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 return m.group(0)
         header_keys = ", ".join(sorted(r.headers.keys()))
         raise RuntimeError(
-            f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
+            f"Create response missing GUID in OData-EntityId/Location headers (status={r.status}). Headers: {header_keys}"
         )
 
-    def _create_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> List[str]:
+    async def _create_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+    ) -> List[str]:
         """Create multiple records using the collection-bound ``CreateMultiple`` action.
 
         :param entity_set: Resolved entity set (plural) name.
@@ -240,10 +273,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         """
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
-        r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, records))
+        r = await self._execute_raw(await self._build_create_multiple(entity_set, table_schema_name, records))
         try:
-            body = r.json() if r.text else {}
-        except ValueError:
+            body = await r.json(content_type=None)
+        except (ValueError, aiohttp.ContentTypeError):
             body = {}
         if not isinstance(body, dict):
             return []
@@ -266,7 +299,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             return out
         return []
 
-    def _upsert(
+    async def _upsert(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -293,12 +326,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :rtype: ``None``
         """
         record = self._lowercase_keys(record)
-        record = self._convert_labels_to_ints(table_schema_name, record)
+        record = await self._convert_labels_to_ints(table_schema_name, record)
         key_str = self._build_alternate_key_str(alternate_key)
         url = f"{self.api}/{entity_set}({key_str})"
-        self._request("patch", url, json=record, expected=(200, 201, 204))
+        await self._request("patch", url, json=record, expected=(200, 201, 204))
 
-    def _upsert_multiple(
+    async def _upsert_multiple(
         self,
         entity_set: str,
         table_schema_name: str,
@@ -338,7 +371,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
             record_processed = self._lowercase_keys(record)
-            record_processed = self._convert_labels_to_ints(table_schema_name, record_processed)
+            record_processed = await self._convert_labels_to_ints(table_schema_name, record_processed)
             conflicting = {
                 k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
             }
@@ -351,17 +384,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             targets.append(record_processed)
         payload = {"Targets": targets}
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
-        self._request("post", url, json=payload, expected=(200, 201, 204))
+        await self._request("post", url, json=payload, expected=(200, 201, 204))
 
     # --- Derived helpers for high-level client ergonomics ---
-    def _primary_id_attr(self, table_schema_name: str) -> str:
+    async def _primary_id_attr(self, table_schema_name: str) -> str:
         """Return primary key attribute using metadata; error if unavailable."""
         cache_key = self._normalize_cache_key(table_schema_name)
         pid = self._logical_primaryid_cache.get(cache_key)
         if pid:
             return pid
         # Resolve metadata (populates _logical_primaryid_cache or raises if table_schema_name unknown)
-        self._entity_set_from_schema_name(table_schema_name)
+        await self._entity_set_from_schema_name(table_schema_name)
         pid2 = self._logical_primaryid_cache.get(cache_key)
         if pid2:
             return pid2
@@ -369,8 +402,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             f"PrimaryIdAttribute not resolved for table_schema_name '{table_schema_name}'. Metadata did not include PrimaryIdAttribute."
         )
 
-    def _update_by_ids(
-        self, table_schema_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
+    async def _update_by_ids(
+        self,
+        table_schema_name: str,
+        ids: List[str],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
         """Update many records by GUID list using the collection-bound ``UpdateMultiple`` action.
 
@@ -388,11 +424,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             raise TypeError("ids must be list[str]")
         if not ids:
             return None
-        pk_attr = self._primary_id_attr(table_schema_name)
-        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        pk_attr = await self._primary_id_attr(table_schema_name)
+        entity_set = await self._entity_set_from_schema_name(table_schema_name)
         if isinstance(changes, dict):
             batch = [{pk_attr: rid, **changes} for rid in ids]
-            self._update_multiple(entity_set, table_schema_name, batch)
+            await self._update_multiple(entity_set, table_schema_name, batch)
             return None
         if not isinstance(changes, list):
             raise TypeError("changes must be dict or list[dict]")
@@ -403,10 +439,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             if not isinstance(patch, dict):
                 raise TypeError("Each patch must be a dict")
             batch.append({pk_attr: rid, **patch})
-        self._update_multiple(entity_set, table_schema_name, batch)
+        await self._update_multiple(entity_set, table_schema_name, batch)
         return None
 
-    def _delete_multiple(
+    async def _delete_multiple(
         self,
         table_schema_name: str,
         ids: List[str],
@@ -424,20 +460,20 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         targets = [rid for rid in ids if rid]
         if not targets:
             return None
-        response = self._execute_raw(
-            self._build_delete_multiple(table_schema_name, targets),
+        response = await self._execute_raw(
+            await self._build_delete_multiple(table_schema_name, targets),
             expected=(200, 202, 204),
         )
         job_id = None
         try:
-            body = response.json() if response.text else {}
-        except ValueError:
+            body = await response.json(content_type=None)
+        except (ValueError, aiohttp.ContentTypeError):
             body = {}
         if isinstance(body, dict):
             job_id = body.get("JobId")
         return job_id
 
-    def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:
+    async def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:
         """Update an existing record by GUID.
 
         :param table_schema_name: Schema name of the table.
@@ -449,9 +485,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :return: ``None``
         :rtype: ``None``
         """
-        self._execute_raw(self._build_update(table_schema_name, key, data))
+        await self._execute_raw(await self._build_update(table_schema_name, key, data))
 
-    def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
+    async def _update_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+    ) -> None:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
 
         :param entity_set: Resolved entity set (plural) name.
@@ -471,10 +512,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         """
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
-        self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, records))
+        await self._execute_raw(await self._build_update_multiple_from_records(entity_set, table_schema_name, records))
         return None
 
-    def _delete(self, table_schema_name: str, key: str) -> None:
+    async def _delete(self, table_schema_name: str, key: str) -> None:
         """Delete a record by GUID.
 
         :param table_schema_name: Schema name of the table.
@@ -485,9 +526,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :return: ``None``
         :rtype: ``None``
         """
-        self._execute_raw(self._build_delete(table_schema_name, key))
+        await self._execute_raw(await self._build_delete(table_schema_name, key))
 
-    def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def _get(
+        self,
+        table_schema_name: str,
+        key: str,
+        select: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """Retrieve a single record.
 
         :param table_schema_name: Schema name of the table.
@@ -500,9 +546,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :return: Retrieved record dictionary (may be empty if no selected attributes).
         :rtype: ``dict[str, Any]``
         """
-        return self._execute_raw(self._build_get(table_schema_name, key, select=select)).json()
+        r = await self._execute_raw(await self._build_get(table_schema_name, key, select=select))
+        return await r.json(content_type=None)
 
-    def _get_multiple(
+    async def _get_multiple(
         self,
         table_schema_name: str,
         select: Optional[List[str]] = None,
@@ -513,7 +560,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
-    ) -> Iterable[List[Dict[str, Any]]]:
+    ) -> AsyncIterator[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
         :param table_schema_name: Schema name of the table.
@@ -535,10 +582,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
         :type include_annotations: ``str`` | ``None``
 
-        :return: Iterator yielding pages (each page is a ``list`` of record dicts).
-        :rtype: ``Iterable[list[dict[str, Any]]]``
+        :return: Async iterator yielding pages (each page is a ``list`` of record dicts).
+        :rtype: ``AsyncIterator[list[dict[str, Any]]]``
         """
-
         extra_headers: Dict[str, str] = {}
         prefer_parts: List[str] = []
         if page_size is not None:
@@ -550,15 +596,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         if prefer_parts:
             extra_headers["Prefer"] = ",".join(prefer_parts)
 
-        def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        async def _do_request(url: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             headers = extra_headers if extra_headers else None
-            r = self._request("get", url, headers=headers, params=params)
+            r = await self._request("get", url, headers=headers, params=params)
             try:
-                return r.json()
-            except ValueError:
+                return await r.json(content_type=None)
+            except (ValueError, aiohttp.ContentTypeError):
                 return {}
 
-        entity_set = self._entity_set_from_schema_name(table_schema_name)
+        entity_set = await self._entity_set_from_schema_name(table_schema_name)
         base_url = f"{self.api}/{entity_set}"
         params: Dict[str, Any] = {}
         if select:
@@ -578,7 +624,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         if count:
             params["$count"] = "true"
 
-        data = _do_request(base_url, params=params)
+        data = await _do_request(base_url, params=params)
         items = data.get("value") if isinstance(data, dict) else None
         if isinstance(items, list) and items:
             yield [x for x in items if isinstance(x, dict)]
@@ -588,14 +634,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
 
         while next_link:
-            data = _do_request(next_link)
+            data = await _do_request(next_link)
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
                 yield [x for x in items if isinstance(x, dict)]
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
     # --------------------------- SQL Custom API -------------------------
-    def _query_sql(self, sql: str) -> list[dict[str, Any]]:
+    async def _query_sql(self, sql: str) -> list[dict[str, Any]]:
         """Execute a read-only SQL SELECT using the Dataverse Web API ``?sql=`` capability.
 
         :param sql: Single SELECT statement within the supported subset.
@@ -625,10 +671,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         # any table resolution.
         sql = self._sql_guardrails(sql)
 
-        r = self._execute_raw(self._build_sql(sql))
+        r = await self._execute_raw(await self._build_sql(sql))
         try:
-            body = r.json()
-        except ValueError:
+            body = await r.json(content_type=None)
+        except (ValueError, aiohttp.ContentTypeError):
             return []
 
         # Collect first page
@@ -679,7 +725,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                     break
                 seen_cookies.add(cookie)
             try:
-                page_resp = self._request("get", next_link)
+                page_resp = await self._request("get", next_link)
             except Exception as exc:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
@@ -690,8 +736,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 )
                 break
             try:
-                page_body = page_resp.json()
-            except ValueError as exc:
+                page_body = await page_resp.json(content_type=None)
+            except (ValueError, aiohttp.ContentTypeError) as exc:
                 warnings.warn(
                     f"SQL pagination stopped after {len(results)} rows — "
                     f"the next-page response was not valid JSON: {exc}. "
@@ -712,7 +758,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         return results
 
     # ---------------------- Entity set resolution -----------------------
-    def _entity_set_from_schema_name(self, table_schema_name: str) -> str:
+    async def _entity_set_from_schema_name(self, table_schema_name: str) -> str:
         """Resolve entity set name (plural) from a schema name (singular) name using metadata.
 
         Caches results for subsequent queries. Case-insensitive.
@@ -733,11 +779,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r = await self._request("get", url, params=params)
         try:
-            body = r.json()
+            body = await r.json(content_type=None)
             items = body.get("value", []) if isinstance(body, dict) else []
-        except ValueError:
+        except (ValueError, aiohttp.ContentTypeError):
             items = []
         if not items:
             plural_hint = (
@@ -763,7 +809,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         return es
 
     # ---------------------- Table metadata helpers ----------------------
-    def _get_entity_by_table_schema_name(
+    async def _get_entity_by_table_schema_name(
         self,
         table_schema_name: str,
         headers: Optional[Dict[str, str]] = None,
@@ -782,11 +828,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "$select": "MetadataId,LogicalName,SchemaName,EntitySetName,PrimaryNameAttribute,PrimaryIdAttribute",
             "$filter": f"LogicalName eq '{logical_escaped}'",
         }
-        r = self._request("get", url, params=params, headers=headers)
-        items = r.json().get("value", [])
+        r = await self._request("get", url, params=params, headers=headers)
+        items = (await r.json(content_type=None)).get("value", [])
         return items[0] if items else None
 
-    def _create_entity(
+    async def _create_entity(
         self,
         table_schema_name: str,
         display_name: str,
@@ -809,8 +855,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         params = None
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
-        self._request("post", url, json=payload, params=params)
-        ent = self._get_entity_by_table_schema_name(
+        await self._request("post", url, json=payload, params=params)
+        ent = await self._get_entity_by_table_schema_name(
             table_schema_name,
             headers={"Consistency": "Strong"},
         )
@@ -822,7 +868,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             raise RuntimeError(f"MetadataId missing after creating entity '{table_schema_name}'.")
         return ent
 
-    def _get_attribute_metadata(
+    async def _get_attribute_metadata(
         self,
         entity_metadata_id: str,
         column_name: str,
@@ -846,10 +892,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "$select": ",".join(select_fields),
             "$filter": f"LogicalName eq '{attr_escaped}'",
         }
-        r = self._request("get", url, params=params)
+        r = await self._request("get", url, params=params)
         try:
-            body = r.json() if r.text else {}
-        except ValueError:
+            body = await r.json(content_type=None)
+        except (ValueError, aiohttp.ContentTypeError):
             return None
         items = body.get("value") if isinstance(body, dict) else None
         if isinstance(items, list) and items:
@@ -858,7 +904,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 return item
         return None
 
-    def _list_columns(
+    async def _list_columns(
         self,
         table_schema_name: str,
         *,
@@ -886,7 +932,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table is not found.
         :raises HttpError: If the Web API request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -899,10 +945,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             params["$select"] = ",".join(select)
         if filter:
             params["$filter"] = filter
-        r = self._request("get", url, params=params)
-        return r.json().get("value", [])
+        r = await self._request("get", url, params=params)
+        return (await r.json(content_type=None)).get("value", [])
 
-    def _wait_for_attribute_visibility(
+    async def _wait_for_attribute_visibility(
         self,
         entity_set: str,
         attribute_name: str,
@@ -922,9 +968,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         for delay in delays:
             if delay:
-                time.sleep(delay)
+                await asyncio.sleep(delay)
             try:
-                self._request("get", probe_url)
+                await self._request("get", probe_url)
                 return
             except Exception as ex:
                 last_error = ex
@@ -936,22 +982,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             f"after {total_wait} seconds (exhausted all retries)."
         ) from last_error
 
-    def _request_metadata_with_retry(self, method: str, url: str, **kwargs):
+    async def _request_metadata_with_retry(self, method: str, url: str, **kwargs) -> aiohttp.ClientResponse:
         """Fetch metadata with retries on transient errors."""
         max_attempts = 5
         backoff_seconds = 0.4
         for attempt in range(1, max_attempts + 1):
             try:
-                return self._request(method, url, **kwargs)
+                return await self._request(method, url, **kwargs)
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404:
                     if attempt < max_attempts:
-                        time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+                        await asyncio.sleep(backoff_seconds * (2 ** (attempt - 1)))
                         continue
                     raise RuntimeError(f"Metadata request failed after {max_attempts} retries (404): {url}") from err
                 raise
 
-    def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
+    async def _bulk_fetch_picklists(self, table_schema_name: str) -> None:
         """Fetch all picklist attributes and their options for a table in one API call.
 
         Uses collection-level PicklistAttributeMetadata cast to retrieve every picklist
@@ -960,52 +1006,63 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         The Dataverse metadata API does not page results.
         """
         table_key = self._normalize_cache_key(table_schema_name)
+
+        # Fast path: skip the lock when the cache is already warm.
         now = time.time()
         table_entry = self._picklist_label_cache.get(table_key)
         if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
             return
 
-        table_esc = self._escape_odata_quotes(table_schema_name.lower())
-        url = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
-            f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
-            f"?$select=LogicalName&$expand=OptionSet($select=Options)"
-        )
-        response = self._request_metadata_with_retry("get", url)
-        body = response.json()
-        items = body.get("value", []) if isinstance(body, dict) else []
+        # Slow path: acquire the lock so that only one coroutine issues the metadata
+        # fetch.  The second TTL check inside the lock handles the case where another
+        # coroutine populated the cache while we were waiting.
+        async with self._picklist_cache_lock:
+            now = time.time()
+            table_entry = self._picklist_label_cache.get(table_key)
+            if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
+                return
 
-        picklists: Dict[str, Dict[str, int]] = {}
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            ln = item.get("LogicalName", "").lower()
-            if not ln:
-                continue
-            option_set = item.get("OptionSet") or {}
-            options = option_set.get("Options") if isinstance(option_set, dict) else None
-            mapping: Dict[str, int] = {}
-            if isinstance(options, list):
-                for opt in options:
-                    if not isinstance(opt, dict):
-                        continue
-                    val = opt.get("Value")
-                    if not isinstance(val, int):
-                        continue
-                    label_def = opt.get("Label") or {}
-                    locs = label_def.get("LocalizedLabels")
-                    if isinstance(locs, list):
-                        for loc in locs:
-                            if isinstance(loc, dict):
-                                lab = loc.get("Label")
-                                if isinstance(lab, str) and lab.strip():
-                                    normalized = self._normalize_picklist_label(lab)
-                                    mapping.setdefault(normalized, val)
-            picklists[ln] = mapping
+            table_esc = self._escape_odata_quotes(table_schema_name.lower())
+            url = (
+                f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
+                f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+                f"?$select=LogicalName&$expand=OptionSet($select=Options)"
+            )
+            response = await self._request_metadata_with_retry("get", url)
+            body = await response.json(content_type=None)
+            items = body.get("value", []) if isinstance(body, dict) else []
 
-        self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
+            picklists: Dict[str, Dict[str, int]] = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                ln = item.get("LogicalName", "").lower()
+                if not ln:
+                    continue
+                option_set = item.get("OptionSet") or {}
+                options = option_set.get("Options") if isinstance(option_set, dict) else None
+                mapping: Dict[str, int] = {}
+                if isinstance(options, list):
+                    for opt in options:
+                        if not isinstance(opt, dict):
+                            continue
+                        val = opt.get("Value")
+                        if not isinstance(val, int):
+                            continue
+                        label_def = opt.get("Label") or {}
+                        locs = label_def.get("LocalizedLabels")
+                        if isinstance(locs, list):
+                            for loc in locs:
+                                if isinstance(loc, dict):
+                                    lab = loc.get("Label")
+                                    if isinstance(lab, str) and lab.strip():
+                                        normalized = self._normalize_picklist_label(lab)
+                                        mapping.setdefault(normalized, val)
+                picklists[ln] = mapping
 
-    def _convert_labels_to_ints(self, table_schema_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
+            self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
+
+    async def _convert_labels_to_ints(self, table_schema_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
 
         Heuristic: For each string value, attempt to resolve against picklist metadata.
@@ -1025,7 +1082,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             return resolved_record
 
         # Bulk-fetch all picklists for this table (1 API call, cached for TTL)
-        self._bulk_fetch_picklists(table_schema_name)
+        await self._bulk_fetch_picklists(table_schema_name)
 
         # Resolve labels from the nested cache
         table_key = self._normalize_cache_key(table_schema_name)
@@ -1049,7 +1106,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 resolved_record[k] = val
         return resolved_record
 
-    def _get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
+    async def _get_table_info(self, table_schema_name: str) -> Optional[Dict[str, Any]]:
         """Return basic metadata for a custom table if it exists.
 
         :param table_schema_name: Schema name of the table.
@@ -1058,7 +1115,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :return: Metadata summary or ``None`` if not found.
         :rtype: ``dict[str, Any]`` | ``None``
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent:
             return None
         return {
@@ -1071,7 +1128,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "columns_created": [],
         }
 
-    def _list_tables(
+    async def _list_tables(
         self,
         filter: Optional[str] = None,
         select: Optional[List[str]] = None,
@@ -1098,9 +1155,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         :raises HttpError: If the metadata request fails.
         """
-        return self._execute_raw(self._build_list_entities(filter=filter, select=select)).json().get("value", [])
+        r = await self._execute_raw(self._build_list_entities(filter=filter, select=select))
+        return (await r.json(content_type=None)).get("value", [])
 
-    def _delete_table(self, table_schema_name: str) -> None:
+    async def _delete_table(self, table_schema_name: str) -> None:
         """Delete a table by schema name.
 
         :param table_schema_name: Schema name of the table.
@@ -1112,17 +1170,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table does not exist.
         :raises HttpError: If the delete request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
                 subcode=METADATA_TABLE_NOT_FOUND,
             )
-        self._execute_raw(self._build_delete_entity(ent["MetadataId"]))
+        await self._execute_raw(self._build_delete_entity(ent["MetadataId"]))
 
     # ------------------- Alternate key metadata helpers -------------------
 
-    def _create_alternate_key(
+    async def _create_alternate_key(
         self,
         table_schema_name: str,
         key_name: str,
@@ -1149,7 +1207,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table does not exist.
         :raises HttpError: If the Web API request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1164,7 +1222,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         }
         if display_name_label is not None:
             payload["DisplayName"] = display_name_label.to_dict()
-        r = self._request("post", url, json=payload)
+        r = await self._request("post", url, json=payload)
         metadata_id = self._extract_id_from_header(r.headers.get("OData-EntityId"))
 
         return {
@@ -1173,7 +1231,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "key_attributes": columns,
         }
 
-    def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
+    async def _get_alternate_keys(self, table_schema_name: str) -> List[Dict[str, Any]]:
         """List all alternate keys on a table.
 
         Issues ``GET EntityDefinitions(LogicalName='{logical_name}')/Keys``.
@@ -1187,7 +1245,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table does not exist.
         :raises HttpError: If the Web API request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1196,10 +1254,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         logical_name = ent.get("LogicalName", table_schema_name.lower())
         url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys"
-        r = self._request("get", url)
-        return r.json().get("value", [])
+        r = await self._request("get", url)
+        return (await r.json(content_type=None)).get("value", [])
 
-    def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
+    async def _delete_alternate_key(self, table_schema_name: str, key_id: str) -> None:
         """Delete an alternate key by metadata ID.
 
         Issues ``DELETE EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})``.
@@ -1215,7 +1273,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table does not exist.
         :raises HttpError: If the Web API request fails.
         """
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1224,9 +1282,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         logical_name = ent.get("LogicalName", table_schema_name.lower())
         url = f"{self.api}/EntityDefinitions(LogicalName='{logical_name}')/Keys({key_id})"
-        self._request("delete", url)
+        await self._request("delete", url)
 
-    def _create_table(
+    async def _create_table(
         self,
         table_schema_name: str,
         schema: Dict[str, Any],
@@ -1256,7 +1314,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises HttpError: If underlying HTTP requests fail.
         """
         # Check if table already exists (case-insensitive)
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if ent:
             raise MetadataError(
                 f"Table '{table_schema_name}' already exists.",
@@ -1293,7 +1351,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             if not isinstance(display_name, str) or not display_name.strip():
                 raise TypeError("display_name must be a non-empty string when provided")
 
-        metadata = self._create_entity(
+        metadata = await self._create_entity(
             table_schema_name=table_schema_name,
             display_name=display_name if display_name is not None else table_schema_name,
             attributes=attributes,
@@ -1310,7 +1368,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             "columns_created": created_cols,
         }
 
-    def _create_columns(
+    async def _create_columns(
         self,
         table_schema_name: str,
         columns: Dict[str, Any],
@@ -1333,7 +1391,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         if not isinstance(columns, dict) or not columns:
             raise TypeError("columns must be a non-empty dict[name -> type]")
 
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1358,7 +1416,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes",
                 body=json.dumps(attr, ensure_ascii=False),
             )
-            self._execute_raw(req)
+            await self._execute_raw(req)
             created.append(column_name)
 
         if needs_picklist_flush:
@@ -1366,7 +1424,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         return created
 
-    def _delete_columns(
+    async def _delete_columns(
         self,
         table_schema_name: str,
         columns: Union[str, List[str]],
@@ -1398,7 +1456,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             if not isinstance(name, str) or not name.strip():
                 raise ValueError("column names must be non-empty strings")
 
-        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
                 f"Table '{table_schema_name}' not found.",
@@ -1412,7 +1470,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         needs_picklist_flush = False
 
         for column_name in names:
-            attr_meta = self._get_attribute_metadata(metadata_id, column_name, extra_select="@odata.type,AttributeType")
+            attr_meta = await self._get_attribute_metadata(
+                metadata_id, column_name, extra_select="@odata.type,AttributeType"
+            )
             if not attr_meta:
                 raise MetadataError(
                     f"Column '{column_name}' not found on table '{entity_schema}'.",
@@ -1423,7 +1483,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             if not attr_metadata_id:
                 raise RuntimeError(f"Metadata incomplete for column '{column_name}' (missing MetadataId).")
 
-            self._execute_raw(self._build_delete_column(metadata_id, attr_metadata_id))
+            await self._execute_raw(self._build_delete_column(metadata_id, attr_metadata_id))
 
             attr_type = attr_meta.get("@odata.type") or attr_meta.get("AttributeType")
             if isinstance(attr_type, str):
@@ -1438,9 +1498,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         return deleted
 
-    # ---------------------- _build_* methods (no HTTP) ---------------
+    # ---------------------- _build_* methods (no HTTP, but may call async helpers) ---------------
 
-    def _build_create(
+    async def _build_create(
         self,
         entity_set: str,
         table: str,
@@ -1450,7 +1510,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
     ) -> _RawRequest:
         """Build a single-record POST request without sending it."""
         body = self._lowercase_keys(data)
-        body = self._convert_labels_to_ints(table, body)
+        body = await self._convert_labels_to_ints(table, body)
         return _RawRequest(
             method="POST",
             url=f"{self.api}/{entity_set}",
@@ -1458,7 +1518,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             content_id=content_id,
         )
 
-    def _build_create_multiple(
+    async def _build_create_multiple(
         self,
         entity_set: str,
         table: str,
@@ -1471,7 +1531,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         enriched = []
         for r in records:
             r = self._lowercase_keys(r)
-            r = self._convert_labels_to_ints(table, r)
+            r = await self._convert_labels_to_ints(table, r)
             if "@odata.type" not in r:
                 r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
             enriched.append(r)
@@ -1481,7 +1541,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             body=json.dumps({"Targets": enriched}, ensure_ascii=False),
         )
 
-    def _build_update(
+    async def _build_update(
         self,
         table: str,
         record_id: str,
@@ -1495,11 +1555,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         URL is the reference itself (resolved server-side within a changeset).
         """
         body = self._lowercase_keys(changes)
-        body = self._convert_labels_to_ints(table, body)
+        body = await self._convert_labels_to_ints(table, body)
         if record_id.startswith("$"):
             url = record_id
         else:
-            entity_set = self._entity_set_from_schema_name(table)
+            entity_set = await self._entity_set_from_schema_name(table)
             url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
         return _RawRequest(
             method="PATCH",
@@ -1509,7 +1569,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             content_id=content_id,
         )
 
-    def _build_update_multiple_from_records(
+    async def _build_update_multiple_from_records(
         self,
         entity_set: str,
         table: str,
@@ -1525,7 +1585,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         enriched = []
         for r in records:
             r = self._lowercase_keys(r)
-            r = self._convert_labels_to_ints(table, r)
+            r = await self._convert_labels_to_ints(table, r)
             if "@odata.type" not in r:
                 r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
             enriched.append(r)
@@ -1535,7 +1595,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             body=json.dumps({"Targets": enriched}, ensure_ascii=False),
         )
 
-    def _build_update_multiple(
+    async def _build_update_multiple(
         self,
         entity_set: str,
         table: str,
@@ -1543,7 +1603,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> _RawRequest:
         """Build an UpdateMultiple POST request without sending it."""
-        pk_attr = self._primary_id_attr(table)
+        pk_attr = await self._primary_id_attr(table)
         if isinstance(changes, dict):
             records = [{pk_attr: rid, **changes} for rid in ids]
         elif isinstance(changes, list):
@@ -1555,9 +1615,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             records = [{pk_attr: rid, **ch} for rid, ch in zip(ids, changes)]
         else:
             raise ValidationError("changes must be a dict or list[dict].", subcode="invalid_changes_type")
-        return self._build_update_multiple_from_records(entity_set, table, records)
+        return await self._build_update_multiple_from_records(entity_set, table, records)
 
-    def _build_upsert(
+    async def _build_upsert(
         self,
         entity_set: str,
         table: str,
@@ -1570,7 +1630,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         server creates the record when it does not yet exist.
         """
         body = self._lowercase_keys(record)
-        body = self._convert_labels_to_ints(table, body)
+        body = await self._convert_labels_to_ints(table, body)
         key_str = self._build_alternate_key_str(alternate_key)
         url = f"{self.api}/{entity_set}({key_str})"
         return _RawRequest(
@@ -1579,7 +1639,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             body=json.dumps(body, ensure_ascii=False),
         )
 
-    def _build_upsert_multiple(
+    async def _build_upsert_multiple(
         self,
         entity_set: str,
         table: str,
@@ -1597,7 +1657,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
             record_processed = self._lowercase_keys(record)
-            record_processed = self._convert_labels_to_ints(table, record_processed)
+            record_processed = await self._convert_labels_to_ints(table, record_processed)
             conflicting = {
                 k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
             }
@@ -1617,7 +1677,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             body=json.dumps({"Targets": targets}, ensure_ascii=False),
         )
 
-    def _build_delete(
+    async def _build_delete(
         self,
         table: str,
         record_id: str,
@@ -1631,7 +1691,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         if record_id.startswith("$"):
             url = record_id
         else:
-            entity_set = self._entity_set_from_schema_name(table)
+            entity_set = await self._entity_set_from_schema_name(table)
             url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
         return _RawRequest(
             method="DELETE",
@@ -1640,9 +1700,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             content_id=content_id,
         )
 
-    def _build_delete_multiple(self, table: str, ids: List[str]) -> _RawRequest:
+    async def _build_delete_multiple(self, table: str, ids: List[str]) -> _RawRequest:
         """Build a BulkDelete POST request without sending it."""
-        pk_attr = self._primary_id_attr(table)
+        pk_attr = await self._primary_id_attr(table)
         logical_name = table.lower()
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         payload = {
@@ -1682,7 +1742,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             body=json.dumps(payload, ensure_ascii=False),
         )
 
-    def _build_get(
+    async def _build_get(
         self,
         table: str,
         record_id: str,
@@ -1690,13 +1750,13 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         select: Optional[List[str]] = None,
     ) -> _RawRequest:
         """Build a single-record GET request without sending it."""
-        entity_set = self._entity_set_from_schema_name(table)
+        entity_set = await self._entity_set_from_schema_name(table)
         url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
         if select:
             url += "?$select=" + ",".join(self._lowercase_list(select))
         return _RawRequest(method="GET", url=url)
 
-    def _build_sql(self, sql: str) -> _RawRequest:
+    async def _build_sql(self, sql: str) -> _RawRequest:
         """Build a SQL query GET request without sending it.
 
         Resolves the entity set from the table name in the SQL statement via
@@ -1712,7 +1772,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             for validation).
         """
         logical = self._extract_logical_table(sql)
-        entity_set = self._entity_set_from_schema_name(logical)
+        entity_set = await self._entity_set_from_schema_name(logical)
         return _RawRequest(
             method="GET",
             url=f"{self.api}/{entity_set}?sql={_url_quote(sql, safe='')}",
