@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b9] - 2026-04-28
+
+### Added
+- `client.dataframe.sql()`: execute a SQL SELECT and get results directly as a pandas DataFrame (#141)
+- Schema discovery: `client.query.list_columns()`, `client.query.list_relationships()`, and `client.query.list_table_relationships()` to inspect table columns and relationships from metadata (#141)
+- SQL query helpers: `client.query.sql_columns()`, `client.query.sql_select()`, `client.query.sql_joins()`, and `client.query.sql_join()` to auto-build SQL statements from metadata without knowing column or join syntax manually (#141)
+- OData query helpers: `client.query.odata_select()`, `client.query.odata_expands()`, `client.query.odata_expand()`, and `client.query.odata_bind()` to auto-discover navigation property names and build `@odata.bind` values from metadata (#141)
+- `SELECT *` raises a `ValidationError` with a clear message instead of sending the query to the server, which does not support wildcard selects; use `client.query.sql_columns()` to discover available columns (#141)
+- SQL safety guardrails: write statements (`INSERT`, `UPDATE`, `DELETE`, etc.) raise `ValidationError` before hitting the server; cartesian joins (`FROM a, b`) and leading-wildcard `LIKE` patterns emit `UserWarning` (#141)
+- `client.tables.create()` now accepts an optional `display_name` parameter to set a human-readable label for the table in Dataverse; defaults to the schema name when omitted (#164)
+- Opt-in HTTP diagnostics logging: pass a `LogConfig` to `DataverseConfig` to log all HTTP request and response traffic to rotating local log files with automatic redaction of sensitive headers (`Authorization`, etc.) (#135)
+
+### Changed
+- `client.tables.create_lookup_field()` now automatically lowercases `referencing_table` and `referenced_table` to valid Dataverse logical names; callers no longer need to call `.lower()` manually (#141)
+
 ## [0.1.0b8] - 2026-04-10
 
 ### Added
@@ -110,7 +125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b9...HEAD
+[0.1.0b9]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...v0.1.0b9
 [0.1.0b8]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b7...v0.1.0b8
 [0.1.0b7]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b6...v0.1.0b7
 [0.1.0b6]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b5...v0.1.0b6
