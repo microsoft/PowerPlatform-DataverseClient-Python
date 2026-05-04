@@ -430,6 +430,96 @@ class TestTableOperations(unittest.TestCase):
 
         self.client._odata._delete_alternate_key.assert_called_once_with("new_Product", "key-guid-1")
 
+    # -------------------------------------------------------- list_columns
+
+    def test_list_columns(self):
+        """list_columns() should delegate to _list_columns and return the list."""
+        expected = [
+            {"LogicalName": "name", "AttributeType": "String"},
+            {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier"},
+        ]
+        self.client._odata._list_columns.return_value = expected
+
+        result = self.client.tables.list_columns("account")
+
+        self.client._odata._list_columns.assert_called_once_with("account", select=None, filter=None)
+        self.assertEqual(result, expected)
+
+    def test_list_columns_with_select_and_filter(self):
+        """list_columns() should forward select and filter to _list_columns."""
+        self.client._odata._list_columns.return_value = []
+
+        self.client.tables.list_columns(
+            "account",
+            select=["LogicalName", "AttributeType"],
+            filter="AttributeType eq 'String'",
+        )
+
+        self.client._odata._list_columns.assert_called_once_with(
+            "account",
+            select=["LogicalName", "AttributeType"],
+            filter="AttributeType eq 'String'",
+        )
+
+    # ------------------------------------------------- list_relationships
+
+    def test_list_relationships(self):
+        """list_relationships() should delegate to _list_relationships and return the list."""
+        expected = [
+            {"SchemaName": "new_account_orders", "MetadataId": "rel-1"},
+        ]
+        self.client._odata._list_relationships.return_value = expected
+
+        result = self.client.tables.list_relationships()
+
+        self.client._odata._list_relationships.assert_called_once_with(filter=None, select=None)
+        self.assertEqual(result, expected)
+
+    def test_list_relationships_with_filter_and_select(self):
+        """list_relationships() should forward filter and select to _list_relationships."""
+        self.client._odata._list_relationships.return_value = []
+
+        self.client.tables.list_relationships(
+            filter="RelationshipType eq 'OneToManyRelationship'",
+            select=["SchemaName", "ReferencedEntity"],
+        )
+
+        self.client._odata._list_relationships.assert_called_once_with(
+            filter="RelationshipType eq 'OneToManyRelationship'",
+            select=["SchemaName", "ReferencedEntity"],
+        )
+
+    # --------------------------------------------- list_table_relationships
+
+    def test_list_table_relationships(self):
+        """list_table_relationships() should delegate to _list_table_relationships."""
+        expected = [
+            {"SchemaName": "rel_1tm", "MetadataId": "r1"},
+            {"SchemaName": "rel_mtm", "MetadataId": "r2"},
+        ]
+        self.client._odata._list_table_relationships.return_value = expected
+
+        result = self.client.tables.list_table_relationships("account")
+
+        self.client._odata._list_table_relationships.assert_called_once_with("account", filter=None, select=None)
+        self.assertEqual(result, expected)
+
+    def test_list_table_relationships_with_filter_and_select(self):
+        """list_table_relationships() should forward filter and select."""
+        self.client._odata._list_table_relationships.return_value = []
+
+        self.client.tables.list_table_relationships(
+            "account",
+            filter="IsManaged eq false",
+            select=["SchemaName"],
+        )
+
+        self.client._odata._list_table_relationships.assert_called_once_with(
+            "account",
+            filter="IsManaged eq false",
+            select=["SchemaName"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
