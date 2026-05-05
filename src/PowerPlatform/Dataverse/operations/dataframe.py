@@ -204,6 +204,8 @@ class DataFrameOperations:
         self,
         table: str,
         records: pd.DataFrame,
+        *,
+        max_workers: int = 1,
     ) -> pd.Series:
         """Create records from a pandas DataFrame.
 
@@ -211,6 +213,10 @@ class DataFrameOperations:
         :type table: :class:`str`
         :param records: DataFrame where each row is a record to create.
         :type records: ~pandas.DataFrame
+        :param max_workers: Number of worker threads for concurrent chunk dispatch.
+            Defaults to ``1`` (sequential). Values greater than 1 enable parallel
+            execution when the DataFrame exceeds 1,000 rows.
+        :type max_workers: :class:`int`
 
         :return: Series of created record GUIDs, aligned with the input DataFrame index.
         :rtype: ~pandas.Series
@@ -220,9 +226,11 @@ class DataFrameOperations:
             IDs does not match the number of input rows.
 
         .. tip::
-            All rows are sent in a single ``CreateMultiple`` request. For very
-            large DataFrames, consider splitting into smaller batches to avoid
-            request timeouts.
+            For DataFrames with more than 1,000 rows, the operation is automatically
+            split into chunks of 1,000. Pass ``max_workers=N`` (e.g. ``3``) to
+            dispatch chunks concurrently. This is **not atomic** — if a chunk
+            fails, earlier chunks are already committed. Callers that require
+            atomicity should limit DataFrames to ≤ 1,000 rows per call.
 
         Example:
             Create records from a DataFrame::
@@ -251,7 +259,7 @@ class DataFrameOperations:
                 "All rows must contain at least one field to create."
             )
 
-        ids = self._client.records.create(table, record_list)
+        ids = self._client.records.create(table, record_list, max_workers=max_workers)
 
         if len(ids) != len(records):
             raise ValueError(f"Server returned {len(ids)} IDs for {len(records)} input rows")
@@ -266,6 +274,8 @@ class DataFrameOperations:
         changes: pd.DataFrame,
         id_column: str,
         clear_nulls: bool = False,
+        *,
+        max_workers: int = 1,
     ) -> None:
         """Update records from a pandas DataFrame.
 
@@ -283,6 +293,10 @@ class DataFrameOperations:
             as ``null`` to Dataverse, clearing the field. Use ``True`` only when you intentionally
             want NaN/None values to clear fields.
         :type clear_nulls: :class:`bool`
+        :param max_workers: Number of worker threads for concurrent chunk dispatch.
+            Defaults to ``1`` (sequential). Values greater than 1 enable parallel
+            execution when the DataFrame exceeds 1,000 rows.
+        :type max_workers: :class:`int`
 
         :raises TypeError: If ``changes`` is not a pandas DataFrame.
         :raises ValueError: If ``changes`` is empty, ``id_column`` is not found in the
@@ -295,9 +309,11 @@ class DataFrameOperations:
             rows are never skipped.
 
         .. tip::
-            All rows are sent in a single ``UpdateMultiple`` request (or a
-            single PATCH for one row). For very large DataFrames, consider
-            splitting into smaller batches to avoid request timeouts.
+            For DataFrames with more than 1,000 rows, the operation is automatically
+            split into chunks of 1,000. Pass ``max_workers=N`` (e.g. ``3``) to
+            dispatch chunks concurrently. This is **not atomic** — if a chunk
+            fails, earlier chunks are already committed. Callers that require
+            atomicity should limit DataFrames to ≤ 1,000 rows per call.
 
         Example:
             Update records with different values per row::
@@ -352,9 +368,9 @@ class DataFrameOperations:
         change_filtered: List[Dict[str, Any]] = [p[1] for p in paired]
 
         if len(ids_filtered) == 1:
-            self._client.records.update(table, ids_filtered[0], change_filtered[0])
+            self._client.records.update(table, ids_filtered[0], change_filtered[0], max_workers=max_workers)
         else:
-            self._client.records.update(table, ids_filtered, change_filtered)
+            self._client.records.update(table, ids_filtered, change_filtered, max_workers=max_workers)
 
     # ----------------------------------------------------------------- delete
 

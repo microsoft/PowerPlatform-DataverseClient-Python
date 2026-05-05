@@ -15,11 +15,14 @@ import time
 import re
 import json
 import uuid
+import random
+import threading
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import importlib.resources as ir
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 
 from urllib.parse import quote as _url_quote, parse_qs, urlparse
 
@@ -57,6 +60,70 @@ _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+_MULTIPLE_BATCH_SIZE = 1000
+# Concurrent chunk dispatch settings
+_MAX_WORKERS = 3  # maximum concurrent worker threads; values above this are capped to _MAX_WORKERS
+_CHUNK_RETRY_LIMIT = 3  # max retries per chunk on transient errors
+_CHUNK_RETRY_DEFAULT_WAIT = 60  # seconds to wait when Retry-After header is absent
+_CHUNK_RETRY_JITTER_MAX = 5  # seconds of random jitter added to Retry-After to desynchronise workers
+
+
+def _dispatch_chunks(fn: Callable, chunks: List, max_workers: int) -> List:
+    """Dispatch ``fn(chunk)`` for each chunk, sequentially or concurrently.
+
+    If ``max_workers`` exceeds ``_MAX_WORKERS`` (3) a :class:`UserWarning` is
+    issued and the value is capped to ``_MAX_WORKERS``.
+
+    When ``max_workers == 1`` or there is only one chunk, runs sequentially
+    with no thread overhead.  When ``max_workers > 1`` and there are multiple
+    chunks, submits all chunks to a :class:`~concurrent.futures.ThreadPoolExecutor`.
+    Results are collected by iterating the futures list in submission order —
+    ``futures[i].result()`` blocks until chunk *i* finishes, so the returned
+    list is always in chunk-submission order regardless of thread completion order.
+
+    On transient HTTP errors (429, 502, 503, 504) each worker retries up to
+    ``_CHUNK_RETRY_LIMIT`` times, sleeping for the ``Retry-After`` duration
+    (falling back to ``_CHUNK_RETRY_DEFAULT_WAIT`` seconds) plus a random jitter
+    of up to ``_CHUNK_RETRY_JITTER_MAX`` seconds to desynchronise concurrent
+    retries.  The sequential path applies the same retry logic.
+
+    :param fn: Callable that accepts a single chunk and returns a result.
+    :param chunks: List of chunks to process.
+    :param max_workers: Maximum number of concurrent worker threads.
+    :return: List of results in chunk submission order.
+    """
+    if not isinstance(max_workers, int) or max_workers < 1:
+        raise ValueError(f"max_workers must be a positive integer; got {max_workers!r}")
+    requested_workers = max_workers
+    if max_workers > _MAX_WORKERS:
+        max_workers = _MAX_WORKERS
+
+    def _execute_with_retry(chunk):
+        for attempt in range(_CHUNK_RETRY_LIMIT + 1):
+            try:
+                return fn(chunk)
+            except HttpError as exc:
+                if exc.is_transient and attempt < _CHUNK_RETRY_LIMIT:
+                    ra = exc.details.get("retry_after")
+                    wait = float(_CHUNK_RETRY_DEFAULT_WAIT if ra is None else ra)
+                    wait += random.uniform(0, _CHUNK_RETRY_JITTER_MAX)
+                    time.sleep(wait)
+                else:
+                    raise
+
+    if max_workers == 1 or len(chunks) <= 1:
+        return [_execute_with_retry(chunk) for chunk in chunks]
+
+    if requested_workers > _MAX_WORKERS:
+        warnings.warn(
+            f"max_workers={requested_workers} exceeds the maximum of {_MAX_WORKERS}; capping to {_MAX_WORKERS}.",
+            UserWarning,
+            stacklevel=4,
+        )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(copy_context().run, _execute_with_retry, chunk) for chunk in chunks]
+        return [f.result() for f in futures]
 
 
 def _extract_pagingcookie(next_link: str) -> Optional[str]:
@@ -211,6 +278,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         self._logical_primaryid_cache: dict[str, str] = {}
         self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
+        self._picklist_cache_lock = (
+            threading.Lock()
+        )  # prevents concurrent threads from making duplicate picklist metadata fetches on cold start
 
     @contextmanager
     def _call_scope(self):
@@ -372,8 +442,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             f"Create response missing GUID in OData-EntityId/Location headers (status={getattr(r,'status_code', '?')}). Headers: {header_keys}"
         )
 
-    def _create_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> List[str]:
+    def _create_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+        *,
+        max_workers: int = 1,
+    ) -> List[str]:
         """Create multiple records using the collection-bound ``CreateMultiple`` action.
+
+        Large record lists are automatically split into chunks of up to
+        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially or
+        concurrently depending on ``max_workers``.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -381,40 +462,51 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type table_schema_name: ``str``
         :param records: Payload dictionaries mapped by column schema names.
         :type records: ``list[dict[str, Any]]``
+        :param max_workers: Number of concurrent worker threads for chunk dispatch.
+            ``1`` (default) dispatches sequentially.
+        :type max_workers: ``int``
 
         :return: List of created record GUIDs (may be empty if response lacks IDs).
         :rtype: ``list[str]``
 
         .. note::
            Logical type stamping: if any payload omits ``@odata.type`` the client injects ``Microsoft.Dynamics.CRM.<table_logical_name>``. If all payloads already include ``@odata.type`` no modification occurs.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is split into multiple requests
+           and is **not atomic**. If a later batch fails, earlier batches are already committed. Callers
+           that require atomicity should limit input to ``<= _MULTIPLE_BATCH_SIZE`` records.
         """
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
-        r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, records))
-        try:
-            body = r.json() if r.text else {}
-        except ValueError:
-            body = {}
-        if not isinstance(body, dict):
-            return []
-        # Expected: { "Ids": [guid, ...] }
-        ids = body.get("Ids")
-        if isinstance(ids, list):
-            return [i for i in ids if isinstance(i, str)]
 
-        value = body.get("value")
-        if isinstance(value, list):
-            # Extract IDs if possible
-            out: List[str] = []
-            for item in value:
-                if isinstance(item, dict):
-                    # Heuristic: look for a property ending with 'id'
-                    for k, v in item.items():
-                        if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
-                            out.append(v)
-                            break
-            return out
-        return []
+        def _execute_chunk(chunk: List[Dict[str, Any]]) -> List[str]:
+            r = self._execute_raw(self._build_create_multiple(entity_set, table_schema_name, chunk))
+            try:
+                body = r.json() if r.text else {}
+            except ValueError:
+                body = {}
+            if not isinstance(body, dict):
+                return []
+            ids = body.get("Ids")
+            if isinstance(ids, list):
+                return [i for i in ids if isinstance(i, str)]
+            value = body.get("value")
+            if isinstance(value, list):
+                out: List[str] = []
+                for item in value:
+                    if isinstance(item, dict):
+                        # Heuristic: look for a property ending with 'id'
+                        for k, v in item.items():
+                            if isinstance(k, str) and k.lower().endswith("id") and isinstance(v, str) and len(v) >= 32:
+                                out.append(v)
+                                break
+                return out
+            return []
+
+        chunks = [records[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(records), _MULTIPLE_BATCH_SIZE)]
+        results = _dispatch_chunks(_execute_chunk, chunks, max_workers)
+        return [guid for batch_ids in results for guid in batch_ids]
 
     def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
         """Build an OData alternate key segment from a mapping of key names to values.
@@ -484,6 +576,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         table_schema_name: str,
         alternate_keys: List[Dict[str, Any]],
         records: List[Dict[str, Any]],
+        *,
+        max_workers: int = 1,
     ) -> None:
         """Upsert multiple records using the collection-bound ``UpsertMultiple`` action.
 
@@ -502,12 +596,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :param records: List of record payload dictionaries, one per record.
             Must be the same length as ``alternate_keys``.
         :type records: ``list[dict[str, Any]]``
+        :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
+            Values above ``_MAX_WORKERS`` are capped to ``_MAX_WORKERS``.
+        :type max_workers: ``int``
 
         :return: ``None``
         :rtype: ``None``
 
         :raises ValueError: If ``alternate_keys`` and ``records`` differ in length, or if
             any record payload contains an alternate key field with a conflicting value.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
+           split into multiple requests and is **not atomic** across batches.
         """
         if len(alternate_keys) != len(records):
             raise ValueError(
@@ -529,9 +630,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             key_str = self._build_alternate_key_str(alt_key)
             record_processed["@odata.id"] = f"{entity_set}({key_str})"
             targets.append(record_processed)
-        payload = {"Targets": targets}
+
         url = f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpsertMultiple"
-        self._request("post", url, json=payload, expected=(200, 201, 204))
+
+        def _execute_chunk(chunk):
+            self._request("post", url, json={"Targets": chunk}, expected=(200, 201, 204))
+
+        chunks = [targets[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(targets), _MULTIPLE_BATCH_SIZE)]
+        _dispatch_chunks(_execute_chunk, chunks, max_workers)
 
     # --- Derived helpers for high-level client ergonomics ---
     def _primary_id_attr(self, table_schema_name: str) -> str:
@@ -550,7 +656,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         )
 
     def _update_by_ids(
-        self, table_schema_name: str, ids: List[str], changes: Union[Dict[str, Any], List[Dict[str, Any]]]
+        self,
+        table_schema_name: str,
+        ids: List[str],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
+        *,
+        max_workers: int = 1,
     ) -> None:
         """Update many records by GUID list using the collection-bound ``UpdateMultiple`` action.
 
@@ -572,7 +683,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         entity_set = self._entity_set_from_schema_name(table_schema_name)
         if isinstance(changes, dict):
             batch = [{pk_attr: rid, **changes} for rid in ids]
-            self._update_multiple(entity_set, table_schema_name, batch)
+            self._update_multiple(entity_set, table_schema_name, batch, max_workers=max_workers)
             return None
         if not isinstance(changes, list):
             raise TypeError("changes must be dict or list[dict]")
@@ -583,7 +694,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             if not isinstance(patch, dict):
                 raise TypeError("Each patch must be a dict")
             batch.append({pk_attr: rid, **patch})
-        self._update_multiple(entity_set, table_schema_name, batch)
+        self._update_multiple(entity_set, table_schema_name, batch, max_workers=max_workers)
         return None
 
     def _delete_multiple(
@@ -648,8 +759,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         self._execute_raw(self._build_update(table_schema_name, key, data))
 
-    def _update_multiple(self, entity_set: str, table_schema_name: str, records: List[Dict[str, Any]]) -> None:
+    def _update_multiple(
+        self,
+        entity_set: str,
+        table_schema_name: str,
+        records: List[Dict[str, Any]],
+        *,
+        max_workers: int = 1,
+    ) -> None:
         """Bulk update existing records via the collection-bound ``UpdateMultiple`` action.
+
+        Large record lists are automatically split into chunks of up to
+        ``_MULTIPLE_BATCH_SIZE`` records and dispatched sequentially or concurrently
+        depending on ``max_workers``.
 
         :param entity_set: Resolved entity set (plural) name.
         :type entity_set: ``str``
@@ -657,18 +779,30 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type table_schema_name: ``str``
         :param records: List of patch dictionaries. Each must include the true primary key attribute (e.g. ``accountid``) and one or more fields to update.
         :type records: ``list[dict[str, Any]]``
+        :param max_workers: Maximum number of concurrent worker threads for chunk dispatch.
+            Values above ``_MAX_WORKERS`` are capped to ``_MAX_WORKERS``.
+        :type max_workers: ``int``
         :return: ``None``
         :rtype: ``None``
 
         .. note::
            - Endpoint: ``POST /{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple`` with body ``{"Targets": [...]}``.
-           - Transactional semantics: if any individual update fails, the entire request rolls back.
+           - Transactional semantics apply within each batch; if a batch fails it rolls back, but earlier batches are already committed.
            - Response content is ignored; no stable contract for returned IDs/representations.
            - Caller must supply the correct primary key attribute (e.g. ``accountid``) in every record.
+
+        .. warning::
+           When input exceeds ``_MULTIPLE_BATCH_SIZE`` records, the operation is
+           split into multiple requests and is **not atomic** across batches.
         """
         if not isinstance(records, list) or not records or not all(isinstance(r, dict) for r in records):
             raise TypeError("records must be a non-empty list[dict]")
-        self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, records))
+
+        def _execute_chunk(chunk):
+            self._execute_raw(self._build_update_multiple_from_records(entity_set, table_schema_name, chunk))
+
+        chunks = [records[i : i + _MULTIPLE_BATCH_SIZE] for i in range(0, len(records), _MULTIPLE_BATCH_SIZE)]
+        _dispatch_chunks(_execute_chunk, chunks, max_workers)
         return None
 
     def _delete(self, table_schema_name: str, key: str) -> None:
@@ -710,6 +844,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         page_size: Optional[int] = None,
         count: bool = False,
         include_annotations: Optional[str] = None,
+        prefetch_pages: int = 0,
     ) -> Iterable[List[Dict[str, Any]]]:
         """Iterate records from an entity set, yielding one page (list of dicts) at a time.
 
@@ -731,6 +866,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type count: ``bool``
         :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
         :type include_annotations: ``str`` | ``None``
+        :param prefetch_pages: Number of pages to pre-fetch ahead of the caller. ``0`` (default) is
+            fully sequential. ``1`` submits the next HTTP request immediately after receiving the
+            current page, overlapping network I/O with the caller's processing time. Values above
+            ``1`` are capped at ``1``.
+        :type prefetch_pages: ``int``
 
         :return: Iterator yielding pages (each page is a ``list`` of record dicts).
         :rtype: ``Iterable[list[dict[str, Any]]]``
@@ -775,21 +915,42 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if count:
             params["$count"] = "true"
 
-        data = _do_request(base_url, params=params)
-        items = data.get("value") if isinstance(data, dict) else None
-        if isinstance(items, list) and items:
-            yield [x for x in items if isinstance(x, dict)]
-
-        next_link = None
-        if isinstance(data, dict):
-            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
-
-        while next_link:
-            data = _do_request(next_link)
+        if prefetch_pages <= 0:
+            data = _do_request(base_url, params=params)
             items = data.get("value") if isinstance(data, dict) else None
             if isinstance(items, list) and items:
                 yield [x for x in items if isinstance(x, dict)]
-            next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
+
+            next_link = None
+            if isinstance(data, dict):
+                next_link = data.get("@odata.nextLink") or data.get("odata.nextLink")
+
+            while next_link:
+                data = _do_request(next_link)
+                items = data.get("value") if isinstance(data, dict) else None
+                if isinstance(items, list) and items:
+                    yield [x for x in items if isinstance(x, dict)]
+                next_link = (
+                    data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
+                )
+        else:
+            # Submit the next request before yielding the current page so
+            # network I/O overlaps with the caller's processing time.
+            ctx = copy_context()
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
+                pending = executor.submit(ctx.run, _do_request, base_url, params=params)
+                while pending is not None:
+                    data = pending.result()
+                    items = data.get("value") if isinstance(data, dict) else None
+                    next_link = (
+                        (data.get("@odata.nextLink") or data.get("odata.nextLink")) if isinstance(data, dict) else None
+                    )
+                    pending = executor.submit(ctx.run, _do_request, next_link) if next_link else None
+                    if isinstance(items, list) and items:
+                        yield [x for x in items if isinstance(x, dict)]
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
     # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
@@ -1483,49 +1644,60 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         table_key = self._normalize_cache_key(table_schema_name)
         now = time.time()
+        # Lock-free read for the warm-cache case (common in sequential and
+        # subsequent concurrent calls once the cache is populated).
         table_entry = self._picklist_label_cache.get(table_key)
         if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
             return
 
-        table_esc = self._escape_odata_quotes(table_schema_name.lower())
-        url = (
-            f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
-            f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
-            f"?$select=LogicalName&$expand=OptionSet($select=Options)"
-        )
-        response = self._request_metadata_with_retry("get", url)
-        body = response.json()
-        items = body.get("value", []) if isinstance(body, dict) else []
+        # Serialise concurrent cold-start fetches so only one thread makes the
+        # metadata HTTP call.  Re-check inside the lock (double-checked locking)
+        # in case another thread populated the cache while we waited.
+        with self._picklist_cache_lock:
+            now = time.time()
+            table_entry = self._picklist_label_cache.get(table_key)
+            if isinstance(table_entry, dict) and (now - table_entry.get("ts", 0)) < self._picklist_cache_ttl_seconds:
+                return
 
-        picklists: Dict[str, Dict[str, int]] = {}
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            ln = item.get("LogicalName", "").lower()
-            if not ln:
-                continue
-            option_set = item.get("OptionSet") or {}
-            options = option_set.get("Options") if isinstance(option_set, dict) else None
-            mapping: Dict[str, int] = {}
-            if isinstance(options, list):
-                for opt in options:
-                    if not isinstance(opt, dict):
-                        continue
-                    val = opt.get("Value")
-                    if not isinstance(val, int):
-                        continue
-                    label_def = opt.get("Label") or {}
-                    locs = label_def.get("LocalizedLabels")
-                    if isinstance(locs, list):
-                        for loc in locs:
-                            if isinstance(loc, dict):
-                                lab = loc.get("Label")
-                                if isinstance(lab, str) and lab.strip():
-                                    normalized = self._normalize_picklist_label(lab)
-                                    mapping.setdefault(normalized, val)
-            picklists[ln] = mapping
+            table_esc = self._escape_odata_quotes(table_schema_name.lower())
+            url = (
+                f"{self.api}/EntityDefinitions(LogicalName='{table_esc}')"
+                f"/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+                f"?$select=LogicalName&$expand=OptionSet($select=Options)"
+            )
+            response = self._request_metadata_with_retry("get", url)
+            body = response.json()
+            items = body.get("value", []) if isinstance(body, dict) else []
 
-        self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
+            picklists: Dict[str, Dict[str, int]] = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                ln = item.get("LogicalName", "").lower()
+                if not ln:
+                    continue
+                option_set = item.get("OptionSet") or {}
+                options = option_set.get("Options") if isinstance(option_set, dict) else None
+                mapping: Dict[str, int] = {}
+                if isinstance(options, list):
+                    for opt in options:
+                        if not isinstance(opt, dict):
+                            continue
+                        val = opt.get("Value")
+                        if not isinstance(val, int):
+                            continue
+                        label_def = opt.get("Label") or {}
+                        locs = label_def.get("LocalizedLabels")
+                        if isinstance(locs, list):
+                            for loc in locs:
+                                if isinstance(loc, dict):
+                                    lab = loc.get("Label")
+                                    if isinstance(lab, str) and lab.strip():
+                                        normalized = self._normalize_picklist_label(lab)
+                                        mapping.setdefault(normalized, val)
+                picklists[ln] = mapping
+
+            self._picklist_label_cache[table_key] = {"ts": now, "picklists": picklists}
 
     def _convert_labels_to_ints(self, table_schema_name: str, record: Dict[str, Any]) -> Dict[str, Any]:
         """Return a copy of record with any labels converted to option ints.
