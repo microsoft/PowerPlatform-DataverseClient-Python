@@ -51,7 +51,7 @@ Top-level shortcuts (removed at GA)::
     client.create(t, d)           ->  client.records.create(t, d)
     client.update(t, id, d)       ->  client.records.update(t, id, d)
     client.delete(t, id)          ->  client.records.delete(t, id)
-    client.get(t, id)             ->  client.records.retrieve(t, id)
+    client.get(t, id)             ->  client.records.get(t, id)  [deprecated; see manual section]
     client.query_sql(sql)         ->  client.query.sql(sql)
     client.get_table_info(t)      ->  client.tables.get(t)
     client.create_table(t, …)     ->  client.tables.create(t, …)
@@ -156,7 +156,7 @@ _CLIENT_SHORTCUTS = {
     "create": ("records", "create"),
     "update": ("records", "update"),
     "delete": ("records", "delete"),
-    "get": ("records", "retrieve"),
+    "get": ("records", "get"),
     "query_sql": ("query", "sql"),
     "get_table_info": ("tables", "get"),
     "create_table": ("tables", "create"),
