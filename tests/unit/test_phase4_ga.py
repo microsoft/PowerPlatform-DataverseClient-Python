@@ -87,7 +87,8 @@ class TestFetchXml(unittest.TestCase):
 
     def test_pagination_fetches_all_pages(self):
         """execute_pages() drives the HTTP loop; each page yields one QueryResult."""
-        cookie_raw = "%25253Cpagingcookie%252520pagingcookie%25253D%252522"
+        # Annotation is outer XML; pagingcookie attribute is double URL-encoded inner cookie.
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
         page1 = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -98,7 +99,8 @@ class TestFetchXml(unittest.TestCase):
 
     def test_pagination_second_request_includes_page_and_cookie(self):
         """execute_pages() injects the decoded paging cookie into the second request."""
-        cookie_raw = "%25253Cpagingcookie%252520test%25253D%252522"
+        # pagingcookie="%253Cc%252F%253E": double URL-decode gives "<c/>" (the inner cookie XML).
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
         page1 = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -168,7 +170,7 @@ class TestFetchXml(unittest.TestCase):
 
     def test_execute_pages_returns_iterator_of_query_result(self):
         """execute_pages() yields QueryResult objects, one per HTTP page."""
-        cookie_raw = "%25253Cpagingcookie%252520pagingcookie%25253D%252522"
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
         page1 = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -180,7 +182,7 @@ class TestFetchXml(unittest.TestCase):
 
     def test_execute_pages_one_http_call_per_page(self):
         """Each execute_pages() iteration fires exactly one HTTP request."""
-        cookie_raw = "%25253Cpagingcookie%252520pagingcookie%25253D%252522"
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
         page1 = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -193,7 +195,7 @@ class TestFetchXml(unittest.TestCase):
 
     def test_execute_pages_per_page_records(self):
         """Each page yielded by execute_pages() contains only its own records."""
-        cookie_raw = "%25253Cpagingcookie%252520pagingcookie%25253D%252522"
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
         page1 = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
         page2 = self._mock_response([{"name": "B"}, {"name": "C"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -203,6 +205,123 @@ class TestFetchXml(unittest.TestCase):
         self.assertEqual(len(pages[1]), 2)
         self.assertEqual(pages[0].first()["name"], "A")
         self.assertEqual(pages[1].first()["name"], "B")
+
+    # ------------------------------------------------------------------
+    # Input validation
+    # ------------------------------------------------------------------
+
+    def test_non_string_input_raises_validation_error(self):
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self.client.query.fetchxml(123)
+
+    def test_empty_string_raises_validation_error(self):
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self.client.query.fetchxml("")
+
+    def test_whitespace_only_raises_validation_error(self):
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self.client.query.fetchxml("   ")
+
+    def test_malformed_xml_raises_validation_error(self):
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self.client.query.fetchxml("<fetch><unclosed>")
+
+    def test_url_too_long_raises_validation_error(self):
+        """XML whose URL-encoded form exceeds 32,768 chars is rejected before any HTTP."""
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        # Alphanumeric chars are URL-safe and don't expand; a 32,769-char name attribute
+        # value pushes the encoded XML over the limit.
+        long_name = "a" * 32_769
+        big_xml = f'<fetch><entity name="{long_name}"><attribute name="x"/></entity></fetch>'
+        with self.assertRaises(ValidationError):
+            self.client.query.fetchxml(big_xml)
+
+    # ------------------------------------------------------------------
+    # Paging behaviour
+    # ------------------------------------------------------------------
+
+    def test_morerecords_string_true_continues_paging(self):
+        """morerecords annotation as string "true" (not bool) is handled correctly."""
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
+        page1_payload = {
+            "value": [{"name": "A"}],
+            "@Microsoft.Dynamics.CRM.morerecords": "true",
+            "@Microsoft.Dynamics.CRM.fetchxmlpagingcookie": cookie_raw,
+        }
+        page2_payload = {
+            "value": [{"name": "B"}],
+            "@Microsoft.Dynamics.CRM.morerecords": False,
+        }
+        r1, r2 = MagicMock(), MagicMock()
+        r1.json.return_value = page1_payload
+        r2.json.return_value = page2_payload
+        self.client._odata._request.side_effect = [r1, r2]
+
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
+        self.assertEqual(len(result), 2)
+        self.assertEqual(self.client._odata._request.call_count, 2)
+
+    def test_simple_paging_fallback_emits_user_warning(self):
+        """No cookie returned with morerecords=True triggers a UserWarning."""
+        page1 = self._mock_response([{"name": "A"}], more=True, cookie="")
+        page2 = self._mock_response([{"name": "B"}], more=False)
+        self.client._odata._request.side_effect = [page1, page2]
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
+
+        user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+        self.assertEqual(len(user_warnings), 1)
+        self.assertIn("simple paging", str(user_warnings[0].message).lower())
+
+    def test_simple_paging_fallback_fetches_all_pages(self):
+        """Simple paging fallback continues iterating; caller still gets all records."""
+        page1 = self._mock_response([{"name": "A"}], more=True, cookie="")
+        page2 = self._mock_response([{"name": "B"}], more=False)
+        self.client._odata._request.side_effect = [page1, page2]
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = self.client.query.fetchxml(self._fetch_xml()).execute()
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(self.client._odata._request.call_count, 2)
+
+    def test_malformed_cookie_falls_back_to_simple_paging(self):
+        """A cookie annotation that is not parseable as XML triggers simple paging fallback."""
+        page1 = self._mock_response([{"name": "A"}], more=True, cookie="not-valid-xml")
+        page2 = self._mock_response([{"name": "B"}], more=False)
+        self.client._odata._request.side_effect = [page1, page2]
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = self.client.query.fetchxml(self._fetch_xml()).execute()
+
+        self.assertEqual(len(result), 2)
+        user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+        self.assertEqual(len(user_warnings), 1)
+
+    def test_max_pages_exceeded_raises(self):
+        """Paging loop raises ValidationError after exceeding _MAX_PAGES."""
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        cookie_raw = '<cookie pagenumber="2" pagingcookie="%253Cc%252F%253E" istracking="False" />'
+        always_more = self._mock_response([{"name": "A"}], more=True, cookie=cookie_raw)
+        self.client._odata._request.return_value = always_more
+
+        with patch("PowerPlatform.Dataverse.models.fetchxml_query._MAX_PAGES", 3):
+            with self.assertRaises(ValidationError):
+                list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
 
 
 # ---------------------------------------------------------------------------

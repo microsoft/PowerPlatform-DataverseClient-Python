@@ -8,9 +8,10 @@ from __future__ import annotations
 import warnings
 import xml.etree.ElementTree as _ET
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from urllib.parse import quote as _url_quote
 
-from ..core.errors import MetadataError
-from ..models.fetchxml_query import FetchXmlQuery
+from ..core.errors import MetadataError, ValidationError
+from ..models.fetchxml_query import FetchXmlQuery, _MAX_URL_LENGTH
 from ..models.record import Record
 from ..models.query_builder import QueryBuilder
 
@@ -193,15 +194,35 @@ class QueryOperations:
             for page in query.execute_pages():
                 process(page.to_dataframe())
         """
-        root_el = _ET.fromstring(xml.strip())
+        if not isinstance(xml, str):
+            raise ValidationError("xml must be a string")
+        xml = xml.strip()
+        if not xml:
+            raise ValidationError("xml must not be empty")
+        # Fast-fail before any HTTP is attempted; execute_pages() re-checks the full URL
+        # (base + encoded XML) on each page.
+        if len(_url_quote(xml, safe="")) > _MAX_URL_LENGTH:
+            raise ValidationError(
+                f"FetchXML exceeds the Dataverse URL length limit ({_MAX_URL_LENGTH:,} characters) when encoded. "
+                "Use a $batch POST request to send FetchXML in the request body where the limit is 64 KB."
+            )
+        # Parse only to verify well-formedness and extract the entity name needed for the
+        # request URL. Structural and semantic validation is intentionally left to the server
+        # to avoid duplicating rules that may diverge from Dataverse's own enforcement.
+        # ElementTree does not resolve external entities or expand recursive internal entity
+        # references, so pathological inputs of that kind raise ParseError rather than
+        # consuming resources.
+        try:
+            root_el = _ET.fromstring(xml)
+        except _ET.ParseError as exc:
+            raise ValidationError(f"xml is not well-formed: {exc}") from exc
         entity_el = root_el.find("entity")
         if entity_el is None:
             raise ValueError("FetchXML must contain an <entity> child element")
         entity_name = entity_el.get("name", "")
         if not entity_name:
             raise ValueError("FetchXML <entity> element must have a 'name' attribute")
-
-        return FetchXmlQuery(xml.strip(), entity_name, self._client)
+        return FetchXmlQuery(xml, entity_name, self._client)
 
     # --------------------------------------------------------------- sql_columns
 

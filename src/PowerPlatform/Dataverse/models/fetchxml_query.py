@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import warnings
 import xml.etree.ElementTree as _ET
 from typing import Iterator, List, TYPE_CHECKING
-from urllib.parse import unquote as _url_unquote
+from urllib.parse import unquote as _url_unquote, quote as _url_quote
 
+from ..core.errors import ValidationError
 from .record import QueryResult, Record
 
 if TYPE_CHECKING:
@@ -20,6 +22,17 @@ __all__ = ["FetchXmlQuery"]
 _PREFER_HEADER = (
     "odata.include-annotations=" '"Microsoft.Dynamics.CRM.fetchxmlpagingcookie,' 'Microsoft.Dynamics.CRM.morerecords"'
 )
+
+# Documented Dataverse GET request URL limit. See:
+# learn.microsoft.com/power-apps/developer/data-platform/webapi/compose-http-requests-handle-errors#maximum-url-length
+# FetchXML queries with many attributes or conditions are the most common way to reach it.
+# $batch POST doubles this to 64 KB.
+_MAX_URL_LENGTH = 32_768
+# Guards against infinite paging loops caused by a bug in cookie propagation or an
+# unexpected server response. At the default Dataverse page size of 5,000 rows this
+# cap allows up to 50 million records before raising; it is not a practical record
+# limit but a circuit-breaker against runaway iteration.
+_MAX_PAGES = 10_000
 
 
 class FetchXmlQuery:
@@ -81,12 +94,27 @@ class FetchXmlQuery:
         """
         current_xml = self._xml
         page_num = 1
+        page_count = 0
 
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(self._entity_name)
             base_url = f"{od.api}/{entity_set}"
 
             while True:
+                page_count += 1
+                if page_count > _MAX_PAGES:
+                    raise ValidationError(
+                        f"FetchXML paging exceeded {_MAX_PAGES} pages. "
+                        "This may indicate a runaway query or a bug in paging cookie propagation."
+                    )
+
+                encoded_len = len(base_url) + len("?fetchXml=") + len(_url_quote(current_xml, safe=""))
+                if encoded_len > _MAX_URL_LENGTH:
+                    raise ValidationError(
+                        f"FetchXML request URL exceeds {_MAX_URL_LENGTH} characters after encoding. "
+                        "Simplify the query or reduce attributes/conditions."
+                    )
+
                 r = od._request(
                     "get",
                     base_url,
@@ -103,29 +131,46 @@ class FetchXmlQuery:
 
                 yield QueryResult(page_records)
 
-                more = bool(data.get("@Microsoft.Dynamics.CRM.morerecords", False)) if isinstance(data, dict) else False
+                more_raw = data.get("@Microsoft.Dynamics.CRM.morerecords", False) if isinstance(data, dict) else False
+                more = more_raw is True or (isinstance(more_raw, str) and more_raw.lower() == "true")
                 if not more:
                     break
 
                 raw_cookie = (
                     data.get("@Microsoft.Dynamics.CRM.fetchxmlpagingcookie", "") if isinstance(data, dict) else ""
                 )
-                if not raw_cookie:
-                    break
 
-                # The annotation is outer XML: <cookie pagenumber="N" pagingcookie="DOUBLE_ENCODED" />
-                # The pagingcookie attribute is double URL-encoded; decode twice to get raw cookie XML.
-                try:
-                    cookie_el = _ET.fromstring(raw_cookie)
-                except _ET.ParseError:
-                    break
-                inner_encoded = cookie_el.get("pagingcookie", "")
-                if not inner_encoded:
-                    break
-                cookie = _url_unquote(_url_unquote(inner_encoded))
-                page_num = int(cookie_el.get("pagenumber", str(page_num + 1)))
+                if raw_cookie:
+                    try:
+                        cookie_el = _ET.fromstring(raw_cookie)
+                        inner_encoded = cookie_el.get("pagingcookie", "")
+                        if inner_encoded:
+                            cookie = _url_unquote(_url_unquote(inner_encoded))
+                            page_num = int(cookie_el.get("pagenumber", str(page_num + 1)))
+                            fetch_el = _ET.fromstring(current_xml)
+                            fetch_el.set("paging-cookie", cookie)
+                            fetch_el.set("page", str(page_num))
+                            current_xml = _ET.tostring(fetch_el, encoding="unicode")
+                            continue
+                    except (_ET.ParseError, ValueError):
+                        pass  # Fall through to simple paging
 
+                # Simple paging fallback: server returned morerecords=true but no paging
+                # cookie. Dataverse omits the cookie when the query cannot use cookie-based
+                # paging (e.g. FetchXML ordered by a link-entity column). We continue with
+                # page-number-only paging rather than truncating, but warn because simple
+                # paging has a 50,000-record server cap and performance degrades at high page
+                # numbers. The caller may be able to avoid this by reordering on the root
+                # entity instead.
+                warnings.warn(
+                    "Dataverse did not return a paging cookie; falling back to simple paging "
+                    "(page-number increment only). Simple paging is capped at 50,000 records "
+                    "and degrades in performance at high page numbers. Consider reordering on "
+                    "a root-entity column to enable cookie-based paging.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                page_num += 1
                 fetch_el = _ET.fromstring(current_xml)
-                fetch_el.set("paging-cookie", cookie)
                 fetch_el.set("page", str(page_num))
                 current_xml = _ET.tostring(fetch_el, encoding="unicode")
