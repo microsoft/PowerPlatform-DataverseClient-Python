@@ -32,19 +32,20 @@ from datetime import datetime
 
 # Import SDK components (assumes installation is already validated)
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
-from PowerPlatform.Dataverse.models.relationship import (
-    LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
-    ManyToManyRelationshipMetadata,
+from PowerPlatform.Dataverse.core import HttpError, MetadataError
+from PowerPlatform.Dataverse.models import (
     CascadeConfiguration,
+    Label,
+    LocalizedLabel,
+    LookupAttributeMetadata,
+    ManyToManyRelationshipMetadata,
+    OneToManyRelationshipMetadata,
+    UpsertItem,
 )
-from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 from PowerPlatform.Dataverse.common.constants import (
     CASCADE_BEHAVIOR_NO_CASCADE,
     CASCADE_BEHAVIOR_REMOVE_LINK,
 )
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from azure.identity import InteractiveBrowserCredential
 
 

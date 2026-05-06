@@ -136,7 +136,7 @@ client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 Creates or updates records identified by alternate keys. Single item -> PATCH; multiple items -> `UpsertMultiple` bulk action.
 > **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
 ```python
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
+from PowerPlatform.Dataverse.models import UpsertItem
 
 # Single upsert
 client.records.upsert("account", [
@@ -293,12 +293,12 @@ client.tables.delete("new_Product")
 
 #### Create One-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.relationship import (
-    LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
+from PowerPlatform.Dataverse.models import (
+    CascadeConfiguration,
     Label,
     LocalizedLabel,
-    CascadeConfiguration,
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
 )
 from PowerPlatform.Dataverse.common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
@@ -325,7 +325,7 @@ print(f"Created lookup field: {result['lookup_schema_name']}")
 
 #### Create Many-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
+from PowerPlatform.Dataverse.models import ManyToManyRelationshipMetadata
 
 relationship = ManyToManyRelationshipMetadata(
     schema_name="new_employee_project",
@@ -420,12 +420,12 @@ print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 The SDK provides structured exceptions with detailed error information:
 
 ```python
-from PowerPlatform.Dataverse.core.errors import (
+from PowerPlatform.Dataverse.core import (
     DataverseError,
     HttpError,
-    ValidationError,
     MetadataError,
-    SQLParseError
+    SQLParseError,
+    ValidationError,
 )
 from PowerPlatform.Dataverse.client import DataverseClient
 
