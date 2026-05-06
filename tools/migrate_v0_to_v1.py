@@ -87,14 +87,12 @@ from typing import List, Optional, Sequence, Set
 
 try:
     import libcst as cst
-except ImportError:
-    print(
-        "ERROR: libcst is required. Install with:\n"
+except ImportError as _e:
+    raise ImportError(
+        "libcst is required. Install with:\n"
         "  pip install PowerPlatform-Dataverse-Client[migration]\n"
-        "  # or: pip install 'libcst>=1.0.0'",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+        "  # or: pip install 'libcst>=1.0.0'"
+    ) from _e
 
 
 # ---------------------------------------------------------------------------
