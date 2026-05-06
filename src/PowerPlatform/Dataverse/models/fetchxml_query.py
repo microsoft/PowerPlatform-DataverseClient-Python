@@ -155,8 +155,7 @@ class FetchXmlQuery:
                             continue
                     except (_ET.ParseError, ValueError) as exc:
                         warnings.warn(
-                            f"FetchXML paging cookie could not be parsed ({exc}); "
-                            "falling back to simple paging.",
+                            f"FetchXML paging cookie could not be parsed ({exc}); " "falling back to simple paging.",
                             UserWarning,
                             stacklevel=2,
                         )

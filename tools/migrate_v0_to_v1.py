@@ -648,10 +648,13 @@ class _ManualReviewFinder(cst.CSTTransformer):
             )
 
         # client.query.sql_select/sql_join/sql_joins — removed with no mechanical replacement
-        if method in _REMOVED_QUERY_METHODS and len(chain) >= 3 and chain[1] == "query" and chain[2] == self._client_var:
-            self.findings.append(
-                f"{self._client_var}.query.{method}() — removed at GA with no mechanical replacement"
-            )
+        if (
+            method in _REMOVED_QUERY_METHODS
+            and len(chain) >= 3
+            and chain[1] == "query"
+            and chain[2] == self._client_var
+        ):
+            self.findings.append(f"{self._client_var}.query.{method}() — removed at GA with no mechanical replacement")
 
 
 def find_manual_patterns(source: str, *, client_var: str = "client") -> List[str]:
@@ -680,9 +683,7 @@ def migrate_source(source: str, *, client_var: str = "client") -> str:
     return new_tree.code
 
 
-def migrate_file(
-    path: Path, *, dry_run: bool = False, client_var: str = "client"
-) -> Tuple[bool, List[str]]:
+def migrate_file(path: Path, *, dry_run: bool = False, client_var: str = "client") -> Tuple[bool, List[str]]:
     """Migrate *path* in place. Returns (was_changed, manual_review_notes)."""
     original = path.read_text(encoding="utf-8")
     try:
@@ -730,7 +731,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if a == "--dry-run":
             continue
         if a.startswith("--client-var="):
-            client_var = a[len("--client-var="):]
+            client_var = a[len("--client-var=") :]
         else:
             remaining.append(a)
 
