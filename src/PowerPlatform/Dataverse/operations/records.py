@@ -8,7 +8,6 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Union, overload, TYPE_CHECKING
 
-from ..models.protocol import DataverseModel
 from ..models.record import QueryResult, Record
 from ..models.upsert import UpsertItem
 
@@ -57,16 +56,10 @@ class RecordOperations:
     @overload
     def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
 
-    @overload
-    def create(self, table_or_entity: DataverseModel, data: None = None) -> str: ...
-
-    @overload
-    def create(self, table_or_entity: List[DataverseModel], data: None = None) -> List[str]: ...
-
     def create(
         self,
-        table_or_entity: Union[str, DataverseModel, List[DataverseModel]],
-        data: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+        table: str,
+        data: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> Union[str, List[str]]:
         """Create one or more records in a Dataverse table.
 
@@ -87,49 +80,19 @@ class RecordOperations:
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
         Example:
-            Create a single record (dict form)::
+            Create a single record::
 
                 guid = client.records.create("account", {"name": "Contoso"})
                 print(f"Created: {guid}")
 
-            Create multiple records (dict form)::
+            Create multiple records::
 
                 guids = client.records.create("account", [
                     {"name": "Contoso"},
                     {"name": "Fabrikam"},
                 ])
                 print(f"Created {len(guids)} accounts")
-
-            Create from a DataverseModel instance::
-
-                guid = client.records.create(Account(name="Contoso"))
         """
-        # DataverseModel dispatch: list of entities
-        if isinstance(table_or_entity, list) and table_or_entity and isinstance(table_or_entity[0], DataverseModel):
-            entities = table_or_entity
-            table = entities[0].__entity_logical_name__
-            data_list = [e.to_dict() for e in entities]
-            with self._client._scoped_odata() as od:
-                entity_set = od._entity_set_from_schema_name(table)
-                ids = od._create_multiple(entity_set, table, data_list)
-                if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
-                    raise TypeError("_create (multi) did not return list[str]")
-                return ids
-
-        # DataverseModel dispatch: single entity
-        if isinstance(table_or_entity, DataverseModel):
-            entity = table_or_entity
-            table = entity.__entity_logical_name__
-            record_data = entity.to_dict()
-            with self._client._scoped_odata() as od:
-                entity_set = od._entity_set_from_schema_name(table)
-                rid = od._create(entity_set, table, record_data)
-                if not isinstance(rid, str):
-                    raise TypeError("_create (single) did not return GUID string")
-                return rid
-
-        # Existing str/dict path
-        table = table_or_entity  # type: ignore[assignment]
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -148,9 +111,9 @@ class RecordOperations:
 
     def update(
         self,
-        table_or_entity: Union[str, DataverseModel],
-        ids: Optional[Union[str, List[str]]] = None,
-        changes: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+        table: str,
+        ids: Union[str, List[str]],
+        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
     ) -> None:
         """Update one or more records in a Dataverse table.
 
@@ -191,28 +154,7 @@ class RecordOperations:
                     [{"name": "Name A"}, {"name": "Name B"}],
                 )
 
-            Update from a DataverseModel instance::
-
-                client.records.update(Account(name="Contoso Updated"), account_id)
         """
-        # DataverseModel dispatch: entity provides table + changes
-        if isinstance(table_or_entity, DataverseModel):
-            entity = table_or_entity
-            table = entity.__entity_logical_name__
-            record_data = entity.to_dict()
-            if ids is None:
-                raise TypeError("record_id must be provided when updating from a DataverseModel")
-            with self._client._scoped_odata() as od:
-                if isinstance(ids, str):
-                    od._update(table, ids, record_data)
-                    return None
-                if isinstance(ids, list):
-                    od._update_by_ids(table, ids, record_data)
-                    return None
-            return None
-
-        # Existing str/dict path
-        table: str = table_or_entity  # type: ignore[assignment]
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):

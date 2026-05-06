@@ -7,11 +7,12 @@ Covers:
 - records.get() deprecation (DeprecationWarning, still functional)
 - records.retrieve() — single record, None on 404
 - records.list() — QueryResult, accepts str/FilterExpression filter
-- DataverseModel Protocol and isinstance() check
-- records.create(DataverseModel) dispatch
-- records.update(DataverseModel, record_id) dispatch
+- DataverseModel Protocol definition and isinstance() check
 - DataverseModel exported from models and package root
 - execute() emits zero DeprecationWarning (internal records.get() suppressed)
+
+Note: records.create(DataverseModel) and records.update(DataverseModel) dispatch
+are deferred to post-GA and are not covered here.
 """
 
 import unittest
@@ -308,88 +309,6 @@ class TestRecordsList(unittest.TestCase):
         df = self.client.records.list("account", select=["name"]).to_dataframe()
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
-
-
-class TestCreateWithDataverseModel(unittest.TestCase):
-    """records.create() accepts DataverseModel."""
-
-    def setUp(self):
-        self.client = _make_client()
-        self.client._odata._create.return_value = "new-guid-123"
-        self.client._odata._create_multiple.return_value = ["guid-1", "guid-2"]
-
-    def test_create_single_entity(self):
-        account = _Account(name="Contoso", telephone1="555-0100")
-        result = self.client.records.create(account)
-        self.assertEqual(result, "new-guid-123")
-
-    def test_create_single_entity_uses_logical_name(self):
-        account = _Account(name="Contoso")
-        self.client.records.create(account)
-        self.client._odata._entity_set_from_schema_name.assert_called_with("account")
-
-    def test_create_single_entity_calls_to_dict(self):
-        account = _Account(name="Contoso", telephone1="555-0100")
-        self.client.records.create(account)
-        self.client._odata._create.assert_called_once()
-        call_args = self.client._odata._create.call_args
-        self.assertEqual(call_args[0][2]["name"], "Contoso")
-
-    def test_create_list_of_entities(self):
-        entities = [_Account(name="A"), _Account(name="B")]
-        result = self.client.records.create(entities)
-        self.assertEqual(result, ["guid-1", "guid-2"])
-
-    def test_create_list_uses_first_entity_logical_name(self):
-        entities = [_Account(name="A"), _Account(name="B")]
-        self.client.records.create(entities)
-        self.client._odata._entity_set_from_schema_name.assert_called_with("account")
-
-    def test_create_entity_no_deprecation_warning(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.client.records.create(_Account(name="Contoso"))
-        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        self.assertEqual(dep, [])
-
-    def test_create_dict_path_still_works(self):
-        result = self.client.records.create("account", {"name": "Contoso"})
-        self.assertEqual(result, "new-guid-123")
-
-    def test_create_list_dict_path_still_works(self):
-        result = self.client.records.create("account", [{"name": "A"}, {"name": "B"}])
-        self.assertEqual(result, ["guid-1", "guid-2"])
-
-
-class TestUpdateWithDataverseModel(unittest.TestCase):
-    """records.update() accepts DataverseModel as first arg."""
-
-    def setUp(self):
-        self.client = _make_client()
-
-    def test_update_single_entity_with_id(self):
-        account = _Account(name="Updated Name")
-        self.client.records.update(account, "guid-abc")
-        self.client._odata._update.assert_called_once_with(
-            "account", "guid-abc", {"name": "Updated Name", "telephone1": ""}
-        )
-
-    def test_update_entity_no_id_raises(self):
-        account = _Account(name="Updated")
-        with self.assertRaises(TypeError):
-            self.client.records.update(account)
-
-    def test_update_entity_no_deprecation_warning(self):
-        account = _Account(name="Updated")
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.client.records.update(account, "guid-abc")
-        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        self.assertEqual(dep, [])
-
-    def test_update_dict_path_still_works(self):
-        self.client.records.update("account", "guid-1", {"name": "New Name"})
-        self.client._odata._update.assert_called_with("account", "guid-1", {"name": "New Name"})
 
 
 class TestExecuteNoDeprecationFromRecordsGet(unittest.TestCase):

@@ -513,9 +513,9 @@ class QueryBuilder:
                 "Use build() and pass parameters to client.records.list() instead."
             )
 
-        if not self._select and not self._filter_parts and self._top is None:
+        if not self._select and not self._filter_parts and self._top is None and self._page_size is None:
             raise ValueError(
-                "At least one of select(), where(), or top() must be called before "
+                "At least one of select(), where(), top(), or page_size() must be called before "
                 "execute() to prevent accidental full-table scans."
             )
 
@@ -577,9 +577,9 @@ class QueryBuilder:
                 "Use build() and pass parameters to client.records.list() instead."
             )
 
-        if not self._select and not self._filter_parts and self._top is None:
+        if not self._select and not self._filter_parts and self._top is None and self._page_size is None:
             raise ValueError(
-                "At least one of select(), where(), or top() must be called before "
+                "At least one of select(), where(), top(), or page_size() must be called before "
                 "execute_pages() to prevent accidental full-table scans."
             )
 

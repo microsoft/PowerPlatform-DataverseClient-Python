@@ -268,6 +268,10 @@ def _run_examples(client):
         print(f"[OK] {len(result)} projects:")
         for r in result:
             print(f"  {r.get('new_code', ''):<10s}  Budget={r.get('new_budget')}  Active={r.get('new_active')}")
+        # Index access and first() are equivalent; first() returns None on empty result
+        if result:
+            print(f"  First by index : {result[0].get('new_code')}")
+            print(f"  First by .first(): {result.first().get('new_code')}")
 
         # ===============================================================
         # 4. <condition> operators: eq, like, in, null, not-null, between

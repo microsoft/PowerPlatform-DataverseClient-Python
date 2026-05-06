@@ -2,7 +2,6 @@
 # Licensed under the MIT license.
 
 import unittest
-import warnings
 from unittest.mock import MagicMock
 
 from azure.core.credentials import TokenCredential

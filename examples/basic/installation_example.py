@@ -239,9 +239,8 @@ accounts = client.records.list("account",
                      select=["name", "telephone1"],
                      top=10)
 
-for page in accounts:
-    for account in page:
-        print(f"Account: {account['name']}")
+for account in accounts:
+    print(f"Account: {account['name']}")
 
 # SQL queries (if enabled)
 results = client.query.sql("SELECT TOP 5 name FROM account")

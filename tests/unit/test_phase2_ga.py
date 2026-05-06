@@ -84,6 +84,37 @@ class TestQueryResultClass(unittest.TestCase):
     def test_first_returns_none_when_empty(self):
         self.assertIsNone(QueryResult([]).first())
 
+    # ----- __getitem__
+
+    def test_getitem_int_returns_record(self):
+        recs = self._records(3)
+        qr = QueryResult(recs)
+        self.assertIs(qr[0], recs[0])
+        self.assertIs(qr[2], recs[2])
+
+    def test_getitem_negative_index(self):
+        recs = self._records(3)
+        qr = QueryResult(recs)
+        self.assertIs(qr[-1], recs[-1])
+
+    def test_getitem_out_of_range_raises(self):
+        qr = QueryResult(self._records(2))
+        with self.assertRaises(IndexError):
+            _ = qr[99]
+
+    def test_getitem_slice_returns_query_result(self):
+        recs = self._records(5)
+        qr = QueryResult(recs)
+        sliced = qr[1:3]
+        self.assertIsInstance(sliced, QueryResult)
+        self.assertEqual(list(sliced), recs[1:3])
+
+    def test_getitem_slice_empty(self):
+        qr = QueryResult(self._records(3))
+        sliced = qr[10:]
+        self.assertIsInstance(sliced, QueryResult)
+        self.assertEqual(len(sliced), 0)
+
     # ----- to_dataframe()
 
     def test_to_dataframe_nonempty(self):

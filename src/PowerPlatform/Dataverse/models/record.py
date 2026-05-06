@@ -141,6 +141,10 @@ class QueryResult:
     def __repr__(self) -> str:
         return f"QueryResult({len(self.records)} records)"
 
+    def __getitem__(self, index):
+        result = self.records[index]
+        return QueryResult(result) if isinstance(index, slice) else result
+
     def first(self) -> Optional[Record]:
         """Return the first record, or ``None`` if the result is empty."""
         return self.records[0] if self.records else None

@@ -38,7 +38,8 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 - Returned by `records.list()`, `records.retrieve()`, `execute()`, and each page from `list_pages()` / `execute_pages()`
 - Iterable: `for record in result` — each item is a `dict`-like `Record`
 - `.to_dataframe()` — convert to pandas DataFrame
-- `.first()` — return the first record or `None`
+- `.first()` — return the first record or `None` (safe: returns `None` on empty result)
+- `result[n]` — index access returns a `Record`; `result[n:m]` returns a `QueryResult`
 - `len(result)` — number of records in this result/page
 
 ### DataFrame Support
