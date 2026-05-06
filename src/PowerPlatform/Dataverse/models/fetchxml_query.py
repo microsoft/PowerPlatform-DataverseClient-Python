@@ -140,6 +140,7 @@ class FetchXmlQuery:
                     data.get("@Microsoft.Dynamics.CRM.fetchxmlpagingcookie", "") if isinstance(data, dict) else ""
                 )
 
+                _cookie_parse_error = False
                 if raw_cookie:
                     try:
                         cookie_el = _ET.fromstring(raw_cookie)
@@ -152,8 +153,14 @@ class FetchXmlQuery:
                             fetch_el.set("page", str(page_num))
                             current_xml = _ET.tostring(fetch_el, encoding="unicode")
                             continue
-                    except (_ET.ParseError, ValueError):
-                        pass  # Fall through to simple paging
+                    except (_ET.ParseError, ValueError) as exc:
+                        warnings.warn(
+                            f"FetchXML paging cookie could not be parsed ({exc}); "
+                            "falling back to simple paging.",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                        _cookie_parse_error = True
 
                 # Simple paging fallback: server returned morerecords=true but no paging
                 # cookie. Dataverse omits the cookie when the query cannot use cookie-based
@@ -162,14 +169,15 @@ class FetchXmlQuery:
                 # paging has a 50,000-record server cap and performance degrades at high page
                 # numbers. The caller may be able to avoid this by reordering on the root
                 # entity instead.
-                warnings.warn(
-                    "Dataverse did not return a paging cookie; falling back to simple paging "
-                    "(page-number increment only). Simple paging is capped at 50,000 records "
-                    "and degrades in performance at high page numbers. Consider reordering on "
-                    "a root-entity column to enable cookie-based paging.",
-                    UserWarning,
-                    stacklevel=2,
-                )
+                if not _cookie_parse_error:
+                    warnings.warn(
+                        "Dataverse did not return a paging cookie; falling back to simple paging "
+                        "(page-number increment only). Simple paging is capped at 50,000 records "
+                        "and degrades in performance at high page numbers. Consider reordering on "
+                        "a root-entity column to enable cookie-based paging.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
                 page_num += 1
                 fetch_el = _ET.fromstring(current_xml)
                 fetch_el.set("page", str(page_num))

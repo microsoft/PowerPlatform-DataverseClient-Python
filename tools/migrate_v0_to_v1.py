@@ -12,7 +12,8 @@ Usage::
 
     pip install PowerPlatform-Dataverse-Client[migration]
     dataverse-migrate path/to/your/scripts/
-    dataverse-migrate path/to/your/scripts/ --dry-run   # preview changes without writing
+    dataverse-migrate path/to/your/scripts/ --dry-run          # preview without writing
+    dataverse-migrate path/to/your/scripts/ --client-var=svc   # if client is named 'svc'
 
     # Or via module for development installs:
     python -m tools.migrate_v0_to_v1 path/to/your/scripts/
@@ -83,7 +84,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence, Set
+from typing import List, Optional, Sequence, Set, Tuple
 
 try:
     import libcst as cst
@@ -587,6 +588,88 @@ def _dotted_name(node: Optional[cst.BaseExpression]) -> str:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Manual-review pattern detector
+# ---------------------------------------------------------------------------
+
+_REMOVED_QUERY_METHODS: Set[str] = {"sql_select", "sql_join", "sql_joins"}
+
+
+class _ManualReviewFinder(cst.CSTTransformer):
+    """Visitor that detects patterns the codemod cannot safely rewrite automatically."""
+
+    def __init__(self, client_var: str = "client") -> None:
+        self._client_var = client_var
+        self.findings: List[str] = []
+
+    def _receiver_chain(self, node: cst.Attribute) -> List[str]:
+        """Return the dotted name parts of an Attribute chain, innermost first."""
+        parts: List[str] = []
+        cur: cst.BaseExpression = node
+        while isinstance(cur, cst.Attribute):
+            if isinstance(cur.attr, cst.Name):
+                parts.append(cur.attr.value)
+            cur = cur.value
+        if isinstance(cur, cst.Name):
+            parts.append(cur.value)
+        return parts  # e.g. ["get", "records", "client"] for client.records.get
+
+    def visit_Call(self, node: cst.Call) -> None:
+        func = node.func
+        if not isinstance(func, cst.Attribute):
+            return
+
+        method = func.attr.value if isinstance(func.attr, cst.Name) else ""
+        chain = self._receiver_chain(func)  # [method, ns, client_var, ...]
+
+        # execute(by_page=<variable>) — non-literal by_page cannot be codemodded
+        if method == "execute":
+            for a in node.args:
+                if isinstance(a.keyword, cst.Name) and a.keyword.value == "by_page":
+                    if not (isinstance(a.value, cst.Name) and a.value.value in ("True", "False")):
+                        self.findings.append(
+                            "execute(by_page=<variable>) — non-literal by_page requires manual review; "
+                            "replace with execute_pages() or execute() depending on runtime value"
+                        )
+
+        # client.records.get() — return type changes make a mechanical rename unsafe
+        if method == "get" and len(chain) >= 3 and chain[1] == "records" and chain[2] == self._client_var:
+            self.findings.append(
+                f"{self._client_var}.records.get() — use retrieve() for single-record lookup "
+                "(return type changes: raises on 404 vs returns None) "
+                "or list() for multi-record (iteration pattern changes)"
+            )
+
+        # client.dataframe.get() — expression reconstruction requires understanding caller intent
+        if method == "get" and len(chain) >= 3 and chain[1] == "dataframe" and chain[2] == self._client_var:
+            self.findings.append(
+                f"{self._client_var}.dataframe.get() — use "
+                "query.builder(...).execute().to_dataframe(); requires manual reconstruction"
+            )
+
+        # client.query.sql_select/sql_join/sql_joins — removed with no mechanical replacement
+        if method in _REMOVED_QUERY_METHODS and len(chain) >= 3 and chain[1] == "query" and chain[2] == self._client_var:
+            self.findings.append(
+                f"{self._client_var}.query.{method}() — removed at GA with no mechanical replacement"
+            )
+
+
+def find_manual_patterns(source: str, *, client_var: str = "client") -> List[str]:
+    """Return descriptions of patterns in *source* that require manual migration."""
+    try:
+        tree = cst.parse_module(source)
+    except cst.ParserSyntaxError:
+        return []
+    finder = _ManualReviewFinder(client_var=client_var)
+    tree.visit(finder)
+    return finder.findings
+
+
+# ---------------------------------------------------------------------------
+# File-level migration
+# ---------------------------------------------------------------------------
+
+
 def migrate_source(source: str, *, client_var: str = "client") -> str:
     """Parse *source*, apply transformations, return migrated source."""
     try:
@@ -597,19 +680,21 @@ def migrate_source(source: str, *, client_var: str = "client") -> str:
     return new_tree.code
 
 
-def migrate_file(path: Path, *, dry_run: bool = False) -> bool:
-    """Migrate *path* in place. Returns True if the file was changed."""
+def migrate_file(
+    path: Path, *, dry_run: bool = False, client_var: str = "client"
+) -> Tuple[bool, List[str]]:
+    """Migrate *path* in place. Returns (was_changed, manual_review_notes)."""
     original = path.read_text(encoding="utf-8")
     try:
-        migrated = migrate_source(original)
+        migrated = migrate_source(original, client_var=client_var)
     except ValueError as exc:
         print(f"  [SKIP] {path}: {exc}", file=sys.stderr)
-        return False
-    if migrated == original:
-        return False
-    if not dry_run:
+        return False, []
+    manual = find_manual_patterns(original, client_var=client_var)
+    changed = migrated != original
+    if changed and not dry_run:
         path.write_text(migrated, encoding="utf-8")
-    return True
+    return changed, manual
 
 
 # ---------------------------------------------------------------------------
@@ -639,11 +724,19 @@ def _collect_targets(paths: List[str]) -> List[Path]:
 def main(argv: Optional[List[str]] = None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
     dry_run = "--dry-run" in args
-    remaining = [a for a in args if a != "--dry-run"]
+    client_var = "client"
+    remaining = []
+    for a in args:
+        if a == "--dry-run":
+            continue
+        if a.startswith("--client-var="):
+            client_var = a[len("--client-var="):]
+        else:
+            remaining.append(a)
 
     if not remaining:
         print(__doc__)
-        print("\nUsage: dataverse-migrate [--dry-run] <path> [<path> ...]")
+        print("\nUsage: dataverse-migrate [--dry-run] [--client-var=NAME] <path> [<path> ...]")
         return 1
 
     targets = _collect_targets(remaining)
@@ -651,16 +744,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("[ERROR] No Python files found.", file=sys.stderr)
         return 1
 
-    changed = skipped = 0
+    changed = skipped = manual_total = 0
     for path in targets:
-        if migrate_file(path, dry_run=dry_run):
+        was_changed, notes = migrate_file(path, dry_run=dry_run, client_var=client_var)
+        if was_changed:
             changed += 1
             tag = "[DRY-RUN]" if dry_run else "[MIGRATED]"
             print(f"{tag} {path}")
         else:
             skipped += 1
+        for note in notes:
+            print(f"  [MANUAL] {path}: {note}")
+            manual_total += 1
 
-    print(f"\nDone: {changed} file(s) {'would be ' if dry_run else ''}modified, " f"{skipped} unchanged.")
+    suffix = "would be " if dry_run else ""
+    print(f"\nDone: {changed} file(s) {suffix}modified, {skipped} unchanged.", end="")
+    if manual_total:
+        print(f" {manual_total} pattern(s) require manual review.")
+    else:
+        print()
     return 0
 
 

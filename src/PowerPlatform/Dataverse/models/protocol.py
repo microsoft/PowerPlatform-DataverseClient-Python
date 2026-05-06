@@ -32,7 +32,7 @@ class DataverseModel(Protocol):
     Example::
 
         from dataclasses import dataclass
-        from PowerPlatform.Dataverse.models.protocol import DataverseModel
+        from PowerPlatform.Dataverse import DataverseModel
 
         @dataclass
         class Account:
@@ -51,9 +51,17 @@ class DataverseModel(Protocol):
                     telephone1=data.get("telephone1", ""),
                 )
 
-        # Use the entity directly with records operations:
-        guid = client.records.create(Account(name="Contoso"))
-        client.records.update(Account(name="Contoso Updated"), guid)
+        # isinstance() works today — Protocol is runtime_checkable:
+        assert isinstance(Account(), DataverseModel)
+
+        # Type your own helpers against the Protocol now:
+        def save(entity: DataverseModel) -> None:
+            data = entity.to_dict()
+            client.records.create(entity.__entity_logical_name__, data)
+
+    Note:
+        Direct dispatch (``client.records.create(entity)`` without a table name
+        or dict) is not yet supported and will be added in a future release.
     """
 
     __entity_logical_name__: str

@@ -297,8 +297,8 @@ class TestFetchXml(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(self.client._odata._request.call_count, 2)
 
-    def test_malformed_cookie_falls_back_to_simple_paging(self):
-        """A cookie annotation that is not parseable as XML triggers simple paging fallback."""
+    def test_malformed_cookie_xml_warns_distinctly(self):
+        """A cookie that is not valid XML emits a 'could not be parsed' warning, not the no-cookie warning."""
         page1 = self._mock_response([{"name": "A"}], more=True, cookie="not-valid-xml")
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
@@ -310,6 +310,23 @@ class TestFetchXml(unittest.TestCase):
         self.assertEqual(len(result), 2)
         user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
         self.assertEqual(len(user_warnings), 1)
+        self.assertIn("could not be parsed", str(user_warnings[0].message).lower())
+
+    def test_corrupt_pagenumber_warns_distinctly(self):
+        """Valid XML cookie with non-integer pagenumber emits a 'could not be parsed' warning."""
+        bad_cookie = '<cookie pagenumber="NaN" pagingcookie="%253Cc%252F%253E" istracking="False" />'
+        page1 = self._mock_response([{"name": "A"}], more=True, cookie=bad_cookie)
+        page2 = self._mock_response([{"name": "B"}], more=False)
+        self.client._odata._request.side_effect = [page1, page2]
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = self.client.query.fetchxml(self._fetch_xml()).execute()
+
+        self.assertEqual(len(result), 2)
+        user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+        self.assertEqual(len(user_warnings), 1)
+        self.assertIn("could not be parsed", str(user_warnings[0].message).lower())
 
     def test_max_pages_exceeded_raises(self):
         """Paging loop raises ValidationError after exceeding _MAX_PAGES."""
@@ -529,6 +546,83 @@ class TestCodemodByPage(unittest.TestCase):
         once = self.migrate(src)
         twice = self.migrate(once)
         self.assertEqual(once, twice)
+
+    def test_client_var_default_rewrites_client(self):
+        """Default client_var='client' rewrites client.create(...)."""
+        src = "client.create('account', data)\n"
+        out = self.migrate(src)
+        self.assertIn("client.records.create", out)
+
+    def test_client_var_custom_rewrites_matching_name(self):
+        """custom client_var rewrites that variable name, not 'client'."""
+        src = "svc.create('account', data)\n"
+        out = self.migrate(src, client_var="svc")
+        self.assertIn("svc.records.create", out)
+
+    def test_client_var_custom_does_not_rewrite_default_name(self):
+        """When client_var='svc', the literal name 'client' is left untouched."""
+        src = "client.create('account', data)\n"
+        out = self.migrate(src, client_var="svc")
+        self.assertNotIn("client.records.create", out)
+        self.assertIn("client.create", out)
+
+
+class TestManualReviewFinder(unittest.TestCase):
+    """find_manual_patterns() detects patterns that require manual migration."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from tools.migrate_v0_to_v1 import find_manual_patterns
+
+            cls.find = staticmethod(find_manual_patterns)
+        except ImportError:
+            cls.find = None
+
+    def setUp(self):
+        if self.find is None:
+            self.skipTest("libcst not installed or tools package not on path")
+
+    def test_records_get_flagged(self):
+        src = "result = client.records.get('account', record_id)\n"
+        findings = self.find(src)
+        self.assertTrue(any("records.get" in f for f in findings))
+
+    def test_dataframe_get_flagged(self):
+        src = "df = client.dataframe.get('account', select=['name'])\n"
+        findings = self.find(src)
+        self.assertTrue(any("dataframe.get" in f for f in findings))
+
+    def test_execute_by_page_variable_flagged(self):
+        src = "result = builder.execute(by_page=flag)\n"
+        findings = self.find(src)
+        self.assertTrue(any("by_page" in f for f in findings))
+
+    def test_execute_by_page_literal_not_flagged(self):
+        """Literal True/False is handled by the transformer — not a manual item."""
+        src = "result = builder.execute(by_page=True)\n"
+        findings = self.find(src)
+        self.assertFalse(any("by_page" in f for f in findings))
+
+    def test_sql_select_flagged(self):
+        src = "cols = client.query.sql_select('account')\n"
+        findings = self.find(src)
+        self.assertTrue(any("sql_select" in f for f in findings))
+
+    def test_sql_join_flagged(self):
+        src = "j = client.query.sql_join('account', 'contact')\n"
+        findings = self.find(src)
+        self.assertTrue(any("sql_join" in f for f in findings))
+
+    def test_clean_code_no_findings(self):
+        src = "result = client.records.list('account', filter='statecode eq 0')\n"
+        self.assertEqual(self.find(src), [])
+
+    def test_custom_client_var(self):
+        src = "svc.records.get('account', guid)\n"
+        self.assertEqual(self.find(src, client_var="client"), [])
+        findings = self.find(src, client_var="svc")
+        self.assertTrue(any("records.get" in f for f in findings))
 
 
 if __name__ == "__main__":

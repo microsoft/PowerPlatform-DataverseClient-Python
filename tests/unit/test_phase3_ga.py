@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 
 from azure.core.credentials import TokenCredential
 
+from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.models.record import QueryResult, Record
 from PowerPlatform.Dataverse.models.protocol import DataverseModel
 
@@ -192,24 +193,16 @@ class TestRecordsRetrieve(unittest.TestCase):
         self.assertEqual(dep, [], f"retrieve() must not emit DeprecationWarning: {dep}")
 
     def test_retrieve_returns_none_on_404(self):
-        exc = Exception("Not Found")
-        resp_mock = MagicMock()
-        resp_mock.status_code = 404
-        exc.response = resp_mock
-        self.client._odata._get.side_effect = exc
+        self.client._odata._get.side_effect = HttpError("Not Found", status_code=404)
         result = self.client.records.retrieve("account", "nonexistent-guid")
         self.assertIsNone(result)
 
     def test_retrieve_reraises_non_404(self):
-        exc = Exception("Server Error")
-        resp_mock = MagicMock()
-        resp_mock.status_code = 500
-        exc.response = resp_mock
-        self.client._odata._get.side_effect = exc
-        with self.assertRaises(Exception):
+        self.client._odata._get.side_effect = HttpError("Server Error", status_code=500)
+        with self.assertRaises(HttpError):
             self.client.records.retrieve("account", "some-guid")
 
-    def test_retrieve_reraises_when_no_response_attr(self):
+    def test_retrieve_reraises_non_http_errors(self):
         self.client._odata._get.side_effect = ValueError("Bad input")
         with self.assertRaises(ValueError):
             self.client.records.retrieve("account", "some-guid")

@@ -8,6 +8,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Union, overload, TYPE_CHECKING
 
+from ..core.errors import HttpError
 from ..models.record import QueryResult, Record
 from ..models.upsert import UpsertItem
 
@@ -398,10 +399,12 @@ class RecordOperations:
             Only used for multi-record queries.
         :type include_annotations: :class:`str` or None
 
-        :return: A single record dict when ``record_id`` is provided, or a
-            generator yielding pages (lists of record dicts) when fetching
-            multiple records.
-        :rtype: dict or collections.abc.Iterable[list[dict]]
+        :return: A single :class:`~PowerPlatform.Dataverse.models.record.Record`
+            when ``record_id`` is provided, or a generator yielding pages
+            (lists of :class:`~PowerPlatform.Dataverse.models.record.Record`)
+            when fetching multiple records.
+        :rtype: ~PowerPlatform.Dataverse.models.record.Record or
+            collections.abc.Iterable[list[~PowerPlatform.Dataverse.models.record.Record]]
 
         :raises TypeError: If ``record_id`` is provided but not a string.
         :raises ValueError: If query parameters are provided alongside
@@ -508,9 +511,8 @@ class RecordOperations:
         with self._client._scoped_odata() as od:
             try:
                 raw = od._get(table, record_id, select=select)
-            except Exception as exc:
-                resp = getattr(exc, "response", None)
-                if resp is not None and getattr(resp, "status_code", None) == 404:
+            except HttpError as exc:
+                if exc.status_code == 404:
                     return None
                 raise
             return Record.from_api_response(table, raw, record_id=record_id)
