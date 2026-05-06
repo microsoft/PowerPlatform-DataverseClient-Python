@@ -338,6 +338,34 @@ class TestCreateLookupField(unittest.TestCase):
 
         self.assertEqual(relationship.referenced_attribute, "accountid")
 
+    def test_mixed_case_table_names_lowered(self):
+        """Test that mixed-case table names are auto-lowered to logical names.
+
+        Only table names (entity logical names) are lowered.
+        lookup_field_name is a SchemaName and keeps its original casing.
+        """
+        self.client.tables.create_lookup_field(
+            referencing_table="new_SQLTask",
+            lookup_field_name="new_TeamId",
+            referenced_table="new_SQLTeam",
+        )
+
+        call_args = self.client.tables.create_one_to_many_relationship.call_args
+        lookup = call_args[0][0]
+        relationship = call_args[0][1]
+
+        # Entity names must be lowercased (Dataverse logical names)
+        self.assertEqual(relationship.referenced_entity, "new_sqlteam")
+        self.assertEqual(relationship.referencing_entity, "new_sqltask")
+        self.assertEqual(relationship.referenced_attribute, "new_sqlteamid")
+
+        # Schema_name: table names lowered, lookup_field_name keeps casing
+        self.assertEqual(relationship.schema_name, "new_sqlteam_new_sqltask_new_TeamId")
+
+        # Display name defaults to original (un-lowered) referenced_table
+        label_dict = lookup.display_name.to_dict()
+        self.assertEqual(label_dict["LocalizedLabels"][0]["Label"], "new_SQLTeam")
+
     def test_returns_result(self):
         """Test that the method returns the result from create_one_to_many_relationship."""
         expected_result = {

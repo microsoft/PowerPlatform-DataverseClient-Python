@@ -51,6 +51,48 @@ class DataFrameOperations:
     def __init__(self, client: DataverseClient) -> None:
         self._client = client
 
+    # --------------------------------------------------------------------- sql
+
+    def sql(self, sql: str) -> pd.DataFrame:
+        """Execute a SQL query and return the results as a pandas DataFrame.
+
+        Delegates to :meth:`~PowerPlatform.Dataverse.operations.query.QueryOperations.sql`
+        and converts the list of records into a single DataFrame.
+
+        :param sql: Supported SQL SELECT statement.
+        :type sql: :class:`str`
+
+        :return: DataFrame containing all result rows. Returns an empty
+            DataFrame when no rows match.
+        :rtype: ~pandas.DataFrame
+
+        :raises ~PowerPlatform.Dataverse.core.errors.ValidationError:
+            If ``sql`` is not a string or is empty.
+
+        Example:
+            SQL query to DataFrame::
+
+                df = client.dataframe.sql(
+                    "SELECT TOP 100 name, revenue FROM account "
+                    "WHERE statecode = 0 ORDER BY revenue"
+                )
+                print(f"Got {len(df)} rows")
+                print(df.head())
+
+            Aggregate query to DataFrame::
+
+                df = client.dataframe.sql(
+                    "SELECT a.name, COUNT(c.contactid) as cnt "
+                    "FROM account a "
+                    "JOIN contact c ON a.accountid = c.parentcustomerid "
+                    "GROUP BY a.name"
+                )
+        """
+        rows = self._client.query.sql(sql)
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame.from_records([r.data for r in rows])
+
     # -------------------------------------------------------------------- get
 
     def get(

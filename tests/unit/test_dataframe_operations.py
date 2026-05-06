@@ -35,6 +35,149 @@ class TestDataFrameGet(unittest.TestCase):
         self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
         self.client._odata = MagicMock()
 
+
+class TestDataFrameSql(unittest.TestCase):
+    """Tests for client.dataframe.sql()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_sql_returns_dataframe(self):
+        """sql() should return a DataFrame from SQL results."""
+        raw_rows = [
+            {"accountid": "1", "name": "Contoso"},
+            {"accountid": "2", "name": "Fabrikam"},
+        ]
+        self.client._odata._query_sql.return_value = raw_rows
+        df = self.client.dataframe.sql("SELECT accountid, name FROM account")
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(df.iloc[0]["name"], "Contoso")
+        self.assertEqual(df.iloc[1]["name"], "Fabrikam")
+
+    def test_sql_empty_result(self):
+        """sql() should return an empty DataFrame when no rows match."""
+        self.client._odata._query_sql.return_value = []
+        df = self.client.dataframe.sql("SELECT name FROM account WHERE name = 'None'")
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 0)
+
+    def test_sql_aggregate(self):
+        """sql() should handle aggregate results as DataFrame."""
+        self.client._odata._query_sql.return_value = [{"cnt": 42}]
+        df = self.client.dataframe.sql("SELECT COUNT(*) as cnt FROM account")
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.iloc[0]["cnt"], 42)
+
+    def test_sql_join(self):
+        """sql() should handle JOIN results as DataFrame."""
+        raw = [
+            {"name": "Contoso", "fullname": "John Doe"},
+            {"name": "Fabrikam", "fullname": "Jane Smith"},
+        ]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql(
+            "SELECT a.name, c.fullname FROM account a " "JOIN contact c ON a.accountid = c.parentcustomerid"
+        )
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
+        self.assertIn("name", df.columns)
+        self.assertIn("fullname", df.columns)
+
+    def test_sql_group_by(self):
+        """sql() should handle GROUP BY results as DataFrame."""
+        raw = [
+            {"new_region": 1, "cnt": 3, "total": 167000},
+            {"new_region": 2, "cnt": 1, "total": 75000},
+        ]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql(
+            "SELECT new_region, COUNT(*) as cnt, SUM(new_budget) as total " "FROM new_sqldemoteam GROUP BY new_region"
+        )
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
+        self.assertIn("new_region", df.columns)
+        self.assertIn("cnt", df.columns)
+        self.assertIn("total", df.columns)
+
+    def test_sql_distinct(self):
+        """sql() should handle DISTINCT results as DataFrame."""
+        raw = [{"name": "Contoso"}, {"name": "Fabrikam"}]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql("SELECT DISTINCT name FROM account")
+        self.assertEqual(len(df), 2)
+
+    def test_sql_select_star_raises_validation_error(self):
+        """dataframe.sql() must propagate ValidationError when SELECT * is used.
+
+        SELECT * is intentionally rejected -- not a technical limitation but
+        a deliberate design decision to prevent expensive wildcard queries on
+        wide entities.  The guardrail fires inside _query_sql and the
+        ValidationError bubbles up through dataframe.sql() unchanged.
+        """
+        from PowerPlatform.Dataverse.core.errors import ValidationError
+
+        self.client._odata._query_sql.side_effect = ValidationError(
+            "SELECT * is not supported.",
+            subcode="validation_sql_unsupported_syntax",
+        )
+        with self.assertRaises(ValidationError):
+            self.client.dataframe.sql("SELECT * FROM account")
+
+    def test_sql_polymorphic_owner_join(self):
+        """sql() should handle polymorphic lookup JOIN to DataFrame."""
+        raw = [
+            {"name": "Contoso", "owner_name": "Admin"},
+            {"name": "Fabrikam", "owner_name": "Manager"},
+        ]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql(
+            "SELECT a.name, su.fullname as owner_name "
+            "FROM account a "
+            "JOIN systemuser su ON a._ownerid_value = su.systemuserid"
+        )
+        self.assertEqual(len(df), 2)
+        self.assertIn("owner_name", df.columns)
+
+    def test_sql_multi_aggregate(self):
+        """sql() should handle all 5 aggregate functions."""
+        raw = [{"cnt": 10, "total": 500, "avg_v": 50.0, "min_v": 10, "max_v": 100}]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql(
+            "SELECT COUNT(*) as cnt, SUM(revenue) as total, "
+            "AVG(revenue) as avg_v, MIN(revenue) as min_v, MAX(revenue) as max_v "
+            "FROM account"
+        )
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.iloc[0]["cnt"], 10)
+        self.assertEqual(df.iloc[0]["max_v"], 100)
+
+    def test_sql_offset_fetch(self):
+        """sql() should handle OFFSET FETCH pagination results."""
+        raw = [{"name": "Row1"}, {"name": "Row2"}]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql("SELECT name FROM account ORDER BY name OFFSET 10 ROWS FETCH NEXT 2 ROWS ONLY")
+        self.assertEqual(len(df), 2)
+
+    def test_sql_join_with_group_by(self):
+        """sql() should handle JOIN + GROUP BY + aggregates."""
+        raw = [
+            {"name": "Contoso", "contact_count": 5},
+            {"name": "Fabrikam", "contact_count": 3},
+        ]
+        self.client._odata._query_sql.return_value = raw
+        df = self.client.dataframe.sql(
+            "SELECT a.name, COUNT(c.contactid) as contact_count "
+            "FROM account a "
+            "JOIN contact c ON a.accountid = c.parentcustomerid "
+            "GROUP BY a.name"
+        )
+        self.assertEqual(len(df), 2)
+        self.assertIn("contact_count", df.columns)
+
     def test_get_single_record(self):
         """record_id returns a one-row DataFrame using result.data."""
         self.client._odata._get.return_value = {"accountid": "guid-1", "name": "Contoso"}

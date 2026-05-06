@@ -9,6 +9,8 @@ different types of failures, including HTTP errors, validation errors,
 SQL parsing errors, and metadata operation errors.
 """
 
+__all__ = []
+
 # HTTP subcode constants
 HTTP_400 = "http_400"
 HTTP_401 = "http_401"
@@ -41,6 +43,8 @@ ALL_HTTP_SUBCODES = {
 # Validation subcodes
 VALIDATION_SQL_NOT_STRING = "validation_sql_not_string"
 VALIDATION_SQL_EMPTY = "validation_sql_empty"
+VALIDATION_SQL_WRITE_BLOCKED = "validation_sql_write_blocked"
+VALIDATION_SQL_UNSUPPORTED_SYNTAX = "validation_sql_unsupported_syntax"
 VALIDATION_ENUM_NO_MEMBERS = "validation_enum_no_members"
 VALIDATION_ENUM_NON_INT_VALUE = "validation_enum_non_int_value"
 VALIDATION_UNSUPPORTED_COLUMN_TYPE = "validation_unsupported_column_type"

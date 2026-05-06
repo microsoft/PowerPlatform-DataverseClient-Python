@@ -114,7 +114,7 @@ def _run_walkthrough(client):
         print(f"  Logical Name: {table_info.get('table_logical_name')}")
         print(f"  Entity Set: {table_info.get('entity_set_name')}")
     else:
-        log_call(f"client.tables.create('{table_name}', columns={{...}})")
+        log_call(f"client.tables.create('{table_name}', columns={{...}}, display_name='Walkthrough Demo')")
         columns = {
             "new_Title": "string",
             "new_Quantity": "int",
@@ -123,7 +123,7 @@ def _run_walkthrough(client):
             "new_Notes": "memo",
             "new_Priority": Priority,
         }
-        table_info = backoff(lambda: client.tables.create(table_name, columns))
+        table_info = backoff(lambda: client.tables.create(table_name, columns, display_name="Walkthrough Demo"))
         print(f"[OK] Created table: {table_info.get('table_schema_name')}")
         print(f"  Columns created: {', '.join(table_info.get('columns_created', []))}")
 
