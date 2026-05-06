@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pandas as pd
@@ -164,6 +165,12 @@ class DataFrameOperations:
 
                 df = client.dataframe.get("account", select=["name"], top=100)
         """
+        warnings.warn(
+            "'dataframe.get()' is deprecated; use "
+            "client.query.builder(table).where(...).execute().to_dataframe() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if record_id is not None:
             if not isinstance(record_id, str) or not record_id.strip():
                 raise ValueError("record_id must be a non-empty string")
@@ -173,25 +180,30 @@ class DataFrameOperations:
                     "Cannot specify query parameters (filter, orderby, top, "
                     "expand, page_size) when fetching a single record by ID"
                 )
-            result = self._client.records.get(
-                table,
-                record_id,
-                select=select,
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                result = self._client.records.get(
+                    table,
+                    record_id,
+                    select=select,
+                )
             return pd.DataFrame([result.data])
 
         rows: List[dict] = []
-        for batch in self._client.records.get(
-            table,
-            select=select,
-            filter=filter,
-            orderby=orderby,
-            top=top,
-            expand=expand,
-            page_size=page_size,
-            count=count,
-            include_annotations=include_annotations,
-        ):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            pages = self._client.records.get(
+                table,
+                select=select,
+                filter=filter,
+                orderby=orderby,
+                top=top,
+                expand=expand,
+                page_size=page_size,
+                count=count,
+                include_annotations=include_annotations,
+            )
+        for batch in pages:
             rows.extend(row.data for row in batch)
 
         if not rows:

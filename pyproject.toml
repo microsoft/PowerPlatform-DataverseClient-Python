@@ -50,6 +50,7 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+migration = ["libcst>=1.0.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

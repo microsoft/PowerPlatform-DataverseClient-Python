@@ -26,7 +26,7 @@ from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
-from PowerPlatform.Dataverse.models.filters import eq, gt, between
+from PowerPlatform.Dataverse.models.filters import col
 from PowerPlatform.Dataverse.models.query_builder import ExpandOption
 import requests
 
@@ -183,8 +183,8 @@ def _run_walkthrough(client):
     print("=" * 80)
 
     # Single read by ID
-    log_call(f"client.records.get('{table_name}', '{id1}')")
-    record = backoff(lambda: client.records.get(table_name, id1))
+    log_call(f"client.records.retrieve('{table_name}', '{id1}')")
+    record = backoff(lambda: client.records.retrieve(table_name, id1))
     print("[OK] Retrieved single record:")
     print(
         json.dumps(
@@ -203,11 +203,8 @@ def _run_walkthrough(client):
     )
 
     # Multiple read with filter
-    log_call(f"client.records.get('{table_name}', filter='new_quantity gt 5')")
-    all_records = []
-    records_iterator = backoff(lambda: client.records.get(table_name, filter="new_quantity gt 5"))
-    for page in records_iterator:
-        all_records.extend(page)
+    log_call(f"client.records.list('{table_name}', filter='new_quantity gt 5')")
+    all_records = list(backoff(lambda: client.records.list(table_name, filter="new_quantity gt 5")))
     print(f"[OK] Found {len(all_records)} records with new_quantity > 5")
     for rec in all_records:
         print(f"  - new_Title='{rec.get('new_title')}', new_Quantity={rec.get('new_quantity')}")
@@ -231,7 +228,7 @@ def _run_walkthrough(client):
             },
         )
     )
-    updated = backoff(lambda: client.records.get(table_name, id1))
+    updated = backoff(lambda: client.records.retrieve(table_name, id1))
     print(f"[OK] Updated single record new_Quantity: {updated.get('new_quantity')}")
     print(f"  new_Notes: {repr(updated.get('new_notes'))}")
 
@@ -263,9 +260,11 @@ def _run_walkthrough(client):
     print(f"[OK] Created {len(paging_ids)} records for paging demo")
 
     # Query with paging
-    log_call(f"client.records.get('{table_name}', page_size=5)")
+    log_call(f"client.query.builder('{table_name}').order_by().page_size(5).execute_pages()")
     print("Fetching records with page_size=5...")
-    paging_iterator = backoff(lambda: client.records.get(table_name, orderby=["new_Quantity"], page_size=5))
+    paging_iterator = backoff(
+        lambda: client.query.builder(table_name).order_by("new_Quantity").page_size(5).execute_pages()
+    )
     for page_num, page in enumerate(paging_iterator, start=1):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
@@ -278,13 +277,13 @@ def _run_walkthrough(client):
     print("=" * 80)
 
     # Basic fluent query: active records sorted by amount (flat iteration)
-    log_call("client.query.builder(...).select().filter_eq().order_by().execute()")
+    log_call("client.query.builder(...).select().where(col(...)==...).order_by().execute()")
     print("Querying incomplete records ordered by amount (fluent builder)...")
     qb_records = list(
         backoff(
             lambda: client.query.builder(table_name)
             .select("new_Title", "new_Amount", "new_Priority")
-            .filter_eq("new_Completed", False)
+            .where(col("new_Completed") == False)
             .order_by("new_Amount", descending=True)
             .top(10)
             .execute()
@@ -294,14 +293,14 @@ def _run_walkthrough(client):
     for rec in qb_records[:5]:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
 
-    # filter_in: records with specific priorities
-    log_call("client.query.builder(...).filter_in('new_Priority', [HIGH, LOW]).execute()")
-    print("Querying records with HIGH or LOW priority (filter_in)...")
+    # col().in_(): records with specific priorities
+    log_call("client.query.builder(...).where(col('new_Priority').in_([HIGH, LOW])).execute()")
+    print("Querying records with HIGH or LOW priority (col().in_())...")
     priority_records = list(
         backoff(
             lambda: client.query.builder(table_name)
             .select("new_Title", "new_Priority")
-            .filter_in("new_Priority", [Priority.HIGH, Priority.LOW])
+            .where(col("new_Priority").in_([Priority.HIGH, Priority.LOW]))
             .execute()
         )
     )
@@ -309,14 +308,14 @@ def _run_walkthrough(client):
     for rec in priority_records[:5]:
         print(f"  - '{rec.get('new_title')}' Priority={rec.get('new_priority')}")
 
-    # filter_between: amount in a range
-    log_call("client.query.builder(...).filter_between('new_Amount', 500, 1500).execute()")
-    print("Querying records with amount between 500 and 1500 (filter_between)...")
+    # col().between(): amount in a range
+    log_call("client.query.builder(...).where(col('new_Amount').between(500, 1500)).execute()")
+    print("Querying records with amount between 500 and 1500 (col().between())...")
     range_records = list(
         backoff(
             lambda: client.query.builder(table_name)
             .select("new_Title", "new_Amount")
-            .filter_between("new_Amount", 500, 1500)
+            .where(col("new_Amount").between(500, 1500))
             .execute()
         )
     )
@@ -325,13 +324,13 @@ def _run_walkthrough(client):
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')}")
 
     # Composable expression tree with where()
-    log_call("client.query.builder(...).where((eq(...) | eq(...)) & gt(...)).execute()")
+    log_call("client.query.builder(...).where((col(...) == ...) & (col(...) > ...)).execute()")
     print("Querying with composable expression tree (where)...")
     expr_records = list(
         backoff(
             lambda: client.query.builder(table_name)
             .select("new_Title", "new_Amount", "new_Quantity")
-            .where((eq("new_Completed", False) & gt("new_Amount", 100)))
+            .where((col("new_Completed") == False) & (col("new_Amount") > 100))
             .order_by("new_Amount", descending=True)
             .top(5)
             .execute()
@@ -341,19 +340,19 @@ def _run_walkthrough(client):
     for rec in expr_records:
         print(f"  - '{rec.get('new_title')}' Amount={rec.get('new_amount')} Qty={rec.get('new_quantity')}")
 
-    # Combined: fluent filters + expression tree + paging (by_page=True)
-    log_call("client.query.builder(...).filter_eq().where(between()).page_size().execute(by_page=True)")
-    print("Querying with combined fluent + expression filters and paging...")
+    # Multiple where() clauses + lazy paging (execute_pages)
+    log_call("client.query.builder(...).where(col(...)==...).where(col().between()).page_size().execute_pages()")
+    print("Querying with combined expression filters and paging...")
     combined_page_count = 0
     combined_record_count = 0
     for page in backoff(
         lambda: client.query.builder(table_name)
         .select("new_Title", "new_Quantity")
-        .filter_eq("new_Completed", False)
-        .where(between("new_Quantity", 1, 15))
+        .where(col("new_Completed") == False)
+        .where(col("new_Quantity").between(1, 15))
         .order_by("new_Quantity")
         .page_size(3)
-        .execute(by_page=True)
+        .execute_pages()
     ):
         combined_page_count += 1
         combined_record_count += len(page)
@@ -362,13 +361,14 @@ def _run_walkthrough(client):
     print(f"[OK] Combined query: {combined_record_count} records across {combined_page_count} page(s)")
 
     # to_dataframe: get results as a pandas DataFrame
-    log_call(f"client.query.builder('{table_name}').select(...).filter_eq(...).to_dataframe()")
+    log_call(f"client.query.builder('{table_name}').select(...).where(col(...)==...).execute().to_dataframe()")
     print("Querying completed records as a pandas DataFrame (to_dataframe)...")
     df = backoff(
         lambda: (
             client.query.builder(table_name)
             .select("new_title", "new_quantity")
-            .filter_eq("new_completed", True)
+            .where(col("new_completed") == True)
+            .execute()
             .to_dataframe()
         )
     )
@@ -453,7 +453,7 @@ def _run_walkthrough(client):
         "new_Priority": "High",  # String label instead of int
     }
     label_id = backoff(lambda: client.records.create(table_name, label_record))
-    retrieved = backoff(lambda: client.records.get(table_name, label_id))
+    retrieved = backoff(lambda: client.records.retrieve(table_name, label_id))
     print(f"[OK] Created record with string label 'High' for new_Priority")
     print(f"  new_Priority stored as integer: {retrieved.get('new_priority')}")
     print(f"  new_Priority@FormattedValue: {retrieved.get('new_priority@OData.Community.Display.V1.FormattedValue')}")
@@ -461,7 +461,7 @@ def _run_walkthrough(client):
     # Update with a string label
     log_call(f"client.records.update('{table_name}', label_id, {{'new_Priority': 'Low'}})")
     backoff(lambda: client.records.update(table_name, label_id, {"new_Priority": "Low"}))
-    updated_label = backoff(lambda: client.records.get(table_name, label_id))
+    updated_label = backoff(lambda: client.records.retrieve(table_name, label_id))
     print(f"[OK] Updated record with string label 'Low' for new_Priority")
     print(f"  new_Priority stored as integer: {updated_label.get('new_priority')}")
     print(
@@ -615,7 +615,7 @@ def _run_walkthrough(client):
     print("  [OK] Reading records by ID and with filters")
     print("  [OK] Single and multiple record updates")
     print("  [OK] Paging through large result sets")
-    print("  [OK] QueryBuilder fluent queries (filter_eq, filter_in, filter_between, where, to_dataframe)")
+    print("  [OK] QueryBuilder fluent queries (where + col(), col().in_(), col().between(), to_dataframe)")
     print("  [OK] Expand navigation properties (simple + nested ExpandOption)")
     print("  [OK] SQL queries")
     print("  [OK] Picklist label-to-value conversion")

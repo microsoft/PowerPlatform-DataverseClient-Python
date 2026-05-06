@@ -19,6 +19,7 @@ import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.filters import col, raw
 
 
 def main():
@@ -81,7 +82,7 @@ def _run_walkthrough(client):
     print("2. Query records as a DataFrame")
     print("-" * 60)
 
-    df_all = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    df_all = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"[OK] Got {len(df_all)} records in one DataFrame")
     print(f"  Columns: {list(df_all.columns)}")
     print(f"{df_all.to_string(index=False)}")
@@ -91,7 +92,7 @@ def _run_walkthrough(client):
     print("3. Limit results with top")
     print("-" * 60)
 
-    df_top2 = client.dataframe.get(table, select=select_cols, filter=test_filter, top=2)
+    df_top2 = client.query.builder(table).select(*select_cols).where(raw(test_filter)).top(2).execute().to_dataframe()
     print(f"[OK] Got {len(df_top2)} records with top=2")
     print(f"{df_top2.to_string(index=False)}")
 
@@ -102,7 +103,9 @@ def _run_walkthrough(client):
 
     first_id = new_accounts["accountid"].iloc[0]
     print(f"  Fetching record {first_id}...")
-    single = client.dataframe.get(table, record_id=first_id, select=select_cols)
+    single = (
+        client.query.builder(table).select(*select_cols).where(col("accountid") == first_id).execute().to_dataframe()
+    )
     print(f"[OK] Single record DataFrame:\n{single.to_string(index=False)}")
 
     # -- 5. Update records from a DataFrame ------------------------
@@ -116,7 +119,7 @@ def _run_walkthrough(client):
     print("[OK] Updated 3 records")
 
     # Verify the updates
-    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    verified = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # -- 6. Broadcast update (same value to all records) -----------
@@ -131,7 +134,7 @@ def _run_walkthrough(client):
     print("[OK] Broadcast update complete")
 
     # Verify all records have the same websiteurl
-    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    verified = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"  Verified:\n{verified.to_string(index=False)}")
 
     # Default: NaN/None fields are skipped (not overridden on server)
@@ -142,14 +145,14 @@ def _run_walkthrough(client):
         ]
     )
     client.dataframe.update(table, sparse_df, id_column="accountid")
-    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    verified = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n{verified.to_string(index=False)}")
 
     # Opt-in: clear_nulls=True sends None as null to clear the field
     print("\n  Clearing websiteurl for Contoso with clear_nulls=True...")
     clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
     client.dataframe.update(table, clear_df, id_column="accountid", clear_nulls=True)
-    verified = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    verified = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"  Verified (Contoso websiteurl should be empty):\n{verified.to_string(index=False)}")
 
     # -- 7. Delete records by passing a Series of GUIDs ------------
@@ -162,7 +165,7 @@ def _run_walkthrough(client):
     print(f"[OK] Deleted {len(new_accounts)} records")
 
     # Verify deletions - filter for our tagged records should return 0
-    remaining = client.dataframe.get(table, select=select_cols, filter=test_filter)
+    remaining = client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute().to_dataframe()
     print(f"  Verified: {len(remaining)} test records remaining (expected 0)")
 
     print("\n" + "=" * 60)

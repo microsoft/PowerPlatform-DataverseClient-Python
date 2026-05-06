@@ -22,7 +22,7 @@ Capabilities PROVEN to work:
 - SQL read -> DataFrame transform -> SDK write-back (full round-trip)
 - AND/OR, NOT IN, NOT LIKE boolean logic
 - Deep JOINs (5-8 tables) with no server depth limit
-- SQL helper functions: sql_columns, sql_select, sql_joins, sql_join
+- SQL helper functions: sql_columns (sql_select/sql_join/sql_joins removed at GA)
 - OData helper functions: odata_select, odata_expands, odata_expand, odata_bind
 - SQL vs OData side-by-side comparison
 
@@ -133,58 +133,66 @@ def _run_examples(client):
     )
 
     log_call(f"client.tables.get('{parent_table}')")
-    info = backoff(lambda: client.tables.get(parent_table))
-    if info:
+    if client.tables.get(parent_table):
         print(f"[OK] Table already exists: {parent_table}")
     else:
         log_call(f"client.tables.create('{parent_table}', ...)")
-        info = backoff(
-            lambda: client.tables.create(
-                parent_table,
-                {
-                    "new_Code": "string",
-                    "new_Region": Region,
-                    "new_Budget": "decimal",
-                    "new_Active": "bool",
-                },
+        try:
+            backoff(
+                lambda: client.tables.create(
+                    parent_table,
+                    {
+                        "new_Code": "string",
+                        "new_Region": Region,
+                        "new_Budget": "decimal",
+                        "new_Active": "bool",
+                    },
+                )
             )
-        )
-        print(f"[OK] Created table: {parent_table}")
+            print(f"[OK] Created table: {parent_table}")
+        except Exception as e:
+            if "already exists" in str(e).lower() or "not unique" in str(e).lower():
+                print(f"[OK] Table already exists: {parent_table} (skipped)")
+            else:
+                raise
 
     log_call(f"client.tables.get('{child_table}')")
-    info2 = backoff(lambda: client.tables.get(child_table))
-    if info2:
+    if client.tables.get(child_table):
         print(f"[OK] Table already exists: {child_table}")
     else:
         log_call(f"client.tables.create('{child_table}', ...)")
-        info2 = backoff(
-            lambda: client.tables.create(
-                child_table,
-                {
-                    "new_Title": "string",
-                    "new_Hours": "int",
-                    "new_Done": "bool",
-                    "new_Priority": "int",
-                },
+        try:
+            backoff(
+                lambda: client.tables.create(
+                    child_table,
+                    {
+                        "new_Title": "string",
+                        "new_Hours": "int",
+                        "new_Done": "bool",
+                        "new_Priority": "int",
+                    },
+                )
             )
-        )
-        print(f"[OK] Created table: {child_table}")
+            print(f"[OK] Created table: {child_table}")
+        except Exception as e:
+            if "already exists" in str(e).lower() or "not unique" in str(e).lower():
+                print(f"[OK] Table already exists: {child_table} (skipped)")
+            else:
+                raise
 
     # Create lookup so tasks reference teams via JOIN
     print("\n[INFO] Creating lookup field so tasks reference teams via JOIN...")
     try:
-        backoff(
-            lambda: client.tables.create_lookup_field(
-                referencing_table=child_table,
-                lookup_field_name="new_TeamId",
-                referenced_table=parent_table,
-                display_name="Team",
-            )
+        client.tables.create_lookup_field(
+            referencing_table=child_table,
+            lookup_field_name="new_TeamId",
+            referenced_table=parent_table,
+            display_name="Team",
         )
         print("[OK] Created lookup: new_TeamId on tasks -> teams")
     except Exception as e:
         msg = str(e).lower()
-        if "already exists" in msg or "duplicate" in msg:
+        if "already exists" in msg or "duplicate" in msg or "not unique" in msg:
             print("[OK] Lookup already exists (skipped)")
         else:
             raise
@@ -419,19 +427,14 @@ def _run_examples(client):
         heading(13, "SQL -- INNER JOIN")
         print("Use the lookup attribute's logical name (e.g. new_teamid) for JOINs.")
 
-        # Use sql_join() to auto-discover the relationship and build
-        # the JOIN clause with proper aliases.
+        # Build the JOIN clause manually (sql_join() was removed at GA).
+        # Use the lookup attribute's logical name (not _..._value) as the join column.
         lookup_col = "new_teamid"  # Lookup logical name, NOT _..._value
-        join_clause = client.query.sql_join(
-            from_table=child_table,
-            to_table=parent_table,
-            from_alias="tk",
-            to_alias="t",
-        )
+        join_clause = f"JOIN {parent_table} t ON tk.{lookup_col} = t.{parent_logical}id"
         print(f"[INFO] Lookup column: {lookup_col}")
-        print(f"[INFO] Generated JOIN: {join_clause}")
+        print(f"[INFO] JOIN clause:   {join_clause}")
 
-        sql = f"SELECT t.new_code, tk.new_title, tk.new_hours " f"FROM {child_table} tk " f"{join_clause}"
+        sql = f"SELECT t.new_code, tk.new_title, tk.new_hours FROM {child_table} tk {join_clause}"
         log_call('client.query.sql("...INNER JOIN...")')
         try:
             results = backoff(lambda: client.query.sql(sql))
@@ -912,71 +915,26 @@ def _run_examples(client):
         # ==============================================================
         heading(29, "SQL Helper Functions (query.sql_*)")
         print(
-            "The SDK provides helper functions that auto-discover column\n"
-            "names and JOIN clauses from metadata -- no guessing needed."
+            "At GA, sql_columns() is the only retained SQL schema-discovery helper.\n"
+            "sql_select(), sql_join(), and sql_joins() were removed — write JOIN\n"
+            "clauses directly or use client.query.fetch_xml() for complex queries."
         )
 
-        # sql_columns
+        # sql_columns — still available at GA
         log_call(f"client.query.sql_columns('{parent_table}')")
         cols = client.query.sql_columns(parent_table)
         print(f"[OK] {len(cols)} columns:")
         for c in cols[:5]:
             print(f"  {c['name']:30s} Type: {c['type']:15s} PK={c['is_pk']}")
 
-        # sql_select
-        log_call(f"client.query.sql_select('{parent_table}')")
-        select_str = client.query.sql_select(parent_table)
-        print(f"[OK] SELECT list: {select_str[:60]}...")
-
-        # sql_joins
-        log_call(f"client.query.sql_joins('{child_table}')")
-        joins = client.query.sql_joins(child_table)
-        print(f"[OK] {len(joins)} possible JOINs:")
-        for j in joins[:5]:
-            print(f"  {j['column']:25s} -> {j['target']}.{j['target_pk']}")
-
-        # sql_joins -- alias uniqueness: multiple lookups to the same target
-        # table (e.g. ownerid + createdby + modifiedby all point to systemuser)
-        # must each get a distinct alias so the combined SQL is valid.
-        # Expected output:
-        #   ownerid    -> systemuser  alias=s
-        #   createdby  -> systemuser  alias=s2
-        #   modifiedby -> systemuser  alias=s3
-        log_call("client.query.sql_joins('contact') -- distinct aliases for same target table")
-        try:
-            contact_joins = client.query.sql_joins("contact")
-            systemuser_joins = [j for j in contact_joins if j["target"] == "systemuser"]
-            print(f"[OK] {len(systemuser_joins)} lookup(s) from contact -> systemuser:")
-            for j in systemuser_joins:
-                alias = j["join_clause"].split()[2]
-                print(f"  {j['column']:30s} -> {j['target']}  alias={alias}")
-            aliases = [j["join_clause"].split()[2] for j in contact_joins]
-            if len(aliases) != len(set(aliases)):
-                print("[WARN] Duplicate aliases detected")
-            else:
-                print(f"[OK] All {len(contact_joins)} aliases unique")
-        except Exception as e:
-            print(f"[INFO] Alias check skipped: {e}")
-
-        # sql_join (auto-generate JOIN clause)
-        log_call(f"client.query.sql_join('{child_table}', '{parent_table}', ...)")
-        try:
-            join_clause = client.query.sql_join(child_table, parent_table, from_alias="tk", to_alias="t")
-            print(f"[OK] {join_clause}")
-
-            sql = f"SELECT TOP 3 tk.new_title, t.new_code FROM {child_table} tk {join_clause}"
-            results = backoff(lambda: client.query.sql(sql))
-            print(f"[OK] Live query with sql_join(): {len(results)} rows")
-        except Exception as e:
-            print(f"[WARN] {e}")
-
         # ==============================================================
         # 30. OData Helper Functions
         # ==============================================================
-        heading(30, "OData Helper Functions (query.odata_*)")
+        heading(30, "OData Helper Functions (query.odata_* — deprecated at GA)")
         print(
-            "Parallel helpers for OData/records.get() users -- auto-discover\n"
-            "navigation properties and build @odata.bind payloads."
+            "odata_select(), odata_expand(), and odata_bind() still work at GA\n"
+            "but emit DeprecationWarning. Use the typed query builder instead.\n"
+            "odata_expands() is kept without deprecation."
         )
 
         # odata_select
@@ -998,7 +956,7 @@ def _run_examples(client):
         try:
             nav = client.query.odata_expand(child_table, parent_table)
             print(f"\n[OK] odata_expand('{child_table}', '{parent_table}') = '{nav}'")
-            print("  Usage: client.records.get('" + child_table + "', expand=['" + nav + "'])")
+            print("  Usage: client.query.builder('" + child_table + "').expand('" + nav + "').execute()")
         except Exception as e:
             print(f"[WARN] {e}")
 
@@ -1030,8 +988,8 @@ def _run_examples(client):
 | DISTINCT                      | YES                    | Not directly           |
 | Pagination                    | OFFSET FETCH           | @odata.nextLink        |
 | Max results                   | 5000 per query         | 5000 per page          |
-| Column discovery              | sql_columns/sql_select | odata_select           |
-| JOIN discovery                | sql_joins/sql_join     | odata_expands/expand   |
+| Column discovery              | sql_columns            | odata_expands (kept)   |
+| JOIN discovery                | write manually/fetch_xml | odata_expand (deprecated)|
 | Lookup binding                | N/A (read-only)        | odata_bind             |
 | SELECT *                      | YES (SDK auto-expands) | Not applicable         |
 | Polymorphic lookups           | Separate JOINs         | $expand by nav prop    |
@@ -1077,21 +1035,20 @@ When to use OData (records.get):
         # OData version (expand)
         t0 = _time.time()
         try:
-            odata_rows = []
-            for page in backoff(
-                lambda: client.records.get(
-                    "account",
-                    select=["name"],
-                    expand=["contact_customer_accounts"],
-                    top=5,
+            odata_rows = list(
+                backoff(
+                    lambda: client.records.list(
+                        "account",
+                        select=["name"],
+                        top=5,
+                    )
                 )
-            ):
-                odata_rows.extend(page)
+            )
             odata_time = _time.time() - t0
-            print(f"  OData $expand: {len(odata_rows)} rows in {odata_time:.2f}s")
+            print(f"  OData records.list: {len(odata_rows)} rows in {odata_time:.2f}s")
         except Exception as e:
             odata_time = _time.time() - t0
-            print(f"  OData $expand: error ({odata_time:.2f}s): {e}")
+            print(f"  OData records.list: error ({odata_time:.2f}s): {e}")
 
         # ==============================================================
         # 32. Anti-Patterns & Best Practices
@@ -1144,8 +1101,8 @@ SDK guardrails:
     -> ValidationError (blocked).
   - Pattern #2 (cartesian FROM a, b) -> UserWarning (advisory).
   - Server enforces 5000-row cap on all queries (#3, #5).
-  - Use sql_columns() or sql_select() to discover valid column names.
-  - Use sql_joins() or sql_join() to discover valid JOIN clauses.
+  - Use sql_columns() to discover valid column names.
+  - Write JOIN clauses manually or use fetch_xml() for complex queries.
 """)
 
         # ==============================================================
@@ -1177,8 +1134,8 @@ SDK guardrails:
 | Nested polymorphic chains     | YES      | e.g. opp -> acct -> contact -> owner   |
 | Audit trail (createdby, etc.) | YES      | JOIN to systemuser                     |
 | SQL read -> DF write-back     | YES      | dataframe.sql() + .update()/.create()  |
-| SQL column discovery          | YES      | query.sql_columns() / sql_select()     |
-| SQL JOIN discovery            | YES      | query.sql_joins() / sql_join()         |
+| SQL column discovery          | YES      | query.sql_columns()                    |
+| SQL JOIN clause               | manual   | write directly or use fetch_xml()      |
 | OData column discovery        | YES      | query.odata_select()                   |
 | OData expand discovery        | YES      | query.odata_expands() / odata_expand() |
 | OData bind builder            | YES      | query.odata_bind()                     |
@@ -1195,12 +1152,11 @@ SDK guardrails:
 
 SQL-First Workflow (no OData knowledge needed):
   1. Discover schema:  cols = client.query.sql_columns("account")
-  2. Discover JOINs:   joins = client.query.sql_joins("contact")
-  3. Build JOIN:        j = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
-  4. Query with SQL:    df = client.dataframe.sql(f"SELECT c.fullname, a.name FROM contact c {j}")
-  5. Transform:         df["col"] = df["col"] * 1.1
-  6. Write back:        client.dataframe.update("account", df, id_column="accountid")
-  7. Verify:            df2 = client.dataframe.sql("SELECT ...")
+  2. Write JOIN:        j = "JOIN account a ON c.parentcustomerid = a.accountid"
+  3. Query with SQL:    df = client.dataframe.sql(f"SELECT c.fullname, a.name FROM contact c {j}")
+  4. Transform:         df["col"] = df["col"] * 1.1
+  5. Write back:        client.dataframe.update("account", df, id_column="accountid")
+  6. Verify:            df2 = client.dataframe.sql("SELECT ...")
 """)
 
     finally:
