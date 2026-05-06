@@ -116,7 +116,7 @@ def run_demo(client):
     customer_ids, project_ids, task_ids = step3_populate_data(client, primary_name_col)
 
     # -- Step 4: Query and analyze --
-    step4_query_and_analyze(client, customer_ids, primary_name_col)
+    step4_query_and_analyze(client, customer_ids, primary_name_col, primary_id_col)
 
     # -- Step 5: Update and delete --
     step5_update_and_delete(client, task_ids, primary_name_col, primary_id_col)
@@ -385,7 +385,7 @@ def step3_populate_data(client, primary_name_col):
 # ================================================================
 
 
-def step4_query_and_analyze(client, customer_ids, primary_name_col):
+def step4_query_and_analyze(client, customer_ids, primary_name_col, primary_id_col):
     """Query data and demonstrate DataFrame analysis."""
     print("\n" + "-" * 60)
     print("STEP 4: Query and analyze data")

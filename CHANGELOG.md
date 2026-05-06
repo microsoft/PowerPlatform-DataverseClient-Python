@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `client.records.retrieve(table, record_id)` — fetch a single record by GUID; returns `None` on 404 instead of raising (#175)
+- `client.records.list(table, filter, select, top)` — eager fetch returning a flat `QueryResult`; GA replacement for `records.get()` without a record ID (#175)
+- `client.records.list_pages(table, filter, select, top)` — lazy iterator yielding one `QueryResult` per HTTP page; streaming counterpart to `list()` (#175)
+- `client.query.fetchxml(xml)` — FetchXML support returning an inert `FetchXmlQuery`; no HTTP request is made until `.execute()` or `.execute_pages()` is called (#175)
+- `FetchXmlQuery` implements the correct Dataverse paging cookie algorithm: annotation parsed as outer XML, `pagingcookie` attribute double URL-decoded, server-supplied `pagenumber` used for next page, `morerecords` handled as both `bool` and `"true"` string, `UserWarning` emitted on simple paging fallback, 32,768-character URL limit enforced (documented Dataverse GET cap), 10,000-page circuit breaker against runaway iteration (#175)
+- `QueryBuilder.execute_pages()` — lazy per-page streaming returning one `QueryResult` per HTTP page; replaces deprecated `execute(by_page=True)` (#175)
+- `QueryBuilder.where()` — composable filter expressions using `col()` and Python operators (`==`, `>`, `&`, `|`, `~`); replaces deprecated `filter_eq()`, `filter_contains()`, and other `filter_*` helpers (#175)
+- `QueryResult.__getitem__` — index access (`result[0]`) returns a `Record`; slice access (`result[1:5]`) returns a new `QueryResult` (#175)
+- `DataverseModel` structural `Protocol` (`models/protocol.py`) — implement on any entity class to enable typed integration with CRUD operations without specifying table names or serializing manually (#175)
+- `col()`, `raw()`, `QueryResult`, and `DataverseModel` exported from the top-level `PowerPlatform.Dataverse` package (#175)
+- v0→v1 migration tool: `tools/migrate_v0_to_v1.py` rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns (#175)
+
+### Changed
+- `QueryBuilder.execute()` now returns a flat `QueryResult` (all pages collected eagerly) instead of `Iterable[Record]` (#175)
+- `records.get()` deprecation extended: calling with a `record_id` emits `DeprecationWarning` directing callers to `retrieve()`; calling without a `record_id` directs callers to `list()` (#175)
+
+### Deprecated
+- `QueryBuilder.execute(by_page=True)` and `execute(by_page=False)` emit `UserWarning`; use `execute_pages()` and `execute()` respectively (#175)
+- `client.query.odata_select()`, `client.query.odata_expands()`, `client.query.odata_expand()`, `client.query.odata_bind()` emit `DeprecationWarning`; navigation property helpers are replaced by `QueryBuilder.expand()` (#175)
+
+### Removed
+- All v0 flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, etc.) removed (~570 lines); use the `client.records`, `client.query`, and `client.batch` namespaces (#175)
+- `client.query.sql_select()`, `client.query.sql_joins()`, `client.query.sql_join()` removed (#175)
+
 ## [0.1.0b9] - 2026-04-28
 
 ### Added

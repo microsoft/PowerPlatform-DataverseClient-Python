@@ -3,7 +3,7 @@
 # Licensed under the MIT license.
 
 """
-DV-Python-SDK v0 → v1 GA migration codemod.
+DV-Python-SDK v0 -> v1 GA migration codemod.
 
 Mechanically rewrites beta (0.1.0b*) call sites to their GA (1.0) equivalents
 using LibCST (concrete syntax tree — preserves all whitespace and comments).
@@ -11,51 +11,54 @@ using LibCST (concrete syntax tree — preserves all whitespace and comments).
 Usage::
 
     pip install PowerPlatform-Dataverse-Client[migration]
-    python -m tools.migrate_v0_to_v1 path/to/scripts/
-    python -m tools.migrate_v0_to_v1 examples/          # _codemon.py files only
+    dataverse-migrate path/to/your/scripts/
+    dataverse-migrate path/to/your/scripts/ --dry-run   # preview changes without writing
+
+    # Or via module for development installs:
+    python -m tools.migrate_v0_to_v1 path/to/your/scripts/
 
 Transformations applied
 -----------------------
-Builder methods (.filter_*  →  .where(col(...)...))::
+Builder methods (.filter_*  ->  .where(col(...)...))::
 
-    .filter_eq("col", v)               →  .where(col("col") == v)
-    .filter_ne("col", v)               →  .where(col("col") != v)
-    .filter_gt("col", v)               →  .where(col("col") > v)
-    .filter_ge("col", v)               →  .where(col("col") >= v)
-    .filter_lt("col", v)               →  .where(col("col") < v)
-    .filter_le("col", v)               →  .where(col("col") <= v)
-    .filter_contains("col", v)         →  .where(col("col").contains(v))
-    .filter_startswith("col", v)       →  .where(col("col").startswith(v))
-    .filter_endswith("col", v)         →  .where(col("col").endswith(v))
-    .filter_in("col", vals)            →  .where(col("col").in_(vals))
-    .filter_not_in("col", vals)        →  .where(col("col").not_in(vals))
-    .filter_null("col")                →  .where(col("col").is_null())
-    .filter_not_null("col")            →  .where(col("col").is_not_null())
-    .filter_between("col", lo, hi)     →  .where(col("col").between(lo, hi))
-    .filter_not_between("col", lo, hi) →  .where(col("col").not_between(lo, hi))
-    .filter_raw("expr")                →  .where(raw("expr"))
-    .filter("expr")                    →  .where(raw("expr"))
-    .execute(by_page=True)             →  .execute_pages()
-    .execute(by_page=False)            →  .execute()  (flag removed)
+    .filter_eq("col", v)               ->  .where(col("col") == v)
+    .filter_ne("col", v)               ->  .where(col("col") != v)
+    .filter_gt("col", v)               ->  .where(col("col") > v)
+    .filter_ge("col", v)               ->  .where(col("col") >= v)
+    .filter_lt("col", v)               ->  .where(col("col") < v)
+    .filter_le("col", v)               ->  .where(col("col") <= v)
+    .filter_contains("col", v)         ->  .where(col("col").contains(v))
+    .filter_startswith("col", v)       ->  .where(col("col").startswith(v))
+    .filter_endswith("col", v)         ->  .where(col("col").endswith(v))
+    .filter_in("col", vals)            ->  .where(col("col").in_(vals))
+    .filter_not_in("col", vals)        ->  .where(col("col").not_in(vals))
+    .filter_null("col")                ->  .where(col("col").is_null())
+    .filter_not_null("col")            ->  .where(col("col").is_not_null())
+    .filter_between("col", lo, hi)     ->  .where(col("col").between(lo, hi))
+    .filter_not_between("col", lo, hi) ->  .where(col("col").not_between(lo, hi))
+    .filter_raw("expr")                ->  .where(raw("expr"))
+    .filter("expr")                    ->  .where(raw("expr"))
+    .execute(by_page=True)             ->  .execute_pages()
+    .execute(by_page=False)            ->  .execute()  (flag removed)
 
 Record namespace::
 
-    batch.records.get(t, id)     →  batch.records.retrieve(t, id)
+    batch.records.get(t, id)     ->  batch.records.retrieve(t, id)
 
 Top-level shortcuts (removed at GA)::
 
-    client.create(t, d)           →  client.records.create(t, d)
-    client.update(t, id, d)       →  client.records.update(t, id, d)
-    client.delete(t, id)          →  client.records.delete(t, id)
-    client.get(t, id)             →  client.records.retrieve(t, id)
-    client.query_sql(sql)         →  client.query.sql(sql)
-    client.get_table_info(t)      →  client.tables.get(t)
-    client.create_table(t, …)     →  client.tables.create(t, …)
-    client.delete_table(t)        →  client.tables.delete(t)
-    client.list_tables()          →  client.tables.list()
-    client.create_columns(t, …)   →  client.tables.add_columns(t, …)
-    client.delete_columns(t, …)   →  client.tables.remove_columns(t, …)
-    client.upload_file(…)         →  client.files.upload(…)
+    client.create(t, d)           ->  client.records.create(t, d)
+    client.update(t, id, d)       ->  client.records.update(t, id, d)
+    client.delete(t, id)          ->  client.records.delete(t, id)
+    client.get(t, id)             ->  client.records.retrieve(t, id)
+    client.query_sql(sql)         ->  client.query.sql(sql)
+    client.get_table_info(t)      ->  client.tables.get(t)
+    client.create_table(t, …)     ->  client.tables.create(t, …)
+    client.delete_table(t)        ->  client.tables.delete(t)
+    client.list_tables()          ->  client.tables.list()
+    client.create_columns(t, …)   ->  client.tables.add_columns(t, …)
+    client.delete_columns(t, …)   ->  client.tables.remove_columns(t, …)
+    client.upload_file(…)         ->  client.files.upload(…)
 
 Import management:
     Adds ``from PowerPlatform.Dataverse.models.filters import col`` when a
@@ -63,17 +66,17 @@ Import management:
     Adds ``raw`` to the same import when .filter_raw or .filter is rewritten.
 
 NOT handled by this codemod (manual migration required):
-    execute(by_page=variable)      →  manual review required (variable argument, not literal)
-    client.records.get(t, id)     →  client.records.retrieve(t, id)
+    execute(by_page=variable)      ->  manual review required (variable argument, not literal)
+    client.records.get(t, id)     ->  client.records.retrieve(t, id)
         Return type changes: beta returns Record (raises on 404); GA retrieve() returns
         Record | None. Callers that do not guard against None will fail silently.
-    client.records.get(t, kw=…)  →  client.records.list(t, kw=…)
+    client.records.get(t, kw=…)  ->  client.records.list(t, kw=…)
         Return type changes: beta returns Iterable[List[Record]] (pages); GA list()
         returns QueryResult (flat iterable over Records). Any ``for page in result:
         for rec in page:`` iteration pattern breaks after a mechanical rename.
-    client.dataframe.get()        →  client.query.builder(…).execute().to_dataframe()
+    client.dataframe.get()        ->  client.query.builder(…).execute().to_dataframe()
         Expression reconstruction requires understanding caller intent.
-    client.query.sql_select()/sql_join()/sql_joins()  →  removed (no mechanical replacement)
+    client.query.sql_select()/sql_join()/sql_joins()  ->  removed (no mechanical replacement)
 """
 
 from __future__ import annotations
@@ -95,7 +98,7 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Filter-method → .where(col(...)) mapping
+# Filter-method -> .where(col(...)) mapping
 # ---------------------------------------------------------------------------
 
 _UNARY_FILTER_MAP = {
@@ -124,8 +127,8 @@ _METHOD_FILTER_MAP = {
 
 _ALL_FILTER_METHODS: Set[str] = set(_UNARY_FILTER_MAP) | set(_BINARY_OP_MAP) | set(_METHOD_FILTER_MAP) | {"filter_raw"}
 
-# Standalone filter functions from filters module (beta API) → col() equivalents
-# eq("f", v) → col("f") == v, between("f", lo, hi) → col("f").between(lo, hi), etc.
+# Standalone filter functions from filters module (beta API) -> col() equivalents
+# eq("f", v) -> col("f") == v, between("f", lo, hi) -> col("f").between(lo, hi), etc.
 _FUNC_BINARY_OP_MAP = {
     "eq": cst.Equal(),
     "ne": cst.NotEqual(),
@@ -149,7 +152,7 @@ _FUNC_UNARY_MAP = {
 }
 _ALL_FILTER_FUNCS: Set[str] = set(_FUNC_BINARY_OP_MAP) | set(_FUNC_METHOD_MAP) | set(_FUNC_UNARY_MAP)
 
-# Top-level client shortcut → (new_namespace, new_method)
+# Top-level client shortcut -> (new_namespace, new_method)
 _CLIENT_SHORTCUTS = {
     "create": ("records", "create"),
     "update": ("records", "update"),
@@ -233,7 +236,7 @@ def _positional_count(args: Sequence[cst.Arg]) -> int:
 
 
 class _V1Migrator(cst.CSTTransformer):
-    """LibCST transformer rewriting DV-Python-SDK beta → v1 GA."""
+    """LibCST transformer rewriting DV-Python-SDK beta -> v1 GA."""
 
     def __init__(self, client_var: str = "client") -> None:
         self._client_var = client_var
@@ -271,7 +274,7 @@ class _V1Migrator(cst.CSTTransformer):
         func = updated_node.func
 
         # ----------------------------------------------------------------
-        # Standalone filter functions: eq("f", v) → col("f") == v, etc.
+        # Standalone filter functions: eq("f", v) -> col("f") == v, etc.
         # Only transform names that were actually imported from filters module.
         # Wrap Comparison nodes in explicit parentheses so that combining with
         # & / | doesn't hit Python precedence bugs (& binds tighter than ==/>).
@@ -289,7 +292,7 @@ class _V1Migrator(cst.CSTTransformer):
         method_name = func.attr.value if isinstance(func.attr, cst.Name) else ""
 
         # ----------------------------------------------------------------
-        # .filter_*(...) → .where(col(...) ...)
+        # .filter_*(...) -> .where(col(...) ...)
         # ----------------------------------------------------------------
         if method_name in _ALL_FILTER_METHODS:
             where_arg = self._build_filter_arg(method_name, updated_node.args)
@@ -300,7 +303,7 @@ class _V1Migrator(cst.CSTTransformer):
                 )
 
         # ----------------------------------------------------------------
-        # .filter("expr") → .where(raw("expr"))
+        # .filter("expr") -> .where(raw("expr"))
         # QueryBuilder.filter() was removed at GA (not deprecated). Wrapping
         # in raw() preserves the OData string exactly for string-literal callers.
         # ----------------------------------------------------------------
@@ -314,8 +317,8 @@ class _V1Migrator(cst.CSTTransformer):
                 )
 
         # ----------------------------------------------------------------
-        # .execute(by_page=True)  → .execute_pages()
-        # .execute(by_page=False) → .execute()  (flag removed)
+        # .execute(by_page=True)  -> .execute_pages()
+        # .execute(by_page=False) -> .execute()  (flag removed)
         # Only literal True/False are codemod-able; variable by_page requires
         # manual review per section 8.5 of the GA spec.
         # ----------------------------------------------------------------
@@ -335,7 +338,7 @@ class _V1Migrator(cst.CSTTransformer):
                 return updated_node.with_changes(args=other_args)
 
         # ----------------------------------------------------------------
-        # batch.records.get(table, id) → batch.records.retrieve(table, id)
+        # batch.records.get(table, id) -> batch.records.retrieve(table, id)
         # NOTE: client.records.get() is NOT codemodded — the return type changes
         # between beta and GA (Record | None vs Record for single-id; QueryResult vs
         # Iterable[List[Record]] for multi-record). Surrounding iteration patterns
@@ -394,18 +397,18 @@ class _V1Migrator(cst.CSTTransformer):
         if field_node is None:
             return None
 
-        # .filter_raw(expr) → raw(expr)
+        # .filter_raw(expr) -> raw(expr)
         if method_name == "filter_raw":
             self._needs_raw = True
             return _call(_name("raw"), field_node)
 
-        # .filter_null / .filter_not_null → col("f").is_null() / .is_not_null()
+        # .filter_null / .filter_not_null -> col("f").is_null() / .is_not_null()
         if method_name in _UNARY_FILTER_MAP:
             self._needs_col = True
             proxy = _UNARY_FILTER_MAP[method_name]
             return _call(_attr(_col_call(field_node), proxy))
 
-        # .filter_eq / .filter_ne / ... → col("f") OP val
+        # .filter_eq / .filter_ne / ... -> col("f") OP val
         if method_name in _BINARY_OP_MAP:
             val_node = _pos_arg(args, 1)
             if val_node is None:
@@ -421,7 +424,7 @@ class _V1Migrator(cst.CSTTransformer):
                 ],
             )
 
-        # .filter_between / .filter_not_between → col("f").between(lo, hi)
+        # .filter_between / .filter_not_between -> col("f").between(lo, hi)
         if method_name in ("filter_between", "filter_not_between"):
             lo = _pos_arg(args, 1)
             hi = _pos_arg(args, 2)
@@ -443,7 +446,7 @@ class _V1Migrator(cst.CSTTransformer):
         return None
 
     # ------------------------------------------------------------------
-    # Standalone filter function: eq("f", v) → col("f") == v, etc.
+    # Standalone filter function: eq("f", v) -> col("f") == v, etc.
     # ------------------------------------------------------------------
 
     def _build_filter_func_arg(
@@ -642,7 +645,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not remaining:
         print(__doc__)
-        print("\nUsage: python -m tools.migrate_v0_to_v1 [--dry-run] <path> [<path> ...]")
+        print("\nUsage: dataverse-migrate [--dry-run] <path> [<path> ...]")
         return 1
 
     targets = _collect_targets(remaining)

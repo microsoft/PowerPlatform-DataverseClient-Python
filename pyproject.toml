@@ -40,6 +40,7 @@ dependencies = [
 
 [project.scripts]
 dataverse-install-claude-skill = "PowerPlatform.Dataverse._skill_installer:main"
+dataverse-migrate = "tools.migrate_v0_to_v1:main"
 
 [project.optional-dependencies]
 dev = [
@@ -53,12 +54,12 @@ dev = [
 migration = ["libcst>=1.0.0"]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src", "tools" = "tools"}
 zip-safe = false
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["PowerPlatform*"]
+where = ["src", "."]
+include = ["PowerPlatform*", "tools"]
 namespaces = false
 
 [tool.setuptools.package-data]
