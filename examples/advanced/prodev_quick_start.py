@@ -56,6 +56,7 @@ import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.filters import col
 
 # -- Table schema names --
 # Uses the standard 'new_' publisher prefix (default Dataverse publisher).
@@ -298,10 +299,11 @@ def step3_populate_data(client, primary_name_col):
     print(f"[OK] Created {len(customers_df)} customers")
 
     # -- Projects (linked to customers via lookup) --
-    # @odata.bind keys use the navigation property logical name (lowercase)
-    # and the entity set name (also lowercase) in the value.
-    customer_lookup = f"{TABLE_PROJECT}_CustomerId".lower() + "@odata.bind"
-    customer_set = TABLE_CUSTOMER.lower() + "s"
+    # @odata.bind keys use the lookup field schema name (case-sensitive)
+    # and the entity set name (from table metadata) in the value.
+    customer_lookup = f"{TABLE_PROJECT}_CustomerId@odata.bind"
+    customer_info = client.tables.get(TABLE_CUSTOMER)
+    customer_set = customer_info.get("entity_set_name") if customer_info else TABLE_CUSTOMER.lower() + "s"
     projects_df = pd.DataFrame(
         [
             {
@@ -352,8 +354,9 @@ def step3_populate_data(client, primary_name_col):
 
     for i, (task_name, priority, status, hours) in enumerate(task_names):
         proj_idx = project_assignment[i]
-        project_lookup = f"{TABLE_TASK}_ProjectId".lower() + "@odata.bind"
-        project_set = TABLE_PROJECT.lower() + "s"
+        project_lookup = f"{TABLE_TASK}_ProjectId@odata.bind"
+        project_info = client.tables.get(TABLE_PROJECT)
+        project_set = project_info.get("entity_set_name") if project_info else TABLE_PROJECT.lower() + "s"
         tasks_data.append(
             {
                 name_col: task_name,
@@ -392,26 +395,21 @@ def step4_query_and_analyze(client, customer_ids, primary_name_col):
     # Note: The SDK lowercases $select values automatically, so schema-name
     # casing (e.g., new_DemoProject_Budget) works -- it becomes the logical name.
     name_attr = primary_name_col
-    projects = client.dataframe.get(
-        TABLE_PROJECT,
-        select=[
-            name_attr,
-            f"{TABLE_PROJECT}_Budget",
-            f"{TABLE_PROJECT}_Status",
-        ],
+    projects = (
+        client.query.builder(TABLE_PROJECT)
+        .select(name_attr, f"{TABLE_PROJECT}_Budget", f"{TABLE_PROJECT}_Status")
+        .execute()
+        .to_dataframe()
     )
     print(f"\n  All projects ({len(projects)} rows):")
     print(f"{projects.to_string(index=False)}")
 
     # Query tasks and analyze
-    tasks = client.dataframe.get(
-        TABLE_TASK,
-        select=[
-            name_attr,
-            f"{TABLE_TASK}_Priority",
-            f"{TABLE_TASK}_Status",
-            f"{TABLE_TASK}_EstimatedHours",
-        ],
+    tasks = (
+        client.query.builder(TABLE_TASK)
+        .select(name_attr, f"{TABLE_TASK}_Priority", f"{TABLE_TASK}_Status", f"{TABLE_TASK}_EstimatedHours")
+        .execute()
+        .to_dataframe()
     )
     print(f"\n  All tasks ({len(tasks)} rows):")
     print(f"{tasks.to_string(index=False)}")
@@ -440,7 +438,7 @@ def step4_query_and_analyze(client, customer_ids, primary_name_col):
 
     # Fetch single record by ID
     first_id = customer_ids.iloc[0]
-    single = client.dataframe.get(TABLE_CUSTOMER, record_id=first_id)
+    single = client.query.builder(TABLE_CUSTOMER).where(col(primary_id_col) == first_id).execute().to_dataframe()
     print(f"\n  Single customer record (by ID):")
     print(f"{single.to_string(index=False)}")
 
@@ -481,10 +479,7 @@ def step5_update_and_delete(client, task_ids, primary_name_col, primary_id_col):
     print(f"[OK] Deleted 1 task")
 
     # Verify
-    remaining = client.dataframe.get(
-        TABLE_TASK,
-        select=[primary_name_col, status_col],
-    )
+    remaining = client.query.builder(TABLE_TASK).select(primary_name_col, status_col).execute().to_dataframe()
     print(f"\n  Remaining tasks ({len(remaining)}):")
     print(f"{remaining.to_string(index=False)}")
 

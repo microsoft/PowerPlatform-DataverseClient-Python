@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Union, overload, TYPE_CHECKING
+import warnings
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Union, overload, TYPE_CHECKING
 
-from ..models.record import Record
+from ..models.protocol import DataverseModel
+from ..models.record import QueryResult, Record
 from ..models.upsert import UpsertItem
 
 if TYPE_CHECKING:
+    from ..models.filters import FilterExpression
     from ..client import DataverseClient
 
 
@@ -54,10 +57,16 @@ class RecordOperations:
     @overload
     def create(self, table: str, data: List[Dict[str, Any]]) -> List[str]: ...
 
+    @overload
+    def create(self, table_or_entity: DataverseModel, data: None = None) -> str: ...
+
+    @overload
+    def create(self, table_or_entity: List[DataverseModel], data: None = None) -> List[str]: ...
+
     def create(
         self,
-        table: str,
-        data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        table_or_entity: Union[str, DataverseModel, List[DataverseModel]],
+        data: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
     ) -> Union[str, List[str]]:
         """Create one or more records in a Dataverse table.
 
@@ -78,19 +87,49 @@ class RecordOperations:
         :raises TypeError: If ``data`` is not a dict or list[dict].
 
         Example:
-            Create a single record::
+            Create a single record (dict form)::
 
                 guid = client.records.create("account", {"name": "Contoso"})
                 print(f"Created: {guid}")
 
-            Create multiple records::
+            Create multiple records (dict form)::
 
                 guids = client.records.create("account", [
                     {"name": "Contoso"},
                     {"name": "Fabrikam"},
                 ])
                 print(f"Created {len(guids)} accounts")
+
+            Create from a DataverseModel instance::
+
+                guid = client.records.create(Account(name="Contoso"))
         """
+        # DataverseModel dispatch: list of entities
+        if isinstance(table_or_entity, list) and table_or_entity and isinstance(table_or_entity[0], DataverseModel):
+            entities = table_or_entity
+            table = entities[0].__entity_logical_name__
+            data_list = [e.to_dict() for e in entities]
+            with self._client._scoped_odata() as od:
+                entity_set = od._entity_set_from_schema_name(table)
+                ids = od._create_multiple(entity_set, table, data_list)
+                if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+                    raise TypeError("_create (multi) did not return list[str]")
+                return ids
+
+        # DataverseModel dispatch: single entity
+        if isinstance(table_or_entity, DataverseModel):
+            entity = table_or_entity
+            table = entity.__entity_logical_name__
+            record_data = entity.to_dict()
+            with self._client._scoped_odata() as od:
+                entity_set = od._entity_set_from_schema_name(table)
+                rid = od._create(entity_set, table, record_data)
+                if not isinstance(rid, str):
+                    raise TypeError("_create (single) did not return GUID string")
+                return rid
+
+        # Existing str/dict path
+        table = table_or_entity  # type: ignore[assignment]
         with self._client._scoped_odata() as od:
             entity_set = od._entity_set_from_schema_name(table)
             if isinstance(data, dict):
@@ -109,9 +148,9 @@ class RecordOperations:
 
     def update(
         self,
-        table: str,
-        ids: Union[str, List[str]],
-        changes: Union[Dict[str, Any], List[Dict[str, Any]]],
+        table_or_entity: Union[str, DataverseModel],
+        ids: Optional[Union[str, List[str]]] = None,
+        changes: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
     ) -> None:
         """Update one or more records in a Dataverse table.
 
@@ -151,7 +190,29 @@ class RecordOperations:
                     [id1, id2],
                     [{"name": "Name A"}, {"name": "Name B"}],
                 )
+
+            Update from a DataverseModel instance::
+
+                client.records.update(Account(name="Contoso Updated"), account_id)
         """
+        # DataverseModel dispatch: entity provides table + changes
+        if isinstance(table_or_entity, DataverseModel):
+            entity = table_or_entity
+            table = entity.__entity_logical_name__
+            record_data = entity.to_dict()
+            if ids is None:
+                raise TypeError("record_id must be provided when updating from a DataverseModel")
+            with self._client._scoped_odata() as od:
+                if isinstance(ids, str):
+                    od._update(table, ids, record_data)
+                    return None
+                if isinstance(ids, list):
+                    od._update_by_ids(table, ids, record_data)
+                    return None
+            return None
+
+        # Existing str/dict path
+        table: str = table_or_entity  # type: ignore[assignment]
         with self._client._scoped_odata() as od:
             if isinstance(ids, str):
                 if not isinstance(changes, dict):
@@ -424,6 +485,12 @@ class RecordOperations:
                         print(record["name"])
         """
         if record_id is not None:
+            warnings.warn(
+                "'records.get()' with a record_id is deprecated; "
+                "use 'client.records.retrieve(table, record_id)' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if not isinstance(record_id, str):
                 raise TypeError("record_id must be str")
             if (
@@ -444,6 +511,12 @@ class RecordOperations:
                 raw = od._get(table, record_id, select=select)
                 return Record.from_api_response(table, raw, record_id=record_id)
 
+        warnings.warn(
+            "'records.get()' is deprecated; " "use 'client.records.list(table, filter=...)' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         def _paged() -> Iterable[List[Record]]:
             with self._client._scoped_odata() as od:
                 for page in od._get_multiple(
@@ -460,6 +533,156 @@ class RecordOperations:
                     yield [Record.from_api_response(table, row) for row in page]
 
         return _paged()
+
+    # --------------------------------------------------------------- retrieve
+
+    def retrieve(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Record]:
+        """Fetch a single record by its GUID, returning ``None`` if not found.
+
+        GA replacement for ``records.get(table, record_id)``. Returns ``None``
+        instead of raising when the record does not exist (HTTP 404).
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param record_id: GUID of the record to retrieve.
+        :type record_id: :class:`str`
+        :param select: Optional list of column logical names to include.
+        :type select: list[str] or None
+        :return: Typed record, or ``None`` if not found.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.record.Record` or None
+
+        Example::
+
+            record = client.records.retrieve("account", account_id, select=["name"])
+            if record is not None:
+                print(record["name"])
+        """
+        with self._client._scoped_odata() as od:
+            try:
+                raw = od._get(table, record_id, select=select)
+            except Exception as exc:
+                resp = getattr(exc, "response", None)
+                if resp is not None and getattr(resp, "status_code", None) == 404:
+                    return None
+                raise
+            return Record.from_api_response(table, raw, record_id=record_id)
+
+    # ------------------------------------------------------------------ list
+
+    def list(
+        self,
+        table: str,
+        *,
+        filter: Optional[Union[str, "FilterExpression"]] = None,
+        select: Optional[List[str]] = None,
+        top: Optional[int] = None,
+    ) -> QueryResult:
+        """Fetch multiple records and return them as a :class:`QueryResult`.
+
+        GA replacement for ``records.get(table, filter=...)``. All pages are
+        collected eagerly and returned as a single :class:`QueryResult`.
+
+        For advanced query options (ordering, expand, count, page size, or
+        OData annotations) use ``client.query.builder()`` instead.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param filter: Optional OData filter string or :class:`FilterExpression`.
+        :type filter: str or FilterExpression or None
+        :param select: Optional list of column logical names to include.
+        :type select: list[str] or None
+        :param top: Maximum total number of records to return.
+        :type top: int or None
+        :return: All matching records collected into a :class:`QueryResult`.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
+
+        Example::
+
+            from PowerPlatform.Dataverse import col
+
+            result = client.records.list(
+                "account",
+                filter=col("statecode") == 0,
+                select=["name"],
+                top=100,
+            )
+            for record in result:
+                print(record["name"])
+
+            df = result.to_dataframe()
+        """
+        filter_str: Optional[str] = str(filter) if filter is not None else None
+        all_records: List[Record] = []
+        with self._client._scoped_odata() as od:
+            for page in od._get_multiple(
+                table,
+                select=select,
+                filter=filter_str,
+                orderby=None,
+                top=top,
+                expand=None,
+                page_size=None,
+                count=False,
+                include_annotations=None,
+            ):
+                all_records.extend(Record.from_api_response(table, row) for row in page)
+        return QueryResult(all_records)
+
+    # --------------------------------------------------------------- list_pages
+
+    def list_pages(
+        self,
+        table: str,
+        *,
+        filter: Optional[Union[str, "FilterExpression"]] = None,
+        select: Optional[List[str]] = None,
+        top: Optional[int] = None,
+    ) -> Iterator[QueryResult]:
+        """Lazily yield one :class:`QueryResult` per HTTP page.
+
+        Streaming counterpart to :meth:`list`. Each iteration triggers one
+        network request via ``@odata.nextLink``. One-shot — do not iterate
+        more than once.
+
+        For advanced query options (ordering, expand, count, page size, or
+        OData annotations) use ``client.query.builder().execute_pages()`` instead.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param filter: Optional OData filter string or :class:`FilterExpression`.
+        :type filter: str or FilterExpression or None
+        :param select: Optional list of column logical names to include.
+        :type select: list[str] or None
+        :param top: Maximum total number of records to return.
+        :type top: int or None
+        :return: Iterator of per-page :class:`QueryResult` objects.
+        :rtype: Iterator[:class:`~PowerPlatform.Dataverse.models.record.QueryResult`]
+
+        Example::
+
+            for page in client.records.list_pages("account", filter="statecode eq 0"):
+                process(page.to_dataframe())
+        """
+        filter_str: Optional[str] = str(filter) if filter is not None else None
+        with self._client._scoped_odata() as od:
+            for page in od._get_multiple(
+                table,
+                select=select,
+                filter=filter_str,
+                orderby=None,
+                top=top,
+                expand=None,
+                page_size=None,
+                count=False,
+                include_annotations=None,
+            ):
+                yield QueryResult([Record.from_api_response(table, row) for row in page])
 
     # ------------------------------------------------------------------ upsert
 

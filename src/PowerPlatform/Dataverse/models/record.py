@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, KeysView, Optional, ValuesView, ItemsView
+from typing import Any, Dict, Iterator, KeysView, List, Optional, ValuesView, ItemsView
 
-__all__ = ["Record"]
+__all__ = ["Record", "QueryResult"]
 
 _ODATA_PREFIX = "@odata."
 
@@ -112,3 +112,51 @@ class Record:
     def to_dict(self) -> Dict[str, Any]:
         """Return a plain dict copy of the record data (excludes metadata)."""
         return dict(self.data)
+
+
+class QueryResult:
+    """Iterable wrapper around a list of :class:`Record` objects.
+
+    Returned by :meth:`~PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute`
+    (flat mode) and :meth:`~PowerPlatform.Dataverse.operations.records.RecordOperations.list`.
+
+    Backward-compatible: ``for r in result`` continues to work without change.
+
+    :param records: Collected records from all pages.
+    :type records: list[:class:`Record`]
+    """
+
+    def __init__(self, records: List[Record]) -> None:
+        self.records: List[Record] = records
+
+    def __iter__(self) -> Iterator[Record]:
+        return iter(self.records)
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def __bool__(self) -> bool:
+        return bool(self.records)
+
+    def __repr__(self) -> str:
+        return f"QueryResult({len(self.records)} records)"
+
+    def first(self) -> Optional[Record]:
+        """Return the first record, or ``None`` if the result is empty."""
+        return self.records[0] if self.records else None
+
+    def to_dataframe(self) -> Any:
+        """Return all records as a pandas DataFrame.
+
+        :raises ImportError: If pandas is not installed.
+        :rtype: ~pandas.DataFrame
+        """
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError("pandas is required for to_dataframe(). " "Install it with: pip install pandas") from exc
+
+        if not self.records:
+            return pd.DataFrame()
+        rows = [r.data if hasattr(r, "data") else dict(r) for r in self.records]
+        return pd.DataFrame.from_records(rows)

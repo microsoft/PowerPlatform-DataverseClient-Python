@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import warnings
+import xml.etree.ElementTree as _ET
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ..core.errors import MetadataError
+from ..models.fetch_xml_query import FetchXmlQuery
 from ..models.record import Record
 from ..models.query_builder import QueryBuilder
 
@@ -146,6 +149,60 @@ class QueryOperations:
             rows = od._query_sql(sql)
             return [Record.from_api_response("", row) for row in rows]
 
+    # --------------------------------------------------------------- fetch_xml
+
+    def fetch_xml(self, xml: str) -> FetchXmlQuery:
+        """Return an inert :class:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery` object.
+
+        No HTTP request is made until
+        :meth:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery.execute`
+        or
+        :meth:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery.execute_pages`
+        is called on the returned object.
+
+        Use for SQL-JOIN scenarios, aggregate queries, or other operations that
+        the OData builder endpoint cannot express.
+
+        :param xml: Well-formed FetchXML query string. The root ``<entity name="...">``
+            element determines the entity set endpoint.
+        :type xml: :class:`str`
+        :return: Inert query object with ``.execute()`` and ``.execute_pages()`` methods.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery`
+        :raises ValueError: If the FetchXML is missing a root ``<entity>`` element
+            or the entity ``name`` attribute.
+
+        Example::
+
+            query = client.query.fetch_xml(\"\"\"
+              <fetch top="50">
+                <entity name="account">
+                  <attribute name="name" />
+                  <link-entity name="contact" from="parentcustomerid"
+                               to="accountid" alias="c" link-type="inner">
+                    <attribute name="fullname" />
+                  </link-entity>
+                </entity>
+              </fetch>
+            \"\"\")
+
+            # Eager — collect all pages:
+            result = query.execute()
+            df = result.to_dataframe()
+
+            # Lazy — process one page at a time:
+            for page in query.execute_pages():
+                process(page.to_dataframe())
+        """
+        root_el = _ET.fromstring(xml.strip())
+        entity_el = root_el.find("entity")
+        if entity_el is None:
+            raise ValueError("FetchXML must contain an <entity> child element")
+        entity_name = entity_el.get("name", "")
+        if not entity_name:
+            raise ValueError("FetchXML <entity> element must have a 'name' attribute")
+
+        return FetchXmlQuery(xml.strip(), entity_name, self._client)
+
     # --------------------------------------------------------------- sql_columns
 
     def sql_columns(
@@ -230,178 +287,6 @@ class QueryOperations:
         result.sort(key=lambda x: (not x["is_pk"], not x["is_name"], x["name"]))
         return result
 
-    # --------------------------------------------------------------- sql_select
-
-    def sql_select(
-        self,
-        table: str,
-        *,
-        include_system: bool = False,
-    ) -> str:
-        """Return a comma-separated column list for use in SQL SELECT.
-
-        Excludes virtual columns and optionally system columns. The result
-        can be embedded directly in a SQL query string.
-
-        :param table: Schema name of the table (e.g. ``"account"``).
-        :type table: :class:`str`
-        :param include_system: Include system columns (default ``False``).
-        :type include_system: :class:`bool`
-
-        :return: Comma-separated column names.
-        :rtype: :class:`str`
-
-        Example::
-
-            cols = client.query.sql_select("account")
-            sql = f"SELECT TOP 10 {cols} FROM account"
-            df = client.dataframe.sql(sql)
-        """
-        columns = self.sql_columns(table, include_system=include_system)
-        return ", ".join(c["name"] for c in columns)
-
-    # --------------------------------------------------------------- sql_joins
-
-    def sql_joins(
-        self,
-        table: str,
-    ) -> List[Dict[str, Any]]:
-        """Discover all possible SQL JOINs from a table.
-
-        Returns one entry per outgoing lookup relationship, with the
-        exact column names needed for SQL ``JOIN ... ON`` clauses.
-
-        For **polymorphic** lookups (e.g. ``customerid`` targeting both
-        ``account`` and ``contact``), multiple entries are returned with
-        the same ``column`` but different ``target`` values.
-
-        :param table: Schema name of the table (e.g. ``"contact"``).
-        :type table: :class:`str`
-
-        :return: List of JOIN metadata dicts, each containing:
-
-            - ``column`` -- the lookup attribute on this table (use in ON clause)
-            - ``target`` -- the referenced entity name
-            - ``target_pk`` -- the referenced entity's primary key column
-            - ``relationship`` -- the schema name of the relationship
-            - ``join_clause`` -- a ready-to-use ``JOIN ... ON ...`` fragment
-
-        :rtype: list[dict[str, typing.Any]]
-
-        .. note::
-
-            The ``join_clause`` value references the source table by its
-            **full name** (e.g. ``ON contact.col = ...``), so the FROM
-            clause must also use the unaliased table name.  For queries
-            that need aliases, use :meth:`sql_join` instead.
-
-        Example::
-
-            joins = client.query.sql_joins("contact")
-            for j in joins:
-                print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
-                print(f"  {j['join_clause']}")
-
-            # Use in a query (no alias on the FROM table)
-            j = next(j for j in joins if j['target'] == 'account')
-            sql = f"SELECT TOP 10 contact.fullname, a.name FROM contact {j['join_clause']}"
-        """
-        table_lower = table.lower()
-        rels = self._client.tables.list_table_relationships(table)
-
-        used_aliases: set = set()
-        result: List[Dict[str, Any]] = []
-        for r in rels:
-            ref_entity = (r.get("ReferencingEntity") or "").lower()
-            if ref_entity != table_lower:
-                continue
-            col = r.get("ReferencingAttribute", "")
-            target = r.get("ReferencedEntity", "")
-            target_pk = r.get("ReferencedAttribute", "")
-            schema = r.get("SchemaName", "")
-            if not all([col, target, target_pk]):
-                continue
-
-            # Generate a unique alias — add a numeric suffix on collision so
-            # two lookups to tables starting with the same letter (e.g.
-            # "account" and "annotation") or two lookups to the same table
-            # (e.g. "ownerid" and "createdby" both to "systemuser") produce
-            # distinct aliases and valid SQL.
-            base = target[0] if target else "j"
-            alias = base
-            counter = 2
-            while alias in used_aliases:
-                alias = f"{base}{counter}"
-                counter += 1
-            used_aliases.add(alias)
-            join_clause = f"JOIN {target} {alias} ON {table_lower}.{col} = {alias}.{target_pk}"
-
-            result.append(
-                {
-                    "column": col,
-                    "target": target,
-                    "target_pk": target_pk,
-                    "relationship": schema,
-                    "join_clause": join_clause,
-                }
-            )
-
-        result.sort(key=lambda x: (x["target"], x["column"]))
-        return result
-
-    # --------------------------------------------------------------- sql_join
-
-    def sql_join(
-        self,
-        from_table: str,
-        to_table: str,
-        *,
-        from_alias: Optional[str] = None,
-        to_alias: Optional[str] = None,
-    ) -> str:
-        """Generate a SQL JOIN clause between two tables.
-
-        Discovers the relationship automatically via metadata. If multiple
-        relationships exist (e.g. polymorphic lookups), picks the first
-        match. Use :meth:`sql_joins` to see all options.
-
-        :param from_table: Schema name of the FROM table (e.g. ``"contact"``).
-        :type from_table: :class:`str`
-        :param to_table: Schema name of the target table (e.g. ``"account"``).
-        :type to_table: :class:`str`
-        :param from_alias: Optional alias for the FROM table in the JOIN
-            clause. If ``None``, uses the full table name.
-        :type from_alias: :class:`str` or None
-        :param to_alias: Optional alias for the target table. If ``None``,
-            uses the first letter of the target table name.
-        :type to_alias: :class:`str` or None
-
-        :return: A ready-to-use ``JOIN ... ON ...`` clause.
-        :rtype: :class:`str`
-
-        :raises ValueError: If no relationship is found between the tables.
-
-        Example::
-
-            j = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
-            # Returns: "JOIN account a ON c.parentcustomerid = a.accountid"
-            sql = f"SELECT TOP 10 c.fullname, a.name FROM contact c {j}"
-            df = client.dataframe.sql(sql)
-        """
-        to_lower = to_table.lower()
-        joins = self.sql_joins(from_table)
-        match = [j for j in joins if j["target"].lower() == to_lower]
-        if not match:
-            raise ValueError(
-                f"No relationship found from '{from_table}' to '{to_table}'. "
-                f"Use client.query.sql_joins('{from_table}') to see available targets."
-            )
-
-        j = match[0]
-        src = from_alias or from_table.lower()
-        tgt = to_alias or to_lower[0]
-        return f"JOIN {to_lower} {tgt} " f"ON {src}.{j['column']} = {tgt}.{j['target_pk']}"
-
     # ===========================================================
     # OData helpers -- eliminate friction for records.get() users
     # ===========================================================
@@ -433,6 +318,12 @@ class QueryOperations:
                 for r in page:
                     print(r)
         """
+        warnings.warn(
+            "'odata_select' is deprecated; use the typed builder (1.x) "
+            "or client.query.sql_columns() to discover columns.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         columns = self.sql_columns(table, include_system=include_system)
         return [c["name"] for c in columns]
 
@@ -545,6 +436,12 @@ class QueryOperations:
                     acct = r.get(nav) or {}
                     print(f"{r['fullname']} -> {acct.get('name', 'N/A')}")
         """
+        warnings.warn(
+            "'odata_expand' is deprecated; use the typed builder (1.x) "
+            "with .expand() or client.query.odata_expands() to discover navigation properties.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         to_lower = to_table.lower()
         expands = self.odata_expands(from_table)
         match = [e for e in expands if e["target_table"].lower() == to_lower]
@@ -594,6 +491,11 @@ class QueryOperations:
                 **bind,
             })
         """
+        warnings.warn(
+            "'odata_bind' is deprecated; use the typed builder (1.x) " "or pass the @odata.bind dict manually.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         to_lower = to_table.lower()
         expands = self.odata_expands(from_table)
         match = [e for e in expands if e["target_table"].lower() == to_lower and e["target_entity_set"]]

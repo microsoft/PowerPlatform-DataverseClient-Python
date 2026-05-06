@@ -51,349 +51,120 @@ class TestSelect(unittest.TestCase):
         self.assertIs(qb.select("name"), qb)
 
 
-class TestComparisonFilters(unittest.TestCase):
-    """Tests for comparison filter methods."""
-
-    def test_filter_eq_string(self):
-        qb = QueryBuilder("account").filter_eq("name", "Contoso")
-        self.assertEqual(qb.build()["filter"], "name eq 'Contoso'")
-
-    def test_filter_eq_integer(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0)
-        self.assertEqual(qb.build()["filter"], "statecode eq 0")
-
-    def test_filter_eq_boolean_true(self):
-        qb = QueryBuilder("account").filter_eq("active", True)
-        self.assertEqual(qb.build()["filter"], "active eq true")
-
-    def test_filter_eq_boolean_false(self):
-        qb = QueryBuilder("account").filter_eq("active", False)
-        self.assertEqual(qb.build()["filter"], "active eq false")
-
-    def test_filter_eq_none(self):
-        qb = QueryBuilder("account").filter_eq("telephone1", None)
-        self.assertEqual(qb.build()["filter"], "telephone1 eq null")
-
-    def test_filter_eq_float(self):
-        qb = QueryBuilder("account").filter_eq("revenue", 1000000.5)
-        self.assertEqual(qb.build()["filter"], "revenue eq 1000000.5")
-
-    def test_filter_eq_datetime(self):
-        from datetime import datetime, timezone
-
-        dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
-        qb = QueryBuilder("account").filter_eq("createdon", dt)
-        self.assertEqual(qb.build()["filter"], "createdon eq 2024-01-15T10:30:00Z")
-
-
-class TestFilterIn(unittest.TestCase):
-    """Tests for the filter_in() method."""
-
-    def test_filter_in_integers(self):
-        qb = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
-        )
-
-    def test_filter_in_strings(self):
-        qb = QueryBuilder("account").filter_in("name", ["Contoso", "Fabrikam"])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.In(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
-        )
-
-    def test_filter_in_single_value(self):
-        qb = QueryBuilder("account").filter_in("statecode", [0])
-        self.assertEqual(
-            qb.build()["filter"],
-            "Microsoft.Dynamics.CRM.In(PropertyName='statecode',PropertyValues=[\"0\"])",
-        )
-
-    def test_filter_in_column_lowercased(self):
-        qb = QueryBuilder("account").filter_in("StateCode", [0, 1])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"])',
-        )
-
-    def test_filter_in_empty_raises(self):
-        with self.assertRaises(ValueError):
-            QueryBuilder("account").filter_in("statecode", [])
-
-    def test_filter_in_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_in("statecode", [0, 1]), qb)
-
-    def test_filter_in_with_set(self):
-        qb = QueryBuilder("account").filter_in("statecode", {0, 1})
-        result = qb.build()["filter"]
-        self.assertIn("Microsoft.Dynamics.CRM.In", result)
-        self.assertIn("statecode", result)
-
-    def test_filter_in_with_tuple(self):
-        qb = QueryBuilder("account").filter_in("statecode", (0, 1, 2))
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
-        )
-
-    def test_filter_in_int_enum(self):
-        from enum import IntEnum
-
-        class Priority(IntEnum):
-            LOW = 1
-            HIGH = 3
-
-        qb = QueryBuilder("account").filter_in("priority", [Priority.LOW, Priority.HIGH])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","3"])',
-        )
-
-    def test_filter_in_combined_with_other_filters(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_in("priority", [1, 2, 3])
-        self.assertEqual(
-            qb.build()["filter"],
-            'statecode eq 0 and Microsoft.Dynamics.CRM.In(PropertyName=\'priority\',PropertyValues=["1","2","3"])',
-        )
-
-    def test_filter_ne(self):
-        qb = QueryBuilder("account").filter_ne("statecode", 1)
-        self.assertEqual(qb.build()["filter"], "statecode ne 1")
-
-    def test_filter_gt(self):
-        qb = QueryBuilder("account").filter_gt("revenue", 1000000)
-        self.assertEqual(qb.build()["filter"], "revenue gt 1000000")
-
-    def test_filter_ge(self):
-        qb = QueryBuilder("account").filter_ge("revenue", 1000000)
-        self.assertEqual(qb.build()["filter"], "revenue ge 1000000")
-
-    def test_filter_lt(self):
-        qb = QueryBuilder("account").filter_lt("revenue", 500000)
-        self.assertEqual(qb.build()["filter"], "revenue lt 500000")
-
-    def test_filter_le(self):
-        qb = QueryBuilder("account").filter_le("revenue", 500000)
-        self.assertEqual(qb.build()["filter"], "revenue le 500000")
-
-    def test_column_names_lowercased(self):
-        qb = QueryBuilder("account").filter_eq("StateCode", 0).order_by("Revenue")
-        params = qb.build()
-        self.assertEqual(params["filter"], "statecode eq 0")
-        self.assertEqual(params["orderby"], ["revenue"])
-
-    def test_string_with_quotes_escaped(self):
-        qb = QueryBuilder("account").filter_eq("name", "O'Brien's Corp")
-        self.assertEqual(qb.build()["filter"], "name eq 'O''Brien''s Corp'")
-
-    def test_multiple_filters_and_joined(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_gt("revenue", 1000000)
-        self.assertEqual(qb.build()["filter"], "statecode eq 0 and revenue gt 1000000")
-
-
-class TestStringFunctionFilters(unittest.TestCase):
-    """Tests for string function filter methods."""
-
-    def test_filter_contains(self):
-        qb = QueryBuilder("account").filter_contains("name", "Corp")
-        self.assertEqual(qb.build()["filter"], "contains(name, 'Corp')")
-
-    def test_filter_startswith(self):
-        qb = QueryBuilder("account").filter_startswith("name", "Con")
-        self.assertEqual(qb.build()["filter"], "startswith(name, 'Con')")
-
-    def test_filter_endswith(self):
-        qb = QueryBuilder("account").filter_endswith("name", "Ltd")
-        self.assertEqual(qb.build()["filter"], "endswith(name, 'Ltd')")
-
-    def test_filter_contains_single_quotes(self):
-        qb = QueryBuilder("account").filter_contains("name", "O'Brien")
-        self.assertEqual(qb.build()["filter"], "contains(name, 'O''Brien')")
-
-
-class TestNullFilters(unittest.TestCase):
-    """Tests for null/not-null filter methods."""
-
-    def test_filter_null(self):
-        qb = QueryBuilder("account").filter_null("telephone1")
-        self.assertEqual(qb.build()["filter"], "telephone1 eq null")
-
-    def test_filter_not_null(self):
-        qb = QueryBuilder("account").filter_not_null("telephone1")
-        self.assertEqual(qb.build()["filter"], "telephone1 ne null")
-
-
-class TestFilterBetween(unittest.TestCase):
-    """Tests for the filter_between() method."""
-
-    def test_filter_between_parenthesized(self):
-        qb = QueryBuilder("account").filter_between("revenue", 100000, 500000)
-        self.assertEqual(
-            qb.build()["filter"],
-            "(revenue ge 100000 and revenue le 500000)",
-        )
-
-    def test_filter_between_column_lowercased(self):
-        qb = QueryBuilder("account").filter_between("Revenue", 100, 500)
-        self.assertEqual(
-            qb.build()["filter"],
-            "(revenue ge 100 and revenue le 500)",
-        )
-
-    def test_filter_between_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_between("revenue", 100, 500), qb)
-
-    def test_filter_between_combined_with_other_filters(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_between("revenue", 100000, 500000)
-        self.assertEqual(
-            qb.build()["filter"],
-            "statecode eq 0 and (revenue ge 100000 and revenue le 500000)",
-        )
-
-    def test_filter_between_datetimes(self):
-        from datetime import datetime, timezone
-
-        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-        qb = QueryBuilder("account").filter_between("createdon", start, end)
-        self.assertEqual(
-            qb.build()["filter"],
-            "(createdon ge 2024-01-01T00:00:00Z and createdon le 2024-12-31T23:59:59Z)",
-        )
-
-
-class TestFilterNotIn(unittest.TestCase):
-    """Tests for the filter_not_in() method."""
-
-    def test_filter_not_in_ints(self):
-        qb = QueryBuilder("account").filter_not_in("statecode", [2, 3])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
-        )
-
-    def test_filter_not_in_strings(self):
-        qb = QueryBuilder("account").filter_not_in("name", ["Contoso", "Fabrikam"])
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'name\',PropertyValues=["Contoso","Fabrikam"])',
-        )
-
-    def test_filter_not_in_empty_raises(self):
-        with self.assertRaises(ValueError):
-            QueryBuilder("account").filter_not_in("statecode", [])
-
-    def test_filter_not_in_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_not_in("statecode", [0, 1]), qb)
-
-    def test_filter_not_in_combined_with_other_filters(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_not_in("priority", [1, 2])
-        self.assertEqual(
-            qb.build()["filter"],
-            'statecode eq 0 and Microsoft.Dynamics.CRM.NotIn(PropertyName=\'priority\',PropertyValues=["1","2"])',
-        )
-
-    def test_filter_not_in_with_set(self):
-        qb = QueryBuilder("account").filter_not_in("statecode", {2, 3})
-        result = qb.build()["filter"]
-        self.assertIn("Microsoft.Dynamics.CRM.NotIn", result)
-        self.assertIn("statecode", result)
-
-    def test_filter_not_in_with_tuple(self):
-        qb = QueryBuilder("account").filter_not_in("statecode", (2, 3))
-        self.assertEqual(
-            qb.build()["filter"],
-            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
-        )
-
-
-class TestFilterNotBetween(unittest.TestCase):
-    """Tests for the filter_not_between() method."""
-
-    def test_filter_not_between_ints(self):
-        qb = QueryBuilder("account").filter_not_between("revenue", 100000, 500000)
-        self.assertEqual(
-            qb.build()["filter"],
-            "not ((revenue ge 100000 and revenue le 500000))",
-        )
-
-    def test_filter_not_between_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_not_between("revenue", 100, 500), qb)
-
-    def test_filter_not_between_combined_with_other_filters(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0).filter_not_between("revenue", 100000, 500000)
-        self.assertEqual(
-            qb.build()["filter"],
-            "statecode eq 0 and not ((revenue ge 100000 and revenue le 500000))",
-        )
-
-
-class TestFilterRaw(unittest.TestCase):
-    """Tests for the filter_raw() method."""
-
-    def test_filter_raw(self):
-        qb = QueryBuilder("account").filter_raw("(statecode eq 0 or statecode eq 1)")
-        self.assertEqual(qb.build()["filter"], "(statecode eq 0 or statecode eq 1)")
-
-    def test_filter_raw_returns_self(self):
-        qb = QueryBuilder("account")
-        self.assertIs(qb.filter_raw("a eq 1"), qb)
-
-    def test_build_with_plain_string_filter_part(self):
-        """build() handles plain string entries in _filter_parts (internal path)."""
-        qb = QueryBuilder("account")
-        qb._filter_parts.append("name eq 'Contoso'")
-        self.assertEqual(qb.build()["filter"], "name eq 'Contoso'")
+class TestRemovedFilterMethods(unittest.TestCase):
+    """Verify all 16 filter_* builder methods were removed in 1.0 GA."""
+
+    def setUp(self):
+        self.qb = QueryBuilder("account")
+
+    def test_filter_eq_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_eq("name", "Contoso")
+
+    def test_filter_ne_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_ne("statecode", 1)
+
+    def test_filter_gt_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_gt("revenue", 0)
+
+    def test_filter_ge_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_ge("revenue", 0)
+
+    def test_filter_lt_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_lt("revenue", 0)
+
+    def test_filter_le_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_le("revenue", 0)
+
+    def test_filter_contains_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_contains("name", "Corp")
+
+    def test_filter_startswith_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_startswith("name", "Con")
+
+    def test_filter_endswith_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_endswith("name", "Ltd")
+
+    def test_filter_null_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_null("telephone1")
+
+    def test_filter_not_null_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_not_null("telephone1")
+
+    def test_filter_in_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_in("statecode", [0, 1])
+
+    def test_filter_not_in_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_not_in("statecode", [0, 1])
+
+    def test_filter_between_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_between("revenue", 100, 500)
+
+    def test_filter_not_between_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_not_between("revenue", 100, 500)
+
+    def test_filter_raw_removed(self):
+        with self.assertRaises(AttributeError):
+            self.qb.filter_raw("statecode eq 0")
 
 
 class TestWhere(unittest.TestCase):
     """Tests for the where() method with composable expressions."""
 
     def test_where_simple(self):
-        from PowerPlatform.Dataverse.models.filters import eq
+        from PowerPlatform.Dataverse.models.filters import col
 
-        qb = QueryBuilder("account").where(eq("statecode", 0))
+        qb = QueryBuilder("account").where(col("statecode") == 0)
         self.assertEqual(qb.build()["filter"], "statecode eq 0")
 
     def test_where_complex(self):
-        from PowerPlatform.Dataverse.models.filters import eq, gt
+        from PowerPlatform.Dataverse.models.filters import col
 
-        expr = (eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000)
+        expr = ((col("statecode") == 0) | (col("statecode") == 1)) & (col("revenue") > 100000)
         qb = QueryBuilder("account").where(expr)
         self.assertEqual(
             qb.build()["filter"],
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
         )
 
-    def test_where_combined_with_filter_methods(self):
-        from PowerPlatform.Dataverse.models.filters import gt
+    def test_where_combined_with_raw(self):
+        from PowerPlatform.Dataverse.models.filters import col, raw
 
-        qb = QueryBuilder("account").filter_eq("statecode", 0).where(gt("revenue", 100000))
+        qb = QueryBuilder("account").where(raw("statecode eq 0")).where(col("revenue") > 100000)
         self.assertEqual(qb.build()["filter"], "statecode eq 0 and revenue gt 100000")
 
     def test_where_multiple_calls(self):
-        from PowerPlatform.Dataverse.models.filters import eq, gt
+        from PowerPlatform.Dataverse.models.filters import col
 
-        qb = QueryBuilder("account").where(eq("statecode", 0)).where(gt("revenue", 100000))
+        qb = QueryBuilder("account").where(col("statecode") == 0).where(col("revenue") > 100000)
         self.assertEqual(qb.build()["filter"], "statecode eq 0 and revenue gt 100000")
 
     def test_where_preserves_call_order(self):
-        """Interleaved filter_*() and where() should preserve call order."""
-        from PowerPlatform.Dataverse.models.filters import eq, gt
+        """Multiple where() calls preserve insertion order."""
+        from PowerPlatform.Dataverse.models.filters import col
 
-        qb = QueryBuilder("account").where(eq("a", 1)).filter_eq("b", 2).where(gt("c", 3))
+        qb = QueryBuilder("account").where(col("a") == 1).where(col("b") == 2).where(col("c") > 3)
         self.assertEqual(qb.build()["filter"], "a eq 1 and b eq 2 and c gt 3")
 
     def test_where_returns_self(self):
-        from PowerPlatform.Dataverse.models.filters import eq
+        from PowerPlatform.Dataverse.models.filters import col
 
         qb = QueryBuilder("account")
-        self.assertIs(qb.where(eq("statecode", 0)), qb)
+        self.assertIs(qb.where(col("statecode") == 0), qb)
 
     def test_where_non_expression_raises(self):
         qb = QueryBuilder("account")
@@ -401,19 +172,52 @@ class TestWhere(unittest.TestCase):
             qb.where("statecode eq 0")  # type: ignore
 
     def test_where_with_not(self):
-        from PowerPlatform.Dataverse.models.filters import eq
+        from PowerPlatform.Dataverse.models.filters import col
 
-        qb = QueryBuilder("account").where(~eq("statecode", 1))
+        qb = QueryBuilder("account").where(~(col("statecode") == 1))
         self.assertEqual(qb.build()["filter"], "not (statecode eq 1)")
 
     def test_where_with_filter_in(self):
-        from PowerPlatform.Dataverse.models.filters import filter_in, gt
+        from PowerPlatform.Dataverse.models.filters import col
 
-        expr = filter_in("statecode", [0, 1]) & gt("revenue", 100000)
+        expr = col("statecode").in_([0, 1]) & (col("revenue") > 100000)
         qb = QueryBuilder("account").where(expr)
         self.assertEqual(
             qb.build()["filter"],
             '(Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1"]) and revenue gt 100000)',
+        )
+
+    def test_where_with_raw_preserves_string(self):
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        qb = QueryBuilder("account").where(raw("(statecode eq 0 or statecode eq 1)"))
+        self.assertEqual(qb.build()["filter"], "(statecode eq 0 or statecode eq 1)")
+
+    def test_where_negation_of_in(self):
+        from PowerPlatform.Dataverse.models.filters import col
+
+        qb = QueryBuilder("account").where(col("statecode").not_in([2, 3]))
+        self.assertEqual(
+            qb.build()["filter"],
+            'Microsoft.Dynamics.CRM.NotIn(PropertyName=\'statecode\',PropertyValues=["2","3"])',
+        )
+
+    def test_where_between(self):
+        from PowerPlatform.Dataverse.models.filters import col
+
+        qb = QueryBuilder("account").where(col("revenue").between(100000, 500000))
+        self.assertEqual(
+            qb.build()["filter"],
+            "(revenue ge 100000 and revenue le 500000)",
+        )
+
+    def test_where_not_between(self):
+        from PowerPlatform.Dataverse.models.filters import col
+
+        qb = QueryBuilder("account").where(col("revenue").not_between(100000, 500000))
+        self.assertEqual(
+            qb.build()["filter"],
+            "not ((revenue ge 100000 and revenue le 500000))",
         )
 
 
@@ -635,11 +439,13 @@ class TestBuild(unittest.TestCase):
         self.assertNotIn("page_size", params)
 
     def test_full_query_build(self):
+        from PowerPlatform.Dataverse.models.filters import col, raw
+
         qb = (
             QueryBuilder("account")
             .select("name", "revenue", "telephone1")
-            .filter_eq("statecode", 0)
-            .filter_gt("revenue", 1000000)
+            .where(raw("statecode eq 0"))
+            .where(col("revenue") > 1000000)
             .order_by("revenue", descending=True)
             .order_by("name")
             .expand("primarycontactid")
@@ -663,33 +469,34 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(params1["select"], params2["select"])
         self.assertIsNot(params1["select"], params2["select"])
 
+    def test_build_with_plain_string_filter_part(self):
+        """build() handles plain string entries in _filter_parts (internal path)."""
+        qb = QueryBuilder("account")
+        qb._filter_parts.append("name eq 'Contoso'")
+        self.assertEqual(qb.build()["filter"], "name eq 'Contoso'")
+
+    def test_build_mixed_string_and_expression_filter_parts(self):
+        """build() AND-joins raw strings and FilterExpression objects in order."""
+        from PowerPlatform.Dataverse.models.filters import col
+
+        qb = QueryBuilder("account")
+        qb._filter_parts.append("statecode eq 0")
+        qb.where(col("revenue") > 100000)
+        self.assertEqual(qb.build()["filter"], "statecode eq 0 and revenue gt 100000")
+
 
 class TestMethodChainingReturnsSelf(unittest.TestCase):
-    """Verify all methods return self for chaining."""
+    """Verify all public methods return self for chaining."""
 
     def test_all_methods_return_self(self):
-        from PowerPlatform.Dataverse.models.filters import eq
+        from PowerPlatform.Dataverse.models.filters import col
 
         qb = QueryBuilder("account")
 
         self.assertIs(qb.select("name"), qb)
-        self.assertIs(qb.filter_eq("a", 1), qb)
-        self.assertIs(qb.filter_ne("b", 2), qb)
-        self.assertIs(qb.filter_gt("c", 3), qb)
-        self.assertIs(qb.filter_ge("d", 4), qb)
-        self.assertIs(qb.filter_lt("e", 5), qb)
-        self.assertIs(qb.filter_le("f", 6), qb)
-        self.assertIs(qb.filter_contains("g", "x"), qb)
-        self.assertIs(qb.filter_startswith("h", "y"), qb)
-        self.assertIs(qb.filter_endswith("i", "z"), qb)
-        self.assertIs(qb.filter_null("j"), qb)
-        self.assertIs(qb.filter_not_null("k"), qb)
-        self.assertIs(qb.filter_raw("l eq 1"), qb)
-        self.assertIs(qb.filter_in("m", [1, 2]), qb)
-        self.assertIs(qb.filter_between("n", 1, 10), qb)
-        self.assertIs(qb.where(eq("o", 1)), qb)
-        self.assertIs(qb.order_by("p"), qb)
-        self.assertIs(qb.expand("q"), qb)
+        self.assertIs(qb.where(col("statecode") == 0), qb)
+        self.assertIs(qb.order_by("name"), qb)
+        self.assertIs(qb.expand("primarycontactid"), qb)
         self.assertIs(qb.top(10), qb)
         self.assertIs(qb.page_size(5), qb)
         self.assertIs(qb.count(), qb)
@@ -701,26 +508,40 @@ class TestExecute(unittest.TestCase):
     """Tests for the execute() terminal method."""
 
     def test_execute_without_query_ops_raises(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0)
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        qb = QueryBuilder("account").where(raw("statecode eq 0"))
         with self.assertRaises(RuntimeError) as ctx:
             qb.execute()
         self.assertIn("client.query.builder()", str(ctx.exception))
 
-    def test_execute_calls_records_get(self):
-        """execute() should delegate to client.records.get() with built params."""
+    def _make_od(self, pages=None):
+        """Return (mock_query_ops, mock_od) with _get_multiple pre-wired."""
         mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "Test"}]])
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter(pages or [])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        return mock_query_ops, mock_od
 
+    def test_execute_calls_get_multiple(self):
+        """execute() calls _get_multiple() via _scoped_odata with all built params."""
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.select("name", "revenue").filter_eq("statecode", 0).order_by("revenue", descending=True).top(100).page_size(
-            50
-        ).expand("primarycontactid")
+        (
+            qb.select("name", "revenue")
+            .where(raw("statecode eq 0"))
+            .order_by("revenue", descending=True)
+            .top(100)
+            .page_size(50)
+            .expand("primarycontactid")
+        )
 
-        list(qb.execute())
+        qb.execute()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name", "revenue"],
             filter="statecode eq 0",
@@ -733,10 +554,7 @@ class TestExecute(unittest.TestCase):
         )
 
     def test_execute_returns_flat_records_by_default(self):
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
-
+        mock_query_ops, _ = self._make_od([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
@@ -748,66 +566,47 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(records[2]["name"], "C")
 
     def test_execute_by_page_returns_pages(self):
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
+        from PowerPlatform.Dataverse.models.record import QueryResult
 
-        page1 = [{"name": "A"}, {"name": "B"}]
-        page2 = [{"name": "C"}]
-        mock_client.records.get.return_value = iter([page1, page2])
-
+        mock_query_ops, _ = self._make_od([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
         pages = list(qb.execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page1)
-        self.assertEqual(pages[1], page2)
-
-    def test_execute_unbounded_raises(self):
-        """execute() with no select/filter/top should raise ValueError."""
-        mock_query_ops = MagicMock()
-        qb = QueryBuilder("account")
-        qb._query_ops = mock_query_ops
-        with self.assertRaises(ValueError) as ctx:
-            qb.execute()
-        self.assertIn("Unbounded query", str(ctx.exception))
+        self.assertIsInstance(pages[0], QueryResult)
+        self.assertEqual(len(pages[0]), 2)
+        self.assertEqual(len(pages[1]), 1)
 
     def test_execute_with_only_select_succeeds(self):
         """execute() with select only should not raise."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_filter_succeeds(self):
         """execute() with filter only should not raise."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
+        from PowerPlatform.Dataverse.models.filters import raw
 
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.filter_eq("statecode", 0)
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.where(raw("statecode eq 0"))
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_top_succeeds(self):
         """execute() with top only should not raise."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.top(10)
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_expand_raises(self):
         """expand alone is not a sufficient constraint."""
@@ -828,51 +627,42 @@ class TestExecute(unittest.TestCase):
             qb.execute()
 
     def test_execute_with_where_expressions(self):
-        from PowerPlatform.Dataverse.models.filters import eq, gt
+        from PowerPlatform.Dataverse.models.filters import col
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.where((eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000))
-        list(qb.execute())
+        qb.where(((col("statecode") == 0) | (col("statecode") == 1)) & (col("revenue") > 100000))
+        qb.execute()
 
-        call_args = mock_client.records.get.call_args
         self.assertEqual(
-            call_args.kwargs["filter"],
+            mock_od._get_multiple.call_args.kwargs["filter"],
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
         )
 
     def test_execute_with_filter_in(self):
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
+        from PowerPlatform.Dataverse.models.filters import col
 
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
-        qb.filter_in("statecode", [0, 1, 2])
-        list(qb.execute())
+        qb.where(col("statecode").in_([0, 1, 2]))
+        qb.execute()
 
-        call_args = mock_client.records.get.call_args
         self.assertEqual(
-            call_args.kwargs["filter"],
+            mock_od._get_multiple.call_args.kwargs["filter"],
             'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
         )
 
     def test_execute_passes_count_and_annotations(self):
-        """execute() should forward count and include_annotations when set."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        """execute() should forward count and include_annotations to _get_multiple."""
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name").count().include_formatted_values()
-        list(qb.execute())
+        qb.execute()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name"],
             filter=None,
@@ -885,64 +675,141 @@ class TestExecute(unittest.TestCase):
         )
 
 
+class TestExecutePages(unittest.TestCase):
+    """Tests for execute_pages() — lazy per-page QueryResult iterator."""
+
+    def _make_qb(self):
+        mock_query_ops = MagicMock()
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter([[{"name": "A"}], [{"name": "B"}]])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name")
+        return qb, mock_query_ops
+
+    def test_execute_pages_returns_iterator(self):
+        qb, _ = self._make_qb()
+        result = qb.execute_pages()
+        import types
+
+        self.assertIsInstance(result, types.GeneratorType)
+
+    def test_execute_pages_yields_query_result_per_page(self):
+        from PowerPlatform.Dataverse.models.record import QueryResult
+
+        qb, _ = self._make_qb()
+        pages = list(qb.execute_pages())
+        self.assertEqual(len(pages), 2)
+        for page in pages:
+            self.assertIsInstance(page, QueryResult)
+
+    def test_execute_pages_page_contents(self):
+        qb, _ = self._make_qb()
+        pages = list(qb.execute_pages())
+        self.assertEqual(pages[0].first()["name"], "A")
+        self.assertEqual(pages[1].first()["name"], "B")
+
+    def test_execute_pages_without_query_ops_raises(self):
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        qb = QueryBuilder("account").where(raw("statecode eq 0"))
+        with self.assertRaises(RuntimeError):
+            list(qb.execute_pages())
+
+    def test_execute_pages_without_constraints_raises(self):
+        mock_query_ops = MagicMock()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        with self.assertRaises(ValueError):
+            list(qb.execute_pages())
+
+
+class TestByPageWarning(unittest.TestCase):
+    """execute(by_page=...) fires UserWarning; plain execute() does not."""
+
+    def _make_qb(self):
+        mock_query_ops = MagicMock()
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter([[{"name": "A"}]])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name")
+        return qb
+
+    def test_execute_no_flag_no_warning(self):
+        """execute() with no by_page argument fires no warning."""
+        import warnings
+
+        qb = self._make_qb()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            qb.execute()
+        user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+        self.assertEqual(len(user_warnings), 0)
+
+    def test_execute_by_page_true_fires_user_warning(self):
+        """execute(by_page=True) fires UserWarning pointing to execute_pages()."""
+        qb = self._make_qb()
+        with self.assertWarns(UserWarning) as ctx:
+            list(qb.execute(by_page=True))
+        self.assertIn("execute_pages()", str(ctx.warning))
+
+    def test_execute_by_page_false_fires_user_warning(self):
+        """execute(by_page=False) fires UserWarning — redundant flag."""
+        qb = self._make_qb()
+        with self.assertWarns(UserWarning) as ctx:
+            qb.execute(by_page=False)
+        self.assertIn("redundant", str(ctx.warning))
+
+    def test_execute_by_page_true_still_functional(self):
+        """execute(by_page=True) still returns the raw page iterator."""
+        import warnings
+
+        qb = self._make_qb()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = qb.execute(by_page=True)
+        pages = list(result)
+        self.assertEqual(len(pages), 1)
+
+    def test_execute_by_page_false_still_returns_query_result(self):
+        """execute(by_page=False) still returns QueryResult."""
+        import warnings
+
+        from PowerPlatform.Dataverse.models.record import QueryResult
+
+        qb = self._make_qb()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = qb.execute(by_page=False)
+        self.assertIsInstance(result, QueryResult)
+
+
 class TestToDataframe(unittest.TestCase):
     """Tests for the to_dataframe() terminal method."""
 
+    def _make_od(self, pages=None):
+        mock_query_ops = MagicMock()
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter(pages or [])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        return mock_query_ops, mock_od
+
     def test_to_dataframe_without_query_ops_raises(self):
-        qb = QueryBuilder("account").filter_eq("statecode", 0)
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        qb = QueryBuilder("account").where(raw("statecode eq 0"))
         with self.assertRaises(RuntimeError) as ctx:
             qb.to_dataframe()
         self.assertIn("client.query.builder()", str(ctx.exception))
 
-    def test_to_dataframe_delegates_to_dataframe_get(self):
-        """to_dataframe() should delegate to client.dataframe.get() with built params."""
-        import pandas as pd
-
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        expected_df = pd.DataFrame([{"name": "Contoso", "revenue": 1000}])
-        mock_client.dataframe.get.return_value = expected_df
-
-        qb = QueryBuilder("account")
-        qb._query_ops = mock_query_ops
-        qb.select("name", "revenue").filter_eq("statecode", 0).order_by("revenue", descending=True).top(100).page_size(
-            50
-        ).expand("primarycontactid")
-
-        result = qb.to_dataframe()
-
-        mock_client.dataframe.get.assert_called_once_with(
-            "account",
-            select=["name", "revenue"],
-            filter="statecode eq 0",
-            orderby=["revenue desc"],
-            top=100,
-            expand=["primarycontactid"],
-            page_size=50,
-            count=False,
-            include_annotations=None,
-        )
-        pd.testing.assert_frame_equal(result, expected_df)
-
-    def test_to_dataframe_unbounded_raises(self):
-        """to_dataframe() with no select/filter/top should raise ValueError."""
-        mock_query_ops = MagicMock()
-        qb = QueryBuilder("account")
-        qb._query_ops = mock_query_ops
-        with self.assertRaises(ValueError) as ctx:
-            qb.to_dataframe()
-        self.assertIn("Unbounded query", str(ctx.exception))
-
     def test_to_dataframe_returns_dataframe(self):
-        """to_dataframe() should return a pandas DataFrame."""
+        """to_dataframe() collects execute() results into a DataFrame."""
         import pandas as pd
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.dataframe.get.return_value = pd.DataFrame(
-            [{"name": "A", "revenue": 100}, {"name": "B", "revenue": 200}]
-        )
-
+        mock_query_ops, _ = self._make_od([[{"name": "A", "revenue": 100}, {"name": "B", "revenue": 200}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name", "revenue")
@@ -953,20 +820,63 @@ class TestToDataframe(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertListEqual(list(result.columns), ["name", "revenue"])
 
-    def test_to_dataframe_forwards_count_and_annotations(self):
-        """to_dataframe() should forward count and include_annotations when set."""
+    def test_to_dataframe_empty_result_returns_empty_dataframe(self):
+        """to_dataframe() with no matching records returns empty DataFrame."""
         import pandas as pd
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.dataframe.get.return_value = pd.DataFrame()
+        mock_query_ops, _ = self._make_od()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name", "revenue")
 
+        result = qb.to_dataframe()
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 0)
+
+    def test_to_dataframe_calls_get_multiple_with_params(self):
+        """to_dataframe() passes all built query params to _get_multiple."""
+        import pandas as pd
+        from PowerPlatform.Dataverse.models.filters import raw
+
+        mock_query_ops, mock_od = self._make_od([[{"name": "Contoso", "revenue": 1000}]])
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        (
+            qb.select("name", "revenue")
+            .where(raw("statecode eq 0"))
+            .order_by("revenue", descending=True)
+            .top(100)
+            .page_size(50)
+            .expand("primarycontactid")
+        )
+
+        result = qb.to_dataframe()
+
+        mock_od._get_multiple.assert_called_once_with(
+            "account",
+            select=["name", "revenue"],
+            filter="statecode eq 0",
+            orderby=["revenue desc"],
+            top=100,
+            expand=["primarycontactid"],
+            page_size=50,
+            count=False,
+            include_annotations=None,
+        )
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["name"], "Contoso")
+
+    def test_to_dataframe_forwards_count_and_annotations(self):
+        """to_dataframe() should forward count and include_annotations when set."""
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name").count().include_formatted_values()
         qb.to_dataframe()
 
-        mock_client.dataframe.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name"],
             filter=None,
@@ -977,6 +887,41 @@ class TestToDataframe(unittest.TestCase):
             count=True,
             include_annotations="OData.Community.Display.V1.FormattedValue",
         )
+
+    def test_to_dataframe_with_record_objects(self):
+        """to_dataframe() handles Record objects (with .data attribute)."""
+        import pandas as pd
+        from PowerPlatform.Dataverse.models.record import Record
+
+        mock_query_ops, _ = self._make_od([
+            [
+                {"name": "Contoso", "revenue": 1000},
+                {"name": "Fabrikam", "revenue": 2000},
+            ]
+        ])
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name", "revenue")
+
+        result = qb.to_dataframe()
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result.iloc[0]["name"], "Contoso")
+        self.assertEqual(result.iloc[1]["revenue"], 2000)
+
+    def test_to_dataframe_emits_deprecation_warning(self):
+        """QueryBuilder.to_dataframe() fires DeprecationWarning; use execute().to_dataframe() instead."""
+        mock_query_ops, _ = self._make_od()
+        qb = QueryBuilder("account")
+        qb._query_ops = mock_query_ops
+        qb.select("name")
+
+        with self.assertWarns(DeprecationWarning) as ctx:
+            qb.to_dataframe()
+
+        self.assertIn("QueryBuilder.to_dataframe()", str(ctx.warning))
+        self.assertIn("execute().to_dataframe()", str(ctx.warning))
 
 
 if __name__ == "__main__":

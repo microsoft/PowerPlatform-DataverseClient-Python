@@ -144,7 +144,7 @@ with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
     contact_id = client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
     # Read the contact back
-    contact = client.records.get("contact", contact_id, select=["firstname", "lastname"])
+    contact = client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
     print(f"Created: {contact['firstname']} {contact['lastname']}")
 
     # Clean up
@@ -159,7 +159,7 @@ with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
 account_id = client.records.create("account", {"name": "Contoso Ltd"})
 
 # Read a record
-account = client.records.get("account", account_id)
+account = client.records.retrieve("account", account_id)
 print(account["name"])
 
 # Update a record
@@ -242,18 +242,25 @@ client.records.upsert("account", [
 
 The SDK provides pandas wrappers for all CRUD operations via the `client.dataframe` namespace, using DataFrames and Series for input and output.
 
+> **Note:** `client.dataframe.get()` is deprecated. Use the GA patterns shown below instead.
+
 ```python
 import pandas as pd
+from PowerPlatform.Dataverse.models.filters import col
 
-# Query records as a single DataFrame
-df = client.dataframe.get("account", filter="statecode eq 0", select=["name", "telephone1"])
+# Query records as a single DataFrame (GA builder pattern)
+df = (client.query.builder("account")
+      .select("name", "telephone1")
+      .where(col("statecode") == 0)
+      .execute()
+      .to_dataframe())
 print(f"Found {len(df)} accounts")
 
 # Limit results with top for large tables
-df = client.dataframe.get("account", select=["name"], top=100)
+df = client.query.builder("account").select("name").top(100).execute().to_dataframe()
 
 # Fetch a single record as a one-row DataFrame
-df = client.dataframe.get("account", record_id=account_id, select=["name"])
+df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
 
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
@@ -288,10 +295,12 @@ The **QueryBuilder** is the recommended way to query records. It provides a flue
 
 ```python
 # Fluent query builder (recommended)
+from PowerPlatform.Dataverse.models.filters import col
+
 for record in (client.query.builder("account")
                .select("name", "revenue")
-               .filter_eq("statecode", 0)
-               .filter_gt("revenue", 1000000)
+               .where(col("statecode") == 0)
+               .where(col("revenue") > 1000000)
                .order_by("revenue", descending=True)
                .top(100)
                .page_size(50)
@@ -299,47 +308,48 @@ for record in (client.query.builder("account")
     print(f"{record['name']}: {record['revenue']}")
 ```
 
-The QueryBuilder handles value formatting, column name casing, and OData syntax automatically. All filter methods are discoverable via IDE autocomplete:
+The QueryBuilder handles value formatting, column name casing, and OData syntax automatically. Filter expressions are built with `col()` and standard Python operators:
 
 ```python
 # Get results as a pandas DataFrame (consolidates all pages)
 df = (client.query.builder("account")
       .select("name", "telephone1")
-      .filter_eq("statecode", 0)
+      .where(col("statecode") == 0)
       .top(100)
+      .execute()
       .to_dataframe())
 print(f"Got {len(df)} accounts")
 ```
 
 ```python
-# Comparison filters
+# Comparison filters using col() expressions
 query = (client.query.builder("contact")
-         .filter_eq("statecode", 0)          # statecode eq 0
-         .filter_gt("revenue", 1000000)      # revenue gt 1000000
-         .filter_contains("name", "Corp")    # contains(name, 'Corp')
-         .filter_in("statecode", [0, 1])     # Microsoft.Dynamics.CRM.In(...)
-         .filter_between("revenue", 100000, 500000)  # (revenue ge 100000 and revenue le 500000)
-         .filter_null("telephone1")          # telephone1 eq null
+         .where(col("statecode") == 0)                        # statecode eq 0
+         .where(col("revenue") > 1000000)                     # revenue gt 1000000
+         .where(col("name").contains("Corp"))                 # contains(name, 'Corp')
+         .where(col("statecode").in_([0, 1]))                 # Microsoft.Dynamics.CRM.In(...)
+         .where(col("revenue").between(100000, 500000))       # revenue ge 100000 and revenue le 500000
+         .where(col("telephone1").is_null())                  # telephone1 eq null
          )
 ```
 
-For complex logic (OR, NOT, grouping), use the composable expression tree with `where()`:
+For complex logic (OR, NOT, grouping), compose expressions with `&`, `|`, `~`:
 
 ```python
-from PowerPlatform.Dataverse.models.filters import eq, gt, filter_in, between
+from PowerPlatform.Dataverse.models.filters import col
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
 for record in (client.query.builder("account")
                .select("name", "revenue")
-               .where((eq("statecode", 0) | eq("statecode", 1))
-                      & gt("revenue", 100000))
+               .where(((col("statecode") == 0) | (col("statecode") == 1))
+                      & (col("revenue") > 100000))
                .execute()):
     print(record["name"])
 
 # NOT, between, and in operators
 for record in (client.query.builder("account")
-               .where(~eq("statecode", 2))                  # NOT inactive
-               .where(between("revenue", 100000, 500000))    # revenue in range
+               .where(col("statecode") != 2)                       # NOT inactive
+               .where(col("revenue").between(100000, 500000))      # revenue in range
                .execute()):
     print(record["name"])
 ```
@@ -373,14 +383,77 @@ for record in (client.query.builder("account")
     print(record["name"], record.get("Account_Tasks"))
 ```
 
+**Paging** -- `records.list()` follows `@odata.nextLink` automatically and loads all matching records into a single `QueryResult`. Use `top` to bound total records and round-trips. For very large result sets where memory matters, stream pages explicitly with `execute_pages()` or `records.list_pages()`:
+
+```python
+# records.list() — automatic paging, all records in memory (good for small-to-medium sets)
+result = client.records.list(
+    "account",
+    filter="statecode eq 0",
+    select=["name"],
+    top=500,  # bounds total records returned and number of HTTP round-trips
+)
+for record in result:
+    print(record["name"])
+
+# records.list_pages() — stream one page at a time without loading all records into memory
+for page_num, page in enumerate(
+    client.records.list_pages("account", filter="statecode eq 0", select=["name"])
+):
+    print(f"Page {page_num + 1}: {len(page)} records")
+    for record in page:
+        print(record["name"])
+
+# query.builder().execute_pages() — stream one page at a time, memory stays flat
+# Use this for large result sets (exports, bulk processing) where loading all into memory is risky
+for page_num, page in enumerate(
+    client.query.builder("account")
+    .select("accountid", "name", "revenue")
+    .where(col("statecode") == 0)
+    .order_by("name")
+    .page_size(500)        # optional: override Dataverse default (~5000/page)
+    .execute_pages()
+):
+    print(f"Page {page_num + 1}: {len(page)} records")
+    for record in page:
+        print(f"  {record['name']}")
+```
+
+> **Deprecation note:** `execute(by_page=True)` and `execute(by_page=False)` are deprecated and emit a `UserWarning`. Replace with `execute_pages()` (streaming) or plain `execute()` (eager). The migration tool (`tools/migrate_v0_to_v1.py`) rewrites these automatically.
+
 **Record count** -- include `$count=true` in the request:
 
 ```python
 # Request count alongside results
 results = (client.query.builder("account")
-           .filter_eq("statecode", 0)
+           .where(col("statecode") == 0)
            .count()
            .execute())
+```
+
+**FetchXML queries** -- `client.query.fetch_xml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
+
+```python
+xml = """
+<fetch>
+  <entity name="account">
+    <attribute name="name"/>
+    <attribute name="revenue"/>
+    <filter><condition attribute="statecode" operator="eq" value="0"/></filter>
+  </entity>
+</fetch>
+"""
+
+# .execute() — blocking, fetches all pages and returns a single QueryResult
+result = client.query.fetch_xml(xml).execute()
+df = result.to_dataframe()
+
+# .execute_pages() — streaming, yields one QueryResult per HTTP page
+# Use count="N" in the FetchXML <fetch> element to set page size
+for page_num, page in enumerate(client.query.fetch_xml(xml).execute_pages()):
+    print(f"Page {page_num + 1}: {len(page)} records")
+    for record in page:
+        print(record["name"])
 ```
 
 **SQL queries** provide an alternative read-only query syntax with support for
@@ -405,52 +478,44 @@ df = client.dataframe.sql(
     "SELECT name, revenue FROM account ORDER BY revenue DESC"
 )
 
-# SQL helpers: discover columns and JOINs from metadata
-cols = client.query.sql_select("account")  # "accountid, name, revenue, ..."
-join = client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
-# Returns: "JOIN account a ON c.parentcustomerid = a.accountid"
+# Discover columns from metadata (schema-discovery helper, kept at GA)
+cols_meta = client.query.sql_columns("account")
+col_names = [c["LogicalName"] for c in cols_meta]
 
-# Build queries using helpers -- no OData knowledge needed
-sql = f"SELECT TOP 10 c.fullname, a.name FROM contact c {join}"
+# Build queries using the discovered column names
+sql = f"SELECT TOP 10 {', '.join(col_names[:5])} FROM account"
 df = client.dataframe.sql(sql)
-
-# Discover all possible JOINs from a table (including polymorphic)
-joins = client.query.sql_joins("opportunity")
-for j in joins:
-    print(f"{j['column']:30s} -> {j['target']}.{j['target_pk']}")
 ```
 
-**Raw OData queries** are available via `records.get()` for cases where you need direct control over the OData filter string. The SDK provides helpers to eliminate the most error-prone parts:
+**Raw OData filter strings** can be passed directly to `records.list()` or the query builder for cases where you need direct control over the OData filter:
 
 ```python
-# Discover columns for $select (returns list ready for select= parameter)
-cols = client.query.odata_select("account")
-for page in client.records.get("account", select=cols, top=10):
-    ...
-
-# Discover $expand navigation properties (auto-resolves PascalCase names)
-nav = client.query.odata_expand("contact", "account")
-# Returns: "parentcustomerid_account"
-for page in client.records.get("contact", select=["fullname"], expand=[nav], top=5):
-    for r in page:
-        acct = r.get(nav) or {}
-        print(f"{r['fullname']} -> {acct.get('name')}")
-
-# Build @odata.bind for lookup fields (no manual name construction)
-bind = client.query.odata_bind("contact", "account", account_id)
-# Returns: {"parentcustomerid_account@odata.bind": "/accounts(guid)"}
-client.records.create("contact", {"firstname": "Jane", **bind})
-
-# Raw OData query with manual parameters
-for page in client.records.get(
+# Query with a raw OData filter string — follows @odata.nextLink automatically,
+# all records loaded into memory. Use top to bound results and round-trips.
+for record in client.records.list(
     "account",
     select=["name"],
     filter="statecode eq 0",  # Raw OData: column names must be lowercase
-    expand=["primarycontactid"],  # Navigation properties are case-sensitive
     top=100,
 ):
-    for record in page:
-        print(record["name"])
+    print(record["name"])
+
+# Discover navigation property names for $expand (metadata-discovery helper, kept at GA)
+nav_props = client.query.odata_expands("account")  # → list of navigation property metadata
+
+# Expand navigation properties using the query builder
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+for record in (client.query.builder("contact")
+               .select("fullname")
+               .expand(ExpandOption("parentcustomerid_account").select("name"))
+               .execute()):
+    acct = record.get("parentcustomerid_account") or {}
+    print(f"{record['fullname']} -> {acct.get('name')}")
+
+# Build @odata.bind for lookup fields (deprecated helper, still functional with DeprecationWarning)
+bind = client.query.odata_bind("contact", "account", account_id)
+# Returns: {"parentcustomerid_account@odata.bind": "/accounts(guid)"}
+client.records.create("contact", {"firstname": "Jane", **bind})
 ```
 
 ### Table management
@@ -604,7 +669,7 @@ batch.records.create("account", {"name": "Contoso"})
 batch.records.create("account", [{"name": "Fabrikam"}, {"name": "Woodgrove"}])
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
 batch.records.delete("account", old_id)
-batch.records.get("account", account_id, select=["name"])
+batch.records.retrieve("account", account_id, select=["name"])     # single record (GA)
 
 result = batch.execute()
 for item in result.responses:
@@ -718,7 +783,7 @@ from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 
 try:
-    client.records.get("account", "invalid-id")
+    client.records.retrieve("account", "invalid-id")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
     print(f"Error code: {e.code}")

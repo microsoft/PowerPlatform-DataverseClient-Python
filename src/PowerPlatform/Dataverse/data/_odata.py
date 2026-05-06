@@ -2317,6 +2317,31 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             url += "?$select=" + ",".join(self._lowercase_list(select))
         return _RawRequest(method="GET", url=url)
 
+    def _build_list(
+        self,
+        table: str,
+        *,
+        select: Optional[List[str]] = None,
+        filter: Optional[str] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+    ) -> _RawRequest:
+        """Build a multi-record GET request (single page, no pagination) without sending it."""
+        entity_set = self._entity_set_from_schema_name(table)
+        params: List[str] = []
+        if select:
+            params.append("$select=" + ",".join(self._lowercase_list(select)))
+        if filter:
+            params.append("$filter=" + filter)
+        if orderby:
+            params.append("$orderby=" + ",".join(orderby))
+        if top is not None:
+            params.append(f"$top={top}")
+        url = f"{self.api}/{entity_set}"
+        if params:
+            url += "?" + "&".join(params)
+        return _RawRequest(method="GET", url=url)
+
     def _build_create_entity(
         self,
         table: str,

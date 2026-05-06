@@ -30,9 +30,19 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 ### Paging
 - Control page size with `page_size` parameter
 - Use `top` parameter to limit total records returned
+- Simple streaming: `records.list_pages(table, filter, select)` — yields one `QueryResult` per HTTP page (3 params only; use builder for advanced options)
+- Advanced streaming: `client.query.builder(table)....execute_pages()` — full builder options, one `QueryResult` per page
+- `execute(by_page=True/False)` is **deprecated** and emits `UserWarning`; use `execute_pages()` instead
+
+### QueryResult
+- Returned by `records.list()`, `records.retrieve()`, `execute()`, and each page from `list_pages()` / `execute_pages()`
+- Iterable: `for record in result` — each item is a `dict`-like `Record`
+- `.to_dataframe()` — convert to pandas DataFrame
+- `.first()` — return the first record or `None`
+- `len(result)` — number of records in this result/page
 
 ### DataFrame Support
-- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.get()`, `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()`
+- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()` — `client.dataframe.get()` is deprecated; use `client.query.builder(table).where(...).execute().to_dataframe()` instead
 
 ## Common Operations
 
@@ -85,28 +95,50 @@ contact_ids = client.records.create("contact", contacts)
 #### Read Records
 ```python
 # Get single record by ID
-account = client.records.get("account", account_id, select=["name", "telephone1"])
+account = client.records.retrieve("account", account_id, select=["name", "telephone1"])
 
-# Query with filter (paginated)
-for page in client.records.get(
+# Query with filter — follows @odata.nextLink automatically (multiple HTTP requests if needed),
+# loads all matching records into memory, returns a single QueryResult.
+# Page size is Dataverse's default (~5000/page); use top to bound total records and round-trips.
+# For very large sets where memory is a concern, use records.list_pages() or execute_pages() instead.
+result = client.records.list(
     "account",
     select=["accountid", "name"],      # select is case-insensitive (automatically lowercased)
     filter="statecode eq 0",           # filter must use lowercase logical names (not transformed)
-    top=100,
+    top=100,                           # bounds both total records returned and HTTP round-trips
+)
+for record in result:
+    print(record["name"])
+
+# Simple streaming — page-by-page (3 params only; use builder for ordering/expand/count)
+for page in client.records.list_pages(
+    "account",
+    select=["accountid", "name"],
+    filter="statecode eq 0",
 ):
     for record in page:
         print(record["name"])
 
-# Query with navigation property expansion (case-sensitive!)
-for page in client.records.get(
-    "account",
-    select=["name"],
-    expand=["primarycontactid"],  # Navigation properties are case-sensitive!
-    filter="statecode eq 0",      # Column names must be lowercase logical names
-):
-    for account in page:
-        contact = account.get("primarycontactid", {})
-        print(f"{account['name']} - {contact.get('fullname', 'N/A')}")
+# Advanced streaming — full builder options, one QueryResult per HTTP page
+from PowerPlatform.Dataverse.models.filters import col
+for page in (client.query.builder("account")
+             .select("accountid", "name")
+             .where(col("statecode") == 0)
+             .page_size(500)           # optional: override Dataverse default page size
+             .execute_pages()):
+    for record in page:
+        print(record["name"])
+
+# Query with navigation property expansion — use the query builder (records.list() has no expand)
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.models.filters import col
+for record in (client.query.builder("account")
+               .select("name")
+               .expand(ExpandOption("primarycontactid").select("fullname"))
+               .where(col("statecode") == 0)
+               .execute()):
+    contact = record.get("primarycontactid", {})
+    print(f"{record['name']} - {contact.get('fullname', 'N/A')}")
 ```
 
 #### Create Records with Lookup Bindings (@odata.bind)
@@ -179,18 +211,21 @@ client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 
 The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
 
+> **Note:** `client.dataframe.get()` is deprecated. Use `client.query.builder(table).select(...).where(...).to_dataframe()` instead.
+
 ```python
 import pandas as pd
 
-# Query records -- returns a single DataFrame
-df = client.dataframe.get("account", filter="statecode eq 0", select=["name"])
+# Query records -- returns a single DataFrame (GA builder pattern)
+from PowerPlatform.Dataverse.models.filters import col
+df = client.query.builder("account").where(col("statecode") == 0).select("name").to_dataframe()
 print(f"Got {len(df)} rows")
 
-# Limit results with top for large tables
-df = client.dataframe.get("account", select=["name"], top=100)
+# Limit results with top
+df = client.query.builder("account").select("name").top(100).to_dataframe()
 
 # Fetch single record as one-row DataFrame
-df = client.dataframe.get("account", record_id=account_id, select=["name"])
+df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
 
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
@@ -221,6 +256,34 @@ results = client.query.sql(
 )
 for record in results:
     print(record["name"])
+```
+
+### FetchXML Queries
+
+`client.query.fetch_xml(xml)` returns an inert `FetchXmlQuery` object — **no HTTP request is made** until `.execute()` or `.execute_pages()` is called.
+
+```python
+xml = """
+<fetch top="50">
+  <entity name="account">
+    <attribute name="accountid" />
+    <attribute name="name" />
+    <filter>
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+  </entity>
+</fetch>
+"""
+
+# Load all results into memory (simple, small-to-medium sets)
+query = client.query.fetch_xml(xml)
+result = query.execute()              # returns QueryResult — all pages fetched upfront
+for record in result:
+    print(record["name"])
+
+# Stream page-by-page (large sets or early exit)
+for page in query.execute_pages():    # yields one QueryResult per HTTP page
+    process(page.to_dataframe())
 ```
 
 ### Table Management
@@ -380,7 +443,8 @@ Use `client.batch` to send multiple operations in one HTTP request. All batch me
 batch = client.batch.new()
 batch.records.create("account", {"name": "Contoso"})
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
-batch.records.get("account", account_id, select=["name"])
+batch.records.retrieve("account", account_id, select=["name"])     # single record (GA)
+batch.records.list("account", filter="statecode eq 0", top=50)     # multi-record, single page
 batch.query.sql("SELECT TOP 5 name FROM account")
 
 result = batch.execute()
@@ -412,7 +476,8 @@ print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 
 **Batch limitations:**
 - Maximum 1000 operations per batch
-- Paginated `records.get()` (without `record_id`) is not supported in batch
+- `batch.records.get()` is deprecated; use `batch.records.retrieve()` for single records
+- `batch.records.list()` returns a single page (no pagination); use `top` to bound results
 - `flush_cache()` is not supported in batch
 
 ## Error Handling
@@ -430,7 +495,7 @@ from PowerPlatform.Dataverse.core.errors import (
 from PowerPlatform.Dataverse.client import DataverseClient
 
 try:
-    client.records.get("account", "invalid-id")
+    client.records.retrieve("account", "invalid-id")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
     print(f"Error code: {e.code}")

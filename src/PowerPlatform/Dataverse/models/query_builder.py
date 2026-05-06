@@ -10,57 +10,64 @@ against Dataverse tables with method chaining.
 Example::
 
     # Via client (recommended) -- flat iteration over records
+    from PowerPlatform.Dataverse.models.filters import col
+
     for record in (client.query.builder("account")
                    .select("name", "revenue")
-                   .filter_eq("statecode", 0)
-                   .filter_gt("revenue", 1000000)
+                   .where(col("statecode") == 0)
+                   .where(col("revenue") > 1_000_000)
                    .order_by("revenue", descending=True)
                    .top(100)
                    .execute()):
         print(record["name"])
 
     # With composable expression tree
-    from PowerPlatform.Dataverse.models.filters import eq, gt
+    from PowerPlatform.Dataverse.models.filters import col, raw
 
     for record in (client.query.builder("account")
                    .select("name", "revenue")
-                   .where((eq("statecode", 0) | eq("statecode", 1))
-                          & gt("revenue", 100000))
+                   .where((col("statecode") == 0) | (col("statecode") == 1))
+                   .where(col("revenue") > 100000)
                    .top(100)
                    .execute()):
         print(record["name"])
 
-    # Opt-in paged iteration (for batch processing)
+    # Lazy paged iteration (one QueryResult per HTTP page)
     for page in (client.query.builder("account")
                  .select("name")
-                 .execute(by_page=True)):
+                 .execute_pages()):
         process_batch(page)
 
     # Get results as a pandas DataFrame
     df = (client.query.builder("account")
           .select("name", "telephone1")
-          .filter_eq("statecode", 0)
+          .where(col("statecode") == 0)
           .top(100)
+          .execute()
           .to_dataframe())
 """
 
 from __future__ import annotations
 
-from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, TypedDict, Union
+import warnings
+from typing import Any, Dict, Iterator, List, Optional, TypedDict, Union
 
 import pandas as pd
 
 from . import filters
-from .record import Record
+from .record import QueryResult, Record
 
 __all__ = ["QueryBuilder", "QueryParams", "ExpandOption"]
+
+# Sentinel for detecting when by_page is explicitly passed to execute()
+_BY_PAGE_UNSET = object()
 
 
 class QueryParams(TypedDict, total=False):
     """Typed dictionary returned by :meth:`QueryBuilder.build`.
 
     Provides IDE autocomplete when passing build results to
-    ``client.records.get()`` manually.
+    ``client.records.list()`` manually.
     """
 
     table: str
@@ -168,7 +175,7 @@ class QueryBuilder:
     """Fluent interface for building OData queries.
 
     Provides method chaining for constructing complex queries with
-    type-safe filter operations. Can be used standalone (via :meth:`build`)
+    composable filter expressions. Can be used standalone (via :meth:`build`)
     or bound to a client (via :meth:`execute`).
 
     :param table: Table schema name to query.
@@ -178,9 +185,11 @@ class QueryBuilder:
     Example:
         Standalone query construction::
 
+            from PowerPlatform.Dataverse.models.filters import col
+
             query = (QueryBuilder("account")
                      .select("name")
-                     .filter_eq("statecode", 0)
+                     .where(col("statecode") == 0)
                      .top(10))
             params = query.build()
             # {"table": "account", "select": ["name"],
@@ -220,222 +229,16 @@ class QueryBuilder:
         self._select.extend(columns)
         return self
 
-    # ----------------------------------------------------------- filter: comparison
-
-    def filter_eq(self, column: str, value: Any) -> QueryBuilder:
-        """Add equality filter: ``column eq value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.eq(column, value))
-        return self
-
-    def filter_ne(self, column: str, value: Any) -> QueryBuilder:
-        """Add not-equal filter: ``column ne value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.ne(column, value))
-        return self
-
-    def filter_gt(self, column: str, value: Any) -> QueryBuilder:
-        """Add greater-than filter: ``column gt value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.gt(column, value))
-        return self
-
-    def filter_ge(self, column: str, value: Any) -> QueryBuilder:
-        """Add greater-than-or-equal filter: ``column ge value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.ge(column, value))
-        return self
-
-    def filter_lt(self, column: str, value: Any) -> QueryBuilder:
-        """Add less-than filter: ``column lt value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.lt(column, value))
-        return self
-
-    def filter_le(self, column: str, value: Any) -> QueryBuilder:
-        """Add less-than-or-equal filter: ``column le value``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Value to compare against.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.le(column, value))
-        return self
-
-    # --------------------------------------------------------- filter: string functions
-
-    def filter_contains(self, column: str, value: str) -> QueryBuilder:
-        """Add contains filter: ``contains(column, value)``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Substring to search for.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.contains(column, value))
-        return self
-
-    def filter_startswith(self, column: str, value: str) -> QueryBuilder:
-        """Add startswith filter: ``startswith(column, value)``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Prefix to match.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.startswith(column, value))
-        return self
-
-    def filter_endswith(self, column: str, value: str) -> QueryBuilder:
-        """Add endswith filter: ``endswith(column, value)``.
-
-        :param column: Column name (will be lowercased).
-        :param value: Suffix to match.
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.endswith(column, value))
-        return self
-
-    # --------------------------------------------------------- filter: null checks
-
-    def filter_null(self, column: str) -> QueryBuilder:
-        """Add null check: ``column eq null``.
-
-        :param column: Column name (will be lowercased).
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.is_null(column))
-        return self
-
-    def filter_not_null(self, column: str) -> QueryBuilder:
-        """Add not-null check: ``column ne null``.
-
-        :param column: Column name (will be lowercased).
-        :return: Self for method chaining.
-        """
-        self._filter_parts.append(filters.is_not_null(column))
-        return self
-
-    # --------------------------------------------------------- filter: special
-
-    def filter_in(self, column: str, values: Collection[Any]) -> QueryBuilder:
-        """Add an ``in`` filter using ``Microsoft.Dynamics.CRM.In``.
-
-        :param column: Column name (will be lowercased).
-        :param values: Non-empty list of values for the ``in`` clause.
-        :return: Self for method chaining.
-        :raises ValueError: If ``values`` is empty.
-
-        Example::
-
-            query = QueryBuilder("account").filter_in("statecode", [0, 1, 2])
-            # Produces: Microsoft.Dynamics.CRM.In(
-            #     PropertyName='statecode',PropertyValues=["0","1","2"])
-        """
-        self._filter_parts.append(filters.filter_in(column, values))
-        return self
-
-    def filter_not_in(self, column: str, values: Collection[Any]) -> QueryBuilder:
-        """Add a ``not in`` filter using ``Microsoft.Dynamics.CRM.NotIn``.
-
-        :param column: Column name (will be lowercased).
-        :param values: Non-empty list of values to exclude.
-        :return: Self for method chaining.
-        :raises ValueError: If ``values`` is empty.
-
-        Example::
-
-            query = QueryBuilder("account").filter_not_in("statecode", [2, 3])
-            # Produces: Microsoft.Dynamics.CRM.NotIn(
-            #     PropertyName='statecode',PropertyValues=["2","3"])
-        """
-        self._filter_parts.append(filters.not_in(column, values))
-        return self
-
-    def filter_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
-        """Add a between filter: ``(column ge low and column le high)``.
-
-        :param column: Column name (will be lowercased).
-        :param low: Lower bound (inclusive).
-        :param high: Upper bound (inclusive).
-        :return: Self for method chaining.
-
-        Example::
-
-            query = QueryBuilder("account").filter_between("revenue", 100000, 500000)
-            # Produces: (revenue ge 100000 and revenue le 500000)
-        """
-        self._filter_parts.append(filters.between(column, low, high))
-        return self
-
-    def filter_not_between(self, column: str, low: Any, high: Any) -> QueryBuilder:
-        """Add a not-between filter: ``not (column ge low and column le high)``.
-
-        :param column: Column name (will be lowercased).
-        :param low: Lower bound (inclusive, will be excluded).
-        :param high: Upper bound (inclusive, will be excluded).
-        :return: Self for method chaining.
-
-        Example::
-
-            query = QueryBuilder("account").filter_not_between("revenue", 100000, 500000)
-            # Produces: not ((revenue ge 100000 and revenue le 500000))
-        """
-        self._filter_parts.append(filters.not_between(column, low, high))
-        return self
-
-    def filter_raw(self, filter_string: str) -> QueryBuilder:
-        """Add a raw OData filter string.
-
-        Use this for complex filters not covered by other methods.
-        Column names in the filter string should be lowercase.
-
-        .. warning::
-            The filter string is passed directly to Dataverse without validation.
-            Ensure it follows OData filter syntax; a malformed expression will result
-            in a ``400 Bad Request`` error from the server.
-
-        :param filter_string: Raw OData filter expression.
-        :return: Self for method chaining.
-
-        Example::
-
-            query = QueryBuilder("account").filter_raw(
-                "(statecode eq 0 or statecode eq 1)"
-            )
-        """
-        self._filter_parts.append(filters.raw(filter_string))
-        return self
-
     # ------------------------------------------------------ filter: expression tree
 
     def where(self, expression: filters.FilterExpression) -> QueryBuilder:
         """Add a composable filter expression.
 
         Accepts a :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`
-        built using the convenience functions from
-        :mod:`~PowerPlatform.Dataverse.models.filters`.
+        built using :func:`~PowerPlatform.Dataverse.models.filters.col` or
+        :func:`~PowerPlatform.Dataverse.models.filters.raw`.
 
-        Multiple ``where()`` calls and ``filter_*()`` calls are all
-        AND-joined together in the order they were called.
+        Multiple ``where()`` calls are AND-joined together in call order.
 
         :param expression: A composable filter expression.
         :type expression: FilterExpression
@@ -444,11 +247,11 @@ class QueryBuilder:
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import eq, gt
+            from PowerPlatform.Dataverse.models.filters import col
 
             query = (QueryBuilder("account")
-                     .where((eq("statecode", 0) | eq("statecode", 1))
-                            & gt("revenue", 100000)))
+                     .where((col("statecode") == 0) | (col("statecode") == 1))
+                     .where(col("revenue") > 100000))
         """
         if not isinstance(expression, filters.FilterExpression):
             raise TypeError(f"where() requires a FilterExpression, got {type(expression).__name__}")
@@ -511,7 +314,7 @@ class QueryBuilder:
         Example::
 
             results = (client.query.builder("account")
-                       .filter_eq("statecode", 0)
+                       .where(col("statecode") == 0)
                        .count()
                        .execute())
         """
@@ -612,8 +415,8 @@ class QueryBuilder:
         """Build query parameters dictionary.
 
         Returns a :class:`QueryParams` dictionary suitable for passing to
-        the OData layer.  All ``filter_*()`` and ``where()`` clauses are
-        AND-joined into a single ``filter`` string in call order.
+        the OData layer.  All ``where()`` clauses are AND-joined into a
+        single ``filter`` string in call order.
 
         :return: Dictionary with ``table`` and optionally ``select``,
             ``filter``, ``orderby``, ``expand``, ``top``, ``page_size``,
@@ -645,148 +448,207 @@ class QueryBuilder:
             params["include_annotations"] = self._include_annotations
         return params
 
-    # --------------------------------------------------------------- guards
-
-    def _validate_constraints(self) -> None:
-        """Raise if the query has no limiting constraints.
-
-        At least one of ``select``, ``filter``, or ``top`` must be set
-        before executing a query to prevent accidental full-table scans.
-
-        :raises ValueError: If none of ``select()``, ``filter_*()``,
-            ``where()``, or ``top()`` has been called.
-        """
-        if not (self._select or self._filter_parts or self._top is not None):
-            raise ValueError(
-                "Unbounded query: set at least one of select(), filter_*(), "
-                "where(), or top() before calling execute() or to_dataframe()."
-            )
-
     # --------------------------------------------------------------- execute
 
-    def execute(self, *, by_page: bool = False) -> Union[Iterable[Record], Iterable[List[Record]]]:
+    def execute(self, *, by_page=_BY_PAGE_UNSET) -> Union[QueryResult, Iterator[QueryResult]]:
         """Execute the query and return results.
 
-        By default, returns a flat iterator over individual records,
-        abstracting away OData paging.  Pass ``by_page=True`` to get
-        page-level iteration instead (useful for batch processing).
+        Returns a :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
+        with all pages collected. Use :meth:`execute_pages` for lazy per-page
+        iteration.
 
         This method is only available when the QueryBuilder was created
         via ``client.query.builder(table)``.  Standalone ``QueryBuilder``
         instances should use :meth:`build` to get parameters and pass them
-        to ``client.records.get()`` manually.
+        to ``client.records.list()`` manually.
 
-        At least one of ``select()``, ``filter_*()``, ``where()``, or
-        ``top()`` must be called before ``execute()``; otherwise a
-        :class:`ValueError` is raised to prevent accidental full-table
-        scans.
+        At least one of ``select()``, ``where()``, or ``top()`` must be
+        called before ``execute()``; otherwise a :class:`ValueError` is
+        raised to prevent accidental full-table scans.
 
-        :param by_page: If ``True``, yield pages (lists of
-            :class:`~PowerPlatform.Dataverse.models.record.Record` objects)
-            instead of individual records. Defaults to ``False``.
-        :type by_page: bool
-        :return: Generator yielding individual
-            :class:`~PowerPlatform.Dataverse.models.record.Record` objects
-            (default) or pages of records (when ``by_page=True``).
-        :rtype: Iterable[Record] or Iterable[List[Record]]
-        :raises ValueError: If no ``select``, ``filter``, or ``top``
-            constraint has been set.
-        :raises RuntimeError: If the query was not created via
-            ``client.query.builder()``.
+        .. deprecated::
+            The ``by_page`` parameter is deprecated. Use :meth:`execute_pages`
+            for lazy per-page iteration, or plain ``execute()`` (no flag) for
+            the default eager result.
 
-        Example:
-            Flat iteration (default)::
-
-                for record in (client.query.builder("account")
-                               .select("name")
-                               .filter_eq("statecode", 0)
-                               .execute()):
-                    print(record["name"])
-
-            Paged iteration::
-
-                for page in (client.query.builder("account")
-                             .select("name")
-                             .execute(by_page=True)):
-                    process_batch(page)
-        """
-        if self._query_ops is None:
-            raise RuntimeError(
-                "Cannot execute: query was not created via client.query.builder(). "
-                "Use build() and pass parameters to client.records.get() instead."
-            )
-        self._validate_constraints()
-        params = self.build()
-        client = self._query_ops._client
-
-        pages = client.records.get(
-            params["table"],
-            select=params.get("select"),
-            filter=params.get("filter"),
-            orderby=params.get("orderby"),
-            top=params.get("top"),
-            expand=params.get("expand"),
-            page_size=params.get("page_size"),
-            count=params.get("count", False),
-            include_annotations=params.get("include_annotations"),
-        )
-
-        if by_page:
-            return pages
-
-        def _flat() -> Iterable[Record]:
-            for page in pages:
-                yield from page
-
-        return _flat()
-
-    # ----------------------------------------------------------- to_dataframe
-
-    def to_dataframe(self) -> pd.DataFrame:
-        """Execute the query and return results as a pandas DataFrame.
-
-        All pages are consolidated into a single DataFrame, matching
-        the behavior of ``client.dataframe.get()``.
-
-        This method is only available when the QueryBuilder was created
-        via ``client.query.builder(table)``.
-
-        At least one of ``select()``, ``filter_*()``, ``where()``, or
-        ``top()`` must be called before ``to_dataframe()``; otherwise a
-        :class:`ValueError` is raised to prevent accidental full-table
-        scans.
-
-        :return: DataFrame containing all matching records. Returns an empty
-            DataFrame when no records match.
-        :rtype: ~pandas.DataFrame
-        :raises ValueError: If no ``select``, ``filter``, or ``top``
+        :return: :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
+            with all pages collected (default), or page iterator (deprecated
+            ``by_page=True``).
+        :rtype: QueryResult or Iterator[QueryResult]
+        :raises ValueError: If no ``select``, ``where``, or ``top``
             constraint has been set.
         :raises RuntimeError: If the query was not created via
             ``client.query.builder()``.
 
         Example::
 
-            df = (client.query.builder("account")
-                  .select("name", "telephone1")
-                  .filter_eq("statecode", 0)
-                  .top(100)
-                  .to_dataframe())
+            from PowerPlatform.Dataverse.models.filters import col
+
+            for record in (client.query.builder("account")
+                           .select("name")
+                           .where(col("statecode") == 0)
+                           .execute()):
+                print(record["name"])
+        """
+        use_by_page = False
+        if by_page is not _BY_PAGE_UNSET:
+            use_by_page = bool(by_page)
+            if use_by_page:
+                warnings.warn(
+                    "'execute(by_page=True)' is deprecated; use 'execute_pages()' instead.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                warnings.warn(
+                    "'execute(by_page=False)' is deprecated; "
+                    "the by_page flag is redundant — use plain 'execute()' instead.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+        if self._query_ops is None:
+            raise RuntimeError(
+                "Cannot execute: query was not created via client.query.builder(). "
+                "Use build() and pass parameters to client.records.list() instead."
+            )
+
+        if not self._select and not self._filter_parts and self._top is None:
+            raise ValueError(
+                "At least one of select(), where(), or top() must be called before "
+                "execute() to prevent accidental full-table scans."
+            )
+
+        params = self.build()
+        client = self._query_ops._client
+
+        if use_by_page:
+            return self.execute_pages()
+
+        all_records: List[Record] = []
+        with client._scoped_odata() as od:
+            for page in od._get_multiple(
+                params["table"],
+                select=params.get("select"),
+                filter=params.get("filter"),
+                orderby=params.get("orderby"),
+                top=params.get("top"),
+                expand=params.get("expand"),
+                page_size=params.get("page_size"),
+                count=params.get("count", False),
+                include_annotations=params.get("include_annotations"),
+            ):
+                all_records.extend(Record.from_api_response(params["table"], row) for row in page)
+        return QueryResult(all_records)
+
+    # ---------------------------------------------------------- execute_pages
+
+    def execute_pages(self) -> Iterator[QueryResult]:
+        """Lazily yield one :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
+        per HTTP page.
+
+        Each iteration triggers a network request via ``@odata.nextLink``.
+        One-shot — do not iterate more than once.
+
+        At least one of ``select()``, ``where()``, or ``top()`` must be
+        called before ``execute_pages()``; otherwise a :class:`ValueError` is
+        raised to prevent accidental full-table scans.
+
+        :return: Iterator of per-page :class:`~PowerPlatform.Dataverse.models.record.QueryResult`.
+        :rtype: Iterator[QueryResult]
+        :raises ValueError: If no ``select``, ``where``, or ``top``
+            constraint has been set.
+        :raises RuntimeError: If the query was not created via
+            ``client.query.builder()``.
+
+        Example::
+
+            from PowerPlatform.Dataverse.models.filters import col
+
+            for page in (client.query.builder("account")
+                         .select("name")
+                         .where(col("statecode") == 0)
+                         .execute_pages()):
+                process(page.to_dataframe())
         """
         if self._query_ops is None:
             raise RuntimeError(
                 "Cannot execute: query was not created via client.query.builder(). "
-                "Use build() and pass parameters to client.dataframe.get() instead."
+                "Use build() and pass parameters to client.records.list() instead."
             )
-        self._validate_constraints()
+
+        if not self._select and not self._filter_parts and self._top is None:
+            raise ValueError(
+                "At least one of select(), where(), or top() must be called before "
+                "execute_pages() to prevent accidental full-table scans."
+            )
+
         params = self.build()
-        return self._query_ops._client.dataframe.get(
-            params["table"],
-            select=params.get("select"),
-            filter=params.get("filter"),
-            orderby=params.get("orderby"),
-            top=params.get("top"),
-            expand=params.get("expand"),
-            page_size=params.get("page_size"),
-            count=params.get("count", False),
-            include_annotations=params.get("include_annotations"),
+        client = self._query_ops._client
+
+        with client._scoped_odata() as od:
+            for page in od._get_multiple(
+                params["table"],
+                select=params.get("select"),
+                filter=params.get("filter"),
+                orderby=params.get("orderby"),
+                top=params.get("top"),
+                expand=params.get("expand"),
+                page_size=params.get("page_size"),
+                count=params.get("count", False),
+                include_annotations=params.get("include_annotations"),
+            ):
+                yield QueryResult([Record.from_api_response(params["table"], row) for row in page])
+
+    # ----------------------------------------------------------- to_dataframe
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Execute the query and return results as a pandas DataFrame.
+
+        .. deprecated::
+            Use ``QueryBuilder.execute().to_dataframe()`` instead.
+            ``QueryBuilder.to_dataframe()`` will be removed in a future release.
+
+        All pages are consolidated into a single DataFrame.
+
+        This method is only available when the QueryBuilder was created
+        via ``client.query.builder(table)``.
+
+        At least one of ``select()``, ``where()``, or ``top()`` must be
+        called before ``to_dataframe()``; otherwise a :class:`ValueError`
+        is raised to prevent accidental full-table scans.
+
+        :return: DataFrame containing all matching records. Returns an empty
+            DataFrame when no records match.
+        :rtype: ~pandas.DataFrame
+        :raises ValueError: If no ``select``, ``where``, or ``top``
+            constraint has been set.
+        :raises RuntimeError: If the query was not created via
+            ``client.query.builder()``.
+
+        Example::
+
+            from PowerPlatform.Dataverse.models.filters import col
+
+            df = (client.query.builder("account")
+                  .select("name", "telephone1")
+                  .where(col("statecode") == 0)
+                  .top(100)
+                  .execute()
+                  .to_dataframe())
+        """
+        warnings.warn(
+            "'QueryBuilder.to_dataframe()' is deprecated; use " "'QueryBuilder.execute().to_dataframe()' instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        if self._query_ops is None:
+            raise RuntimeError(
+                "Cannot execute: query was not created via client.query.builder(). "
+                "Use build() and pass parameters to client.records.list() instead."
+            )
+
+        result = self.execute()
+        if not result:
+            return pd.DataFrame(columns=self._select) if self._select else pd.DataFrame()
+        return result.to_dataframe()
