@@ -893,12 +893,14 @@ class TestToDataframe(unittest.TestCase):
         import pandas as pd
         from PowerPlatform.Dataverse.models.record import Record
 
-        mock_query_ops, _ = self._make_od([
+        mock_query_ops, _ = self._make_od(
             [
-                {"name": "Contoso", "revenue": 1000},
-                {"name": "Fabrikam", "revenue": 2000},
+                [
+                    {"name": "Contoso", "revenue": 1000},
+                    {"name": "Fabrikam", "revenue": 2000},
+                ]
             ]
-        ])
+        )
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name", "revenue")

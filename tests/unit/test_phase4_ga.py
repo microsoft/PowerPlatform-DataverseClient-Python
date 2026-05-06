@@ -4,7 +4,7 @@
 """Phase 4 GA regression tests.
 
 Covers:
-- fetch_xml(): basic, pagination, missing-entity-element error
+- fetchxml(): basic, pagination, missing-entity-element error
 - sql_select / sql_join / sql_joins raise AttributeError (removed at GA)
 - odata_select / odata_expand / odata_bind emit DeprecationWarning (deprecated at GA)
 - sql_columns / odata_expands / sql() emit zero DeprecationWarning (still GA-clean)
@@ -32,7 +32,7 @@ def _make_client():
 
 
 # ---------------------------------------------------------------------------
-# fetch_xml()
+# fetchxml()
 # ---------------------------------------------------------------------------
 
 
@@ -55,32 +55,32 @@ class TestFetchXml(unittest.TestCase):
         resp.json.return_value = payload
         return resp
 
-    def test_fetch_xml_inert_no_http_request(self):
-        """fetch_xml() alone must not fire any HTTP request."""
-        from PowerPlatform.Dataverse.models.fetch_xml_query import FetchXmlQuery
+    def test_fetchxml_inert_no_http_request(self):
+        """fetchxml() alone must not fire any HTTP request."""
+        from PowerPlatform.Dataverse.models.fetchxml_query import FetchXmlQuery
 
-        query = self.client.query.fetch_xml(self._fetch_xml())
+        query = self.client.query.fetchxml(self._fetch_xml())
         self.assertIsInstance(query, FetchXmlQuery)
         self.client._odata._request.assert_not_called()
 
     def test_basic_returns_query_result(self):
         self.client._odata._request.return_value = self._mock_response([{"name": "Contoso", "accountid": "1"}])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         self.assertIsInstance(result, QueryResult)
 
     def test_basic_record_count(self):
         self.client._odata._request.return_value = self._mock_response([{"name": "A"}, {"name": "B"}])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         self.assertEqual(len(result), 2)
 
     def test_record_values_accessible(self):
         self.client._odata._request.return_value = self._mock_response([{"name": "Contoso", "accountid": "abc-123"}])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         self.assertEqual(result.first()["name"], "Contoso")
 
     def test_empty_result_returns_empty_query_result(self):
         self.client._odata._request.return_value = self._mock_response([])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         self.assertIsInstance(result, QueryResult)
         self.assertEqual(len(result), 0)
         self.assertFalse(result)
@@ -92,7 +92,7 @@ class TestFetchXml(unittest.TestCase):
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
 
-        pages = list(self.client.query.fetch_xml(self._fetch_xml()).execute_pages())
+        pages = list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
         self.assertEqual(len(pages), 2)
         self.assertEqual(self.client._odata._request.call_count, 2)
 
@@ -103,7 +103,7 @@ class TestFetchXml(unittest.TestCase):
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
 
-        list(self.client.query.fetch_xml(self._fetch_xml()).execute_pages())
+        list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
 
         second_call_kwargs = self.client._odata._request.call_args_list[1]
         params = (
@@ -120,22 +120,22 @@ class TestFetchXml(unittest.TestCase):
 
     def test_missing_entity_element_raises_value_error(self):
         with self.assertRaises(ValueError) as ctx:
-            self.client.query.fetch_xml("<fetch top='5'></fetch>")
+            self.client.query.fetchxml("<fetch top='5'></fetch>")
         self.assertIn("entity", str(ctx.exception).lower())
 
     def test_entity_missing_name_attr_raises_value_error(self):
         with self.assertRaises(ValueError) as ctx:
-            self.client.query.fetch_xml("<fetch><entity></entity></fetch>")
+            self.client.query.fetchxml("<fetch><entity></entity></fetch>")
         self.assertIn("name", str(ctx.exception).lower())
 
     def test_entity_set_resolved_from_entity_name(self):
         self.client._odata._request.return_value = self._mock_response([])
-        self.client.query.fetch_xml(self._fetch_xml("account")).execute()
+        self.client.query.fetchxml(self._fetch_xml("account")).execute()
         self.client._odata._entity_set_from_schema_name.assert_called_with("account")
 
     def test_request_uses_prefer_header(self):
         self.client._odata._request.return_value = self._mock_response([])
-        self.client.query.fetch_xml(self._fetch_xml()).execute()
+        self.client.query.fetchxml(self._fetch_xml()).execute()
         call_kwargs = self.client._odata._request.call_args
         headers = call_kwargs.kwargs.get("headers", {})
         self.assertIn("Prefer", headers)
@@ -143,7 +143,7 @@ class TestFetchXml(unittest.TestCase):
 
     def test_result_iterable(self):
         self.client._odata._request.return_value = self._mock_response([{"name": "A"}, {"name": "B"}])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         names = [r["name"] for r in result]
         self.assertEqual(names, ["A", "B"])
 
@@ -153,7 +153,7 @@ class TestFetchXml(unittest.TestCase):
         except ImportError:
             self.skipTest("pandas not installed")
         self.client._odata._request.return_value = self._mock_response([{"name": "Contoso"}, {"name": "Fabrikam"}])
-        result = self.client.query.fetch_xml(self._fetch_xml()).execute()
+        result = self.client.query.fetchxml(self._fetch_xml()).execute()
         df = result.to_dataframe()
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
@@ -162,9 +162,9 @@ class TestFetchXml(unittest.TestCase):
         self.client._odata._request.return_value = self._mock_response([])
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            self.client.query.fetch_xml(self._fetch_xml()).execute()
+            self.client.query.fetchxml(self._fetch_xml()).execute()
         deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        self.assertEqual(len(deprecations), 0, "fetch_xml().execute() should not emit DeprecationWarning")
+        self.assertEqual(len(deprecations), 0, "fetchxml().execute() should not emit DeprecationWarning")
 
     def test_execute_pages_returns_iterator_of_query_result(self):
         """execute_pages() yields QueryResult objects, one per HTTP page."""
@@ -173,7 +173,7 @@ class TestFetchXml(unittest.TestCase):
         page2 = self._mock_response([{"name": "B"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
 
-        pages = list(self.client.query.fetch_xml(self._fetch_xml()).execute_pages())
+        pages = list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
         self.assertEqual(len(pages), 2)
         for page in pages:
             self.assertIsInstance(page, QueryResult)
@@ -186,7 +186,7 @@ class TestFetchXml(unittest.TestCase):
         self.client._odata._request.side_effect = [page1, page2]
 
         count = 0
-        for _page in self.client.query.fetch_xml(self._fetch_xml()).execute_pages():
+        for _page in self.client.query.fetchxml(self._fetch_xml()).execute_pages():
             count += 1
         self.assertEqual(self.client._odata._request.call_count, 2)
         self.assertEqual(count, 2)
@@ -198,7 +198,7 @@ class TestFetchXml(unittest.TestCase):
         page2 = self._mock_response([{"name": "B"}, {"name": "C"}], more=False)
         self.client._odata._request.side_effect = [page1, page2]
 
-        pages = list(self.client.query.fetch_xml(self._fetch_xml()).execute_pages())
+        pages = list(self.client.query.fetchxml(self._fetch_xml()).execute_pages())
         self.assertEqual(len(pages[0]), 1)
         self.assertEqual(len(pages[1]), 2)
         self.assertEqual(pages[0].first()["name"], "A")

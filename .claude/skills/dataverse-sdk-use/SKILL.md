@@ -260,7 +260,7 @@ for record in results:
 
 ### FetchXML Queries
 
-`client.query.fetch_xml(xml)` returns an inert `FetchXmlQuery` object — **no HTTP request is made** until `.execute()` or `.execute_pages()` is called.
+`client.query.fetchxml(xml)` returns an inert `FetchXmlQuery` object — **no HTTP request is made** until `.execute()` or `.execute_pages()` is called.
 
 ```python
 xml = """
@@ -276,7 +276,7 @@ xml = """
 """
 
 # Load all results into memory (simple, small-to-medium sets)
-query = client.query.fetch_xml(xml)
+query = client.query.fetchxml(xml)
 result = query.execute()              # returns QueryResult — all pages fetched upfront
 for record in result:
     print(record["name"])

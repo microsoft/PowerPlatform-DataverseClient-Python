@@ -431,7 +431,7 @@ results = (client.query.builder("account")
            .execute())
 ```
 
-**FetchXML queries** -- `client.query.fetch_xml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
+**FetchXML queries** -- `client.query.fetchxml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
 
 ```python
 xml = """
@@ -445,12 +445,12 @@ xml = """
 """
 
 # .execute() — blocking, fetches all pages and returns a single QueryResult
-result = client.query.fetch_xml(xml).execute()
+result = client.query.fetchxml(xml).execute()
 df = result.to_dataframe()
 
 # .execute_pages() — streaming, yields one QueryResult per HTTP page
 # Use count="N" in the FetchXML <fetch> element to set page size
-for page_num, page in enumerate(client.query.fetch_xml(xml).execute_pages()):
+for page_num, page in enumerate(client.query.fetchxml(xml).execute_pages()):
     print(f"Page {page_num + 1}: {len(page)} records")
     for record in page:
         print(record["name"])

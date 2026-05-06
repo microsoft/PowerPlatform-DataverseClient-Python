@@ -4,7 +4,7 @@
 """
 End-to-end FetchXML examples for Dataverse.
 
-Demonstrates ``client.query.fetch_xml()`` across the scenarios where FetchXML
+Demonstrates ``client.query.fetchxml()`` across the scenarios where FetchXML
 is required or preferred over OData/SQL:
 
 - Basic attribute queries
@@ -263,8 +263,8 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(basic attribute query)")
-        result = backoff(lambda: client.query.fetch_xml(xml).execute())
+        log_call("client.query.fetchxml(basic attribute query)")
+        result = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] {len(result)} projects:")
         for r in result:
             print(f"  {r.get('new_code', ''):<10s}  Budget={r.get('new_budget')}  Active={r.get('new_active')}")
@@ -286,7 +286,7 @@ def _run_examples(client):
         </fetch>
         """
         log_call('operator="eq" value="ALPHA"')
-        r = backoff(lambda: client.query.fetch_xml(xml).execute())
+        r = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] eq: {[x.get('new_code') for x in r]}")
 
         # like
@@ -301,7 +301,7 @@ def _run_examples(client):
         </fetch>
         """
         log_call('operator="like" value="%test%"')
-        r = backoff(lambda: client.query.fetch_xml(xml).execute())
+        r = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] like: {len(r)} matches -> {[x.get('new_title') for x in r]}")
 
         # in
@@ -319,7 +319,7 @@ def _run_examples(client):
         </fetch>
         """
         log_call('operator="in" values=[ALPHA, DELTA]')
-        r = backoff(lambda: client.query.fetch_xml(xml).execute())
+        r = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] in: {[x.get('new_code') for x in r]}")
 
         # null / not-null
@@ -334,7 +334,7 @@ def _run_examples(client):
         </fetch>
         """
         log_call('operator="not-null"')
-        r = backoff(lambda: client.query.fetch_xml(xml).execute())
+        r = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] not-null: {len(r)} tasks have priority set")
 
         # between
@@ -353,7 +353,7 @@ def _run_examples(client):
         </fetch>
         """
         log_call('operator="between" 40000 and 80000')
-        r = backoff(lambda: client.query.fetch_xml(xml).execute())
+        r = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] between: {len(r)} projects -> {[(x.get('new_code'), x.get('new_budget')) for x in r]}")
 
         # ===============================================================
@@ -376,9 +376,9 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(link-entity inner join)")
+        log_call("client.query.fetchxml(link-entity inner join)")
         try:
-            result = backoff(lambda: client.query.fetch_xml(xml).execute())
+            result = backoff(lambda: client.query.fetchxml(xml).execute())
             print(f"[OK] {len(result)} rows:")
             for r in result:
                 print(
@@ -408,9 +408,9 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(link-entity outer join)")
+        log_call("client.query.fetchxml(link-entity outer join)")
         try:
-            result = backoff(lambda: client.query.fetch_xml(xml).execute())
+            result = backoff(lambda: client.query.fetchxml(xml).execute())
             print(f"[OK] {len(result)} rows (includes projects with no tasks):")
             for r in result[:8]:
                 print(f"  Project={r.get('new_code', ''):<10s}  Task={r.get('t.new_title', '(none)')}")
@@ -431,8 +431,8 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(order by hours DESC)")
-        result = backoff(lambda: client.query.fetch_xml(xml).execute())
+        log_call("client.query.fetchxml(order by hours DESC)")
+        result = backoff(lambda: client.query.fetchxml(xml).execute())
         print(f"[OK] Tasks by hours DESC:")
         for r in result:
             print(f"  {r.get('new_title', ''):<25s}  Hours={r.get('new_hours')}")
@@ -455,16 +455,16 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(xml).execute()  — eager, all pages collected")
-        result = backoff(lambda: client.query.fetch_xml(xml_paged).execute())
+        log_call("client.query.fetchxml(xml).execute()  — eager, all pages collected")
+        result = backoff(lambda: client.query.fetchxml(xml_paged).execute())
         print(f"[OK] execute(): {len(result)} total tasks across all pages (seeded {len(task_ids)}):")
         for r in result:
             print(f"  {r.get('new_title', ''):<25s}  Hours={r.get('new_hours')}")
 
-        log_call("client.query.fetch_xml(xml).execute_pages()  — lazy, one QueryResult per HTTP page")
+        log_call("client.query.fetchxml(xml).execute_pages()  — lazy, one QueryResult per HTTP page")
         page_num = 0
         page_record_count = 0
-        for page in backoff(lambda: client.query.fetch_xml(xml_paged).execute_pages()):
+        for page in backoff(lambda: client.query.fetchxml(xml_paged).execute_pages()):
             page_num += 1
             page_record_count += len(page)
             print(f"  Page {page_num}: {len(page)} record(s) — {[r.get('new_title') for r in page]}")
@@ -487,11 +487,11 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(aggregate: count, sum, avg, min, max)")
+        log_call("client.query.fetchxml(aggregate: count, sum, avg, min, max)")
         try:
-            result = backoff(lambda: client.query.fetch_xml(xml).execute())
+            result = backoff(lambda: client.query.fetchxml(xml).execute())
             if result:
-                row = result[0]
+                row = result.first()
                 print(
                     f"[OK] count={row.get('task_count')}  sum={row.get('total_hours')}  "
                     f"avg={row.get('avg_hours')}  min={row.get('min_hours')}  max={row.get('max_hours')}"
@@ -515,9 +515,9 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(aggregate group-by project)")
+        log_call("client.query.fetchxml(aggregate group-by project)")
         try:
-            result = backoff(lambda: client.query.fetch_xml(xml).execute())
+            result = backoff(lambda: client.query.fetchxml(xml).execute())
             print(f"[OK] Hours per project ({len(result)} groups):")
             for r in result:
                 print(
@@ -546,9 +546,9 @@ def _run_examples(client):
           </entity>
         </fetch>
         """
-        log_call("client.query.fetch_xml(account → contact inner join)")
+        log_call("client.query.fetchxml(account → contact inner join)")
         try:
-            result = backoff(lambda: client.query.fetch_xml(xml).execute())
+            result = backoff(lambda: client.query.fetchxml(xml).execute())
             print(f"[OK] {len(result)} account-contact pairs:")
             for r in result:
                 print(f"  Account={r.get('name', ''):<25s}  Contact={r.get('c.fullname', '')}")

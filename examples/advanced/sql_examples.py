@@ -917,7 +917,7 @@ def _run_examples(client):
         print(
             "At GA, sql_columns() is the only retained SQL schema-discovery helper.\n"
             "sql_select(), sql_join(), and sql_joins() were removed — write JOIN\n"
-            "clauses directly or use client.query.fetch_xml() for complex queries."
+            "clauses directly or use client.query.fetchxml() for complex queries."
         )
 
         # sql_columns — still available at GA
@@ -989,7 +989,7 @@ def _run_examples(client):
 | Pagination                    | OFFSET FETCH           | @odata.nextLink        |
 | Max results                   | 5000 per query         | 5000 per page          |
 | Column discovery              | sql_columns            | odata_expands (kept)   |
-| JOIN discovery                | write manually/fetch_xml | odata_expand (deprecated)|
+| JOIN discovery                | write manually/fetchxml | odata_expand (deprecated)|
 | Lookup binding                | N/A (read-only)        | odata_bind             |
 | SELECT *                      | YES (SDK auto-expands) | Not applicable         |
 | Polymorphic lookups           | Separate JOINs         | $expand by nav prop    |
@@ -1102,7 +1102,7 @@ SDK guardrails:
   - Pattern #2 (cartesian FROM a, b) -> UserWarning (advisory).
   - Server enforces 5000-row cap on all queries (#3, #5).
   - Use sql_columns() to discover valid column names.
-  - Write JOIN clauses manually or use fetch_xml() for complex queries.
+  - Write JOIN clauses manually or use fetchxml() for complex queries.
 """)
 
         # ==============================================================
@@ -1135,7 +1135,7 @@ SDK guardrails:
 | Audit trail (createdby, etc.) | YES      | JOIN to systemuser                     |
 | SQL read -> DF write-back     | YES      | dataframe.sql() + .update()/.create()  |
 | SQL column discovery          | YES      | query.sql_columns()                    |
-| SQL JOIN clause               | manual   | write directly or use fetch_xml()      |
+| SQL JOIN clause               | manual   | write directly or use fetchxml()      |
 | OData column discovery        | YES      | query.odata_select()                   |
 | OData expand discovery        | YES      | query.odata_expands() / odata_expand() |
 | OData bind builder            | YES      | query.odata_bind()                     |

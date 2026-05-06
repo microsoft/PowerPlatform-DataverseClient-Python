@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""FetchXmlQuery — inert query object returned by QueryOperations.fetch_xml()."""
+"""FetchXmlQuery — inert query object returned by QueryOperations.fetchxml()."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class FetchXmlQuery:
     """Inert FetchXML query object. No HTTP request is made until
     :meth:`execute` or :meth:`execute_pages` is called.
 
-    Obtained via ``client.query.fetch_xml(xml)``.
+    Obtained via ``client.query.fetchxml(xml)``.
 
     :param xml: Stripped, well-formed FetchXML string.
     :param entity_name: Entity schema name from the ``<entity>`` element.
@@ -50,7 +50,7 @@ class FetchXmlQuery:
 
         Example::
 
-            rows = client.query.fetch_xml(xml).execute()
+            rows = client.query.fetchxml(xml).execute()
             df = rows.to_dataframe()
         """
         all_records: List[Record] = []
@@ -76,7 +76,7 @@ class FetchXmlQuery:
 
         Example::
 
-            for page in client.query.fetch_xml(xml).execute_pages():
+            for page in client.query.fetchxml(xml).execute_pages():
                 process(page.to_dataframe())
         """
         current_xml = self._xml
@@ -113,8 +113,18 @@ class FetchXmlQuery:
                 if not raw_cookie:
                     break
 
-                cookie = _url_unquote(_url_unquote(raw_cookie))
-                page_num += 1
+                # The annotation is outer XML: <cookie pagenumber="N" pagingcookie="DOUBLE_ENCODED" />
+                # The pagingcookie attribute is double URL-encoded; decode twice to get raw cookie XML.
+                try:
+                    cookie_el = _ET.fromstring(raw_cookie)
+                except _ET.ParseError:
+                    break
+                inner_encoded = cookie_el.get("pagingcookie", "")
+                if not inner_encoded:
+                    break
+                cookie = _url_unquote(_url_unquote(inner_encoded))
+                page_num = int(cookie_el.get("pagenumber", str(page_num + 1)))
+
                 fetch_el = _ET.fromstring(current_xml)
                 fetch_el.set("paging-cookie", cookie)
                 fetch_el.set("page", str(page_num))

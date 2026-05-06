@@ -348,7 +348,7 @@ def _compile_like(column: str, pattern: str) -> FilterExpression:
     if _LIKE_WILDCARD in inner:
         raise ValueError(
             f"like() pattern {pattern!r} is not reducible to a single OData function. "
-            "Use raw(), fetch_xml(), or query.sql() for complex wildcard patterns."
+            "Use raw(), fetchxml(), or query.sql() for complex wildcard patterns."
         )
 
     if not has_start and has_end:

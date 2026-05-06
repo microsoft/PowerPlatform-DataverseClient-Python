@@ -10,7 +10,7 @@ import xml.etree.ElementTree as _ET
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ..core.errors import MetadataError
-from ..models.fetch_xml_query import FetchXmlQuery
+from ..models.fetchxml_query import FetchXmlQuery
 from ..models.record import Record
 from ..models.query_builder import QueryBuilder
 
@@ -149,15 +149,15 @@ class QueryOperations:
             rows = od._query_sql(sql)
             return [Record.from_api_response("", row) for row in rows]
 
-    # --------------------------------------------------------------- fetch_xml
+    # --------------------------------------------------------------- fetchxml
 
-    def fetch_xml(self, xml: str) -> FetchXmlQuery:
-        """Return an inert :class:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery` object.
+    def fetchxml(self, xml: str) -> FetchXmlQuery:
+        """Return an inert :class:`~PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery` object.
 
         No HTTP request is made until
-        :meth:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery.execute`
+        :meth:`~PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery.execute`
         or
-        :meth:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery.execute_pages`
+        :meth:`~PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery.execute_pages`
         is called on the returned object.
 
         Use for SQL-JOIN scenarios, aggregate queries, or other operations that
@@ -167,13 +167,13 @@ class QueryOperations:
             element determines the entity set endpoint.
         :type xml: :class:`str`
         :return: Inert query object with ``.execute()`` and ``.execute_pages()`` methods.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.fetch_xml_query.FetchXmlQuery`
+        :rtype: :class:`~PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery`
         :raises ValueError: If the FetchXML is missing a root ``<entity>`` element
             or the entity ``name`` attribute.
 
         Example::
 
-            query = client.query.fetch_xml(\"\"\"
+            query = client.query.fetchxml(\"\"\"
               <fetch top="50">
                 <entity name="account">
                   <attribute name="name" />
