@@ -515,14 +515,19 @@ class TestExecute(unittest.TestCase):
             qb.execute()
         self.assertIn("client.query.builder()", str(ctx.exception))
 
-    def test_execute_calls_records_get(self):
-        """execute() should delegate to client.records.get() with built params."""
+    def _make_od(self, pages=None):
+        """Return (mock_query_ops, mock_od) with _get_multiple pre-wired."""
+        mock_query_ops = MagicMock()
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter(pages or [])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        return mock_query_ops, mock_od
+
+    def test_execute_calls_get_multiple(self):
+        """execute() calls _get_multiple() via _scoped_odata with all built params."""
         from PowerPlatform.Dataverse.models.filters import raw
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "Test"}]])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         (
@@ -534,9 +539,9 @@ class TestExecute(unittest.TestCase):
             .expand("primarycontactid")
         )
 
-        list(qb.execute())
+        qb.execute()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name", "revenue"],
             filter="statecode eq 0",
@@ -549,10 +554,7 @@ class TestExecute(unittest.TestCase):
         )
 
     def test_execute_returns_flat_records_by_default(self):
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
-
+        mock_query_ops, _ = self._make_od([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
@@ -564,59 +566,47 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(records[2]["name"], "C")
 
     def test_execute_by_page_returns_pages(self):
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
+        from PowerPlatform.Dataverse.models.record import QueryResult
 
-        page1 = [{"name": "A"}, {"name": "B"}]
-        page2 = [{"name": "C"}]
-        mock_client.records.get.return_value = iter([page1, page2])
-
+        mock_query_ops, _ = self._make_od([[{"name": "A"}, {"name": "B"}], [{"name": "C"}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
         pages = list(qb.execute(by_page=True))
 
         self.assertEqual(len(pages), 2)
-        self.assertEqual(pages[0], page1)
-        self.assertEqual(pages[1], page2)
+        self.assertIsInstance(pages[0], QueryResult)
+        self.assertEqual(len(pages[0]), 2)
+        self.assertEqual(len(pages[1]), 1)
 
     def test_execute_with_only_select_succeeds(self):
         """execute() with select only should not raise."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_filter_succeeds(self):
         """execute() with filter only should not raise."""
         from PowerPlatform.Dataverse.models.filters import raw
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.where(raw("statecode eq 0"))
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_top_succeeds(self):
         """execute() with top only should not raise."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.top(10)
-        list(qb.execute())  # should not raise
-        mock_client.records.get.assert_called_once()
+        qb.execute()  # should not raise
+        mock_od._get_multiple.assert_called_once()
 
     def test_execute_with_only_expand_raises(self):
         """expand alone is not a sufficient constraint."""
@@ -639,51 +629,40 @@ class TestExecute(unittest.TestCase):
     def test_execute_with_where_expressions(self):
         from PowerPlatform.Dataverse.models.filters import col
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.where(((col("statecode") == 0) | (col("statecode") == 1)) & (col("revenue") > 100000))
-        list(qb.execute())
+        qb.execute()
 
-        call_args = mock_client.records.get.call_args
         self.assertEqual(
-            call_args.kwargs["filter"],
+            mock_od._get_multiple.call_args.kwargs["filter"],
             "((statecode eq 0 or statecode eq 1) and revenue gt 100000)",
         )
 
     def test_execute_with_filter_in(self):
         from PowerPlatform.Dataverse.models.filters import col
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.where(col("statecode").in_([0, 1, 2]))
-        list(qb.execute())
+        qb.execute()
 
-        call_args = mock_client.records.get.call_args
         self.assertEqual(
-            call_args.kwargs["filter"],
+            mock_od._get_multiple.call_args.kwargs["filter"],
             'Microsoft.Dynamics.CRM.In(PropertyName=\'statecode\',PropertyValues=["0","1","2"])',
         )
 
     def test_execute_passes_count_and_annotations(self):
-        """execute() should forward count and include_annotations when set."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        """execute() should forward count and include_annotations to _get_multiple."""
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name").count().include_formatted_values()
-        list(qb.execute())
+        qb.execute()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name"],
             filter=None,
@@ -701,7 +680,9 @@ class TestExecutePages(unittest.TestCase):
 
     def _make_qb(self):
         mock_query_ops = MagicMock()
-        mock_query_ops._client.records.get.return_value = iter([[{"name": "A"}], [{"name": "B"}]])
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter([[{"name": "A"}], [{"name": "B"}]])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
@@ -749,7 +730,9 @@ class TestByPageWarning(unittest.TestCase):
 
     def _make_qb(self):
         mock_query_ops = MagicMock()
-        mock_query_ops._client.records.get.return_value = iter([[{"name": "A"}]])
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter([[{"name": "A"}]])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")
@@ -807,6 +790,13 @@ class TestByPageWarning(unittest.TestCase):
 class TestToDataframe(unittest.TestCase):
     """Tests for the to_dataframe() terminal method."""
 
+    def _make_od(self, pages=None):
+        mock_query_ops = MagicMock()
+        mock_od = MagicMock()
+        mock_od._get_multiple.side_effect = lambda *a, **kw: iter(pages or [])
+        mock_query_ops._client._scoped_odata.return_value.__enter__.return_value = mock_od
+        return mock_query_ops, mock_od
+
     def test_to_dataframe_without_query_ops_raises(self):
         from PowerPlatform.Dataverse.models.filters import raw
 
@@ -819,10 +809,7 @@ class TestToDataframe(unittest.TestCase):
         """to_dataframe() collects execute() results into a DataFrame."""
         import pandas as pd
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "A", "revenue": 100}, {"name": "B", "revenue": 200}]])
-
+        mock_query_ops, _ = self._make_od([[{"name": "A", "revenue": 100}, {"name": "B", "revenue": 200}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name", "revenue")
@@ -837,10 +824,7 @@ class TestToDataframe(unittest.TestCase):
         """to_dataframe() with no matching records returns empty DataFrame."""
         import pandas as pd
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, _ = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name", "revenue")
@@ -850,15 +834,12 @@ class TestToDataframe(unittest.TestCase):
         self.assertIsInstance(result, pd.DataFrame)
         self.assertEqual(len(result), 0)
 
-    def test_to_dataframe_calls_records_get_with_params(self):
-        """to_dataframe() should call records.get() with the built query params."""
+    def test_to_dataframe_calls_get_multiple_with_params(self):
+        """to_dataframe() passes all built query params to _get_multiple."""
         import pandas as pd
         from PowerPlatform.Dataverse.models.filters import raw
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([[{"name": "Contoso", "revenue": 1000}]])
-
+        mock_query_ops, mock_od = self._make_od([[{"name": "Contoso", "revenue": 1000}]])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         (
@@ -872,7 +853,7 @@ class TestToDataframe(unittest.TestCase):
 
         result = qb.to_dataframe()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name", "revenue"],
             filter="statecode eq 0",
@@ -889,16 +870,13 @@ class TestToDataframe(unittest.TestCase):
 
     def test_to_dataframe_forwards_count_and_annotations(self):
         """to_dataframe() should forward count and include_annotations when set."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, mock_od = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name").count().include_formatted_values()
         qb.to_dataframe()
 
-        mock_client.records.get.assert_called_once_with(
+        mock_od._get_multiple.assert_called_once_with(
             "account",
             select=["name"],
             filter=None,
@@ -915,14 +893,12 @@ class TestToDataframe(unittest.TestCase):
         import pandas as pd
         from PowerPlatform.Dataverse.models.record import Record
 
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        records = [
-            Record(id="id-1", table="account", data={"name": "Contoso", "revenue": 1000}),
-            Record(id="id-2", table="account", data={"name": "Fabrikam", "revenue": 2000}),
-        ]
-        mock_client.records.get.return_value = iter([records])
-
+        mock_query_ops, _ = self._make_od([
+            [
+                {"name": "Contoso", "revenue": 1000},
+                {"name": "Fabrikam", "revenue": 2000},
+            ]
+        ])
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name", "revenue")
@@ -936,10 +912,7 @@ class TestToDataframe(unittest.TestCase):
 
     def test_to_dataframe_emits_deprecation_warning(self):
         """QueryBuilder.to_dataframe() fires DeprecationWarning; use execute().to_dataframe() instead."""
-        mock_query_ops = MagicMock()
-        mock_client = mock_query_ops._client
-        mock_client.records.get.return_value = iter([])
-
+        mock_query_ops, _ = self._make_od()
         qb = QueryBuilder("account")
         qb._query_ops = mock_query_ops
         qb.select("name")

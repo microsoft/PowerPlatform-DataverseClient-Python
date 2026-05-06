@@ -30,6 +30,16 @@ The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `
 ### Paging
 - Control page size with `page_size` parameter
 - Use `top` parameter to limit total records returned
+- Simple streaming: `records.list_pages(table, filter, select)` — yields one `QueryResult` per HTTP page (3 params only; use builder for advanced options)
+- Advanced streaming: `client.query.builder(table)....execute_pages()` — full builder options, one `QueryResult` per page
+- `execute(by_page=True/False)` is **deprecated** and emits `UserWarning`; use `execute_pages()` instead
+
+### QueryResult
+- Returned by `records.list()`, `records.retrieve()`, `execute()`, and each page from `list_pages()` / `execute_pages()`
+- Iterable: `for record in result` — each item is a `dict`-like `Record`
+- `.to_dataframe()` — convert to pandas DataFrame
+- `.first()` — return the first record or `None`
+- `len(result)` — number of records in this result/page
 
 ### DataFrame Support
 - DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()` — `client.dataframe.get()` is deprecated; use `client.query.builder(table).where(...).execute().to_dataframe()` instead
@@ -90,7 +100,7 @@ account = client.records.retrieve("account", account_id, select=["name", "teleph
 # Query with filter — follows @odata.nextLink automatically (multiple HTTP requests if needed),
 # loads all matching records into memory, returns a single QueryResult.
 # Page size is Dataverse's default (~5000/page); use top to bound total records and round-trips.
-# For very large sets where memory is a concern, use query.builder().execute(by_page=True) instead.
+# For very large sets where memory is a concern, use records.list_pages() or execute_pages() instead.
 result = client.records.list(
     "account",
     select=["accountid", "name"],      # select is case-insensitive (automatically lowercased)
@@ -100,12 +110,22 @@ result = client.records.list(
 for record in result:
     print(record["name"])
 
-# For large result sets that must be streamed page-by-page (caller controls memory, one page at a time)
+# Simple streaming — page-by-page (3 params only; use builder for ordering/expand/count)
+for page in client.records.list_pages(
+    "account",
+    select=["accountid", "name"],
+    filter="statecode eq 0",
+):
+    for record in page:
+        print(record["name"])
+
+# Advanced streaming — full builder options, one QueryResult per HTTP page
+from PowerPlatform.Dataverse.models.filters import col
 for page in (client.query.builder("account")
              .select("accountid", "name")
              .where(col("statecode") == 0)
              .page_size(500)           # optional: override Dataverse default page size
-             .execute(by_page=True)):
+             .execute_pages()):
     for record in page:
         print(record["name"])
 
@@ -191,13 +211,14 @@ client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 
 The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
 
-> **Note:** `client.dataframe.get()` is deprecated. Use `client.query.builder(table).select(...).filter(...).to_dataframe()` instead.
+> **Note:** `client.dataframe.get()` is deprecated. Use `client.query.builder(table).select(...).where(...).to_dataframe()` instead.
 
 ```python
 import pandas as pd
 
 # Query records -- returns a single DataFrame (GA builder pattern)
-df = client.query.builder("account").filter("statecode eq 0").select("name").to_dataframe()
+from PowerPlatform.Dataverse.models.filters import col
+df = client.query.builder("account").where(col("statecode") == 0).select("name").to_dataframe()
 print(f"Got {len(df)} rows")
 
 # Limit results with top
@@ -235,6 +256,34 @@ results = client.query.sql(
 )
 for record in results:
     print(record["name"])
+```
+
+### FetchXML Queries
+
+`client.query.fetch_xml(xml)` returns an inert `FetchXmlQuery` object — **no HTTP request is made** until `.execute()` or `.execute_pages()` is called.
+
+```python
+xml = """
+<fetch top="50">
+  <entity name="account">
+    <attribute name="accountid" />
+    <attribute name="name" />
+    <filter>
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+  </entity>
+</fetch>
+"""
+
+# Load all results into memory (simple, small-to-medium sets)
+query = client.query.fetch_xml(xml)
+result = query.execute()              # returns QueryResult — all pages fetched upfront
+for record in result:
+    print(record["name"])
+
+# Stream page-by-page (large sets or early exit)
+for page in query.execute_pages():    # yields one QueryResult per HTTP page
+    process(page.to_dataframe())
 ```
 
 ### Table Management

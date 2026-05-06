@@ -588,6 +588,9 @@ class RecordOperations:
         GA replacement for ``records.get(table, filter=...)``. All pages are
         collected eagerly and returned as a single :class:`QueryResult`.
 
+        For advanced query options (ordering, expand, count, page size, or
+        OData annotations) use ``client.query.builder()`` instead.
+
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
         :param filter: Optional OData filter string or :class:`FilterExpression`.
@@ -643,9 +646,12 @@ class RecordOperations:
     ) -> Iterator[QueryResult]:
         """Lazily yield one :class:`QueryResult` per HTTP page.
 
-        Symmetric with :meth:`~PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages`
-        on the builder. Each iteration triggers a network request via
-        ``@odata.nextLink``. One-shot — do not iterate more than once.
+        Streaming counterpart to :meth:`list`. Each iteration triggers one
+        network request via ``@odata.nextLink``. One-shot — do not iterate
+        more than once.
+
+        For advanced query options (ordering, expand, count, page size, or
+        OData annotations) use ``client.query.builder().execute_pages()`` instead.
 
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`

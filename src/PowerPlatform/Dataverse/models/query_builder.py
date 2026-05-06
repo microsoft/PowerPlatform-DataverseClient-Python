@@ -50,7 +50,7 @@ Example::
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, Iterable, Iterator, List, Optional, TypedDict, Union
+from typing import Any, Dict, Iterator, List, Optional, TypedDict, Union
 
 import pandas as pd
 
@@ -67,7 +67,7 @@ class QueryParams(TypedDict, total=False):
     """Typed dictionary returned by :meth:`QueryBuilder.build`.
 
     Provides IDE autocomplete when passing build results to
-    ``client.records.get()`` manually.
+    ``client.records.list()`` manually.
     """
 
     table: str
@@ -450,7 +450,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- execute
 
-    def execute(self, *, by_page=_BY_PAGE_UNSET) -> Union[QueryResult, Iterable[List[Record]]]:
+    def execute(self, *, by_page=_BY_PAGE_UNSET) -> Union[QueryResult, Iterator[QueryResult]]:
         """Execute the query and return results.
 
         Returns a :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
@@ -460,7 +460,7 @@ class QueryBuilder:
         This method is only available when the QueryBuilder was created
         via ``client.query.builder(table)``.  Standalone ``QueryBuilder``
         instances should use :meth:`build` to get parameters and pass them
-        to ``client.records.get()`` manually.
+        to ``client.records.list()`` manually.
 
         At least one of ``select()``, ``where()``, or ``top()`` must be
         called before ``execute()``; otherwise a :class:`ValueError` is
@@ -474,7 +474,7 @@ class QueryBuilder:
         :return: :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
             with all pages collected (default), or page iterator (deprecated
             ``by_page=True``).
-        :rtype: QueryResult or Iterable[List[Record]]
+        :rtype: QueryResult or Iterator[QueryResult]
         :raises ValueError: If no ``select``, ``where``, or ``top``
             constraint has been set.
         :raises RuntimeError: If the query was not created via
@@ -510,7 +510,7 @@ class QueryBuilder:
         if self._query_ops is None:
             raise RuntimeError(
                 "Cannot execute: query was not created via client.query.builder(). "
-                "Use build() and pass parameters to client.records.get() instead."
+                "Use build() and pass parameters to client.records.list() instead."
             )
 
         if not self._select and not self._filter_parts and self._top is None:
@@ -522,11 +522,12 @@ class QueryBuilder:
         params = self.build()
         client = self._query_ops._client
 
-        # Suppress DeprecationWarning from records.get() — execute() is GA;
-        # records.get() is deprecated but still used as the internal paging mechanism.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            pages = client.records.get(
+        if use_by_page:
+            return self.execute_pages()
+
+        all_records: List[Record] = []
+        with client._scoped_odata() as od:
+            for page in od._get_multiple(
                 params["table"],
                 select=params.get("select"),
                 filter=params.get("filter"),
@@ -536,14 +537,8 @@ class QueryBuilder:
                 page_size=params.get("page_size"),
                 count=params.get("count", False),
                 include_annotations=params.get("include_annotations"),
-            )
-
-        if use_by_page:
-            return pages
-
-        all_records: List[Record] = []
-        for page in pages:
-            all_records.extend(page)
+            ):
+                all_records.extend(Record.from_api_response(params["table"], row) for row in page)
         return QueryResult(all_records)
 
     # ---------------------------------------------------------- execute_pages
@@ -579,7 +574,7 @@ class QueryBuilder:
         if self._query_ops is None:
             raise RuntimeError(
                 "Cannot execute: query was not created via client.query.builder(). "
-                "Use build() and pass parameters to client.records.get() instead."
+                "Use build() and pass parameters to client.records.list() instead."
             )
 
         if not self._select and not self._filter_parts and self._top is None:
@@ -591,9 +586,8 @@ class QueryBuilder:
         params = self.build()
         client = self._query_ops._client
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            pages = client.records.get(
+        with client._scoped_odata() as od:
+            for page in od._get_multiple(
                 params["table"],
                 select=params.get("select"),
                 filter=params.get("filter"),
@@ -603,10 +597,8 @@ class QueryBuilder:
                 page_size=params.get("page_size"),
                 count=params.get("count", False),
                 include_annotations=params.get("include_annotations"),
-            )
-
-        for page in pages:
-            yield QueryResult(page)
+            ):
+                yield QueryResult([Record.from_api_response(params["table"], row) for row in page])
 
     # ----------------------------------------------------------- to_dataframe
 
@@ -653,7 +645,7 @@ class QueryBuilder:
         if self._query_ops is None:
             raise RuntimeError(
                 "Cannot execute: query was not created via client.query.builder(). "
-                "Use build() and pass parameters to client.records.get() instead."
+                "Use build() and pass parameters to client.records.list() instead."
             )
 
         result = self.execute()
