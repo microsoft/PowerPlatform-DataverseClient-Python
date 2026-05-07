@@ -689,6 +689,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         table_schema_name: str,
         key: str,
         select: Optional[List[str]] = None,
+        expand: Optional[List[str]] = None,
         include_annotations: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Retrieve a single record.
@@ -699,6 +700,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type key: ``str``
         :param select: Columns to select; joined with commas into $select.
         :type select: ``list[str]`` | ``None``
+        :param expand: Navigation properties to expand (``$expand``); passed as-is (case-sensitive).
+        :type expand: ``list[str]`` | ``None``
         :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header, or ``None``.
         :type include_annotations: ``str`` | ``None``
 
@@ -706,7 +709,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :rtype: ``dict[str, Any]``
         """
         return self._execute_raw(
-            self._build_get(table_schema_name, key, select=select, include_annotations=include_annotations)
+            self._build_get(
+                table_schema_name, key, select=select, expand=expand, include_annotations=include_annotations
+            )
         ).json()
 
     def _get_multiple(
@@ -2319,13 +2324,19 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         record_id: str,
         *,
         select: Optional[List[str]] = None,
+        expand: Optional[List[str]] = None,
         include_annotations: Optional[str] = None,
     ) -> _RawRequest:
         """Build a single-record GET request without sending it."""
         entity_set = self._entity_set_from_schema_name(table)
-        url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        params: List[str] = []
         if select:
-            url += "?$select=" + ",".join(self._lowercase_list(select))
+            params.append("$select=" + ",".join(self._lowercase_list(select)))
+        if expand:
+            params.append("$expand=" + ",".join(expand))
+        url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
+        if params:
+            url += "?" + "&".join(params)
         headers = None
         if include_annotations:
             headers = {"Prefer": f'odata.include-annotations="{include_annotations}"'}

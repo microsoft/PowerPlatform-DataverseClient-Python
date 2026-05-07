@@ -69,6 +69,7 @@ class _RecordGet:
     table: str
     record_id: str
     select: Optional[List[str]] = None
+    expand: Optional[List[str]] = None
     include_annotations: Optional[str] = None
 
 
@@ -399,7 +400,13 @@ class _BatchClient:
 
     def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:
         return [
-            self._od._build_get(op.table, op.record_id, select=op.select, include_annotations=op.include_annotations)
+            self._od._build_get(
+                op.table,
+                op.record_id,
+                select=op.select,
+                expand=op.expand,
+                include_annotations=op.include_annotations,
+            )
         ]
 
     def _resolve_record_list(self, op: _RecordList) -> List[_RawRequest]:

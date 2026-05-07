@@ -182,7 +182,31 @@ class TestRecordsRetrieve(unittest.TestCase):
     def test_retrieve_passes_select(self):
         self.client._odata._get.return_value = {"accountid": "abc", "name": "Contoso"}
         self.client.records.retrieve("account", "abc", select=["name"])
-        self.client._odata._get.assert_called_once_with("account", "abc", select=["name"], include_annotations=None)
+        self.client._odata._get.assert_called_once_with(
+            "account", "abc", select=["name"], expand=None, include_annotations=None
+        )
+
+    def test_retrieve_passes_expand(self):
+        self.client._odata._get.return_value = {
+            "accountid": "abc",
+            "name": "Contoso",
+            "primarycontactid": {"contactid": "cid", "fullname": "John Doe"},
+        }
+        record = self.client.records.retrieve("account", "abc", expand=["primarycontactid"])
+        self.client._odata._get.assert_called_once_with(
+            "account", "abc", select=None, expand=["primarycontactid"], include_annotations=None
+        )
+        self.assertEqual(record["primarycontactid"]["fullname"], "John Doe")
+
+    def test_retrieve_passes_select_and_expand(self):
+        self.client._odata._get.return_value = {
+            "name": "Contoso",
+            "primarycontactid": {"fullname": "John Doe"},
+        }
+        self.client.records.retrieve("account", "abc", select=["name"], expand=["primarycontactid"])
+        self.client._odata._get.assert_called_once_with(
+            "account", "abc", select=["name"], expand=["primarycontactid"], include_annotations=None
+        )
 
     def test_retrieve_passes_include_annotations(self):
         annotation = "OData.Community.Display.V1.FormattedValue"
@@ -192,7 +216,9 @@ class TestRecordsRetrieve(unittest.TestCase):
             f"statuscode@{annotation}": "Active",
         }
         record = self.client.records.retrieve("account", "abc", include_annotations=annotation)
-        self.client._odata._get.assert_called_once_with("account", "abc", select=None, include_annotations=annotation)
+        self.client._odata._get.assert_called_once_with(
+            "account", "abc", select=None, expand=None, include_annotations=annotation
+        )
         self.assertEqual(record[f"statuscode@{annotation}"], "Active")
 
     def test_retrieve_no_deprecation_warning(self):

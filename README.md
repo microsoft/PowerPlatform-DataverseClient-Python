@@ -163,6 +163,15 @@ account_id = client.records.create("account", {"name": "Contoso Ltd"})
 account = client.records.retrieve("account", account_id)
 print(account["name"])
 
+# Read with expand — fetch a related record in the same HTTP request
+account = client.records.retrieve(
+    "account", account_id,
+    select=["name"],
+    expand=["primarycontactid"],
+)
+contact = (account.get("primarycontactid") or {})
+print(contact.get("fullname"))
+
 # Update a record
 client.records.update("account", account_id, {"telephone1": "555-0199"})
 
@@ -694,7 +703,7 @@ batch.records.create("account", {"name": "Contoso"})
 batch.records.create("account", [{"name": "Fabrikam"}, {"name": "Woodgrove"}])
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
 batch.records.delete("account", old_id)
-batch.records.retrieve("account", account_id, select=["name"])     # single record
+batch.records.retrieve("account", account_id, select=["name"], expand=["primarycontactid"])  # single record with expand
 batch.records.list(                                                # multi-record, single page
     "account",
     filter="statecode eq 0",

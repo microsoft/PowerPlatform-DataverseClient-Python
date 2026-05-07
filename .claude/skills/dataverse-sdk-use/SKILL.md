@@ -99,6 +99,15 @@ contact_ids = client.records.create("contact", contacts)
 # Get single record by ID
 account = client.records.retrieve("account", account_id, select=["name", "telephone1"])
 
+# With expand — fetch a related record in the same HTTP request
+account = client.records.retrieve(
+    "account", account_id,
+    select=["name"],
+    expand=["primarycontactid"],
+)
+contact = (account.get("primarycontactid") or {})
+print(contact.get("fullname"))
+
 # Simple shortcut — use records.list() only for basic filter + select without composable logic.
 # Follows @odata.nextLink automatically and loads all matching records into memory.
 # For filtering, sorting, expansion, or formatted values, prefer client.query.builder() (see below).
@@ -481,7 +490,7 @@ Use `client.batch` to send multiple operations in one HTTP request. All batch me
 batch = client.batch.new()
 batch.records.create("account", {"name": "Contoso"})
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
-batch.records.retrieve("account", account_id, select=["name"], include_annotations="OData.Community.Display.V1.FormattedValue")  # single record
+batch.records.retrieve("account", account_id, select=["name"], expand=["primarycontactid"], include_annotations="OData.Community.Display.V1.FormattedValue")  # single record with expand
 batch.records.list("account", filter="statecode eq 0", select=["name"], orderby=["name asc"], top=50, page_size=25, count=True)  # multi-record, single page
 batch.query.sql("SELECT TOP 5 name FROM account")
 

@@ -253,7 +253,22 @@ class TestResolveBatchItems(unittest.TestCase):
         op = _RecordGet(table="account", record_id="guid-1", select=["name"])
         result = client._resolve_record_get(op)
 
-        od._build_get.assert_called_once_with("account", "guid-1", select=["name"], include_annotations=None)
+        od._build_get.assert_called_once_with(
+            "account", "guid-1", select=["name"], expand=None, include_annotations=None
+        )
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_get_with_expand(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_get.return_value = mock_req
+
+        op = _RecordGet(table="account", record_id="guid-1", select=["name"], expand=["primarycontactid"])
+        result = client._resolve_record_get(op)
+
+        od._build_get.assert_called_once_with(
+            "account", "guid-1", select=["name"], expand=["primarycontactid"], include_annotations=None
+        )
         self.assertEqual(result, [mock_req])
 
     def test_resolve_record_get_with_annotations(self):
@@ -265,7 +280,9 @@ class TestResolveBatchItems(unittest.TestCase):
         op = _RecordGet(table="account", record_id="guid-1", select=["name"], include_annotations=annotation)
         result = client._resolve_record_get(op)
 
-        od._build_get.assert_called_once_with("account", "guid-1", select=["name"], include_annotations=annotation)
+        od._build_get.assert_called_once_with(
+            "account", "guid-1", select=["name"], expand=None, include_annotations=annotation
+        )
         self.assertEqual(result, [mock_req])
 
     def test_resolve_record_list_basic(self):

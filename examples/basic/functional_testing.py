@@ -276,6 +276,21 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
         else:
             print(f"[WARN] include_annotations: expected key '{ann_key}' not present in response")
 
+        # -- expand: verify navigation property expansion on a single-record GET --
+        # owninguser is a system navigation property present on all user-owned tables.
+        try:
+            expanded = client.records.retrieve(
+                table_schema_name,
+                record_id,
+                select=[f"{attr_prefix}_name"],
+                expand=["owninguser"],
+            )
+            owner = (expanded.get("owninguser") or {}) if expanded else {}
+            owner_name = owner.get("fullname") or owner.get("domainname") or "(unknown)"
+            print(f"[OK] records.retrieve with expand=['owninguser']: owner='{owner_name}'")
+        except Exception as e:  # noqa: BLE001
+            print(f"[WARN] records.retrieve expand skipped: {e}")
+
         return record
 
     except HttpError as e:
@@ -597,11 +612,12 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                 " + tables.get + tables.list + query.sql (5 ops, 1 POST $batch)"
             )
             batch = client.batch.new()
-            # [0] Single-record retrieve with annotations
+            # [0] Single-record retrieve with annotations and expand
             batch.records.retrieve(
                 table_schema_name,
                 all_ids[0],
                 select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_is_active"],
+                expand=["owninguser"],
                 include_annotations=annotation,
             )
             # [1] Multi-record list with orderby, page_size, count, include_annotations
@@ -630,7 +646,10 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                     name = resp.data.get(f"{attr_prefix}_name")
                     ann_key = f"{attr_prefix}_is_active@{annotation}"
                     ann_val = resp.data.get(ann_key, "<not returned>")
+                    owner = resp.data.get("owninguser") or {}
+                    owner_name = owner.get("fullname") or owner.get("domainname") or "<not returned>"
                     print(f"   records.retrieve → name='{name}', {ann_key}='{ann_val}'")
+                    print(f"   records.retrieve expand=['owninguser'] → owner='{owner_name}'")
                 elif i == 1 and resp.data:
                     rows = resp.data.get("value", [])
                     names_ordered = [r.get(f"{attr_prefix}_name") for r in rows]

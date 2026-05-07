@@ -335,6 +335,7 @@ class BatchRecordOperations:
         record_id: str,
         *,
         select: Optional[List[str]] = None,
+        expand: Optional[List[str]] = None,
         include_annotations: Optional[str] = None,
     ) -> None:
         """
@@ -351,6 +352,10 @@ class BatchRecordOperations:
         :type record_id: :class:`str`
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
+        :param expand: Optional list of navigation properties to expand.
+            Navigation property names are case-sensitive and must match the
+            entity's ``$metadata``.
+        :type expand: list[str] or None
         :param include_annotations: OData annotation pattern for the
             ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
             ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
@@ -362,14 +367,22 @@ class BatchRecordOperations:
             batch.records.retrieve(
                 "account", account_id,
                 select=["name", "statuscode"],
+                expand=["primarycontactid"],
                 include_annotations="OData.Community.Display.V1.FormattedValue",
             )
             result = batch.execute()
             record = result.responses[0].data
-            print(record["statuscode@OData.Community.Display.V1.FormattedValue"])
+            contact = (record.get("primarycontactid") or {})
+            print(contact.get("fullname"))
         """
         self._batch._items.append(
-            _RecordGet(table=table, record_id=record_id, select=select, include_annotations=include_annotations)
+            _RecordGet(
+                table=table,
+                record_id=record_id,
+                select=select,
+                expand=expand,
+                include_annotations=include_annotations,
+            )
         )
 
     def list(
