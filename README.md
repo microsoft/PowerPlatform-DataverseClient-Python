@@ -124,6 +124,7 @@ The SDK provides a simple, pythonic interface for Dataverse operations:
 | **Records** | Dataverse records represented as Python dictionaries with column schema names |
 | **Schema names** | Use table schema names (`"account"`, `"new_MyTestTable"`) and column schema names (`"name"`, `"new_MyTestColumn"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
 | **Bulk Operations** | Efficient bulk processing for multiple records with automatic optimization |
+| **QueryBuilder** | Preferred query API: `client.query.builder()` with composable `where(col(...))` filters, formatted values, expand, and streaming; use `records.list()` only as a shortcut for simple filter+select |
 | **Paging** | Automatic handling of large result sets with iterators |
 | **Structured Errors** | Detailed exception hierarchy with retry guidance and diagnostic information |
 | **Customization prefix values** | Custom tables and columns require a customization prefix value to be included for all operations (e.g., `"new_MyTestTable"`, not `"MyTestTable"`). See: [Table definitions in Microsoft Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/entity-metadata) |
@@ -357,13 +358,31 @@ for record in (client.query.builder("account")
 **Formatted values and annotations** -- request localized labels, currency symbols, and display names:
 
 ```python
-# Get formatted values (choice labels, currency, lookup names)
+# Get formatted values (choice labels, currency, lookup names) — via query builder
 for record in (client.query.builder("account")
                .select("name", "statecode", "revenue")
                .include_formatted_values()
                .execute()):
     status = record["statecode@OData.Community.Display.V1.FormattedValue"]
     print(f"{record['name']}: {status}")
+
+# Get formatted values — via records.list() / records.retrieve() include_annotations param
+result = client.records.list(
+    "account",
+    select=["name", "statecode"],
+    include_annotations="OData.Community.Display.V1.FormattedValue",
+)
+for record in result:
+    label = record.get("statecode@OData.Community.Display.V1.FormattedValue")
+    print(f"{record['name']}: {label}")
+
+record = client.records.retrieve(
+    "account", account_id,
+    select=["name", "statuscode"],
+    include_annotations="OData.Community.Display.V1.FormattedValue",
+)
+if record:
+    print(record.get("statuscode@OData.Community.Display.V1.FormattedValue"))
 ```
 
 **Nested expand with options** -- expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
@@ -383,29 +402,11 @@ for record in (client.query.builder("account")
     print(record["name"], record.get("Account_Tasks"))
 ```
 
-**Paging** -- `records.list()` follows `@odata.nextLink` automatically and loads all matching records into a single `QueryResult`. Use `top` to bound total records and round-trips. For very large result sets where memory matters, stream pages explicitly with `execute_pages()` or `records.list_pages()`:
+**Paging** -- use `execute_pages()` for streaming large result sets with full builder options (filtering, sorting, formatted values). `records.list()` and `records.list_pages()` are simpler shortcuts for string-based OData filter queries:
 
 ```python
-# records.list() — automatic paging, all records in memory (good for small-to-medium sets)
-result = client.records.list(
-    "account",
-    filter="statecode eq 0",
-    select=["name"],
-    top=500,  # bounds total records returned and number of HTTP round-trips
-)
-for record in result:
-    print(record["name"])
-
-# records.list_pages() — stream one page at a time without loading all records into memory
-for page_num, page in enumerate(
-    client.records.list_pages("account", filter="statecode eq 0", select=["name"])
-):
-    print(f"Page {page_num + 1}: {len(page)} records")
-    for record in page:
-        print(record["name"])
-
-# query.builder().execute_pages() — stream one page at a time, memory stays flat
-# Use this for large result sets (exports, bulk processing) where loading all into memory is risky
+# Preferred: query.builder().execute_pages() — stream one page at a time, memory stays flat
+# Supports composable filters, sorting, formatted values, and expand with nested selects
 for page_num, page in enumerate(
     client.query.builder("account")
     .select("accountid", "name", "revenue")
@@ -417,18 +418,42 @@ for page_num, page in enumerate(
     print(f"Page {page_num + 1}: {len(page)} records")
     for record in page:
         print(f"  {record['name']}")
+
+# Simple shortcut: records.list() — automatic paging, all records in memory
+# Use for basic filter+select queries; string OData filter only (no composable expressions)
+result = client.records.list(
+    "account",
+    filter="statecode eq 0",
+    select=["name", "revenue"],
+    orderby=["name asc"],          # optional sort
+    top=500,                       # bounds total records returned and number of HTTP round-trips
+    page_size=200,                 # optional: hint Dataverse default page size
+)
+for record in result:
+    print(record["name"])
+
+# Simple streaming shortcut: records.list_pages() — same params as records.list(), yields one page at a time
+for page_num, page in enumerate(
+    client.records.list_pages("account", filter="statecode eq 0", select=["name"], orderby=["name asc"])
+):
+    print(f"Page {page_num + 1}: {len(page)} records")
+    for record in page:
+        print(record["name"])
 ```
 
-> **Deprecation note:** `execute(by_page=True)` and `execute(by_page=False)` are deprecated and emit a `UserWarning`. Replace with `execute_pages()` (streaming) or plain `execute()` (eager). The migration tool (`tools/migrate_v0_to_v1.py`) rewrites these automatically.
+> **Deprecation note:** `execute(by_page=True)` and `execute(by_page=False)` are deprecated and emit a `UserWarning`. Replace with `execute_pages()` (streaming) or plain `execute()` (eager). `QueryBuilder.to_dataframe()` is also deprecated; use `.execute().to_dataframe()` instead. The migration tool (`tools/migrate_v0_to_v1.py`) rewrites all of these automatically.
 
 **Record count** -- include `$count=true` in the request:
 
 ```python
-# Request count alongside results
+# Via query builder
 results = (client.query.builder("account")
            .where(col("statecode") == 0)
            .count()
            .execute())
+
+# Via records.list() — count=True adds $count=true to the OData request
+results = client.records.list("account", filter="statecode eq 0", count=True)
 ```
 
 **FetchXML queries** -- `client.query.fetchxml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
@@ -487,15 +512,15 @@ sql = f"SELECT TOP 10 {', '.join(col_names[:5])} FROM account"
 df = client.dataframe.sql(sql)
 ```
 
-**Raw OData filter strings** can be passed directly to `records.list()` or the query builder for cases where you need direct control over the OData filter:
+**Simple list shortcut** -- `records.list()` accepts a raw OData filter string for basic queries. For anything beyond simple filter+select, prefer `client.query.builder()` (composable filters, formatted values, nested expand):
 
 ```python
-# Query with a raw OData filter string — follows @odata.nextLink automatically,
-# all records loaded into memory. Use top to bound results and round-trips.
+# records.list() shortcut — raw OData filter string, all records loaded into memory
+# Column names in filter must be lowercase logical names
 for record in client.records.list(
     "account",
     select=["name"],
-    filter="statecode eq 0",  # Raw OData: column names must be lowercase
+    filter="statecode eq 0",
     top=100,
 ):
     print(record["name"])
@@ -669,7 +694,14 @@ batch.records.create("account", {"name": "Contoso"})
 batch.records.create("account", [{"name": "Fabrikam"}, {"name": "Woodgrove"}])
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
 batch.records.delete("account", old_id)
-batch.records.retrieve("account", account_id, select=["name"])     # single record (GA)
+batch.records.retrieve("account", account_id, select=["name"])     # single record
+batch.records.list(                                                # multi-record, single page
+    "account",
+    filter="statecode eq 0",
+    select=["name"],
+    orderby=["name asc"],
+    top=50,
+)
 
 result = batch.execute()
 for item in result.responses:
@@ -807,9 +839,10 @@ For optimal performance in production environments:
 
 | Best Practice | Description |
 |---------------|-------------|
+| **Prefer QueryBuilder for queries** | Use `client.query.builder()` for filtering, sorting, expansion, or formatted values; use `records.list()` only as a shortcut for simple filter+select |
 | **Bulk Operations** | Pass lists to `records.create()`, `records.update()` for automatic bulk processing, for `records.delete()`, set `use_bulk_delete` when passing lists to use bulk operation |
 | **Select Fields** | Specify `select` parameter to limit returned columns and reduce payload size |
-| **Page Size Control** | Use `top` and `page_size` parameters to control memory usage |
+| **Page Size Control** | Use `top` and `page_size` parameters to control memory usage; use `execute_pages()` for large result sets |
 | **Connection Reuse** | Reuse `DataverseClient` instances across operations |
 | **Production Credentials** | Use `ClientSecretCredential` or `CertificateCredential` for unattended operations |
 | **Error Handling** | Implement retry logic for transient errors (`e.is_transient`) |

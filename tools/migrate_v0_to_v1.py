@@ -41,6 +41,9 @@ Builder methods (.filter_*  ->  .where(col(...)...))::
     .filter("expr")                    ->  .where(raw("expr"))
     .execute(by_page=True)             ->  .execute_pages()
     .execute(by_page=False)            ->  .execute()  (flag removed)
+    <builder_chain>.to_dataframe()     ->  <builder_chain>.execute().to_dataframe()
+        Inserts .execute() when the receiver is a recognised QueryBuilder chain
+        (contains .builder(), .select(), .where(), or a .filter_*() call).
 
 Record namespace::
 
@@ -150,6 +153,9 @@ _FUNC_UNARY_MAP = {
     "is_not_null": "is_not_null",
 }
 _ALL_FILTER_FUNCS: Set[str] = set(_FUNC_BINARY_OP_MAP) | set(_FUNC_METHOD_MAP) | set(_FUNC_UNARY_MAP)
+
+# Methods that identify a QueryBuilder call chain (used to detect .to_dataframe() callers)
+_BUILDER_CHAIN_METHODS: Set[str] = {"builder", "select", "where", "filter", "execute_pages"} | _ALL_FILTER_METHODS
 
 # Top-level client shortcut -> (new_namespace, new_method)
 _CLIENT_SHORTCUTS = {
@@ -337,6 +343,25 @@ class _V1Migrator(cst.CSTTransformer):
                 return updated_node.with_changes(args=other_args)
 
         # ----------------------------------------------------------------
+        # QueryBuilder.to_dataframe() -> .execute().to_dataframe()
+        # Only rewrites when the receiver is a recognised QueryBuilder chain
+        # (contains .builder(), .select(), .where(), or a .filter_*() call).
+        # Skips if receiver is already a .execute() call (QueryResult.to_dataframe()
+        # is the GA form and must not be touched).
+        # ----------------------------------------------------------------
+        if method_name == "to_dataframe":
+            receiver = func.value
+            already_executed = (
+                isinstance(receiver, cst.Call)
+                and isinstance(receiver.func, cst.Attribute)
+                and isinstance(receiver.func.attr, cst.Name)
+                and receiver.func.attr.value == "execute"
+            )
+            if not already_executed and self._is_query_builder_chain(receiver):
+                execute_call = _call(_attr(receiver, "execute"))
+                return updated_node.with_changes(func=func.with_changes(value=execute_call))
+
+        # ----------------------------------------------------------------
         # batch.records.get(table, id) -> batch.records.retrieve(table, id)
         # NOTE: client.records.get() is NOT codemodded — the return type changes
         # between beta and GA (Record | None vs Record for single-id; QueryResult vs
@@ -381,6 +406,20 @@ class _V1Migrator(cst.CSTTransformer):
                     if a.value.value == "False":
                         return False
         return None
+
+    @staticmethod
+    def _is_query_builder_chain(node: cst.BaseExpression) -> bool:
+        """Return True if *node* is a call chain that includes a QueryBuilder method."""
+        cur: cst.BaseExpression = node
+        while isinstance(cur, cst.Call):
+            f = cur.func
+            if isinstance(f, cst.Attribute) and isinstance(f.attr, cst.Name):
+                if f.attr.value in _BUILDER_CHAIN_METHODS:
+                    return True
+                cur = f.value
+            else:
+                break
+        return False
 
     # ------------------------------------------------------------------
     # Build the argument for .where() from .filter_*() args
@@ -745,21 +784,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("[ERROR] No Python files found.", file=sys.stderr)
         return 1
 
-    changed = skipped = manual_total = 0
+    changed = skipped = needs_manual = manual_total = 0
     for path in targets:
         was_changed, notes = migrate_file(path, dry_run=dry_run, client_var=client_var)
         if was_changed:
             changed += 1
             tag = "[DRY-RUN]" if dry_run else "[MIGRATED]"
-            print(f"{tag} {path}")
+            if notes:
+                print(f"{tag} {path}  (auto-rewrites applied; manual review still required)")
+            else:
+                print(f"{tag} {path}")
+        elif notes:
+            needs_manual += 1
+            print(f"[NEEDS-MANUAL] {path}  (no auto-rewrites to apply; manual migration required)")
         else:
             skipped += 1
         for note in notes:
-            print(f"  [MANUAL] {path}: {note}")
+            print(f"  [MANUAL] {note}")
             manual_total += 1
 
     suffix = "would be " if dry_run else ""
-    print(f"\nDone: {changed} file(s) {suffix}modified, {skipped} unchanged.", end="")
+    parts = [f"{changed} file(s) {suffix}auto-migrated"]
+    if needs_manual:
+        parts.append(f"{needs_manual} need manual-only migration")
+    parts.append(f"{skipped} unchanged")
+    print(f"\nDone: {', '.join(parts)}.", end="")
     if manual_total:
         print(f" {manual_total} pattern(s) require manual review.")
     else:

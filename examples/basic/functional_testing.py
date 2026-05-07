@@ -250,24 +250,33 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
         if record is None:
             raise RuntimeError("Record did not become available in time.")
 
-        if record:
-            print("[OK] Record retrieved successfully!")
-            print("   Retrieved data:")
+        print("[OK] Record retrieved successfully!")
+        print("   Retrieved data:")
+        for field_name in [
+            f"{attr_prefix}_name",
+            f"{attr_prefix}_description",
+            f"{attr_prefix}_count",
+            f"{attr_prefix}_amount",
+            f"{attr_prefix}_is_active",
+        ]:
+            if field_name in record:
+                print(f"     {field_name}: {record[field_name]}")
 
-            # Display key fields
-            for field_name in [
-                f"{attr_prefix}_name",
-                f"{attr_prefix}_description",
-                f"{attr_prefix}_count",
-                f"{attr_prefix}_amount",
-                f"{attr_prefix}_is_active",
-            ]:
-                if field_name in record:
-                    print(f"     {field_name}: {record[field_name]}")
-
-            return record
+        # -- include_annotations: verify FormattedValue annotations are returned --
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        annotated = client.records.retrieve(
+            table_schema_name,
+            record_id,
+            select=[f"{attr_prefix}_is_active", f"{attr_prefix}_count"],
+            include_annotations=annotation,
+        )
+        ann_key = f"{attr_prefix}_is_active@{annotation}"
+        if annotated is not None and ann_key in annotated:
+            print(f"[OK] include_annotations verified: {ann_key} = '{annotated[ann_key]}'")
         else:
-            raise ValueError("Record not found")
+            print(f"[WARN] include_annotations: expected key '{ann_key}' not present in response")
+
+        return record
 
     except HttpError as e:
         print(f"[ERR] HTTP error during record reading: {e}")
@@ -333,6 +342,51 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
             names = [r.get(f"{attr_prefix}_name", "N/A") for r in page]
             print(f"   Page {page_num}: {len(page)} record(s) — {names}")
         print(f"[OK] records.list_pages() completed! {total_records} records across {page_num} page(s).")
+
+        # -- records.list() with orderby, page_size, count, include_annotations --------
+        print("\nQuerying records.list() with orderby / page_size / count / include_annotations...")
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        annotated_result = client.records.list(
+            table_schema_name,
+            select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+            filter=active_filter,
+            orderby=[f"{attr_prefix}_name asc"],
+            page_size=50,
+            count=True,
+            include_annotations=annotation,
+        )
+        names_ordered = [r.get(f"{attr_prefix}_name", "N/A") for r in annotated_result]
+        ann_key = f"{attr_prefix}_is_active@{annotation}"
+        ann_present = any(ann_key in r for r in annotated_result)
+        print(f"   Records (ordered): {names_ordered}")
+        if ann_present:
+            print(f"[OK] include_annotations verified: '{ann_key}' present in list() results")
+        else:
+            print(f"[WARN] include_annotations: '{ann_key}' not found — may not be supported by this environment")
+        # Verify orderby: names should be non-decreasing
+        if len(names_ordered) > 1 and all(isinstance(n, str) for n in names_ordered):
+            assert names_ordered == sorted(names_ordered), f"orderby asc not respected: {names_ordered}"
+        print(f"[OK] records.list() with extended params completed! {len(annotated_result)} record(s).")
+
+        # -- records.list_pages() with orderby, page_size, include_annotations ---------
+        print("\nQuerying records.list_pages() with orderby / page_size / include_annotations...")
+        lp_records = []
+        for page in client.records.list_pages(
+            table_schema_name,
+            select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+            filter=active_filter,
+            orderby=[f"{attr_prefix}_name asc"],
+            page_size=50,
+            include_annotations=annotation,
+        ):
+            lp_records.extend(page)
+        lp_names = [r.get(f"{attr_prefix}_name", "N/A") for r in lp_records]
+        lp_ann_present = any(ann_key in r for r in lp_records)
+        if lp_ann_present:
+            print(f"[OK] include_annotations verified in list_pages() results")
+        else:
+            print(f"[WARN] include_annotations: '{ann_key}' not found in list_pages() results")
+        print(f"[OK] records.list_pages() with extended params completed! {len(lp_records)} record(s).")
 
     except Exception as e:
         print(f"[WARN] Query test encountered an issue: {e}")
@@ -533,19 +587,38 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             print(f"[OK] {len(result.succeeded)} ops → {len(all_ids)} records created: {all_ids}")
 
         # -------------------------------------------------------------------
-        # [2/11] READ — get by ID + tables.get + tables.list + query.sql
-        #              All 4 reads in one batch request
+        # [2/11] READ — records.retrieve + records.list (with extended params)
+        #              + tables.get + tables.list + query.sql — 1 POST $batch
         # -------------------------------------------------------------------
         if all_ids:
-            print("\n[2/11] Read — records.get + tables.get + tables.list + query.sql (4 ops, 1 POST $batch)")
+            annotation = "OData.Community.Display.V1.FormattedValue"
+            print(
+                "\n[2/11] Read — records.retrieve + records.list(orderby/page_size/count/include_annotations)"
+                " + tables.get + tables.list + query.sql (5 ops, 1 POST $batch)"
+            )
             batch = client.batch.new()
-            batch.records.get(
+            # [0] Single-record retrieve with annotations
+            batch.records.retrieve(
                 table_schema_name,
                 all_ids[0],
-                select=[f"{attr_prefix}_name", f"{attr_prefix}_count"],
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_is_active"],
+                include_annotations=annotation,
             )
+            # [1] Multi-record list with orderby, page_size, count, include_annotations
+            batch.records.list(
+                table_schema_name,
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+                filter=f"{attr_prefix}_is_active eq true",
+                orderby=[f"{attr_prefix}_name asc"],
+                page_size=50,
+                count=True,
+                include_annotations=annotation,
+            )
+            # [2] Table metadata
             batch.tables.get(table_schema_name)
+            # [3] Table list
             batch.tables.list()
+            # [4] SQL
             batch.query.sql(f"SELECT TOP 3 {attr_prefix}_name FROM {logical_name}")
             result = batch.execute()
             print(f"[OK] {len(result.succeeded)} succeeded, {len(result.failed)} failed")
@@ -554,16 +627,27 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                     print(f"   [{i}] FAILED {resp.status_code}: {resp.error_message}")
                     continue
                 if i == 0 and resp.data:
-                    print(
-                        f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}"
-                    )
+                    name = resp.data.get(f"{attr_prefix}_name")
+                    ann_key = f"{attr_prefix}_is_active@{annotation}"
+                    ann_val = resp.data.get(ann_key, "<not returned>")
+                    print(f"   records.retrieve → name='{name}', {ann_key}='{ann_val}'")
                 elif i == 1 and resp.data:
+                    rows = resp.data.get("value", [])
+                    names_ordered = [r.get(f"{attr_prefix}_name") for r in rows]
+                    ann_key = f"{attr_prefix}_is_active@{annotation}"
+                    ann_present = any(ann_key in r for r in rows)
+                    print(f"   records.list → {len(rows)} row(s), ordered: {names_ordered}")
+                    if ann_present:
+                        print(f"   [OK] include_annotations '{ann_key}' present in batch.records.list() results")
+                    else:
+                        print(f"   [WARN] include_annotations '{ann_key}' not found in batch.records.list() results")
+                elif i == 2 and resp.data:
                     print(
                         f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'"
                     )
-                elif i == 2 and resp.data:
-                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
                 elif i == 3 and resp.data:
+                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
+                elif i == 4 and resp.data:
                     print(f"   query.sql   → {len(resp.data.get('value', []))} rows returned")
 
         # -------------------------------------------------------------------

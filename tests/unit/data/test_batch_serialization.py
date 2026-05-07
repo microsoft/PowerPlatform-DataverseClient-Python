@@ -14,6 +14,7 @@ from PowerPlatform.Dataverse.data._batch import (
     _RecordCreate,
     _RecordDelete,
     _RecordGet,
+    _RecordList,
     _RecordUpdate,
     _RecordUpsert,
     _TableCreate,
@@ -252,7 +253,72 @@ class TestResolveBatchItems(unittest.TestCase):
         op = _RecordGet(table="account", record_id="guid-1", select=["name"])
         result = client._resolve_record_get(op)
 
-        od._build_get.assert_called_once_with("account", "guid-1", select=["name"])
+        od._build_get.assert_called_once_with("account", "guid-1", select=["name"], include_annotations=None)
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_get_with_annotations(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_get.return_value = mock_req
+
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        op = _RecordGet(table="account", record_id="guid-1", select=["name"], include_annotations=annotation)
+        result = client._resolve_record_get(op)
+
+        od._build_get.assert_called_once_with("account", "guid-1", select=["name"], include_annotations=annotation)
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_list_basic(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_list.return_value = mock_req
+
+        op = _RecordList(table="account", select=["name"], filter="statecode eq 0", top=10)
+        result = client._resolve_record_list(op)
+
+        od._build_list.assert_called_once_with(
+            "account",
+            select=["name"],
+            filter="statecode eq 0",
+            orderby=None,
+            top=10,
+            expand=None,
+            page_size=None,
+            count=False,
+            include_annotations=None,
+        )
+        self.assertEqual(result, [mock_req])
+
+    def test_resolve_record_list_all_params(self):
+        client, od = self._client_and_od()
+        mock_req = MagicMock()
+        od._build_list.return_value = mock_req
+
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        op = _RecordList(
+            table="account",
+            select=["name"],
+            filter="statecode eq 0",
+            orderby=["name asc"],
+            top=50,
+            expand=["primarycontactid"],
+            page_size=100,
+            count=True,
+            include_annotations=annotation,
+        )
+        result = client._resolve_record_list(op)
+
+        od._build_list.assert_called_once_with(
+            "account",
+            select=["name"],
+            filter="statecode eq 0",
+            orderby=["name asc"],
+            top=50,
+            expand=["primarycontactid"],
+            page_size=100,
+            count=True,
+            include_annotations=annotation,
+        )
         self.assertEqual(result, [mock_req])
 
     def test_resolve_record_delete_single(self):
@@ -597,6 +663,75 @@ class TestBatchRecordOperationsUpsert(unittest.TestCase):
         intent = batch._items[0]
         self.assertEqual(len(intent.items), 2)
         self.assertEqual(intent.items[1].alternate_key, {"accountnumber": "B"})
+
+
+class TestBatchRecordOperationsList(unittest.TestCase):
+    """Tests for BatchRecordOperations.list() surface (operations/batch.py)."""
+
+    def _make_batch(self):
+        from PowerPlatform.Dataverse.operations.batch import BatchRecordOperations
+
+        batch = MagicMock()
+        batch._items = []
+        return BatchRecordOperations(batch), batch
+
+    def test_list_basic_appends_record_list(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", filter="statecode eq 0", select=["name"], top=10)
+
+        self.assertEqual(len(batch._items), 1)
+        intent = batch._items[0]
+        self.assertIsInstance(intent, _RecordList)
+        self.assertEqual(intent.table, "account")
+        self.assertEqual(intent.filter, "statecode eq 0")
+        self.assertEqual(intent.select, ["name"])
+        self.assertEqual(intent.top, 10)
+
+    def test_list_passes_orderby(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", orderby=["name asc"])
+        self.assertEqual(batch._items[0].orderby, ["name asc"])
+
+    def test_list_passes_expand(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", expand=["primarycontactid"])
+        self.assertEqual(batch._items[0].expand, ["primarycontactid"])
+
+    def test_list_passes_page_size(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", page_size=200)
+        self.assertEqual(batch._items[0].page_size, 200)
+
+    def test_list_passes_count(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", count=True)
+        self.assertTrue(batch._items[0].count)
+
+    def test_list_passes_include_annotations(self):
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", include_annotations=annotation)
+        self.assertEqual(batch._items[0].include_annotations, annotation)
+
+    def test_list_filter_expression_converted_to_str(self):
+        from PowerPlatform.Dataverse.models.filters import col
+
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account", filter=col("statecode") == 0)
+        self.assertEqual(batch._items[0].filter, "statecode eq 0")
+
+    def test_list_defaults(self):
+        rec_ops, batch = self._make_batch()
+        rec_ops.list("account")
+        intent = batch._items[0]
+        self.assertIsNone(intent.filter)
+        self.assertIsNone(intent.select)
+        self.assertIsNone(intent.orderby)
+        self.assertIsNone(intent.top)
+        self.assertIsNone(intent.expand)
+        self.assertIsNone(intent.page_size)
+        self.assertFalse(intent.count)
+        self.assertIsNone(intent.include_annotations)
 
 
 class TestRaiseTopLevelBatchError(unittest.TestCase):

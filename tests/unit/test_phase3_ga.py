@@ -182,7 +182,18 @@ class TestRecordsRetrieve(unittest.TestCase):
     def test_retrieve_passes_select(self):
         self.client._odata._get.return_value = {"accountid": "abc", "name": "Contoso"}
         self.client.records.retrieve("account", "abc", select=["name"])
-        self.client._odata._get.assert_called_once_with("account", "abc", select=["name"])
+        self.client._odata._get.assert_called_once_with("account", "abc", select=["name"], include_annotations=None)
+
+    def test_retrieve_passes_include_annotations(self):
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        self.client._odata._get.return_value = {
+            "accountid": "abc",
+            "statuscode": 1,
+            f"statuscode@{annotation}": "Active",
+        }
+        record = self.client.records.retrieve("account", "abc", include_annotations=annotation)
+        self.client._odata._get.assert_called_once_with("account", "abc", select=None, include_annotations=annotation)
+        self.assertEqual(record[f"statuscode@{annotation}"], "Active")
 
     def test_retrieve_no_deprecation_warning(self):
         self.client._odata._get.return_value = {"accountid": "abc", "name": "Contoso"}
@@ -302,6 +313,37 @@ class TestRecordsList(unittest.TestCase):
         df = self.client.records.list("account", select=["name"]).to_dataframe()
         self.assertIsInstance(df, pd.DataFrame)
         self.assertEqual(len(df), 2)
+
+    def test_list_passes_orderby(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        self.client.records.list("account", orderby=["name asc"])
+        call_kwargs = self.client._odata._get_multiple.call_args[1]
+        self.assertEqual(call_kwargs["orderby"], ["name asc"])
+
+    def test_list_passes_expand(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        self.client.records.list("account", expand=["primarycontactid"])
+        call_kwargs = self.client._odata._get_multiple.call_args[1]
+        self.assertEqual(call_kwargs["expand"], ["primarycontactid"])
+
+    def test_list_passes_page_size(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        self.client.records.list("account", page_size=200)
+        call_kwargs = self.client._odata._get_multiple.call_args[1]
+        self.assertEqual(call_kwargs["page_size"], 200)
+
+    def test_list_passes_count(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        self.client.records.list("account", count=True)
+        call_kwargs = self.client._odata._get_multiple.call_args[1]
+        self.assertTrue(call_kwargs["count"])
+
+    def test_list_passes_include_annotations(self):
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        self.client._odata._get_multiple.return_value = iter([])
+        self.client.records.list("account", include_annotations=annotation)
+        call_kwargs = self.client._odata._get_multiple.call_args[1]
+        self.assertEqual(call_kwargs["include_annotations"], annotation)
 
 
 class TestExecuteNoDeprecationFromRecordsGet(unittest.TestCase):

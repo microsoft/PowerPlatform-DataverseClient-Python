@@ -684,7 +684,13 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         self._execute_raw(self._build_delete(table_schema_name, key))
 
-    def _get(self, table_schema_name: str, key: str, select: Optional[List[str]] = None) -> Dict[str, Any]:
+    def _get(
+        self,
+        table_schema_name: str,
+        key: str,
+        select: Optional[List[str]] = None,
+        include_annotations: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Retrieve a single record.
 
         :param table_schema_name: Schema name of the table.
@@ -693,11 +699,15 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type key: ``str``
         :param select: Columns to select; joined with commas into $select.
         :type select: ``list[str]`` | ``None``
+        :param include_annotations: OData annotation pattern for the ``Prefer: odata.include-annotations`` header, or ``None``.
+        :type include_annotations: ``str`` | ``None``
 
         :return: Retrieved record dictionary (may be empty if no selected attributes).
         :rtype: ``dict[str, Any]``
         """
-        return self._execute_raw(self._build_get(table_schema_name, key, select=select)).json()
+        return self._execute_raw(
+            self._build_get(table_schema_name, key, select=select, include_annotations=include_annotations)
+        ).json()
 
     def _get_multiple(
         self,
@@ -2309,13 +2319,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         record_id: str,
         *,
         select: Optional[List[str]] = None,
+        include_annotations: Optional[str] = None,
     ) -> _RawRequest:
         """Build a single-record GET request without sending it."""
         entity_set = self._entity_set_from_schema_name(table)
         url = f"{self.api}/{entity_set}{self._format_key(record_id)}"
         if select:
             url += "?$select=" + ",".join(self._lowercase_list(select))
-        return _RawRequest(method="GET", url=url)
+        headers = None
+        if include_annotations:
+            headers = {"Prefer": f'odata.include-annotations="{include_annotations}"'}
+        return _RawRequest(method="GET", url=url, headers=headers)
 
     def _build_list(
         self,
@@ -2325,6 +2339,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         filter: Optional[str] = None,
         orderby: Optional[List[str]] = None,
         top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> _RawRequest:
         """Build a multi-record GET request (single page, no pagination) without sending it."""
         entity_set = self._entity_set_from_schema_name(table)
@@ -2337,10 +2355,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             params.append("$orderby=" + ",".join(orderby))
         if top is not None:
             params.append(f"$top={top}")
+        if expand:
+            params.append("$expand=" + ",".join(expand))
+        if count:
+            params.append("$count=true")
         url = f"{self.api}/{entity_set}"
         if params:
             url += "?" + "&".join(params)
-        return _RawRequest(method="GET", url=url)
+        prefer_parts: List[str] = []
+        if page_size is not None:
+            ps = int(page_size)
+            if ps > 0:
+                prefer_parts.append(f"odata.maxpagesize={ps}")
+        if include_annotations:
+            prefer_parts.append(f'odata.include-annotations="{include_annotations}"')
+        headers = {"Prefer": ",".join(prefer_parts)} if prefer_parts else None
+        return _RawRequest(method="GET", url=url, headers=headers)
 
     def _build_create_entity(
         self,

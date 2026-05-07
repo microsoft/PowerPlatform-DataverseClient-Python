@@ -335,6 +335,7 @@ class BatchRecordOperations:
         record_id: str,
         *,
         select: Optional[List[str]] = None,
+        include_annotations: Optional[str] = None,
     ) -> None:
         """
         Add a single-record retrieve operation to the batch.
@@ -350,15 +351,26 @@ class BatchRecordOperations:
         :type record_id: :class:`str`
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: :class:`str` or None
 
         Example::
 
             batch = client.batch.new()
-            batch.records.retrieve("account", account_id, select=["name", "telephone1"])
+            batch.records.retrieve(
+                "account", account_id,
+                select=["name", "statuscode"],
+                include_annotations="OData.Community.Display.V1.FormattedValue",
+            )
             result = batch.execute()
             record = result.responses[0].data
+            print(record["statuscode@OData.Community.Display.V1.FormattedValue"])
         """
-        self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
+        self._batch._items.append(
+            _RecordGet(table=table, record_id=record_id, select=select, include_annotations=include_annotations)
+        )
 
     def list(
         self,
@@ -366,7 +378,12 @@ class BatchRecordOperations:
         *,
         filter: "Optional[Union[str, FilterExpression]]" = None,
         select: Optional[List[str]] = None,
+        orderby: Optional[List[str]] = None,
         top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
     ) -> None:
         """
         Add a multi-record list operation to the batch (single page, no pagination).
@@ -386,18 +403,48 @@ class BatchRecordOperations:
         :type filter: str or FilterExpression or None
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
+        :param orderby: Optional list of sort expressions (e.g. ``["name asc"]``).
+        :type orderby: list[str] or None
         :param top: Maximum number of records to return.
         :type top: int or None
+        :param expand: Optional list of navigation properties to expand.
+        :type expand: list[str] or None
+        :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
+        :type page_size: int or None
+        :param count: If ``True``, adds ``$count=true`` to the request.
+        :type count: bool
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header, or ``None``.
+        :type include_annotations: :class:`str` or None
 
         Example::
 
             batch = client.batch.new()
-            batch.records.list("account", filter="statecode eq 0", select=["name"], top=50)
+            batch.records.list(
+                "account",
+                filter="statecode eq 0",
+                select=["name", "statuscode"],
+                orderby=["name asc"],
+                top=50,
+                include_annotations="OData.Community.Display.V1.FormattedValue",
+            )
             result = batch.execute()
             records = result.responses[0].data.get("value", [])
         """
         filter_str: Optional[str] = str(filter) if filter is not None else None
-        self._batch._items.append(_RecordList(table=table, select=select, filter=filter_str, top=top))
+        self._batch._items.append(
+            _RecordList(
+                table=table,
+                select=select,
+                filter=filter_str,
+                orderby=orderby,
+                top=top,
+                expand=expand,
+                page_size=page_size,
+                count=count,
+                include_annotations=include_annotations,
+            )
+        )
 
 
 class BatchTableOperations:

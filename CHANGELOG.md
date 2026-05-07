@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `client.records.retrieve(table, record_id)` — fetch a single record by GUID; returns `None` on 404 instead of raising (#175)
-- `client.records.list(table, filter, select, top)` — eager fetch returning a flat `QueryResult`; GA replacement for `records.get()` without a record ID (#175)
-- `client.records.list_pages(table, filter, select, top)` — lazy iterator yielding one `QueryResult` per HTTP page; streaming counterpart to `list()` (#175)
+- `client.records.retrieve(table, record_id, *, select, include_annotations)` — fetch a single record by GUID; returns `None` on 404 instead of raising; `include_annotations` maps to the `Prefer: odata.include-annotations` header for formatted values and lookup labels (#175)
+- `client.records.list(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` — eager fetch returning a flat `QueryResult`; GA replacement for `records.get()` without a record ID; `page_size` controls `Prefer: odata.maxpagesize`, `count=True` adds `$count=true`, `include_annotations` requests formatted values (#175)
+- `client.records.list_pages(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` — lazy iterator yielding one `QueryResult` per HTTP page; streaming counterpart to `list()`; same parameter set (#175)
+- `client.batch.records.retrieve()` and `client.batch.records.list()` now accept the same `include_annotations`, `orderby`, `expand`, `page_size`, and `count` parameters as their non-batch counterparts (#175)
 - `client.query.fetchxml(xml)` — FetchXML support returning an inert `FetchXmlQuery`; no HTTP request is made until `.execute()` or `.execute_pages()` is called (#175)
 - `FetchXmlQuery` implements the correct Dataverse paging cookie algorithm: annotation parsed as outer XML, `pagingcookie` attribute double URL-decoded, server-supplied `pagenumber` used for next page, `morerecords` handled as both `bool` and `"true"` string, `UserWarning` emitted on simple paging fallback, 32,768-character URL limit enforced (documented Dataverse GET cap), 10,000-page circuit breaker against runaway iteration (#175)
 - `QueryBuilder.execute_pages()` — lazy per-page streaming returning one `QueryResult` per HTTP page; replaces deprecated `execute(by_page=True)` (#175)
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DataverseModel` structural `Protocol` (`models/protocol.py`) — implement on any entity class to enable typed integration with CRUD operations without specifying table names or serializing manually (#175)
 - `col()`, `raw()`, `QueryResult`, and `DataverseModel` exported from the top-level `PowerPlatform.Dataverse` package (#175)
 - v0→v1 migration tool: `tools/migrate_v0_to_v1.py` rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns (#175)
+- Migration tool now auto-rewrites `QueryBuilder.to_dataframe()` → `.execute().to_dataframe()` (inserts `.execute()` when receiver is a recognised builder chain); output improved with `[NEEDS-MANUAL]` label for files that have no auto-rewrites but require manual attention, and a trailing note on `[MIGRATED]` lines when manual items remain (#175)
 
 ### Changed
 - `QueryBuilder.execute()` now returns a flat `QueryResult` (all pages collected eagerly) instead of `Iterable[Record]` (#175)

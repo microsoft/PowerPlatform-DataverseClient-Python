@@ -447,6 +447,37 @@ class TestListPages(unittest.TestCase):
         deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
         self.assertEqual(len(deprecations), 0)
 
+    def test_list_pages_passes_orderby(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", orderby=["name asc"]))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("orderby"), ["name asc"])
+
+    def test_list_pages_passes_expand(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", expand=["primarycontactid"]))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("expand"), ["primarycontactid"])
+
+    def test_list_pages_passes_page_size(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", page_size=200))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("page_size"), 200)
+
+    def test_list_pages_passes_count(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", count=True))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertTrue(call_kwargs.kwargs.get("count"))
+
+    def test_list_pages_passes_include_annotations(self):
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", include_annotations=annotation))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("include_annotations"), annotation)
+
 
 if __name__ == "__main__":
     unittest.main()

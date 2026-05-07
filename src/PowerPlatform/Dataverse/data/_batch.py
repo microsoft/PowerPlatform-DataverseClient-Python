@@ -69,6 +69,7 @@ class _RecordGet:
     table: str
     record_id: str
     select: Optional[List[str]] = None
+    include_annotations: Optional[str] = None
 
 
 @dataclass
@@ -78,6 +79,10 @@ class _RecordList:
     filter: Optional[str] = None
     orderby: Optional[List[str]] = None
     top: Optional[int] = None
+    expand: Optional[List[str]] = None
+    page_size: Optional[int] = None
+    count: bool = False
+    include_annotations: Optional[str] = None
 
 
 @dataclass
@@ -393,7 +398,9 @@ class _BatchClient:
         return [self._od._build_delete(op.table, rid) for rid in ids]
 
     def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:
-        return [self._od._build_get(op.table, op.record_id, select=op.select)]
+        return [
+            self._od._build_get(op.table, op.record_id, select=op.select, include_annotations=op.include_annotations)
+        ]
 
     def _resolve_record_list(self, op: _RecordList) -> List[_RawRequest]:
         return [
@@ -403,6 +410,10 @@ class _BatchClient:
                 filter=op.filter,
                 orderby=op.orderby,
                 top=op.top,
+                expand=op.expand,
+                page_size=op.page_size,
+                count=op.count,
+                include_annotations=op.include_annotations,
             )
         ]
 
