@@ -38,7 +38,8 @@ class TestOperationContextClient(unittest.TestCase):
 
     def test_kwarg_sets_config(self):
         client = DataverseClient(
-            self.base_url, self.mock_credential,
+            self.base_url,
+            self.mock_credential,
             operation_context="app=test/1.0;skill=dv-data;agent=claude-code",
         )
         self.assertEqual(client._config.operation_context, "app=test/1.0;skill=dv-data;agent=claude-code")
@@ -51,7 +52,8 @@ class TestOperationContextClient(unittest.TestCase):
         config = DataverseConfig(operation_context="app=test/1.0")
         with self.assertRaises(ValueError):
             DataverseClient(
-                self.base_url, self.mock_credential,
+                self.base_url,
+                self.mock_credential,
                 config=config,
                 operation_context="app=other/2.0",
             )
