@@ -206,6 +206,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             session=session,
             logger=self._http_logger,
         )
+        self._operation_context = self.config.operation_context
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}
@@ -241,13 +242,16 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """Build standard OData headers with bearer auth."""
         scope = f"{self.base_url}/.default"
         token = self.auth._acquire_token(scope).access_token
+        ua = _USER_AGENT
+        if self._operation_context:
+            ua = f"{_USER_AGENT} ({self._operation_context})"
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
-            "User-Agent": _USER_AGENT,
+            "User-Agent": ua,
         }
 
     def _merge_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:

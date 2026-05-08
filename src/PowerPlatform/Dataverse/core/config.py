@@ -35,6 +35,10 @@ class DataverseConfig:
         When provided, all HTTP requests and responses are logged to timestamped
         ``.log`` files with automatic redaction of sensitive headers.
     :type log_config: ~PowerPlatform.Dataverse.core.log_config.LogConfig or None
+    :param operation_context: Optional caller-defined context string appended to the
+        outbound ``User-Agent`` header as a parenthesized comment. Intended for
+        plugin/tool attribution (e.g. ``"app=dataverse-skills/1.2.1;skill=dv-data;agent=claude-code"``).
+    :type operation_context: :class:`str` or None
     """
 
     language_code: int = 1033
@@ -45,6 +49,8 @@ class DataverseConfig:
     http_timeout: Optional[float] = None
 
     log_config: Optional["LogConfig"] = None
+
+    operation_context: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "DataverseConfig":
@@ -61,4 +67,5 @@ class DataverseConfig:
             http_backoff=None,
             http_timeout=None,
             log_config=None,
+            operation_context=None,
         )
