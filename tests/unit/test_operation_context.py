@@ -97,3 +97,9 @@ class TestOperationContextUserAgent(unittest.TestCase):
         odata = _ODataClient(self.dummy_auth, self.base_url, config=config)
         headers = odata._headers()
         self.assertNotIn("(", headers["User-Agent"])
+
+    def test_control_chars_rejected(self):
+        for bad in ["has\rnewline", "has\nnewline", "has\x00null"]:
+            config = DataverseConfig(operation_context=bad)
+            with self.assertRaises(ValueError):
+                _ODataClient(self.dummy_auth, self.base_url, config=config)
