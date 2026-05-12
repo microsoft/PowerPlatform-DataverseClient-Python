@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0b10] - 2026-05-12
+
+### Added
+- `DataverseClient(context=OperationContext(...))` keyword argument (also settable via `DataverseConfig(operation_context=...)`) that appends a parenthesized comment to the outbound `User-Agent` header so callers can attribute their traffic in Dataverse server logs — e.g. `DataverseSvcPythonClient:0.1.0b10 (app=dataverse-skills/1.2.1)` (#178)
+
 ## [0.1.0b9] - 2026-04-28
 
 ### Added
@@ -125,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b9...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b10...HEAD
+[0.1.0b10]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b9...v0.1.0b10
 [0.1.0b9]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...v0.1.0b9
 [0.1.0b8]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b7...v0.1.0b8
 [0.1.0b7]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b6...v0.1.0b7
