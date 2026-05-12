@@ -206,10 +206,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             session=session,
             logger=self._http_logger,
         )
-        ctx = self.config.operation_context
-        if ctx and any(c in ctx for c in "\r\n\x00"):
-            raise ValueError("operation_context must not contain CR, LF, or NUL characters.")
-        self._operation_context = ctx
+        ctx_obj = self.config.operation_context
+        self._operation_context = ctx_obj.operation_context if ctx_obj else None
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}

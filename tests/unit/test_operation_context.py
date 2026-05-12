@@ -9,8 +9,49 @@ from unittest.mock import MagicMock
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.config import DataverseConfig
+from PowerPlatform.Dataverse.core.config import DataverseConfig, OperationContext
 from PowerPlatform.Dataverse.data._odata import _ODataClient, _USER_AGENT
+
+
+class TestOperationContextValidation(unittest.TestCase):
+    """Tests for OperationContext format validation and PII rejection."""
+
+    def test_valid_single_pair(self):
+        ctx = OperationContext(operation_context="app=test/1.0")
+        self.assertEqual(ctx.operation_context, "app=test/1.0")
+
+    def test_valid_multiple_pairs(self):
+        ctx = OperationContext(operation_context="app=test/1.0;skill=dv-data;agent=claude-code")
+        self.assertEqual(ctx.operation_context, "app=test/1.0;skill=dv-data;agent=claude-code")
+
+    def test_valid_with_dots_slashes_hyphens(self):
+        ctx = OperationContext(operation_context="app=dataverse-skills/1.2.1")
+        self.assertEqual(ctx.operation_context, "app=dataverse-skills/1.2.1")
+
+    def test_reject_empty(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="")
+
+    def test_reject_email(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="myname@email.com")
+
+    def test_reject_freeform_text(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="my bank password is 1234")
+
+    def test_reject_control_chars(self):
+        for bad in ["has\rnewline", "has\nnewline", "has\x00null"]:
+            with self.assertRaises(ValueError):
+                OperationContext(operation_context=bad)
+
+    def test_reject_spaces(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="app=my app")
+
+    def test_reject_no_equals(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="justaplainstring")
 
 
 class TestOperationContextConfig(unittest.TestCase):
@@ -21,8 +62,9 @@ class TestOperationContextConfig(unittest.TestCase):
         self.assertIsNone(config.operation_context)
 
     def test_explicit_value(self):
-        config = DataverseConfig(operation_context="app=test/1.0;agent=claude-code")
-        self.assertEqual(config.operation_context, "app=test/1.0;agent=claude-code")
+        ctx = OperationContext(operation_context="app=test/1.0;agent=claude-code")
+        config = DataverseConfig(operation_context=ctx)
+        self.assertEqual(config.operation_context.operation_context, "app=test/1.0;agent=claude-code")
 
     def test_default_constructor_is_none(self):
         config = DataverseConfig()
@@ -30,38 +72,47 @@ class TestOperationContextConfig(unittest.TestCase):
 
 
 class TestOperationContextClient(unittest.TestCase):
-    """Tests for operation_context kwarg on DataverseClient."""
+    """Tests for context kwarg on DataverseClient."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
         self.base_url = "https://example.crm.dynamics.com"
 
     def test_kwarg_sets_config(self):
+        ctx = OperationContext(operation_context="app=test/1.0;skill=dv-data;agent=claude-code")
         client = DataverseClient(
             self.base_url,
             self.mock_credential,
-            operation_context="app=test/1.0;skill=dv-data;agent=claude-code",
+            context=ctx,
         )
-        self.assertEqual(client._config.operation_context, "app=test/1.0;skill=dv-data;agent=claude-code")
+        self.assertEqual(
+            client._config.operation_context.operation_context,
+            "app=test/1.0;skill=dv-data;agent=claude-code",
+        )
 
     def test_no_kwarg_leaves_config_default(self):
         client = DataverseClient(self.base_url, self.mock_credential)
         self.assertIsNone(client._config.operation_context)
 
-    def test_config_and_kwarg_raises(self):
-        config = DataverseConfig(operation_context="app=test/1.0")
+    def test_config_and_context_raises(self):
+        ctx = OperationContext(operation_context="app=test/1.0")
+        config = DataverseConfig(operation_context=ctx)
         with self.assertRaises(ValueError):
             DataverseClient(
                 self.base_url,
                 self.mock_credential,
                 config=config,
-                operation_context="app=other/2.0",
+                context=OperationContext(operation_context="app=other/2.0"),
             )
 
     def test_config_alone_works(self):
-        config = DataverseConfig(operation_context="app=test/1.0;agent=copilot")
+        ctx = OperationContext(operation_context="app=test/1.0;agent=copilot")
+        config = DataverseConfig(operation_context=ctx)
         client = DataverseClient(self.base_url, self.mock_credential, config=config)
-        self.assertEqual(client._config.operation_context, "app=test/1.0;agent=copilot")
+        self.assertEqual(
+            client._config.operation_context.operation_context,
+            "app=test/1.0;agent=copilot",
+        )
 
 
 class TestOperationContextUserAgent(unittest.TestCase):
@@ -80,11 +131,12 @@ class TestOperationContextUserAgent(unittest.TestCase):
         self.assertEqual(headers["User-Agent"], _USER_AGENT)
 
     def test_operation_context_appended(self):
-        ctx = "app=dataverse-skills/1.2.1;skill=dv-data;agent=claude-code"
+        ctx_str = "app=dataverse-skills/1.2.1;skill=dv-data;agent=claude-code"
+        ctx = OperationContext(operation_context=ctx_str)
         config = DataverseConfig(operation_context=ctx)
         odata = _ODataClient(self.dummy_auth, self.base_url, config=config)
         headers = odata._headers()
-        self.assertEqual(headers["User-Agent"], f"{_USER_AGENT} ({ctx})")
+        self.assertEqual(headers["User-Agent"], f"{_USER_AGENT} ({ctx_str})")
 
     def test_none_context_no_parentheses(self):
         config = DataverseConfig(operation_context=None)
@@ -92,14 +144,6 @@ class TestOperationContextUserAgent(unittest.TestCase):
         headers = odata._headers()
         self.assertNotIn("(", headers["User-Agent"])
 
-    def test_empty_string_context_no_parentheses(self):
-        config = DataverseConfig(operation_context="")
-        odata = _ODataClient(self.dummy_auth, self.base_url, config=config)
-        headers = odata._headers()
-        self.assertNotIn("(", headers["User-Agent"])
-
-    def test_control_chars_rejected(self):
-        for bad in ["has\rnewline", "has\nnewline", "has\x00null"]:
-            config = DataverseConfig(operation_context=bad)
-            with self.assertRaises(ValueError):
-                _ODataClient(self.dummy_auth, self.base_url, config=config)
+    def test_empty_string_rejected_at_creation(self):
+        with self.assertRaises(ValueError):
+            OperationContext(operation_context="")
