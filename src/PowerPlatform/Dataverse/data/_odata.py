@@ -207,7 +207,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             logger=self._http_logger,
         )
         ctx_obj = self.config.operation_context
-        self._operation_context = ctx_obj.operation_context if ctx_obj else None
+        self._operation_context = ctx_obj.user_agent_context if ctx_obj else None
         self._logical_to_entityset_cache: dict[str, str] = {}
         # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
         self._logical_primaryid_cache: dict[str, str] = {}

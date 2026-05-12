@@ -32,17 +32,17 @@ class OperationContext:
     (e.g. ``"app=myapp/1.0;agent=claude-code"``).  Free-form text, email
     addresses, and other potentially sensitive strings are rejected.
 
-    :param operation_context: Attribution string in ``key=value;key=value`` format.
-    :type operation_context: :class:`str`
+    :param user_agent_context: Attribution string in ``key=value;key=value`` format.
+    :type user_agent_context: :class:`str`
 
     :raises ValueError: If the string is empty, contains control characters, or
         does not match the required ``key=value`` format.
     """
 
-    operation_context: str
+    user_agent_context: str
 
     def __post_init__(self) -> None:
-        val = self.operation_context
+        val = self.user_agent_context
         if not val:
             raise ValueError("operation_context must not be empty.")
         if any(c in val for c in "\r\n\x00"):
