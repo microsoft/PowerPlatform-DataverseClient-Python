@@ -1086,6 +1086,116 @@ class TestGetMultiple(unittest.TestCase):
         self.assertEqual(pages, [])
 
 
+class TestGetMultiplePrefetch(unittest.TestCase):
+    """Behavioral tests for _get_multiple with prefetch_pages=1."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._entity_set_from_schema_name = MagicMock(return_value="accounts")
+
+    def _two_page_responses(self):
+        page1 = _mock_response(
+            json_data={
+                "value": [{"accountid": "id-1"}],
+                "@odata.nextLink": "https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=2",
+            },
+            text="...",
+        )
+        page2 = _mock_response(
+            json_data={"value": [{"accountid": "id-2"}]},
+            text="...",
+        )
+        self.od._request.side_effect = [page1, page2]
+
+    def _three_page_responses(self):
+        """Three pages with 2 records each — exercises multi-record pages and full pagination."""
+        base = "https://example.crm.dynamics.com/api/data/v9.2/accounts"
+        pages = [
+            {"value": [{"accountid": "id-1"}, {"accountid": "id-2"}], "@odata.nextLink": f"{base}?$skiptoken=3"},
+            {"value": [{"accountid": "id-3"}, {"accountid": "id-4"}], "@odata.nextLink": f"{base}?$skiptoken=5"},
+            {"value": [{"accountid": "id-5"}, {"accountid": "id-6"}]},
+        ]
+        self.od._request.side_effect = [_mock_response(json_data=p, text="...") for p in pages]
+
+    def test_prefetch_returns_same_pages_as_sequential(self):
+        """prefetch_pages=1 yields the same records in the same order as sequential mode."""
+        self._two_page_responses()
+        pages = list(self.od._get_multiple("account", prefetch_pages=1))
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0][0]["accountid"], "id-1")
+        self.assertEqual(pages[1][0]["accountid"], "id-2")
+
+    def test_prefetch_matches_sequential_values_exactly(self):
+        """prefetch_pages=1 returns identical page count, record count, and record order to prefetch_pages=0."""
+        # Run sequential first
+        self._three_page_responses()
+        seq_pages = list(self.od._get_multiple("account", prefetch_pages=0))
+
+        # Run prefetch with identical mock data
+        self._three_page_responses()
+        pre_pages = list(self.od._get_multiple("account", prefetch_pages=1))
+
+        self.assertEqual(len(pre_pages), len(seq_pages), "Page count mismatch")
+        seq_ids = [r["accountid"] for page in seq_pages for r in page]
+        pre_ids = [r["accountid"] for page in pre_pages for r in page]
+        self.assertEqual(pre_ids, seq_ids, "Record order or values differ")
+        self.assertEqual(pre_ids, ["id-1", "id-2", "id-3", "id-4", "id-5", "id-6"])
+
+    def test_prefetch_values_above_one_capped_at_one(self):
+        """prefetch_pages=2 (or any value > 1) behaves identically to prefetch_pages=1."""
+        self._two_page_responses()
+        pages = list(self.od._get_multiple("account", prefetch_pages=2))
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0][0]["accountid"], "id-1")
+        self.assertEqual(pages[1][0]["accountid"], "id-2")
+        # Both pages should have been fetched (max_workers=1 means sequential requests)
+        self.assertEqual(self.od._request.call_count, 2)
+
+    def test_prefetch_exception_propagates_to_caller(self):
+        """An exception raised by the background request surfaces when the caller consumes the next page."""
+        page1 = _mock_response(
+            json_data={
+                "value": [{"accountid": "id-1"}],
+                "@odata.nextLink": "https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=2",
+            },
+            text="...",
+        )
+        self.od._request.side_effect = [page1, RuntimeError("network failure")]
+        gen = self.od._get_multiple("account", prefetch_pages=1)
+        first = next(gen)
+        self.assertEqual(first[0]["accountid"], "id-1")
+        with self.assertRaises(RuntimeError):
+            next(gen)
+
+    def test_prefetch_early_close_does_not_hang(self):
+        """Closing the generator early (break) does not deadlock or raise an error."""
+        page1 = _mock_response(
+            json_data={
+                "value": [{"accountid": "id-1"}],
+                "@odata.nextLink": "https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=2",
+            },
+            text="...",
+        )
+        page2 = _mock_response(
+            json_data={"value": [{"accountid": "id-2"}]},
+            text="...",
+        )
+        self.od._request.side_effect = [page1, page2]
+        gen = self.od._get_multiple("account", prefetch_pages=1)
+        first = next(gen)
+        self.assertEqual(first[0]["accountid"], "id-1")
+        gen.close()  # should not raise or hang
+
+    def test_prefetch_single_page_no_nextlink(self):
+        """prefetch_pages=1 with a single page (no nextLink) yields exactly one page."""
+        data = {"value": [{"accountid": "id-1"}]}
+        self.od._request.return_value = _mock_response(json_data=data, text=str(data))
+        pages = list(self.od._get_multiple("account", prefetch_pages=1))
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0][0]["accountid"], "id-1")
+        self.od._request.assert_called_once()
+
+
 class TestQuerySql(unittest.TestCase):
     """Unit tests for _ODataClient._query_sql."""
 

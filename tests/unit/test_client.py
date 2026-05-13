@@ -55,7 +55,7 @@ class TestDataverseClient(unittest.TestCase):
         self.client.create("account", payloads)
 
         # Verify
-        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads)
+        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads, max_workers=1)
 
     def test_update_single(self):
         """Test update method with a single record."""
@@ -73,7 +73,7 @@ class TestDataverseClient(unittest.TestCase):
         changes = {"statecode": 1}
 
         self.client.update("account", ids, changes)
-        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
+        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes, max_workers=1)
 
     def test_delete_single(self):
         """Test delete method with a single record."""
