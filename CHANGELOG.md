@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `QueryBuilder.execute(by_page=True)` and `execute(by_page=False)` emit `UserWarning`; use `execute_pages()` and `execute()` respectively (#175)
 - `client.query.odata_select()`, `client.query.odata_expands()`, `client.query.odata_expand()`, `client.query.odata_bind()` emit `DeprecationWarning`; navigation-property helpers are replaced by `QueryBuilder.expand()` (#175)
 
+### Added
+- `client.auth.acquire_token(resource_url)` -- acquire an OAuth2 access token for any Microsoft AAD-protected resource (for example a linked Finance & Operations environment) using the same credential the Dataverse client was constructed with. The `/.default` scope is appended automatically; token caching and refresh remain the credential's responsibility. The internal Dataverse request path now goes through the same method, removing the inline scope construction in `_ODataClient._headers()`.
+
 ## [0.1.0b10] - 2026-05-12
 
 ### Added
