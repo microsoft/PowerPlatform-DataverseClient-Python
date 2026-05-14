@@ -17,6 +17,9 @@ class DummyAuth:
 
         return T()
 
+    def acquire_token(self, resource_url):
+        return self._acquire_token(f"{(resource_url or '').rstrip('/')}/.default").access_token
+
 
 class DummyHTTP:
     def __init__(self, responses):

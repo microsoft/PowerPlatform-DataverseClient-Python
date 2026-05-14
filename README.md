@@ -112,6 +112,19 @@ client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
 > **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
 
+#### Acquiring tokens for other Microsoft resources
+
+The same credential can be used to acquire tokens for any Microsoft AAD-protected resource the caller has access to -- notably a Finance & Operations environment linked to the same Dataverse org. Use `client.auth.acquire_token(resource_url)` to obtain a token without constructing a second credential:
+
+```python
+# Token for a linked Finance & Operations environment
+fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
+
+headers = {"Authorization": f"Bearer {fno_token}"}
+```
+
+The `/.default` scope is appended automatically. The customer's AAD app must already have the required permission on the target resource and admin consent granted. For Finance & Operations the standard permissions are `Odata.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
+
 ## Key concepts
 
 The SDK provides a simple, pythonic interface for Dataverse operations:

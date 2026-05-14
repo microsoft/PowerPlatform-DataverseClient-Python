@@ -15,7 +15,12 @@ from PowerPlatform.Dataverse.core.config import DataverseConfig
 
 @pytest.fixture
 def dummy_auth():
-    """Mock authentication object for testing."""
+    """Mock authentication object for testing.
+
+    Mirrors the real ``_AuthManager`` surface: both the internal
+    ``_acquire_token(scope)`` (used directly by older tests) and the public
+    ``acquire_token(resource_url)`` (used by ``_ODataClient._headers``).
+    """
 
     class DummyAuth:
         def _acquire_token(self, scope):
@@ -23,6 +28,9 @@ def dummy_auth():
                 access_token = "test_token_12345"
 
             return Token()
+
+        def acquire_token(self, resource_url):
+            return self._acquire_token(f"{(resource_url or '').rstrip('/')}/.default").access_token
 
     return DummyAuth()
 

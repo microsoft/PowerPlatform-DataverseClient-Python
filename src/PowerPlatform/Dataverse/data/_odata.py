@@ -241,8 +241,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
-        scope = f"{self.base_url}/.default"
-        token = self.auth._acquire_token(scope).access_token
+        token = self.auth.acquire_token(self.base_url)
         ua = _USER_AGENT
         if self._operation_context:
             ua = f"{_USER_AGENT} ({self._operation_context})"
