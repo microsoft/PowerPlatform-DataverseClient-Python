@@ -1516,7 +1516,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_int_dtype(self):
         """'int' produces IntegerAttributeMetadata."""
         result = self.od._attribute_payload("new_Count", "int")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata")
 
     def test_integer_dtype_alias(self):
         """'integer' is an alias for 'int'."""
@@ -1526,7 +1526,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_decimal_dtype(self):
         """'decimal' produces DecimalAttributeMetadata."""
         result = self.od._attribute_payload("new_Price", "decimal")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DecimalAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDecimalAttributeMetadata")
 
     def test_money_dtype_alias(self):
         """'money' is an alias for 'decimal'."""
@@ -1536,7 +1536,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_float_dtype(self):
         """'float' produces DoubleAttributeMetadata."""
         result = self.od._attribute_payload("new_Score", "float")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DoubleAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDoubleAttributeMetadata")
 
     def test_double_dtype_alias(self):
         """'double' is an alias for 'float'."""
@@ -1546,7 +1546,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_datetime_dtype(self):
         """'datetime' produces DateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDateTimeAttributeMetadata")
 
     def test_date_dtype_alias(self):
         """'date' is an alias for 'datetime'."""
@@ -1556,7 +1556,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_bool_dtype(self):
         """'bool' produces BooleanAttributeMetadata."""
         result = self.od._attribute_payload("new_IsActive", "bool")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.BooleanAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexBooleanAttributeMetadata")
 
     def test_boolean_dtype_alias(self):
         """'boolean' is an alias for 'bool'."""
@@ -1566,7 +1566,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_file_dtype(self):
         """'file' produces FileAttributeMetadata."""
         result = self.od._attribute_payload("new_Attachment", "file")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.FileAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexFileAttributeMetadata")
 
     def test_non_string_dtype_raises_value_error(self):
         """Non-string dtype raises ValueError."""
@@ -1576,7 +1576,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_memo_type(self):
         """'memo' produces MemoAttributeMetadata with MaxLength 4000."""
         result = self.od._attribute_payload("new_Notes", "memo")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexMemoAttributeMetadata")
         self.assertEqual(result["SchemaName"], "new_Notes")
         self.assertEqual(result["MaxLength"], 4000)
         self.assertEqual(result["FormatName"], {"Value": "Text"})
@@ -1591,7 +1591,7 @@ class TestAttributePayload(unittest.TestCase):
     def test_string_type_max_length(self):
         """'string' produces StringAttributeMetadata with MaxLength 200."""
         result = self.od._attribute_payload("new_Title", "string")
-        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.StringAttributeMetadata")
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata")
         self.assertEqual(result["MaxLength"], 200)
         self.assertEqual(result["FormatName"], {"Value": "Text"})
 
@@ -1819,7 +1819,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {}, primary_column_schema_name="new_CustomName")
         post_json = self.od._request.call_args.kwargs["json"]
-        attrs = post_json["Attributes"]
+        attrs = post_json["Entities"][0]["Attributes"]
         primary_attr = next((a for a in attrs if a.get("IsPrimaryName")), None)
         self.assertIsNotNone(primary_attr)
         self.assertEqual(primary_attr["SchemaName"], "new_CustomName")
@@ -1829,7 +1829,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {}, display_name="My Test Table")
         post_json = self.od._request.call_args.kwargs["json"]
-        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        label_value = post_json["Entities"][0]["DisplayName"]["LocalizedLabels"][0]["Label"]
         self.assertEqual(label_value, "My Test Table")
 
     def test_display_name_defaults_to_schema_name(self):
@@ -1837,7 +1837,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {})
         post_json = self.od._request.call_args.kwargs["json"]
-        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        label_value = post_json["Entities"][0]["DisplayName"]["LocalizedLabels"][0]["Label"]
         self.assertEqual(label_value, "new_TestTable")
 
     def test_display_name_empty_string_raises(self):

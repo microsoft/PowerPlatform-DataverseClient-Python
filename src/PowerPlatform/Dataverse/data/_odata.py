@@ -1630,7 +1630,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("float", "double"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDoubleAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
