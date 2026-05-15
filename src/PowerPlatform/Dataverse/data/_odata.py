@@ -1581,8 +1581,20 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         return resolved_record
 
     def _attribute_payload(
-        self, column_schema_name: str, dtype: Any, *, is_primary_name: bool = False
+        self,
+        column_schema_name: str,
+        dtype: Any,
+        *,
+        is_primary_name: bool = False,
+        complex: bool = False,
     ) -> Optional[Dict[str, Any]]:
+        """Build attribute metadata payload for a column.
+
+        :param complex: When ``True``, emit ``Complex*AttributeMetadata`` types
+            required by the ``CreateEntities`` action. When ``False`` (default),
+            emit the standard ``*AttributeMetadata`` types used by the
+            ``EntityDefinitions/{id}/Attributes`` endpoint.
+        """
         # Enum-based local option set support
         if isinstance(dtype, type) and issubclass(dtype, Enum):
             return self._enum_optionset_payload(column_schema_name, dtype, is_primary_name=is_primary_name)
@@ -1592,9 +1604,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             )
         dtype_l = dtype.lower().strip()
         label = column_schema_name.split("_")[-1]
+        prefix = "Microsoft.Dynamics.CRM.Complex" if complex else "Microsoft.Dynamics.CRM."
         if dtype_l in ("string", "text"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata",
+                "@odata.type": f"{prefix}StringAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1604,7 +1617,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("memo", "multiline"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexMemoAttributeMetadata",
+                "@odata.type": f"{prefix}MemoAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1614,7 +1627,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("int", "integer"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata",
+                "@odata.type": f"{prefix}IntegerAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1624,7 +1637,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("decimal", "money"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDecimalAttributeMetadata",
+                "@odata.type": f"{prefix}DecimalAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1634,7 +1647,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("float", "double"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDoubleAttributeMetadata",
+                "@odata.type": f"{prefix}DoubleAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1644,7 +1657,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("datetime", "date"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDateTimeAttributeMetadata",
+                "@odata.type": f"{prefix}DateTimeAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1653,12 +1666,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("bool", "boolean"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexBooleanAttributeMetadata",
+                "@odata.type": f"{prefix}BooleanAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
                 "OptionSet": {
-                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexBooleanOptionSetMetadata",
+                    "@odata.type": f"{prefix}BooleanOptionSetMetadata",
                     "TrueOption": {
                         "Value": 1,
                         "Label": self._label("True"),
@@ -1672,7 +1685,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l == "file":
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.ComplexFileAttributeMetadata",
+                "@odata.type": f"{prefix}FileAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1905,9 +1918,11 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             )
 
         attributes: List[Dict[str, Any]] = []
-        attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True))
+        attributes.append(
+            self._attribute_payload(primary_attr_schema, "string", is_primary_name=True, complex=True)
+        )
         for col_name, dtype in schema.items():
-            payload = self._attribute_payload(col_name, dtype)
+            payload = self._attribute_payload(col_name, dtype, complex=True)
             if not payload:
                 raise ValueError(f"Unsupported column type '{dtype}' for '{col_name}'.")
             attributes.append(payload)
