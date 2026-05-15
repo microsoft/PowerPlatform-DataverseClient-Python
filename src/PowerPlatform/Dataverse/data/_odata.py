@@ -1918,9 +1918,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             )
 
         attributes: List[Dict[str, Any]] = []
-        attributes.append(
-            self._attribute_payload(primary_attr_schema, "string", is_primary_name=True, complex=True)
-        )
+        attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True, complex=True))
         for col_name, dtype in schema.items():
             payload = self._attribute_payload(col_name, dtype, complex=True)
             if not payload:
