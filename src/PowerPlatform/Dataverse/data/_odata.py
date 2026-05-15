@@ -1190,9 +1190,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         attributes: List[Dict[str, Any]],
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        url = f"{self.api}/EntityDefinitions"
-        payload = {
-            "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
+        url = f"{self.api}/CreateEntities"
+        payload = {"Entities" :[{
+            "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
             "SchemaName": table_schema_name,
             "DisplayName": self._label(display_name),
             "DisplayCollectionName": self._label(display_name + "s"),
@@ -1202,7 +1202,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             "HasNotes": True,
             "IsActivity": False,
             "Attributes": attributes,
-        }
+        }]}
         params = None
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
@@ -1590,7 +1590,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         label = column_schema_name.split("_")[-1]
         if dtype_l in ("string", "text"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1600,7 +1600,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("memo", "multiline"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexMemoAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1610,7 +1610,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("int", "integer"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1620,7 +1620,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("decimal", "money"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDecimalAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1640,7 +1640,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("datetime", "date"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexDateTimeAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -1649,12 +1649,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l in ("bool", "boolean"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.BooleanAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexBooleanAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
                 "OptionSet": {
-                    "@odata.type": "Microsoft.Dynamics.CRM.BooleanOptionSetMetadata",
+                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexBooleanOptionSetMetadata",
                     "TrueOption": {
                         "Value": 1,
                         "Label": self._label("True"),
@@ -1668,7 +1668,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             }
         if dtype_l == "file":
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.FileAttributeMetadata",
+                "@odata.type": "Microsoft.Dynamics.CRM.ComplexFileAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
