@@ -1191,18 +1191,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         url = f"{self.api}/CreateEntities"
-        payload = {"Entities" :[{
-            "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
-            "SchemaName": table_schema_name,
-            "DisplayName": self._label(display_name),
-            "DisplayCollectionName": self._label(display_name + "s"),
-            "Description": self._label(f"Custom entity for {display_name}"),
-            "OwnershipType": "UserOwned",
-            "HasActivities": False,
-            "HasNotes": True,
-            "IsActivity": False,
-            "Attributes": attributes,
-        }]}
+        payload = {
+            "Entities": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
+                    "SchemaName": table_schema_name,
+                    "DisplayName": self._label(display_name),
+                    "DisplayCollectionName": self._label(display_name + "s"),
+                    "Description": self._label(f"Custom entity for {display_name}"),
+                    "OwnershipType": "UserOwned",
+                    "HasActivities": False,
+                    "HasNotes": True,
+                    "IsActivity": False,
+                    "Attributes": attributes,
+                }
+            ]
+        }
         params = None
         if solution_unique_name:
             params = {"SolutionUniqueName": solution_unique_name}
