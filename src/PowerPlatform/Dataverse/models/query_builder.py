@@ -49,8 +49,18 @@ Example::
 
 from __future__ import annotations
 
+import sys
 import warnings
-from typing import Any, Dict, Iterator, List, Optional, TypedDict, Union
+from typing import Any, Iterator, List, Optional, TypedDict, Union
+
+# typing.Self (PEP 673, Python 3.11+) makes fluent methods return the concrete
+# subclass type. TypeVar fallback for Python 3.10 uses the same name so docs render identically.
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing import TypeVar
+
+    Self = TypeVar("Self", bound="_QueryBuilderBase")  # type: ignore[assignment]
 
 import pandas as pd
 
@@ -171,29 +181,17 @@ class ExpandOption:
         return self.relation
 
 
-class QueryBuilder:
-    """Fluent interface for building OData queries.
+class _QueryBuilderBase:
+    """Pure fluent interface for building OData queries — no I/O.
 
-    Provides method chaining for constructing complex queries with
-    composable filter expressions. Can be used standalone (via :meth:`build`)
-    or bound to a client (via :meth:`execute`).
+    Holds all query state and chaining methods (``select``, ``where``,
+    ``order_by``, ``top``, ``page_size``, ``count``, ``expand``,
+    ``include_annotations``, ``include_formatted_values``) and
+    :meth:`build`.
 
-    :param table: Table schema name to query.
-    :type table: str
-    :raises ValueError: If ``table`` is empty.
-
-    Example:
-        Standalone query construction::
-
-            from PowerPlatform.Dataverse.models.filters import col
-
-            query = (QueryBuilder("account")
-                     .select("name")
-                     .where(col("statecode") == 0)
-                     .top(10))
-            params = query.build()
-            # {"table": "account", "select": ["name"],
-            #  "filter": "statecode eq 0", "top": 10}
+    Subclasses add execution: :class:`QueryBuilder` for sync clients,
+    :class:`~PowerPlatform.Dataverse.aio.models.async_query_builder.AsyncQueryBuilder`
+    for async clients.
     """
 
     def __init__(self, table: str) -> None:
@@ -213,7 +211,7 @@ class QueryBuilder:
 
     # ----------------------------------------------------------------- select
 
-    def select(self, *columns: str) -> QueryBuilder:
+    def select(self, *columns: str) -> Self:
         """Select specific columns to retrieve.
 
         Column names are passed as-is; the OData layer lowercases them
@@ -231,7 +229,7 @@ class QueryBuilder:
 
     # ------------------------------------------------------ filter: expression tree
 
-    def where(self, expression: filters.FilterExpression) -> QueryBuilder:
+    def where(self, expression: filters.FilterExpression) -> Self:
         """Add a composable filter expression.
 
         Accepts a :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`
@@ -260,7 +258,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- ordering
 
-    def order_by(self, column: str, descending: bool = False) -> QueryBuilder:
+    def order_by(self, column: str, descending: bool = False) -> Self:
         """Add sorting order.
 
         Can be called multiple times for multi-column sorting.
@@ -275,7 +273,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- pagination
 
-    def top(self, count: int) -> QueryBuilder:
+    def top(self, count: int) -> Self:
         """Limit the total number of results.
 
         :param count: Maximum number of records to return (must be >= 1).
@@ -287,7 +285,7 @@ class QueryBuilder:
         self._top = count
         return self
 
-    def page_size(self, size: int) -> QueryBuilder:
+    def page_size(self, size: int) -> Self:
         """Set the number of records per page.
 
         Controls how many records are returned in each page/batch
@@ -302,7 +300,7 @@ class QueryBuilder:
         self._page_size = size
         return self
 
-    def count(self) -> QueryBuilder:
+    def count(self) -> Self:
         """Request a count of matching records in the response.
 
         Adds ``$count=true`` to the query, causing the server to include
@@ -321,7 +319,7 @@ class QueryBuilder:
         self._count = True
         return self
 
-    def include_formatted_values(self) -> QueryBuilder:
+    def include_formatted_values(self) -> Self:
         """Request formatted values in the response.
 
         Adds ``Prefer: odata.include-annotations="OData.Community.Display.V1.FormattedValue"``
@@ -351,7 +349,7 @@ class QueryBuilder:
         self._include_annotations = "OData.Community.Display.V1.FormattedValue"
         return self
 
-    def include_annotations(self, annotation: str = "*") -> QueryBuilder:
+    def include_annotations(self, annotation: str = "*") -> Self:
         """Request specific OData annotations in the response.
 
         Sets the ``Prefer: odata.include-annotations`` header. Use ``"*"``
@@ -379,7 +377,7 @@ class QueryBuilder:
 
     # --------------------------------------------------------------- expand
 
-    def expand(self, *relations: Union[str, ExpandOption]) -> QueryBuilder:
+    def expand(self, *relations: Union[str, ExpandOption]) -> Self:
         """Expand navigation properties.
 
         Accepts plain navigation property names (case-sensitive, passed
@@ -447,6 +445,32 @@ class QueryBuilder:
         if self._include_annotations is not None:
             params["include_annotations"] = self._include_annotations
         return params
+
+
+class QueryBuilder(_QueryBuilderBase):
+    """Fluent interface for building and executing OData queries against a sync client.
+
+    Provides method chaining for constructing complex queries with
+    composable filter expressions. Can be used standalone (via :meth:`build`)
+    or bound to a client (via :meth:`execute`).
+
+    :param table: Table schema name to query.
+    :type table: str
+    :raises ValueError: If ``table`` is empty.
+
+    Example:
+        Standalone query construction::
+
+            from PowerPlatform.Dataverse.models.filters import col
+
+            query = (QueryBuilder("account")
+                     .select("name")
+                     .where(col("statecode") == 0)
+                     .top(10))
+            params = query.build()
+            # {"table": "account", "select": ["name"],
+            #  "filter": "statecode eq 0", "top": 10}
+    """
 
     # --------------------------------------------------------------- execute
 
