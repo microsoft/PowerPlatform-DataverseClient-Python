@@ -11,7 +11,7 @@ import requests
 from azure.core.credentials import TokenCredential
 
 from .core._auth import _AuthManager
-from .core.config import DataverseConfig
+from .core.config import DataverseConfig, OperationContext
 from .data._odata import _ODataClient
 from .operations.dataframe import DataFrameOperations
 from .operations.records import RecordOperations
@@ -43,8 +43,14 @@ class DataverseClient:
     :param config: Optional configuration for language, timeouts, and retries.
         If not provided, defaults are loaded from :meth:`~PowerPlatform.Dataverse.core.config.DataverseConfig.from_env`.
     :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig or None
+    :param context: Optional caller-defined context object appended to the
+        outbound ``User-Agent`` header for plugin/tool attribution. Cannot be used
+        together with ``config`` -- pass the context via
+        :class:`~PowerPlatform.Dataverse.core.config.DataverseConfig` instead.
+    :type context: ~PowerPlatform.Dataverse.core.config.OperationContext or None
 
     :raises ValueError: If ``base_url`` is missing or empty after trimming.
+    :raises ValueError: If both ``config`` and ``context`` are provided.
 
     .. note::
         The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
@@ -94,12 +100,23 @@ class DataverseClient:
         base_url: str,
         credential: TokenCredential,
         config: Optional[DataverseConfig] = None,
+        *,
+        context: Optional[OperationContext] = None,
     ) -> None:
+        if config is not None and context is not None:
+            raise ValueError(
+                "Cannot specify both 'config' and 'context'. " "Pass operation_context via DataverseConfig instead."
+            )
         self.auth = _AuthManager(credential)
         self._base_url = (base_url or "").rstrip("/")
         if not self._base_url:
             raise ValueError("base_url is required.")
-        self._config = config or DataverseConfig.from_env()
+        if config is not None:
+            self._config = config
+        elif context is not None:
+            self._config = DataverseConfig(operation_context=context)
+        else:
+            self._config = DataverseConfig.from_env()
         self._odata: Optional[_ODataClient] = None
         self._session: Optional[requests.Session] = None
         self._closed: bool = False
