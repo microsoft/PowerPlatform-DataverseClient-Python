@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Unit tests for tools/migrate_v0_to_v1.py.
+"""Unit tests for PowerPlatform/Dataverse/migration/migrate_v0_to_v1.py.
 
 Covers:
 - QueryBuilder.to_dataframe() -> .execute().to_dataframe()  (auto-rewrite)
@@ -31,13 +31,13 @@ _skip_no_libcst = unittest.skipUnless(_LIBCST_AVAILABLE, "libcst not installed")
 
 
 def _migrate(source: str, *, client_var: str = "client") -> str:
-    from tools.migrate_v0_to_v1 import migrate_source
+    from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import migrate_source
 
     return migrate_source(textwrap.dedent(source), client_var=client_var)
 
 
 def _find_manual(source: str, *, client_var: str = "client") -> list:
-    from tools.migrate_v0_to_v1 import find_manual_patterns
+    from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import find_manual_patterns
 
     return find_manual_patterns(textwrap.dedent(source), client_var=client_var)
 

@@ -450,7 +450,7 @@ for page_num, page in enumerate(
         print(record["name"])
 ```
 
-> **Deprecation note:** `execute(by_page=True)` and `execute(by_page=False)` are deprecated and emit a `UserWarning`. Replace with `execute_pages()` (streaming) or plain `execute()` (eager). `QueryBuilder.to_dataframe()` is also deprecated; use `.execute().to_dataframe()` instead. The migration tool (`tools/migrate_v0_to_v1.py`) rewrites all of these automatically.
+> **Deprecation note:** `execute(by_page=True)` and `execute(by_page=False)` are deprecated and emit a `UserWarning`. Replace with `execute_pages()` (streaming) or plain `execute()` (eager). `QueryBuilder.to_dataframe()` is also deprecated; use `.execute().to_dataframe()` instead. The migration tool rewrites all of these automatically — install with `pip install PowerPlatform-Dataverse-Client[migration]` and run `dataverse-migrate path/to/your/scripts/` (or `python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1` for development checkouts).
 
 **Record count** -- include `$count=true` in the request:
 

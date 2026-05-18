@@ -16,7 +16,7 @@ Usage::
     dataverse-migrate path/to/your/scripts/ --client-var=svc   # if client is named 'svc'
 
     # Or via module for development installs:
-    python -m tools.migrate_v0_to_v1 path/to/your/scripts/
+    python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1 path/to/your/scripts/
 
 Transformations applied
 -----------------------
@@ -763,6 +763,10 @@ def _collect_targets(paths: List[str]) -> List[Path]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
+    if "--help" in args or "-h" in args:
+        print(__doc__)
+        print("\nUsage: dataverse-migrate [--dry-run] [--client-var=NAME] <path> [<path> ...]")
+        return 0
     dry_run = "--dry-run" in args
     client_var = "client"
     remaining = []

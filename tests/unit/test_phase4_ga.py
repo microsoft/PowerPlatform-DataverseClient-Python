@@ -505,7 +505,7 @@ class TestCodemodByPage(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            from tools.migrate_v0_to_v1 import migrate_source
+            from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import migrate_source
 
             cls.migrate = staticmethod(migrate_source)
         except ImportError:
@@ -513,7 +513,7 @@ class TestCodemodByPage(unittest.TestCase):
 
     def setUp(self):
         if self.migrate is None:
-            self.skipTest("libcst not installed or tools package not on path")
+            self.skipTest("libcst not installed")
 
     def test_execute_by_page_true_becomes_execute_pages(self):
         src = "result = builder.execute(by_page=True)\n"
@@ -573,7 +573,7 @@ class TestManualReviewFinder(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            from tools.migrate_v0_to_v1 import find_manual_patterns
+            from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import find_manual_patterns
 
             cls.find = staticmethod(find_manual_patterns)
         except ImportError:
@@ -581,7 +581,7 @@ class TestManualReviewFinder(unittest.TestCase):
 
     def setUp(self):
         if self.find is None:
-            self.skipTest("libcst not installed or tools package not on path")
+            self.skipTest("libcst not installed")
 
     def test_records_get_flagged(self):
         src = "result = client.records.get('account', record_id)\n"

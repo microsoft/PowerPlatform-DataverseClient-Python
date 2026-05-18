@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `QueryResult.__getitem__` — index access (`result[0]`) returns a `Record`; slice access (`result[1:5]`) returns a new `QueryResult` (#175)
 - `DataverseModel` structural `Protocol` (`models/protocol.py`) — implement on any entity class to enable typed integration with CRUD operations without specifying table names or serializing manually (#175)
 - `col()`, `raw()`, `QueryResult`, and `DataverseModel` exported from the top-level `PowerPlatform.Dataverse` package (#175)
-- v0→v1 migration tool: `tools/migrate_v0_to_v1.py` rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns (#175)
+- v0→v1 migration tool: installed as the `dataverse-migrate` console script (also runnable via `python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1`); rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns; requires the `[migration]` optional extra (`pip install PowerPlatform-Dataverse-Client[migration]`) (#175)
 - Migration tool now auto-rewrites `QueryBuilder.to_dataframe()` → `.execute().to_dataframe()` (inserts `.execute()` when receiver is a recognised builder chain); output improved with `[NEEDS-MANUAL]` label for files that have no auto-rewrites but require manual attention, and a trailing note on `[MIGRATED]` lines when manual items remain (#175)
 
 ### Changed
