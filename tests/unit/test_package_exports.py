@@ -24,7 +24,7 @@ class TestCoreExports(unittest.TestCase):
     def test_identity(self):
         """Re-exported objects are the same objects as their source definitions."""
         import PowerPlatform.Dataverse.core as m
-        from PowerPlatform.Dataverse.core.config import DataverseConfig
+        from PowerPlatform.Dataverse.core.config import DataverseConfig, OperationContext
         from PowerPlatform.Dataverse.core.errors import (
             DataverseError,
             HttpError,
@@ -37,10 +37,11 @@ class TestCoreExports(unittest.TestCase):
         self.assertIs(m.DataverseConfig, DataverseConfig)
         self.assertIs(m.DataverseError, DataverseError)
         self.assertIs(m.HttpError, HttpError)
+        self.assertIs(m.LogConfig, LogConfig)
         self.assertIs(m.MetadataError, MetadataError)
+        self.assertIs(m.OperationContext, OperationContext)
         self.assertIs(m.SQLParseError, SQLParseError)
         self.assertIs(m.ValidationError, ValidationError)
-        self.assertIs(m.LogConfig, LogConfig)
 
 
 class TestModelsExports(unittest.TestCase):
@@ -61,8 +62,12 @@ class TestModelsExports(unittest.TestCase):
         """Re-exported objects are the same objects as their source definitions."""
         import PowerPlatform.Dataverse.models as m
         from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
+        from PowerPlatform.Dataverse.models.fetchxml_query import FetchXmlQuery
+        from PowerPlatform.Dataverse.models.filters import ColumnProxy, FilterExpression, col, raw
+        from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
+        from PowerPlatform.Dataverse.models.protocol import DataverseModel
         from PowerPlatform.Dataverse.models.query_builder import ExpandOption, QueryBuilder, QueryParams
-        from PowerPlatform.Dataverse.models.record import Record
+        from PowerPlatform.Dataverse.models.record import QueryResult, Record
         from PowerPlatform.Dataverse.models.relationship import (
             CascadeConfiguration,
             LookupAttributeMetadata,
@@ -73,21 +78,30 @@ class TestModelsExports(unittest.TestCase):
         from PowerPlatform.Dataverse.models.table_info import AlternateKeyInfo, ColumnInfo, TableInfo
         from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
+        self.assertIs(m.AlternateKeyInfo, AlternateKeyInfo)
         self.assertIs(m.BatchItemResponse, BatchItemResponse)
         self.assertIs(m.BatchResult, BatchResult)
-        self.assertIs(m.ExpandOption, ExpandOption)
-        self.assertIs(m.QueryBuilder, QueryBuilder)
-        self.assertIs(m.QueryParams, QueryParams)
-        self.assertIs(m.Record, Record)
         self.assertIs(m.CascadeConfiguration, CascadeConfiguration)
+        self.assertIs(m.ColumnInfo, ColumnInfo)
+        self.assertIs(m.ColumnProxy, ColumnProxy)
+        self.assertIs(m.DataverseModel, DataverseModel)
+        self.assertIs(m.ExpandOption, ExpandOption)
+        self.assertIs(m.FetchXmlQuery, FetchXmlQuery)
+        self.assertIs(m.FilterExpression, FilterExpression)
+        self.assertIs(m.Label, Label)
+        self.assertIs(m.LocalizedLabel, LocalizedLabel)
         self.assertIs(m.LookupAttributeMetadata, LookupAttributeMetadata)
         self.assertIs(m.ManyToManyRelationshipMetadata, ManyToManyRelationshipMetadata)
         self.assertIs(m.OneToManyRelationshipMetadata, OneToManyRelationshipMetadata)
+        self.assertIs(m.QueryBuilder, QueryBuilder)
+        self.assertIs(m.QueryParams, QueryParams)
+        self.assertIs(m.QueryResult, QueryResult)
+        self.assertIs(m.Record, Record)
         self.assertIs(m.RelationshipInfo, RelationshipInfo)
-        self.assertIs(m.AlternateKeyInfo, AlternateKeyInfo)
-        self.assertIs(m.ColumnInfo, ColumnInfo)
         self.assertIs(m.TableInfo, TableInfo)
         self.assertIs(m.UpsertItem, UpsertItem)
+        self.assertIs(m.col, col)
+        self.assertIs(m.raw, raw)
 
 
 class TestOperationsExports(unittest.TestCase):
