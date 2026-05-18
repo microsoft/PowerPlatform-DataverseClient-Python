@@ -1364,7 +1364,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         }
 
     def _enum_optionset_payload(
-        self, column_schema_name: str, enum_cls: type[Enum], is_primary_name: bool = False
+        self,
+        column_schema_name: str,
+        enum_cls: type[Enum],
+        is_primary_name: bool = False,
+        *,
+        complex: bool = False,
     ) -> Dict[str, Any]:
         """Create local (IsGlobal=False) PicklistAttributeMetadata from an Enum subclass.
 
@@ -1375,7 +1380,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         Keys inside per-language dict may be either enum member objects or their names.
         If a language lacks a label for a member, member.name is used as fallback.
         The client's configured language code is always ensured to exist.
+
+        :param complex: When ``True``, emit ``ComplexPicklistAttributeMetadata`` /
+            ``ComplexOptionSetMetadata`` types required by the ``CreateEntities``
+            action. When ``False`` (default), emit the standard types used by the
+            ``EntityDefinitions/{id}/Attributes`` endpoint.
         """
+        prefix = "Microsoft.Dynamics.CRM.Complex" if complex else "Microsoft.Dynamics.CRM."
+
         all_member_items = list(enum_cls.__members__.items())
         if not all_member_items:
             raise ValueError(f"Enum {enum_cls.__name__} has no members")
@@ -1436,7 +1448,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 per_lang[lang] = label_text
             options.append(
                 {
-                    "@odata.type": "Microsoft.Dynamics.CRM.OptionMetadata",
+                    "@odata.type": f"{prefix}.OptionMetadata",
                     "Value": m.value,
                     "Label": self._build_localizedlabels_payload(per_lang),
                 }
@@ -1444,13 +1456,13 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         attr_label = column_schema_name.split("_")[-1]
         return {
-            "@odata.type": "Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
+            "@odata.type": f"{prefix}PicklistAttributeMetadata",
             "SchemaName": column_schema_name,
             "DisplayName": self._label(attr_label),
             "RequiredLevel": {"Value": "None"},
             "IsPrimaryName": bool(is_primary_name),
             "OptionSet": {
-                "@odata.type": "Microsoft.Dynamics.CRM.OptionSetMetadata",
+                "@odata.type": f"{prefix}OptionSetMetadata",
                 "IsGlobal": False,
                 "Options": options,
             },
@@ -1597,7 +1609,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         """
         # Enum-based local option set support
         if isinstance(dtype, type) and issubclass(dtype, Enum):
-            return self._enum_optionset_payload(column_schema_name, dtype, is_primary_name=is_primary_name)
+            return self._enum_optionset_payload(
+                column_schema_name, dtype, is_primary_name=is_primary_name, complex=complex
+            )
         if not isinstance(dtype, str):
             raise ValueError(
                 f"Unsupported column spec type for '{column_schema_name}': {type(dtype)} (expected str or Enum subclass)"

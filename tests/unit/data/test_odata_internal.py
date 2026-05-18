@@ -1519,7 +1519,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
 
     def test_complex_int_dtype(self):
-        """'int' produces ComplexIntegerAttributeMetadata."""
+        """'int' with complex=True produces ComplexIntegerAttributeMetadata."""
         result = self.od._attribute_payload("new_Count", "int", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata")
 
@@ -1534,7 +1534,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DecimalAttributeMetadata")
 
     def test_complex_decimal_dtype(self):
-        """'decimal' produces ComplexDecimalAttributeMetadata."""
+        """'decimal' with complex=True produces ComplexDecimalAttributeMetadata."""
         result = self.od._attribute_payload("new_Price", "decimal", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDecimalAttributeMetadata")
 
@@ -1549,7 +1549,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DoubleAttributeMetadata")
 
     def test_complex_float_dtype(self):
-        """'float' produces ComplexDoubleAttributeMetadata."""
+        """'float' with complex=True produces ComplexDoubleAttributeMetadata."""
         result = self.od._attribute_payload("new_Score", "float", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDoubleAttributeMetadata")
 
@@ -1564,7 +1564,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata")
 
     def test_complex_datetime_dtype(self):
-        """'datetime' produces ComplexDateTimeAttributeMetadata."""
+        """'datetime' with complex=True produces ComplexDateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDateTimeAttributeMetadata")
 
@@ -1579,7 +1579,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.BooleanAttributeMetadata")
 
     def test_complex_bool_dtype(self):
-        """'bool' produces ComplexBooleanAttributeMetadata."""
+        """'bool' with complex=True produces ComplexBooleanAttributeMetadata."""
         result = self.od._attribute_payload("new_IsActive", "bool", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexBooleanAttributeMetadata")
 
@@ -1594,7 +1594,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.FileAttributeMetadata")
 
     def test_complex_file_dtype(self):
-        """'file' produces ComplexFileAttributeMetadata."""
+        """'file' with complex=True produces ComplexFileAttributeMetadata."""
         result = self.od._attribute_payload("new_Attachment", "file", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexFileAttributeMetadata")
 
@@ -1613,7 +1613,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertNotIn("IsPrimaryName", result)
 
     def test_complex_memo_type(self):
-        """'memo' produces ComplexMemoAttributeMetadata with MaxLength 4000."""
+        """'memo' with complex=True produces ComplexMemoAttributeMetadata with MaxLength 4000."""
         result = self.od._attribute_payload("new_Notes", "memo", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexMemoAttributeMetadata")
         self.assertEqual(result["SchemaName"], "new_Notes")
@@ -1635,7 +1635,7 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["FormatName"], {"Value": "Text"})
 
     def test_complex_string_type_max_length(self):
-        """'string' produces ComplexStringAttributeMetadata with MaxLength 200."""
+        """'string' with complex=True produces ComplexStringAttributeMetadata with MaxLength 200."""
         result = self.od._attribute_payload("new_Title", "string", complex=True)
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata")
         self.assertEqual(result["MaxLength"], 200)
