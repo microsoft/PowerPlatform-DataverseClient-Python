@@ -299,5 +299,53 @@ class TestFindManualPatterns(unittest.TestCase):
         self.assertFalse(any("records.get" in f for f in findings))
 
 
+# ---------------------------------------------------------------------------
+# CLI: --help / -h handling
+# ---------------------------------------------------------------------------
+
+
+@_skip_no_libcst
+class TestMainHelp(unittest.TestCase):
+    """``main()`` returns 0 and prints usage when --help / -h is passed.
+
+    Regression guard for the UX gap where ``--help`` was treated as a positional
+    path argument and produced ``[WARN] Not a file or directory: --help``.
+    """
+
+    def _run_main_capture(self, argv):
+        import io
+        import contextlib
+        from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import main
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(argv)
+        return rc, buf.getvalue()
+
+    def test_long_help_flag_returns_zero(self):
+        rc, _ = self._run_main_capture(["--help"])
+        self.assertEqual(rc, 0)
+
+    def test_short_help_flag_returns_zero(self):
+        rc, _ = self._run_main_capture(["-h"])
+        self.assertEqual(rc, 0)
+
+    def test_help_prints_usage_line(self):
+        _, out = self._run_main_capture(["--help"])
+        self.assertIn("Usage:", out)
+        self.assertIn("dataverse-migrate", out)
+
+    def test_help_takes_precedence_over_other_flags(self):
+        """--help with other flags still exits 0 without processing paths."""
+        rc, _ = self._run_main_capture(["--dry-run", "--help", "/nonexistent/path"])
+        self.assertEqual(rc, 0)
+
+    def test_no_args_returns_one(self):
+        """No arguments still prints usage but returns 1 (error)."""
+        rc, out = self._run_main_capture([])
+        self.assertEqual(rc, 1)
+        self.assertIn("Usage:", out)
+
+
 if __name__ == "__main__":
     unittest.main()
