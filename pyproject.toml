@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PowerPlatform-Dataverse-Client"
-version = "0.1.0b9"
+version = "0.1.0b11"
 description = "Python SDK for Microsoft Dataverse"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [{name = "Microsoft Corporation"}]
@@ -40,6 +40,7 @@ dependencies = [
 
 [project.scripts]
 dataverse-install-claude-skill = "PowerPlatform.Dataverse._skill_installer:main"
+dataverse-migrate = "PowerPlatform.Dataverse.migration.migrate_v0_to_v1:main"
 
 [project.optional-dependencies]
 dev = [
@@ -49,7 +50,9 @@ dev = [
     "isort>=5.12.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "libcst>=1.0.0",
 ]
+migration = ["libcst>=1.0.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -96,6 +99,12 @@ testpaths = ["tests/unit"]
 
 [tool.coverage.run]
 source = ["src/PowerPlatform"]
+# Migration codemod is an opt-in tool (requires the [migration] extra).
+# It is exercised by tests/unit/test_migration_tool.py and tests/unit/test_phase4_ga.py,
+# but its CLI plumbing and libcst error-path branches are not meaningfully testable
+# under the default coverage scope. Exclude from coverage reporting so the metric
+# reflects core SDK code only.
+omit = ["src/PowerPlatform/Dataverse/migration/*"]
 
 [tool.coverage.report]
 fail_under = 90

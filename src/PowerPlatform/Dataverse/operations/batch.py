@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
@@ -18,6 +19,7 @@ from ..data._batch import (
     _RecordUpdate,
     _RecordDelete,
     _RecordGet,
+    _RecordList,
     _RecordUpsert,
     _TableCreate,
     _TableDelete,
@@ -43,6 +45,7 @@ from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
 if TYPE_CHECKING:
     from ..client import DataverseClient
+    from ..models.filters import FilterExpression
 
 __all__ = [
     "BatchRecordOperations",
@@ -166,10 +169,13 @@ class BatchRecordOperations:
     """
     Record operations on a :class:`BatchRequest`.
 
-    Mirrors ``client.records`` exactly: same method names, same signatures.
+    Mirrors ``client.records``: same method names, same signatures.
     All methods return ``None``; results are available via
     :class:`~PowerPlatform.Dataverse.models.batch.BatchResult` after
     :meth:`BatchRequest.execute`.
+
+    GA methods: :meth:`retrieve` (single record) and :meth:`list` (multi-record,
+    single page). :meth:`get` is deprecated — use :meth:`retrieve` instead.
 
     Do not instantiate directly; use ``batch.records``.
     """
@@ -253,16 +259,9 @@ class BatchRecordOperations:
         """
         Add a single-record get operation to the batch.
 
-        Only the single-record overload (``record_id`` provided) is supported.
-        The paginated/multi-record overload of ``client.records.get()``
-        (``filter``, ``orderby``, etc., without ``record_id``) is **not**
-        supported in batch — pagination requires following
-        ``@odata.nextLink`` across multiple round-trips, which is
-        incompatible with a single batch request.
-
-        The response body will be available in
-        :attr:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse.data`
-        after :meth:`BatchRequest.execute`.
+        .. deprecated::
+            Use :meth:`retrieve` instead. ``batch.records.get()`` is deprecated
+            and will be removed in a future release.
 
         :param table: Table schema name.
         :type table: :class:`str`
@@ -271,6 +270,11 @@ class BatchRecordOperations:
         :param select: Optional list of column names to include.
         :type select: list[str] or None
         """
+        warnings.warn(
+            "'batch.records.get()' is deprecated; use 'batch.records.retrieve(table, record_id)' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._batch._items.append(_RecordGet(table=table, record_id=record_id, select=select))
 
     def upsert(
@@ -325,6 +329,136 @@ class BatchRecordOperations:
                 raise TypeError("Each item must be an UpsertItem or a dict with 'alternate_key' and 'record' keys")
         self._batch._items.append(_RecordUpsert(table=table, items=normalized))
 
+    def retrieve(
+        self,
+        table: str,
+        record_id: str,
+        *,
+        select: Optional[List[str]] = None,
+        expand: Optional[List[str]] = None,
+        include_annotations: Optional[str] = None,
+    ) -> None:
+        """
+        Add a single-record retrieve operation to the batch.
+
+        GA replacement for the deprecated :meth:`get`. Enqueues a GET request
+        for one record by its GUID. The response body will be available in
+        :attr:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse.data`
+        after :meth:`BatchRequest.execute`.
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param record_id: GUID of the record to retrieve.
+        :type record_id: :class:`str`
+        :param select: Optional list of column logical names to include.
+        :type select: list[str] or None
+        :param expand: Optional list of navigation properties to expand.
+            Navigation property names are case-sensitive and must match the
+            entity's ``$metadata``.
+        :type expand: list[str] or None
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header (e.g. ``"*"`` or
+            ``"OData.Community.Display.V1.FormattedValue"``), or ``None``.
+        :type include_annotations: :class:`str` or None
+
+        Example::
+
+            batch = client.batch.new()
+            batch.records.retrieve(
+                "account", account_id,
+                select=["name", "statuscode"],
+                expand=["primarycontactid"],
+                include_annotations="OData.Community.Display.V1.FormattedValue",
+            )
+            result = batch.execute()
+            record = result.responses[0].data
+            contact = (record.get("primarycontactid") or {})
+            print(contact.get("fullname"))
+        """
+        self._batch._items.append(
+            _RecordGet(
+                table=table,
+                record_id=record_id,
+                select=select,
+                expand=expand,
+                include_annotations=include_annotations,
+            )
+        )
+
+    def list(
+        self,
+        table: str,
+        *,
+        filter: "Optional[Union[str, FilterExpression]]" = None,
+        select: Optional[List[str]] = None,
+        orderby: Optional[List[str]] = None,
+        top: Optional[int] = None,
+        expand: Optional[List[str]] = None,
+        page_size: Optional[int] = None,
+        count: bool = False,
+        include_annotations: Optional[str] = None,
+    ) -> None:
+        """
+        Add a multi-record list operation to the batch (single page, no pagination).
+
+        Enqueues a GET request for multiple records. Because batch requests are
+        a single HTTP round-trip, pagination (``@odata.nextLink``) is **not**
+        supported — use ``top`` to bound the result size, or rely on the
+        server's default page limit.
+
+        The response body (``{"value": [...]}`` JSON) will be available in
+        :attr:`~PowerPlatform.Dataverse.models.batch.BatchItemResponse.data`
+        after :meth:`BatchRequest.execute`.
+
+        :param table: Table schema name (e.g. ``"account"``).
+        :type table: :class:`str`
+        :param filter: Optional OData ``$filter`` expression or :class:`FilterExpression`.
+        :type filter: str or FilterExpression or None
+        :param select: Optional list of column logical names to include.
+        :type select: list[str] or None
+        :param orderby: Optional list of sort expressions (e.g. ``["name asc"]``).
+        :type orderby: list[str] or None
+        :param top: Maximum number of records to return.
+        :type top: int or None
+        :param expand: Optional list of navigation properties to expand.
+        :type expand: list[str] or None
+        :param page_size: Per-page size hint via ``Prefer: odata.maxpagesize``.
+        :type page_size: int or None
+        :param count: If ``True``, adds ``$count=true`` to the request.
+        :type count: bool
+        :param include_annotations: OData annotation pattern for the
+            ``Prefer: odata.include-annotations`` header, or ``None``.
+        :type include_annotations: :class:`str` or None
+
+        Example::
+
+            batch = client.batch.new()
+            batch.records.list(
+                "account",
+                filter="statecode eq 0",
+                select=["name", "statuscode"],
+                orderby=["name asc"],
+                top=50,
+                include_annotations="OData.Community.Display.V1.FormattedValue",
+            )
+            result = batch.execute()
+            records = result.responses[0].data.get("value", [])
+        """
+        filter_str: Optional[str] = str(filter) if filter is not None else None
+        self._batch._items.append(
+            _RecordList(
+                table=table,
+                select=select,
+                filter=filter_str,
+                orderby=orderby,
+                top=top,
+                expand=expand,
+                page_size=page_size,
+                count=count,
+                include_annotations=include_annotations,
+            )
+        )
+
 
 class BatchTableOperations:
     """
@@ -358,6 +492,7 @@ class BatchTableOperations:
         *,
         solution: Optional[str] = None,
         primary_column: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> None:
         """
         Add a table-create operation to the batch.
@@ -375,6 +510,9 @@ class BatchTableOperations:
         :type solution: str or None
         :param primary_column: Optional primary column schema name.
         :type primary_column: str or None
+        :param display_name: Human-readable display name for the table.
+            When omitted, defaults to the table schema name.
+        :type display_name: str or None
         """
         self._batch._items.append(
             _TableCreate(
@@ -382,6 +520,7 @@ class BatchTableOperations:
                 columns=columns,
                 solution=solution,
                 primary_column=primary_column,
+                display_name=display_name,
             )
         )
 

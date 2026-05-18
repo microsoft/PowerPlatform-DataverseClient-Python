@@ -237,7 +237,7 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
         record = None
         for attempt in range(1, retries + 1):
             try:
-                record = client.records.get(table_schema_name, record_id)
+                record = client.records.retrieve(table_schema_name, record_id)
                 if attempt > 1:
                     print(f"   [OK] Record read succeeded after {attempt} attempts.")
                 break
@@ -251,24 +251,48 @@ def test_read_record(client: DataverseClient, table_info: Dict[str, Any], record
         if record is None:
             raise RuntimeError("Record did not become available in time.")
 
-        if record:
-            print("[OK] Record retrieved successfully!")
-            print("   Retrieved data:")
+        print("[OK] Record retrieved successfully!")
+        print("   Retrieved data:")
+        for field_name in [
+            f"{attr_prefix}_name",
+            f"{attr_prefix}_description",
+            f"{attr_prefix}_count",
+            f"{attr_prefix}_amount",
+            f"{attr_prefix}_is_active",
+        ]:
+            if field_name in record:
+                print(f"     {field_name}: {record[field_name]}")
 
-            # Display key fields
-            for field_name in [
-                f"{attr_prefix}_name",
-                f"{attr_prefix}_description",
-                f"{attr_prefix}_count",
-                f"{attr_prefix}_amount",
-                f"{attr_prefix}_is_active",
-            ]:
-                if field_name in record:
-                    print(f"     {field_name}: {record[field_name]}")
-
-            return record
+        # -- include_annotations: verify FormattedValue annotations are returned --
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        annotated = client.records.retrieve(
+            table_schema_name,
+            record_id,
+            select=[f"{attr_prefix}_is_active", f"{attr_prefix}_count"],
+            include_annotations=annotation,
+        )
+        ann_key = f"{attr_prefix}_is_active@{annotation}"
+        if annotated is not None and ann_key in annotated:
+            print(f"[OK] include_annotations verified: {ann_key} = '{annotated[ann_key]}'")
         else:
-            raise ValueError("Record not found")
+            print(f"[WARN] include_annotations: expected key '{ann_key}' not present in response")
+
+        # -- expand: verify navigation property expansion on a single-record GET --
+        # owninguser is a system navigation property present on all user-owned tables.
+        try:
+            expanded = client.records.retrieve(
+                table_schema_name,
+                record_id,
+                select=[f"{attr_prefix}_name"],
+                expand=["owninguser"],
+            )
+            owner = (expanded.get("owninguser") or {}) if expanded else {}
+            owner_name = owner.get("fullname") or owner.get("domainname") or "(unknown)"
+            print(f"[OK] records.retrieve with expand=['owninguser']: owner='{owner_name}'")
+        except Exception as e:  # noqa: BLE001
+            print(f"[WARN] records.retrieve expand skipped: {e}")
+
+        return record
 
     except HttpError as e:
         print(f"[ERR] HTTP error during record reading: {e}")
@@ -288,28 +312,30 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
     retries = 5
     delay_seconds = 3
 
+    select_cols = [f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"]
+    active_filter = f"{attr_prefix}_is_active eq true"
+
     try:
-        print("Querying records from test table...")
+        # -- records.list() — eager, all pages collected into one QueryResult ----------
+        print("Querying records with records.list()...")
         for attempt in range(1, retries + 1):
             try:
-                records_iterator = client.records.get(
+                result = client.records.list(
                     table_schema_name,
-                    select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_amount"],
-                    filter=f"{attr_prefix}_is_active eq true",
+                    select=select_cols,
+                    filter=active_filter,
                     top=5,
-                    orderby=[f"{attr_prefix}_name asc"],
                 )
 
                 record_count = 0
-                for batch in records_iterator:
-                    for record in batch:
-                        record_count += 1
-                        name = record.get(f"{attr_prefix}_name", "N/A")
-                        count = record.get(f"{attr_prefix}_count", "N/A")
-                        amount = record.get(f"{attr_prefix}_amount", "N/A")
-                        print(f"   Record {record_count}: {name} (Count: {count}, Amount: {amount})")
+                for record in result:
+                    record_count += 1
+                    name = record.get(f"{attr_prefix}_name", "N/A")
+                    count = record.get(f"{attr_prefix}_count", "N/A")
+                    amount = record.get(f"{attr_prefix}_amount", "N/A")
+                    print(f"   Record {record_count}: {name} (Count: {count}, Amount: {amount})")
 
-                print(f"[OK] Query completed! Found {record_count} active records.")
+                print(f"[OK] records.list() completed! Found {record_count} active records.")
                 break
             except HttpError as err:
                 if getattr(err, "status_code", None) == 404 and attempt < retries:
@@ -317,6 +343,66 @@ def test_query_records(client: DataverseClient, table_info: Dict[str, Any]) -> N
                     time.sleep(delay_seconds)
                     continue
                 raise
+
+        # -- records.list_pages() — lazy, one QueryResult per HTTP page ---------------
+        print("\nQuerying records with records.list_pages() (paged)...")
+        page_num = 0
+        total_records = 0
+        for page in client.records.list_pages(
+            table_schema_name,
+            select=select_cols,
+            filter=active_filter,
+        ):
+            page_num += 1
+            total_records += len(page)
+            names = [r.get(f"{attr_prefix}_name", "N/A") for r in page]
+            print(f"   Page {page_num}: {len(page)} record(s) — {names}")
+        print(f"[OK] records.list_pages() completed! {total_records} records across {page_num} page(s).")
+
+        # -- records.list() with orderby, page_size, count, include_annotations --------
+        print("\nQuerying records.list() with orderby / page_size / count / include_annotations...")
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        annotated_result = client.records.list(
+            table_schema_name,
+            select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+            filter=active_filter,
+            orderby=[f"{attr_prefix}_name asc"],
+            page_size=50,
+            count=True,
+            include_annotations=annotation,
+        )
+        names_ordered = [r.get(f"{attr_prefix}_name", "N/A") for r in annotated_result]
+        ann_key = f"{attr_prefix}_is_active@{annotation}"
+        ann_present = any(ann_key in r for r in annotated_result)
+        print(f"   Records (ordered): {names_ordered}")
+        if ann_present:
+            print(f"[OK] include_annotations verified: '{ann_key}' present in list() results")
+        else:
+            print(f"[WARN] include_annotations: '{ann_key}' not found — may not be supported by this environment")
+        # Verify orderby: names should be non-decreasing
+        if len(names_ordered) > 1 and all(isinstance(n, str) for n in names_ordered):
+            assert names_ordered == sorted(names_ordered), f"orderby asc not respected: {names_ordered}"
+        print(f"[OK] records.list() with extended params completed! {len(annotated_result)} record(s).")
+
+        # -- records.list_pages() with orderby, page_size, include_annotations ---------
+        print("\nQuerying records.list_pages() with orderby / page_size / include_annotations...")
+        lp_records = []
+        for page in client.records.list_pages(
+            table_schema_name,
+            select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+            filter=active_filter,
+            orderby=[f"{attr_prefix}_name asc"],
+            page_size=50,
+            include_annotations=annotation,
+        ):
+            lp_records.extend(page)
+        lp_names = [r.get(f"{attr_prefix}_name", "N/A") for r in lp_records]
+        lp_ann_present = any(ann_key in r for r in lp_records)
+        if lp_ann_present:
+            print(f"[OK] include_annotations verified in list_pages() results")
+        else:
+            print(f"[WARN] include_annotations: '{ann_key}' not found in list_pages() results")
+        print(f"[OK] records.list_pages() with extended params completed! {len(lp_records)} record(s).")
 
     except Exception as e:
         print(f"[WARN] Query test encountered an issue: {e}")
@@ -517,19 +603,39 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
             print(f"[OK] {len(result.succeeded)} ops → {len(all_ids)} records created: {all_ids}")
 
         # -------------------------------------------------------------------
-        # [2/11] READ — get by ID + tables.get + tables.list + query.sql
-        #              All 4 reads in one batch request
+        # [2/11] READ — records.retrieve + records.list (with extended params)
+        #              + tables.get + tables.list + query.sql — 1 POST $batch
         # -------------------------------------------------------------------
         if all_ids:
-            print("\n[2/11] Read — records.get + tables.get + tables.list + query.sql (4 ops, 1 POST $batch)")
+            annotation = "OData.Community.Display.V1.FormattedValue"
+            print(
+                "\n[2/11] Read — records.retrieve + records.list(orderby/page_size/count/include_annotations)"
+                " + tables.get + tables.list + query.sql (5 ops, 1 POST $batch)"
+            )
             batch = client.batch.new()
-            batch.records.get(
+            # [0] Single-record retrieve with annotations and expand
+            batch.records.retrieve(
                 table_schema_name,
                 all_ids[0],
-                select=[f"{attr_prefix}_name", f"{attr_prefix}_count"],
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_count", f"{attr_prefix}_is_active"],
+                expand=["owninguser"],
+                include_annotations=annotation,
             )
+            # [1] Multi-record list with orderby, page_size, count, include_annotations
+            batch.records.list(
+                table_schema_name,
+                select=[f"{attr_prefix}_name", f"{attr_prefix}_is_active"],
+                filter=f"{attr_prefix}_is_active eq true",
+                orderby=[f"{attr_prefix}_name asc"],
+                page_size=50,
+                count=True,
+                include_annotations=annotation,
+            )
+            # [2] Table metadata
             batch.tables.get(table_schema_name)
+            # [3] Table list
             batch.tables.list()
+            # [4] SQL
             batch.query.sql(f"SELECT TOP 3 {attr_prefix}_name FROM {logical_name}")
             result = batch.execute()
             print(f"[OK] {len(result.succeeded)} succeeded, {len(result.failed)} failed")
@@ -538,16 +644,30 @@ def test_batch_all_operations(client: DataverseClient, table_info: Dict[str, Any
                     print(f"   [{i}] FAILED {resp.status_code}: {resp.error_message}")
                     continue
                 if i == 0 and resp.data:
-                    print(
-                        f"   records.get → name='{resp.data.get(f'{attr_prefix}_name')}', count={resp.data.get(f'{attr_prefix}_count')}"
-                    )
+                    name = resp.data.get(f"{attr_prefix}_name")
+                    ann_key = f"{attr_prefix}_is_active@{annotation}"
+                    ann_val = resp.data.get(ann_key, "<not returned>")
+                    owner = resp.data.get("owninguser") or {}
+                    owner_name = owner.get("fullname") or owner.get("domainname") or "<not returned>"
+                    print(f"   records.retrieve → name='{name}', {ann_key}='{ann_val}'")
+                    print(f"   records.retrieve expand=['owninguser'] → owner='{owner_name}'")
                 elif i == 1 and resp.data:
+                    rows = resp.data.get("value", [])
+                    names_ordered = [r.get(f"{attr_prefix}_name") for r in rows]
+                    ann_key = f"{attr_prefix}_is_active@{annotation}"
+                    ann_present = any(ann_key in r for r in rows)
+                    print(f"   records.list → {len(rows)} row(s), ordered: {names_ordered}")
+                    if ann_present:
+                        print(f"   [OK] include_annotations '{ann_key}' present in batch.records.list() results")
+                    else:
+                        print(f"   [WARN] include_annotations '{ann_key}' not found in batch.records.list() results")
+                elif i == 2 and resp.data:
                     print(
                         f"   tables.get  → LogicalName='{resp.data.get('LogicalName')}', EntitySet='{resp.data.get('EntitySetName')}'"
                     )
-                elif i == 2 and resp.data:
-                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
                 elif i == 3 and resp.data:
+                    print(f"   tables.list → {len(resp.data.get('value', []))} tables returned")
+                elif i == 4 and resp.data:
                     print(f"   query.sql   → {len(resp.data.get('value', []))} rows returned")
 
         # -------------------------------------------------------------------
@@ -955,32 +1075,29 @@ def test_relationships(client: DataverseClient) -> None:
         # --- Create parent and child tables ---
         print("\nCreating relationship test tables...")
 
-        parent_info = backoff(
-            lambda: client.tables.create(
-                rel_parent_schema,
-                {"test_Code": "string"},
-            )
-        )
+        def _get_or_create(schema, columns, label):
+            info = client.tables.get(schema)
+            if info:
+                print(f"[OK] Table already exists: {schema} (skipped)")
+                return info
+            try:
+                result = backoff(lambda: client.tables.create(schema, columns))
+                print(f"[OK] Created {label}: {schema}")
+                return result
+            except Exception as e:
+                if "already exists" in str(e).lower() or "not unique" in str(e).lower():
+                    print(f"[OK] Table already exists: {schema} (skipped)")
+                    return client.tables.get(schema)
+                raise
+
+        parent_info = _get_or_create(rel_parent_schema, {"test_Code": "string"}, "parent table")
         created_tables.append(rel_parent_schema)
-        print(f"[OK] Created parent table: {parent_info['table_schema_name']}")
 
-        child_info = backoff(
-            lambda: client.tables.create(
-                rel_child_schema,
-                {"test_Number": "string"},
-            )
-        )
+        child_info = _get_or_create(rel_child_schema, {"test_Number": "string"}, "child table")
         created_tables.append(rel_child_schema)
-        print(f"[OK] Created child table: {child_info['table_schema_name']}")
 
-        proj_info = backoff(
-            lambda: client.tables.create(
-                rel_m2m_schema,
-                {"test_ProjectCode": "string"},
-            )
-        )
+        proj_info = _get_or_create(rel_m2m_schema, {"test_ProjectCode": "string"}, "M:N table")
         created_tables.append(rel_m2m_schema)
-        print(f"[OK] Created M:N table: {proj_info['table_schema_name']}")
 
         # --- Wait for table metadata to propagate ---
         wait_for_table_metadata(client, rel_parent_schema)
@@ -1009,42 +1126,52 @@ def test_relationships(client: DataverseClient) -> None:
             ),
         )
 
-        result_1n = backoff(
-            lambda: client.tables.create_one_to_many_relationship(
-                lookup=lookup,
-                relationship=relationship,
+        existing_1n = client.tables.get_relationship("test_RelParent_RelChild")
+        if existing_1n:
+            result_1n = existing_1n
+            rel_id_1n = result_1n.relationship_id
+            print(f"  [OK] Relationship already exists: {result_1n.relationship_schema_name} (skipped)")
+        else:
+            result_1n = backoff(
+                lambda: client.tables.create_one_to_many_relationship(
+                    lookup=lookup,
+                    relationship=relationship,
+                )
             )
-        )
-
-        assert result_1n.relationship_schema_name == "test_RelParent_RelChild"
-        assert result_1n.relationship_type == "one_to_many"
-        assert result_1n.lookup_schema_name is not None
-        rel_id_1n = result_1n.relationship_id
-        print(f"  [OK] Created 1:N relationship: {result_1n.relationship_schema_name}")
-        print(f"       Lookup: {result_1n.lookup_schema_name}")
-        print(f"       ID: {rel_id_1n}")
+            assert result_1n.relationship_schema_name == "test_RelParent_RelChild"
+            assert result_1n.relationship_type == "one_to_many"
+            assert result_1n.lookup_schema_name is not None
+            rel_id_1n = result_1n.relationship_id
+            print(f"  [OK] Created 1:N relationship: {result_1n.relationship_schema_name}")
+            print(f"       Lookup: {result_1n.lookup_schema_name}")
+            print(f"       ID: {rel_id_1n}")
 
         # --- Test 2: Create lookup field (convenience API) ---
         print("\n  Test 2: Create lookup field (convenience API)")
         print("  " + "-" * 45)
 
-        result_lookup = backoff(
-            lambda: client.tables.create_lookup_field(
-                referencing_table=child_info["table_logical_name"],
-                lookup_field_name="test_ManagerId",
-                referenced_table="contact",
-                display_name="Manager",
-                description="The record's manager contact",
-                required=False,
-                cascade_delete=CASCADE_BEHAVIOR_REMOVE_LINK,
+        existing_lookup = client.tables.get_relationship("contact_test_relchild_test_ManagerId")
+        if existing_lookup:
+            result_lookup = existing_lookup
+            rel_id_lookup = result_lookup.relationship_id
+            print(f"  [OK] Lookup already exists: {result_lookup.relationship_schema_name} (skipped)")
+        else:
+            result_lookup = backoff(
+                lambda: client.tables.create_lookup_field(
+                    referencing_table=child_info["table_logical_name"],
+                    lookup_field_name="test_ManagerId",
+                    referenced_table="contact",
+                    display_name="Manager",
+                    description="The record's manager contact",
+                    required=False,
+                    cascade_delete=CASCADE_BEHAVIOR_REMOVE_LINK,
+                )
             )
-        )
-
-        assert result_lookup.relationship_type == "one_to_many"
-        assert result_lookup.lookup_schema_name is not None
-        rel_id_lookup = result_lookup.relationship_id
-        print(f"  [OK] Created lookup: {result_lookup.lookup_schema_name}")
-        print(f"       Relationship: {result_lookup.relationship_schema_name}")
+            assert result_lookup.relationship_type == "one_to_many"
+            assert result_lookup.lookup_schema_name is not None
+            rel_id_lookup = result_lookup.relationship_id
+            print(f"  [OK] Created lookup: {result_lookup.lookup_schema_name}")
+            print(f"       Relationship: {result_lookup.relationship_schema_name}")
 
         # --- Test 3: Create N:N relationship ---
         print("\n  Test 3: Create N:N relationship")
@@ -1056,13 +1183,18 @@ def test_relationships(client: DataverseClient) -> None:
             entity2_logical_name=proj_info["table_logical_name"],
         )
 
-        result_nn = backoff(lambda: client.tables.create_many_to_many_relationship(relationship=m2m))
-
-        assert result_nn.relationship_schema_name == "test_relchild_relproject"
-        assert result_nn.relationship_type == "many_to_many"
-        rel_id_nn = result_nn.relationship_id
-        print(f"  [OK] Created N:N relationship: {result_nn.relationship_schema_name}")
-        print(f"       ID: {rel_id_nn}")
+        existing_nn = client.tables.get_relationship("test_relchild_relproject")
+        if existing_nn:
+            result_nn = existing_nn
+            rel_id_nn = result_nn.relationship_id
+            print(f"  [OK] Relationship already exists: {result_nn.relationship_schema_name} (skipped)")
+        else:
+            result_nn = backoff(lambda: client.tables.create_many_to_many_relationship(relationship=m2m))
+            assert result_nn.relationship_schema_name == "test_relchild_relproject"
+            assert result_nn.relationship_type == "many_to_many"
+            rel_id_nn = result_nn.relationship_id
+            print(f"  [OK] Created N:N relationship: {result_nn.relationship_schema_name}")
+            print(f"       ID: {rel_id_nn}")
 
         # --- Test 4: Get relationship metadata ---
         print("\n  Test 4: Query relationship metadata")

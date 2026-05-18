@@ -11,11 +11,49 @@ convenience constructor :meth:`~PowerPlatform.Dataverse.core.config.DataverseCon
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .log_config import LogConfig
+
+# key=value pairs separated by semicolons.
+# Keys: alphanumeric, hyphens, underscores.
+# Values: alphanumeric, hyphens, underscores, dots, slashes.
+_CONTEXT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+(;[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+)*$")
+
+
+@dataclass(frozen=True)
+class OperationContext:
+    """Caller-defined context appended to outbound ``User-Agent`` headers.
+
+    The context string is validated to be semicolon-separated ``key=value`` pairs
+    (e.g. ``"app=myapp/1.0;agent=claude-code"``).  Free-form text, email
+    addresses, and other potentially sensitive strings are rejected.
+
+    :param user_agent_context: Attribution string in ``key=value;key=value`` format.
+    :type user_agent_context: :class:`str`
+
+    :raises ValueError: If the string is empty, contains control characters, or
+        does not match the required ``key=value`` format.
+    """
+
+    user_agent_context: str
+
+    def __post_init__(self) -> None:
+        val = self.user_agent_context
+        if not val:
+            raise ValueError("operation_context must not be empty.")
+        if any(c in val for c in "\r\n\x00"):
+            raise ValueError("operation_context must not contain CR, LF, or NUL characters.")
+        if not _CONTEXT_PATTERN.match(val):
+            raise ValueError(
+                "operation_context must be semicolon-separated key=value pairs "
+                "(e.g. 'app=myapp/1.0;agent=claude-code'). "
+                "Keys and values may contain alphanumerics, hyphens, underscores, "
+                "dots, and slashes."
+            )
 
 
 @dataclass(frozen=True)
@@ -35,6 +73,10 @@ class DataverseConfig:
         When provided, all HTTP requests and responses are logged to timestamped
         ``.log`` files with automatic redaction of sensitive headers.
     :type log_config: ~PowerPlatform.Dataverse.core.log_config.LogConfig or None
+    :param operation_context: Optional caller-defined context object appended to the
+        outbound ``User-Agent`` header as a parenthesized comment. Intended for
+        plugin/tool attribution.
+    :type operation_context: ~PowerPlatform.Dataverse.core.config.OperationContext or None
     """
 
     language_code: int = 1033
@@ -45,6 +87,8 @@ class DataverseConfig:
     http_timeout: Optional[float] = None
 
     log_config: Optional["LogConfig"] = None
+
+    operation_context: Optional[OperationContext] = None
 
     @classmethod
     def from_env(cls) -> "DataverseConfig":
@@ -61,4 +105,5 @@ class DataverseConfig:
             http_backoff=None,
             http_timeout=None,
             log_config=None,
+            operation_context=None,
         )

@@ -9,8 +9,10 @@ This module provides mixin functionality for relationship CRUD operations.
 
 from __future__ import annotations
 
+__all__ = []
+
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class _RelationshipOperationsMixin:
@@ -141,6 +143,105 @@ class _RelationshipOperationsMixin:
         data = r.json()
         results = data.get("value", [])
         return results[0] if results else None
+
+    def _list_relationships(
+        self,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all relationship definitions.
+
+        Issues ``GET /RelationshipDefinitions`` with optional ``$filter`` and
+        ``$select`` query parameters.
+
+        :param filter: Optional OData ``$filter`` expression.  For example,
+            ``"RelationshipType eq Microsoft.Dynamics.CRM.RelationshipType'OneToManyRelationship'"``
+            returns only one-to-many relationships.
+        :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: ``list[str]`` or ``None``
+
+        :return: List of raw relationship metadata dictionaries (may be empty).
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises HttpError: If the Web API request fails.
+        """
+        url = f"{self.api}/RelationshipDefinitions"
+        params: Dict[str, str] = {}
+        if filter:
+            params["$filter"] = filter
+        if select:
+            params["$select"] = ",".join(select)
+        r = self._request("get", url, headers=self._headers(), params=params)
+        return r.json().get("value", [])
+
+    def _list_table_relationships(
+        self,
+        table_schema_name: str,
+        *,
+        filter: Optional[str] = None,
+        select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all relationships for a specific table.
+
+        Issues ``GET EntityDefinitions({MetadataId})/OneToManyRelationships``,
+        ``GET EntityDefinitions({MetadataId})/ManyToOneRelationships``, and
+        ``GET EntityDefinitions({MetadataId})/ManyToManyRelationships``,
+        then combines the results.
+
+        :param table_schema_name: Schema name of the table (e.g. ``"account"``).
+        :type table_schema_name: ``str``
+        :param filter: Optional OData ``$filter`` expression applied to each
+            sub-request.
+        :type filter: ``str`` or ``None``
+        :param select: Optional list of property names to project via
+            ``$select``.  Values are passed as-is (PascalCase).
+        :type select: ``list[str]`` or ``None``
+
+        :return: Combined list of one-to-many, many-to-one, and many-to-many
+            relationship metadata dictionaries (may be empty).
+        :rtype: ``list[dict[str, Any]]``
+
+        :raises MetadataError: If the table is not found.
+        :raises HttpError: If the Web API request fails.
+        """
+        from ..core.errors import MetadataError
+        from ..core._error_codes import METADATA_TABLE_NOT_FOUND
+
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+
+        metadata_id = ent["MetadataId"]
+        # OneToMany/ManyToOne share the same property surface (ReferencedEntity,
+        # ReferencingEntity, etc.).  ManyToManyRelationshipMetadata has a
+        # different schema -- it only exposes SchemaName plus Entity1/Entity2
+        # fields, not ReferencedEntity or ReferencingEntity.  Sending a $select
+        # that includes those properties to the ManyToMany endpoint causes a
+        # 400: "Could not find a property named 'ReferencedEntity' on type
+        # 'ManyToManyRelationshipMetadata'".  Use separate param dicts.
+        one_to_many_params: Dict[str, str] = {}
+        many_to_many_params: Dict[str, str] = {}
+        if filter:
+            one_to_many_params["$filter"] = filter
+            many_to_many_params["$filter"] = filter
+        if select:
+            one_to_many_params["$select"] = ",".join(select)
+
+        one_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/OneToManyRelationships"
+        many_to_one_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToOneRelationships"
+        many_to_many_url = f"{self.api}/EntityDefinitions({metadata_id})/ManyToManyRelationships"
+
+        r1 = self._request("get", one_to_many_url, headers=self._headers(), params=one_to_many_params)
+        r2 = self._request("get", many_to_one_url, headers=self._headers(), params=one_to_many_params)
+        r3 = self._request("get", many_to_many_url, headers=self._headers(), params=many_to_many_params)
+
+        return r1.json().get("value", []) + r2.json().get("value", []) + r3.json().get("value", [])
 
     def _extract_id_from_header(self, header_value: Optional[str]) -> Optional[str]:
         """

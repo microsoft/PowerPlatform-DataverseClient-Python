@@ -69,6 +69,21 @@ class _RecordGet:
     table: str
     record_id: str
     select: Optional[List[str]] = None
+    expand: Optional[List[str]] = None
+    include_annotations: Optional[str] = None
+
+
+@dataclass
+class _RecordList:
+    table: str
+    select: Optional[List[str]] = None
+    filter: Optional[str] = None
+    orderby: Optional[List[str]] = None
+    top: Optional[int] = None
+    expand: Optional[List[str]] = None
+    page_size: Optional[int] = None
+    count: bool = False
+    include_annotations: Optional[str] = None
 
 
 @dataclass
@@ -86,6 +101,7 @@ class _TableCreate:
     columns: Dict[str, Any]
     solution: Optional[str] = None
     primary_column: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 @dataclass
@@ -311,6 +327,8 @@ class _BatchClient:
             return self._resolve_record_delete(item)
         if isinstance(item, _RecordGet):
             return self._resolve_record_get(item)
+        if isinstance(item, _RecordList):
+            return self._resolve_record_list(item)
         if isinstance(item, _RecordUpsert):
             return self._resolve_record_upsert(item)
         if isinstance(item, _TableCreate):
@@ -381,7 +399,30 @@ class _BatchClient:
         return [self._od._build_delete(op.table, rid) for rid in ids]
 
     def _resolve_record_get(self, op: _RecordGet) -> List[_RawRequest]:
-        return [self._od._build_get(op.table, op.record_id, select=op.select)]
+        return [
+            self._od._build_get(
+                op.table,
+                op.record_id,
+                select=op.select,
+                expand=op.expand,
+                include_annotations=op.include_annotations,
+            )
+        ]
+
+    def _resolve_record_list(self, op: _RecordList) -> List[_RawRequest]:
+        return [
+            self._od._build_list(
+                op.table,
+                select=op.select,
+                filter=op.filter,
+                orderby=op.orderby,
+                top=op.top,
+                expand=op.expand,
+                page_size=op.page_size,
+                count=op.count,
+                include_annotations=op.include_annotations,
+            )
+        ]
 
     def _resolve_record_upsert(self, op: _RecordUpsert) -> List[_RawRequest]:
         entity_set = self._od._entity_set_from_schema_name(op.table)
@@ -409,7 +450,7 @@ class _BatchClient:
         return ent["MetadataId"]
 
     def _resolve_table_create(self, op: _TableCreate) -> List[_RawRequest]:
-        return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column)]
+        return [self._od._build_create_entity(op.table, op.columns, op.solution, op.primary_column, op.display_name)]
 
     def _resolve_table_delete(self, op: _TableDelete) -> List[_RawRequest]:
         metadata_id = self._require_entity_metadata(op.table)

@@ -218,7 +218,7 @@ account_id = client.records.create("account", account_data)
 print(f"Created account: {account_id}")
 
 # Read a single record by ID
-account = client.records.get("account", account_id)
+account = client.records.retrieve("account", account_id)
 print(f"Account name: {account['name']}")
 
 # Update a record
@@ -231,14 +231,13 @@ client.records.delete("account", account_id)
 Querying Data:
 ```python
 # Query with OData filter
-accounts = client.records.get("account",
+accounts = client.records.list("account",
                      filter="name eq 'Contoso Ltd'",
                      select=["name", "telephone1"],
                      top=10)
 
-for batch in accounts:
-    for account in batch:
-        print(f"Account: {account['name']}")
+for account in accounts:
+    print(f"Account: {account['name']}")
 
 # SQL queries (if enabled)
 results = client.query.sql("SELECT TOP 5 name FROM account")
