@@ -165,6 +165,105 @@ class TestQueryResultClass(unittest.TestCase):
         self.assertEqual(list(qr), recs)
 
 
+class TestQueryResultListLikeContract(unittest.TestCase):
+    """Contract tests: QueryResult must be substitutable for ``list[Record]``
+    in the patterns shown in the class docstring, examples, and skill docs.
+
+    These tests exist to catch the gap from PR #175 where ``__getitem__`` was
+    missing despite docs and examples treating ``QueryResult`` as list-like.
+    They drive the contract from the *caller's* perspective rather than
+    introspecting which dunders are implemented, so removing any single dunder
+    breaks at least one assertion here with a clear signal.
+    """
+
+    def _records(self, n=3):
+        return [Record(id=f"id-{i}", table="account", data={"name": f"R{i}"}) for i in range(n)]
+
+    def test_contract_index_then_field_access(self):
+        """Pattern from examples/advanced/fetchxml.py: ``row = result[0]; row.get(...)``."""
+        qr = QueryResult(self._records(3))
+        row = qr[0]
+        self.assertEqual(row.get("name"), "R0")
+
+    def test_contract_single_loop_field_access(self):
+        """Pattern from examples/basic/installation_example.py: ``for r in result: r["name"]``."""
+        qr = QueryResult(self._records(3))
+        names = [r["name"] for r in qr]
+        self.assertEqual(names, ["R0", "R1", "R2"])
+
+    def test_contract_first_with_none_guard(self):
+        """Pattern recommended by Copilot review: ``result.first()`` with None-check."""
+        empty = QueryResult([])
+        nonempty = QueryResult(self._records(2))
+        self.assertIsNone(empty.first())
+        first = nonempty.first()
+        self.assertIsNotNone(first)
+        self.assertEqual(first.get("name"), "R0")  # type: ignore[union-attr]
+
+    def test_contract_truthy_guard(self):
+        """Pattern: ``if result: ...`` to skip empty results before indexing."""
+        if QueryResult(self._records(1)):
+            ok = True
+        else:
+            ok = False
+        self.assertTrue(ok)
+        self.assertFalse(bool(QueryResult([])))
+
+    def test_contract_len_for_size_check(self):
+        """Pattern: ``f"{len(result)} rows"`` in log/print statements."""
+        self.assertEqual(len(QueryResult(self._records(7))), 7)
+        self.assertEqual(len(QueryResult([])), 0)
+
+    def test_contract_slice_returns_list_like(self):
+        """Slicing must yield something that supports iteration and len()."""
+        qr = QueryResult(self._records(5))
+        page = qr[1:4]
+        self.assertEqual(len(page), 3)
+        self.assertEqual([r.get("name") for r in page], ["R1", "R2", "R3"])
+
+    def test_contract_negative_index(self):
+        """``result[-1]`` for "last record" is a common Python idiom."""
+        qr = QueryResult(self._records(3))
+        self.assertEqual(qr[-1].get("name"), "R2")
+
+    def test_contract_list_conversion_round_trip(self):
+        """``list(result)`` must yield the same records iteration yields."""
+        recs = self._records(4)
+        qr = QueryResult(recs)
+        self.assertEqual(list(qr), recs)
+        self.assertEqual(list(qr), [r for r in qr])
+
+    def test_contract_iteration_does_not_consume(self):
+        """Multiple ``for`` loops over the same result must all see records.
+
+        Guards against an accidental refactor to a single-shot iterator.
+        """
+        qr = QueryResult(self._records(3))
+        first_pass = list(qr)
+        second_pass = list(qr)
+        self.assertEqual(first_pass, second_pass)
+        self.assertEqual(len(first_pass), 3)
+
+    def test_contract_nested_loop_iterates_records_not_fields(self):
+        """Regression guard for the bug in installation_example.py (PR #175 review #3).
+
+        ``for page in result: for r in page: ...`` would iterate Record keys
+        if QueryResult were a flat iterable of Records (each Record is also
+        iterable over its keys). This test makes it explicit that the outer
+        loop yields Records, not pages — so callers know to use a single loop.
+        """
+        qr = QueryResult(self._records(2))
+        outer = list(qr)
+        self.assertTrue(all(isinstance(r, Record) for r in outer))
+
+    def test_contract_records_attribute_is_underlying_list(self):
+        """``result.records`` is the documented escape hatch for list-only APIs."""
+        recs = self._records(3)
+        qr = QueryResult(recs)
+        self.assertIsInstance(qr.records, list)
+        self.assertIs(qr.records, recs)
+
+
 class TestExecuteReturnsQueryResult(unittest.TestCase):
     """execute() flat mode returns QueryResult."""
 

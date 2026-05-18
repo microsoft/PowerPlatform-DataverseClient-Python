@@ -33,12 +33,14 @@ class QueryOperations:
 
     Example::
 
+        from PowerPlatform.Dataverse.models.filters import col
+
         client = DataverseClient(base_url, credential)
 
         # Fluent query builder (recommended)
         for record in (client.query.builder("account")
                        .select("name", "revenue")
-                       .filter_eq("statecode", 0)
+                       .where(col("statecode") == 0)
                        .order_by("revenue", descending=True)
                        .top(100)
                        .execute()):
@@ -70,10 +72,12 @@ class QueryOperations:
         Example:
             Build and execute a query fluently::
 
+                from PowerPlatform.Dataverse.models.filters import col
+
                 for record in (client.query.builder("account")
                                .select("name", "revenue")
-                               .filter_eq("statecode", 0)
-                               .filter_gt("revenue", 1000000)
+                               .where(col("statecode") == 0)
+                               .where(col("revenue") > 1_000_000)
                                .order_by("revenue", descending=True)
                                .top(100)
                                .page_size(50)
@@ -82,11 +86,11 @@ class QueryOperations:
 
             With composable expression tree::
 
-                from PowerPlatform.Dataverse.models.filters import eq, gt
+                from PowerPlatform.Dataverse.models.filters import col
 
                 for record in (client.query.builder("account")
-                               .where((eq("statecode", 0) | eq("statecode", 1))
-                                      & gt("revenue", 100000))
+                               .where((col("statecode") == 0) | (col("statecode") == 1))
+                               .where(col("revenue") > 100_000)
                                .execute()):
                     print(record["name"])
         """
