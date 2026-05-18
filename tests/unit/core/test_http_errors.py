@@ -3,8 +3,6 @@
 
 import pytest
 from azure.core.credentials import TokenCredential
-from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.config import DataverseConfig
 from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.core._error_codes import HTTP_404, HTTP_429, HTTP_500
 from PowerPlatform.Dataverse.data._odata import _ODataClient

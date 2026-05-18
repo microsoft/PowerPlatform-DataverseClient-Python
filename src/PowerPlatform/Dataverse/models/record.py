@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, KeysView, List, Optional, Union, ValuesView, ItemsView
+from typing import Any, Dict, Iterator, KeysView, List, Optional, ValuesView, ItemsView
 
 __all__ = ["Record", "QueryResult"]
 
@@ -141,7 +141,7 @@ class QueryResult:
     def __repr__(self) -> str:
         return f"QueryResult({len(self.records)} records)"
 
-    def __getitem__(self, index: Union[int, slice]) -> Union[Record, "QueryResult"]:
+    def __getitem__(self, index):
         result = self.records[index]
         return QueryResult(result) if isinstance(index, slice) else result
 

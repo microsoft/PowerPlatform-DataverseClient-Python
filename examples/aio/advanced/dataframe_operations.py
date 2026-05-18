@@ -1,0 +1,191 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+"""
+PowerPlatform Dataverse Client - Async DataFrame Operations Walkthrough
+
+Async equivalent of examples/advanced/dataframe_operations.py.
+
+This example demonstrates how to use the async pandas DataFrame extension
+methods for CRUD operations with Microsoft Dataverse.
+
+Prerequisites:
+    pip install PowerPlatform-Dataverse-Client
+    pip install azure-identity
+"""
+
+import asyncio
+import sys
+import uuid
+
+import pandas as pd
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _auth import AsyncInteractiveBrowserCredential
+
+from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.models.filters import col, raw
+
+
+async def main():
+    # -- Setup & Authentication ------------------------------------
+    base_url = input("Enter Dataverse org URL (e.g. https://yourorg.crm.dynamics.com): ").strip()
+    if not base_url:
+        print("[ERR] No URL entered; exiting.")
+        sys.exit(1)
+    base_url = base_url.rstrip("/")
+
+    print("[INFO] Authenticating via browser...")
+    credential = AsyncInteractiveBrowserCredential()
+    try:
+        async with AsyncDataverseClient(base_url, credential) as client:
+            await _run_walkthrough(client)
+    finally:
+        await credential.close()
+
+
+async def _run_walkthrough(client):
+    table = input("Enter table schema name to use [default: account]: ").strip() or "account"
+    print(f"[INFO] Using table: {table}")
+
+    # Unique tag to isolate test records from existing data
+    tag = uuid.uuid4().hex[:8]
+    test_filter = f"contains(name,'{tag}')"
+    print(f"[INFO] Using tag '{tag}' to identify test records")
+
+    select_cols = ["name", "telephone1", "websiteurl", "lastonholdtime"]
+
+    # -- 1. Create records from a DataFrame ------------------------
+    print("\n" + "-" * 60)
+    print("1. Create records from a DataFrame")
+    print("-" * 60)
+
+    new_accounts = pd.DataFrame(
+        [
+            {
+                "name": f"Contoso_{tag}",
+                "telephone1": "555-0100",
+                "websiteurl": "https://contoso.com",
+                "lastonholdtime": pd.Timestamp("2024-06-15 10:30:00"),
+            },
+            {"name": f"Fabrikam_{tag}", "telephone1": "555-0200", "websiteurl": None, "lastonholdtime": None},
+            {
+                "name": f"Northwind_{tag}",
+                "telephone1": None,
+                "websiteurl": "https://northwind.com",
+                "lastonholdtime": pd.Timestamp("2024-12-01 08:00:00"),
+            },
+        ]
+    )
+    print(f"  Input DataFrame:\n{new_accounts.to_string(index=False)}\n")
+
+    # create returns a Series of GUIDs aligned with the input rows
+    new_accounts["accountid"] = await client.dataframe.create(table, new_accounts)
+    print(f"[OK] Created {len(new_accounts)} records")
+    print(f"  IDs: {new_accounts['accountid'].tolist()}")
+
+    # -- 2. Query records as a DataFrame -------------------------
+    print("\n" + "-" * 60)
+    print("2. Query records as a DataFrame")
+    print("-" * 60)
+
+    result = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    df_all = result.to_dataframe()
+    print(f"[OK] Got {len(df_all)} records in one DataFrame")
+    print(f"  Columns: {list(df_all.columns)}")
+    print(f"{df_all.to_string(index=False)}")
+
+    # -- 3. Limit results with top ------------------------------
+    print("\n" + "-" * 60)
+    print("3. Limit results with top")
+    print("-" * 60)
+
+    result_top2 = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).top(2).execute()
+    df_top2 = result_top2.to_dataframe()
+    print(f"[OK] Got {len(df_top2)} records with top=2")
+    print(f"{df_top2.to_string(index=False)}")
+
+    # -- 4. Fetch a single record by ID ----------------------------
+    print("\n" + "-" * 60)
+    print("4. Fetch a single record by ID")
+    print("-" * 60)
+
+    first_id = new_accounts["accountid"].iloc[0]
+    print(f"  Fetching record {first_id}...")
+    result_single = await client.query.builder(table).select(*select_cols).where(col("accountid") == first_id).execute()
+    single = result_single.to_dataframe()
+    print(f"[OK] Single record DataFrame:\n{single.to_string(index=False)}")
+
+    # -- 5. Update records with different values per row -----------
+    print("\n" + "-" * 60)
+    print("5. Update records with different values per row")
+    print("-" * 60)
+
+    new_accounts["telephone1"] = ["555-1100", "555-1200", "555-1300"]
+    print(f"  New telephone numbers: {new_accounts['telephone1'].tolist()}")
+    await client.dataframe.update(table, new_accounts[["accountid", "telephone1"]], id_column="accountid")
+    print("[OK] Updated 3 records")
+
+    # Verify the updates
+    result_verified = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    verified = result_verified.to_dataframe()
+    print(f"  Verified:\n{verified.to_string(index=False)}")
+
+    # -- 6. Broadcast update (same value to all records) -----------
+    print("\n" + "-" * 60)
+    print("6. Broadcast update (same value to all records)")
+    print("-" * 60)
+
+    broadcast_df = new_accounts[["accountid"]].copy()
+    broadcast_df["websiteurl"] = "https://updated.example.com"
+    print(f"  Setting websiteurl to 'https://updated.example.com' for all {len(broadcast_df)} records")
+    await client.dataframe.update(table, broadcast_df, id_column="accountid")
+    print("[OK] Broadcast update complete")
+
+    # Verify all records have the same websiteurl
+    result_bc = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    print(f"  Verified:\n{result_bc.to_dataframe().to_string(index=False)}")
+
+    # Default: NaN/None fields are skipped (not overridden on server)
+    print("\n  Updating with NaN values (default: clear_nulls=False, fields should stay unchanged)...")
+    sparse_df = pd.DataFrame(
+        [
+            {"accountid": new_accounts["accountid"].iloc[0], "telephone1": "555-9999", "websiteurl": None},
+        ]
+    )
+    await client.dataframe.update(table, sparse_df, id_column="accountid")
+    result_sparse = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    print(
+        f"  Verified (Contoso telephone1 updated, websiteurl unchanged):\n"
+        f"{result_sparse.to_dataframe().to_string(index=False)}"
+    )
+
+    # Opt-in: clear_nulls=True sends None as null to clear the field
+    print("\n  Clearing websiteurl for Contoso with clear_nulls=True...")
+    clear_df = pd.DataFrame([{"accountid": new_accounts["accountid"].iloc[0], "websiteurl": None}])
+    await client.dataframe.update(table, clear_df, id_column="accountid", clear_nulls=True)
+    result_clear = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    print(f"  Verified (Contoso websiteurl should be empty):\n" f"{result_clear.to_dataframe().to_string(index=False)}")
+
+    # -- 7. Delete records by passing a Series of GUIDs ------------
+    print("\n" + "-" * 60)
+    print("7. Delete records by passing a Series of GUIDs")
+    print("-" * 60)
+
+    print(f"  Deleting {len(new_accounts)} records...")
+    await client.dataframe.delete(table, new_accounts["accountid"], use_bulk_delete=False)
+    print(f"[OK] Deleted {len(new_accounts)} records")
+
+    # Verify deletions -- filter for our tagged records should return 0
+    result_remaining = await client.query.builder(table).select(*select_cols).where(raw(test_filter)).execute()
+    remaining = result_remaining.to_dataframe()
+    print(f"  Verified: {len(remaining)} test records remaining (expected 0)")
+
+    print("\n" + "=" * 60)
+    print("[OK] Async DataFrame operations walkthrough complete!")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

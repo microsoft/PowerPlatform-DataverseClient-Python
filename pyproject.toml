@@ -40,27 +40,30 @@ dependencies = [
 
 [project.scripts]
 dataverse-install-claude-skill = "PowerPlatform.Dataverse._skill_installer:main"
-dataverse-migrate = "PowerPlatform.Dataverse.migration.migrate_v0_to_v1:main"
+dataverse-migrate = "tools.migrate_v0_to_v1:main"
 
 [project.optional-dependencies]
+async = [
+    "aiohttp>=3.9",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.23.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
-    "libcst>=1.0.0",
 ]
 migration = ["libcst>=1.0.0"]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src", "tools" = "tools"}
 zip-safe = false
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["PowerPlatform*"]
+where = ["src", "."]
+include = ["PowerPlatform*", "tools"]
 namespaces = false
 
 [tool.setuptools.package-data]
@@ -96,15 +99,14 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src/PowerPlatform"]
-# Migration codemod is an opt-in tool (requires the [migration] extra).
-# It is exercised by tests/unit/test_migration_tool.py and tests/unit/test_phase4_ga.py,
-# but its CLI plumbing and libcst error-path branches are not meaningfully testable
-# under the default coverage scope. Exclude from coverage reporting so the metric
-# reflects core SDK code only.
-omit = ["src/PowerPlatform/Dataverse/migration/*"]
+omit = [
+    "*/Dataverse/_skill_installer.py",
+    "*/Dataverse/extensions/__init__.py",
+]
 
 [tool.coverage.report]
 fail_under = 90

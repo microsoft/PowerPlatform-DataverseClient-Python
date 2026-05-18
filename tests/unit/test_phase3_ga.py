@@ -18,7 +18,7 @@ are deferred to post-GA and are not covered here.
 import unittest
 import warnings
 from dataclasses import dataclass
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from azure.core.credentials import TokenCredential
 

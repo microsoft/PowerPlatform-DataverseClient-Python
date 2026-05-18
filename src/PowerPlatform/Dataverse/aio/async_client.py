@@ -3,31 +3,31 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Iterator, Optional
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Optional
 
-import requests
+import aiohttp
+from azure.core.credentials_async import AsyncTokenCredential
 
-from azure.core.credentials import TokenCredential
-
-from .core._auth import _AuthManager
-from .core.config import DataverseConfig, OperationContext
-from .data._odata import _ODataClient
-from .operations.dataframe import DataFrameOperations
-from .operations.records import RecordOperations
-from .operations.query import QueryOperations
-from .operations.files import FileOperations
-from .operations.tables import TableOperations
-from .operations.batch import BatchOperations
+from .core._async_auth import _AsyncAuthManager
+from ..core.config import DataverseConfig, OperationContext
+from .data._async_odata import _AsyncODataClient
+from .operations.async_dataframe import AsyncDataFrameOperations
+from .operations.async_records import AsyncRecordOperations
+from .operations.async_query import AsyncQueryOperations
+from .operations.async_files import AsyncFileOperations
+from .operations.async_tables import AsyncTableOperations
+from .operations.async_batch import AsyncBatchOperations
 
 
-class DataverseClient:
+class AsyncDataverseClient:
     """
-    High-level client for Microsoft Dataverse operations.
+    Async high-level client for Microsoft Dataverse operations.
 
-    This client provides a simple, stable interface for interacting with Dataverse environments
-    through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
-    to an internal :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`.
+    This client provides a simple, stable async interface for interacting with
+    Dataverse environments through the Web API. It handles authentication via
+    Azure Identity and delegates HTTP operations to an internal
+    :class:`~PowerPlatform.Dataverse.aio.data._async_odata._AsyncODataClient`.
 
     Key capabilities:
         - OData CRUD operations: create, read, update, delete records
@@ -38,8 +38,8 @@ class DataverseClient:
     :param base_url: Your Dataverse environment URL, for example
         ``"https://org.crm.dynamics.com"``. Trailing slash is automatically removed.
     :type base_url: :class:`str`
-    :param credential: Azure Identity credential for authentication.
-    :type credential: ~azure.core.credentials.TokenCredential
+    :param credential: Azure async Identity credential for authentication.
+    :type credential: ~azure.core.credentials_async.AsyncTokenCredential
     :param config: Optional configuration for language, timeouts, and retries.
         If not provided, defaults are loaded from :meth:`~PowerPlatform.Dataverse.core.config.DataverseConfig.from_env`.
     :type config: ~PowerPlatform.Dataverse.core.config.DataverseConfig or None
@@ -53,7 +53,8 @@ class DataverseClient:
     :raises ValueError: If both ``config`` and ``context`` are provided.
 
     .. note::
-        The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
+        The client lazily initializes its internal OData client on first use,
+        allowing lightweight construction without immediate network calls.
 
     .. note::
         All methods that communicate with the Dataverse Web API may raise
@@ -70,35 +71,35 @@ class DataverseClient:
     - ``client.dataframe`` -- pandas DataFrame wrappers for record CRUD
     - ``client.batch`` -- batch multiple operations into a single HTTP request
 
-    The client supports Python's context manager protocol for automatic resource
-    cleanup and HTTP connection pooling:
+    The client supports Python's async context manager protocol for automatic
+    resource cleanup and HTTP connection pooling:
 
     Example:
-        **Recommended -- context manager** (enables HTTP connection pooling)::
+        **Recommended -- async context manager** (enables HTTP connection pooling)::
 
-            from azure.identity import InteractiveBrowserCredential
-            from PowerPlatform.Dataverse.client import DataverseClient
+            from azure.identity.aio import InteractiveBrowserCredential
+            from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
             credential = InteractiveBrowserCredential()
 
-            with DataverseClient("https://org.crm.dynamics.com", credential) as client:
-                record_id = client.records.create("account", {"name": "Contoso Ltd"})
-                client.records.update("account", record_id, {"telephone1": "555-0100"})
+            async with AsyncDataverseClient("https://org.crm.dynamics.com", credential) as client:
+                record_id = await client.records.create("account", {"name": "Contoso Ltd"})
+                await client.records.update("account", record_id, {"telephone1": "555-0100"})
             # Session closed, caches cleared automatically
 
         **Manual lifecycle**::
 
-            client = DataverseClient("https://org.crm.dynamics.com", credential)
+            client = AsyncDataverseClient("https://org.crm.dynamics.com", credential)
             try:
-                record_id = client.records.create("account", {"name": "Contoso Ltd"})
+                record_id = await client.records.create("account", {"name": "Contoso Ltd"})
             finally:
-                client.close()
+                await client.aclose()
     """
 
     def __init__(
         self,
         base_url: str,
-        credential: TokenCredential,
+        credential: AsyncTokenCredential,
         config: Optional[DataverseConfig] = None,
         *,
         context: Optional[OperationContext] = None,
@@ -107,7 +108,7 @@ class DataverseClient:
             raise ValueError(
                 "Cannot specify both 'config' and 'context'. " "Pass operation_context via DataverseConfig instead."
             )
-        self.auth = _AuthManager(credential)
+        self.auth = _AsyncAuthManager(credential)
         self._base_url = (base_url or "").rstrip("/")
         if not self._base_url:
             raise ValueError("base_url is required.")
@@ -117,30 +118,35 @@ class DataverseClient:
             self._config = DataverseConfig(operation_context=context)
         else:
             self._config = DataverseConfig.from_env()
-        self._odata: Optional[_ODataClient] = None
-        self._session: Optional[requests.Session] = None
+        self._odata: Optional[_AsyncODataClient] = None
+        self._session: Optional[aiohttp.ClientSession] = None
         self._closed: bool = False
 
         # Operation namespaces
-        self.records = RecordOperations(self)
-        self.query = QueryOperations(self)
-        self.tables = TableOperations(self)
-        self.files = FileOperations(self)
-        self.dataframe = DataFrameOperations(self)
-        self.batch = BatchOperations(self)
+        self.records = AsyncRecordOperations(self)
+        self.query = AsyncQueryOperations(self)
+        self.tables = AsyncTableOperations(self)
+        self.files = AsyncFileOperations(self)
+        self.dataframe = AsyncDataFrameOperations(self)
+        self.batch = AsyncBatchOperations(self)
 
-    def _get_odata(self) -> _ODataClient:
+    def _get_odata(self) -> _AsyncODataClient:
         """
-        Get or create the internal OData client instance.
+        Get or create the internal async OData client instance.
 
-        This method implements lazy initialization of the low-level OData client,
-        deferring construction until the first API call.
+        This method implements lazy initialization of the low-level async OData
+        client, deferring construction until the first API call. When used outside
+        of an ``async with`` block, a :class:`aiohttp.ClientSession` is created
+        lazily here so that standalone usage (without a context manager) works
+        without requiring the caller to manage the session explicitly.
 
-        :return: The lazily-initialized low-level client used to perform HTTP requests.
-        :rtype: ~PowerPlatform.Dataverse.data._odata._ODataClient
+        :return: The lazily-initialized low-level async client.
+        :rtype: ~PowerPlatform.Dataverse.aio.data._async_odata._AsyncODataClient
         """
         if self._odata is None:
-            self._odata = _ODataClient(
+            if self._session is None:
+                self._session = aiohttp.ClientSession()
+            self._odata = _AsyncODataClient(
                 self.auth,
                 self._base_url,
                 self._config,
@@ -148,76 +154,77 @@ class DataverseClient:
             )
         return self._odata
 
-    @contextmanager
-    def _scoped_odata(self) -> Iterator[_ODataClient]:
-        """Yield the low-level client while ensuring a correlation scope is active."""
+    @asynccontextmanager
+    async def _scoped_odata(self) -> AsyncIterator[_AsyncODataClient]:
+        """Async context manager yielding the low-level client with a correlation scope."""
         self._check_closed()
         od = self._get_odata()
+        # _call_scope() is a sync context manager (just sets a context var — no I/O).
         with od._call_scope():
             yield od
 
     # ---------------- Context manager / lifecycle ----------------
 
-    def __enter__(self) -> DataverseClient:
-        """Enter the context manager.
+    async def __aenter__(self) -> "AsyncDataverseClient":
+        """Enter the async context manager.
 
-        Creates a :class:`requests.Session` for HTTP connection pooling.
-        All operations within the ``with`` block reuse this session for
+        Creates an :class:`aiohttp.ClientSession` for HTTP connection pooling.
+        All operations within the ``async with`` block reuse this session for
         better performance (TCP and TLS reuse).
 
         :return: The client instance.
-        :rtype: DataverseClient
+        :rtype: AsyncDataverseClient
 
         :raises RuntimeError: If the client has been closed.
         """
         self._check_closed()
         if self._session is None:
-            self._session = requests.Session()
+            self._session = aiohttp.ClientSession()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit the context manager with cleanup.
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the async context manager with cleanup.
 
-        Calls :meth:`close` to release resources. Exceptions are not
+        Calls :meth:`aclose` to release resources. Exceptions are not
         suppressed.
         """
-        self.close()
+        await self.aclose()
 
-    def close(self) -> None:
-        """Close the client and release resources.
+    async def aclose(self) -> None:
+        """Close the async client and release resources.
 
         Closes the HTTP session (if any), clears internal caches, and
         marks the client as closed. Safe to call multiple times. After
         closing, any operation will raise :class:`RuntimeError`.
 
-        Called automatically when using the client as a context manager.
+        Called automatically when using the client as an async context manager.
 
         Example::
 
-            client = DataverseClient(base_url, credential)
+            client = AsyncDataverseClient(base_url, credential)
             try:
-                client.records.create("account", {"name": "Contoso"})
+                await client.records.create("account", {"name": "Contoso"})
             finally:
-                client.close()
+                await client.aclose()
         """
         if self._closed:
             return
         if self._odata is not None:
-            self._odata.close()
+            await self._odata.close()
             self._odata = None
         if self._session is not None:
-            self._session.close()
+            await self._session.close()
             self._session = None
         self._closed = True
 
     def _check_closed(self) -> None:
         """Raise :class:`RuntimeError` if the client has been closed."""
         if self._closed:
-            raise RuntimeError("DataverseClient is closed")
+            raise RuntimeError("AsyncDataverseClient is closed")
 
     # ---------------- Cache utilities ----------------
 
-    def flush_cache(self, kind) -> int:
+    async def flush_cache(self, kind: str) -> int:
         """
         Flush cached client metadata or state.
 
@@ -235,11 +242,11 @@ class DataverseClient:
         Example:
             Clear the picklist cache::
 
-                removed = client.flush_cache("picklist")
+                removed = await client.flush_cache("picklist")
                 print(f"Cleared {removed} cached picklist entries")
         """
-        with self._scoped_odata() as od:
+        async with self._scoped_odata() as od:
             return od._flush_cache(kind)
 
 
-__all__ = ["DataverseClient"]
+__all__ = ["AsyncDataverseClient"]

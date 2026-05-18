@@ -891,7 +891,6 @@ class TestToDataframe(unittest.TestCase):
     def test_to_dataframe_with_record_objects(self):
         """to_dataframe() handles Record objects (with .data attribute)."""
         import pandas as pd
-        from PowerPlatform.Dataverse.models.record import Record
 
         mock_query_ops, _ = self._make_od(
             [
