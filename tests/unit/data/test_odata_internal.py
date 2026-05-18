@@ -2901,7 +2901,7 @@ class TestBuildCreateEntity(unittest.TestCase):
 
     def _body(self, **kwargs):
         req = self.od._build_create_entity("new_TestTable", {}, **kwargs)
-        return json.loads(req.body)
+        return json.loads(req.body)["Entities"][0]
 
     def test_display_name_used_in_payload_when_provided(self):
         """_build_create_entity uses the provided display_name in DisplayName."""
@@ -2941,9 +2941,9 @@ class TestBuildCreateEntity(unittest.TestCase):
         self.assertEqual(req.method, "POST")
 
     def test_url_targets_entity_definitions(self):
-        """_build_create_entity URL ends with /EntityDefinitions."""
+        """_build_create_entity URL ends with /CreateEntities."""
         req = self.od._build_create_entity("new_TestTable", {})
-        self.assertTrue(req.url.endswith("/EntityDefinitions"))
+        self.assertTrue(req.url.endswith("/CreateEntities"))
 
     def test_solution_appended_to_url(self):
         """_build_create_entity appends SolutionUniqueName to URL when solution is given."""
@@ -2988,7 +2988,7 @@ class TestBuildCreateEntity(unittest.TestCase):
     def test_primary_column_explicit(self):
         """_build_create_entity uses explicit primary_column when provided."""
         req = self.od._build_create_entity("new_TestTable", {}, primary_column="new_CustomName")
-        body = json.loads(req.body)
+        body = json.loads(req.body)["Entities"][0]
         attrs = body["Attributes"]
         primary = next(a for a in attrs if a.get("IsPrimaryName"))
         self.assertEqual(primary["SchemaName"], "new_CustomName")
@@ -2996,7 +2996,7 @@ class TestBuildCreateEntity(unittest.TestCase):
     def test_primary_column_derived_no_prefix(self):
         """Primary column defaults to 'new_Name' when table has no underscore."""
         req = self.od._build_create_entity("TestTable", {})
-        body = json.loads(req.body)
+        body = json.loads(req.body)["Entities"][0]
         primary = next(a for a in body["Attributes"] if a.get("IsPrimaryName"))
         self.assertEqual(primary["SchemaName"], "new_Name")
 
@@ -3007,7 +3007,7 @@ class TestBuildCreateEntity(unittest.TestCase):
         body = (
             self._body.__func__(self, **{})
             if False
-            else json.loads(self.od._build_create_entity("new_TestTable", {"new_Price": "decimal"}).body)
+            else json.loads(self.od._build_create_entity("new_TestTable", {"new_Price": "decimal"}).body)["Entities"][0]
         )
         schemas = [a["SchemaName"] for a in body["Attributes"]]
         self.assertIn("new_Price", schemas)
