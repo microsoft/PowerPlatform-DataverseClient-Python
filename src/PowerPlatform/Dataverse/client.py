@@ -105,7 +105,7 @@ class DataverseClient:
     ) -> None:
         if config is not None and context is not None:
             raise ValueError(
-                "Cannot specify both 'config' and 'context'. " "Pass operation_context via DataverseConfig instead."
+                "Cannot specify both 'config' and 'context'. Pass operation_context via DataverseConfig instead."
             )
         self.auth = _AuthManager(credential)
         self._base_url = (base_url or "").rstrip("/")
