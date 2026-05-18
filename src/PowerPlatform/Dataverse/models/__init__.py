@@ -35,38 +35,28 @@ from .table_info import AlternateKeyInfo, ColumnInfo, TableInfo
 from .upsert import UpsertItem
 
 __all__ = [
-    # batch
     "BatchItemResponse",
     "BatchResult",
-    # fetchxml
     "FetchXmlQuery",
-    # filters (typed builder; deprecated factories are not re-exported)
     "ColumnProxy",
     "FilterExpression",
     "col",
     "raw",
-    # labels
     "Label",
     "LocalizedLabel",
-    # protocol
     "DataverseModel",
-    # query builder
     "ExpandOption",
     "QueryBuilder",
     "QueryParams",
-    # record
     "QueryResult",
     "Record",
-    # relationship
     "CascadeConfiguration",
     "LookupAttributeMetadata",
     "ManyToManyRelationshipMetadata",
     "OneToManyRelationshipMetadata",
     "RelationshipInfo",
-    # table info
     "AlternateKeyInfo",
     "ColumnInfo",
     "TableInfo",
-    # upsert
     "UpsertItem",
 ]

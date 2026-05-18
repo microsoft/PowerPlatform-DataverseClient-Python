@@ -25,7 +25,6 @@ from .records import RecordOperations
 from .tables import TableOperations
 
 __all__ = [
-    # batch
     "BatchDataFrameOperations",
     "BatchOperations",
     "BatchQueryOperations",
@@ -34,7 +33,6 @@ __all__ = [
     "BatchTableOperations",
     "ChangeSet",
     "ChangeSetRecordOperations",
-    # other operations
     "DataFrameOperations",
     "FileOperations",
     "QueryOperations",
