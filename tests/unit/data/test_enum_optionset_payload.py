@@ -25,6 +25,7 @@ class DummyConfig:
         self.http_backoff = 0
         self.http_timeout = 5
         self.log_config = None
+        self.operation_context = None  # None or OperationContext object
 
 
 def _make_client(lang=1033):
