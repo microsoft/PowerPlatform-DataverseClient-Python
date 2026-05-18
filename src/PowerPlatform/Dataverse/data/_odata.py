@@ -2347,14 +2347,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         primary_column: Optional[str] = None,
         display_name: Optional[str] = None,
     ) -> _RawRequest:
-        """Build an EntityDefinitions POST request without sending it."""
+        """Build an CreateEntities POST request without sending it."""
         if primary_column:
             primary_attr = primary_column
         else:
             primary_attr = f"{table.split('_', 1)[0]}_Name" if "_" in table else "new_Name"
-        attributes = [self._attribute_payload(primary_attr, "string", is_primary_name=True)]
+        attributes = [self._attribute_payload(primary_attr, "string", is_primary_name=True, complex=True)]
         for col_name, dtype in columns.items():
-            attr = self._attribute_payload(col_name, dtype)
+            attr = self._attribute_payload(col_name, dtype, complex=True)
             if not attr:
                 raise ValidationError(
                     f"Unsupported column type '{dtype}' for column '{col_name}'.",
@@ -2366,18 +2366,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 raise TypeError("display_name must be a non-empty string when provided")
         label = display_name if display_name is not None else table
         body = {
-            "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
-            "SchemaName": table,
-            "DisplayName": self._label(label),
-            "DisplayCollectionName": self._label(label + "s"),
-            "Description": self._label(f"Custom entity for {label}"),
-            "OwnershipType": "UserOwned",
-            "HasActivities": False,
-            "HasNotes": True,
-            "IsActivity": False,
-            "Attributes": attributes,
+            "Entities": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
+                    "SchemaName": table,
+                    "DisplayName": self._label(label),
+                    "DisplayCollectionName": self._label(label + "s"),
+                    "Description": self._label(f"Custom entity for {label}"),
+                    "OwnershipType": "UserOwned",
+                    "HasActivities": False,
+                    "HasNotes": True,
+                    "IsActivity": False,
+                    "Attributes": attributes,
+                }
+            ]
         }
-        url = f"{self.api}/EntityDefinitions"
+        url = f"{self.api}/CreateEntities"
         if solution:
             url += f"?SolutionUniqueName={solution}"
         return _RawRequest(
