@@ -25,9 +25,8 @@ import time
 from enum import IntEnum
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import MetadataError
-from PowerPlatform.Dataverse.models.filters import col
-from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.core import MetadataError
+from PowerPlatform.Dataverse.models import ExpandOption, col
 import requests
 
 

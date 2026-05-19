@@ -23,7 +23,7 @@ import sys
 import time
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
+from PowerPlatform.Dataverse.models import UpsertItem
 from azure.identity import InteractiveBrowserCredential  # type: ignore
 
 # --- Config ---

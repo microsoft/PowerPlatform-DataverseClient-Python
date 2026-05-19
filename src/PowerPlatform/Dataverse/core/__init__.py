@@ -8,4 +8,17 @@ This module contains the foundational components including authentication,
 configuration, HTTP client, and error handling.
 """
 
-__all__ = []
+from .config import DataverseConfig, OperationContext
+from .errors import DataverseError, HttpError, MetadataError, SQLParseError, ValidationError
+from .log_config import LogConfig
+
+__all__ = [
+    "DataverseConfig",
+    "DataverseError",
+    "HttpError",
+    "LogConfig",
+    "MetadataError",
+    "OperationContext",
+    "SQLParseError",
+    "ValidationError",
+]

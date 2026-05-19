@@ -8,6 +8,34 @@ This module contains the operation namespace classes that organize
 SDK operations into logical groups: records, query, and tables.
 """
 
-from typing import List
+from .batch import (
+    BatchDataFrameOperations,
+    BatchOperations,
+    BatchQueryOperations,
+    BatchRecordOperations,
+    BatchRequest,
+    BatchTableOperations,
+    ChangeSet,
+    ChangeSetRecordOperations,
+)
+from .dataframe import DataFrameOperations
+from .files import FileOperations
+from .query import QueryOperations
+from .records import RecordOperations
+from .tables import TableOperations
 
-__all__: List[str] = []
+__all__ = [
+    "BatchDataFrameOperations",
+    "BatchOperations",
+    "BatchQueryOperations",
+    "BatchRecordOperations",
+    "BatchRequest",
+    "BatchTableOperations",
+    "ChangeSet",
+    "ChangeSetRecordOperations",
+    "DataFrameOperations",
+    "FileOperations",
+    "QueryOperations",
+    "RecordOperations",
+    "TableOperations",
+]
