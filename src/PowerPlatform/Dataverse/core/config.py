@@ -35,6 +35,7 @@ _ALLOWED_SKILLS = frozenset(
         "dv-solution",
         "dv-admin",
         "dv-security",
+        "unknown",
     }
 )
 _ALLOWED_AGENTS = frozenset(
