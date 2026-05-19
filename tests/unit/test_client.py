@@ -9,135 +9,87 @@ from azure.core.credentials import TokenCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 
 
-class TestDataverseClient(unittest.TestCase):
-    def setUp(self):
-        """Set up test fixtures before each test method."""
-        # Create mock credential
-        self.mock_credential = MagicMock(spec=TokenCredential)
-        self.base_url = "https://example.crm.dynamics.com"
-
-        # Initialize the client under test
-        self.client = DataverseClient(self.base_url, self.mock_credential)
-
-        # Mock the internal _odata client
-        # This ensures we verify logic without making actual HTTP calls
-        self.client._odata = MagicMock()
-
-    def test_create_single(self):
-        """Test create method with a single record."""
-        # Setup mock return values
-        # _create must return a GUID string
-        self.client._odata._create.return_value = "00000000-0000-0000-0000-000000000000"
-        # _entity_set_from_schema_name should return the plural entity set name
-        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
-
-        # Execute test
-        self.client.create("account", {"name": "Contoso Ltd"})
-
-        # Verify
-        # Ensure _entity_set_from_schema_name was called and its result ("accounts") was passed to _create
-        self.client._odata._create.assert_called_once_with("accounts", "account", {"name": "Contoso Ltd"})
-
-    def test_create_multiple(self):
-        """Test create method with multiple records."""
-        payloads = [{"name": "Company A"}, {"name": "Company B"}, {"name": "Company C"}]
-
-        # Setup mock return values
-        # _create_multiple must return a list of GUID strings
-        self.client._odata._create_multiple.return_value = [
-            "00000000-0000-0000-0000-000000000001",
-            "00000000-0000-0000-0000-000000000002",
-            "00000000-0000-0000-0000-000000000003",
-        ]
-        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
-
-        # Execute test
-        self.client.create("account", payloads)
-
-        # Verify
-        self.client._odata._create_multiple.assert_called_once_with("accounts", "account", payloads)
-
-    def test_update_single(self):
-        """Test update method with a single record."""
-        self.client.update("account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"})
-        self.client._odata._update.assert_called_once_with(
-            "account", "00000000-0000-0000-0000-000000000000", {"telephone1": "555-0199"}
-        )
-
-    def test_update_multiple(self):
-        """Test update method with multiple records (broadcast)."""
-        ids = [
-            "00000000-0000-0000-0000-000000000001",
-            "00000000-0000-0000-0000-000000000002",
-        ]
-        changes = {"statecode": 1}
-
-        self.client.update("account", ids, changes)
-        self.client._odata._update_by_ids.assert_called_once_with("account", ids, changes)
-
-    def test_delete_single(self):
-        """Test delete method with a single record."""
-        self.client.delete("account", "00000000-0000-0000-0000-000000000000")
-        self.client._odata._delete.assert_called_once_with("account", "00000000-0000-0000-0000-000000000000")
-
-    def test_delete_multiple(self):
-        """Test delete method with multiple records."""
-        ids = [
-            "00000000-0000-0000-0000-000000000001",
-            "00000000-0000-0000-0000-000000000002",
-        ]
-        # Mock return value for bulk delete job ID
-        self.client._odata._delete_multiple.return_value = "job-guid-123"
-
-        job_id = self.client.delete("account", ids)
-
-        self.client._odata._delete_multiple.assert_called_once_with("account", ids)
-        self.assertEqual(job_id, "job-guid-123")
-
-    def test_get_single(self):
-        """Test get method with a single record ID."""
-        # Setup mock return value
-        expected_record = {"accountid": "00000000-0000-0000-0000-000000000000", "name": "Contoso"}
-        self.client._odata._get.return_value = expected_record
-
-        result = self.client.get("account", "00000000-0000-0000-0000-000000000000")
-
-        self.client._odata._get.assert_called_once_with("account", "00000000-0000-0000-0000-000000000000", select=None)
-        self.assertEqual(result["accountid"], "00000000-0000-0000-0000-000000000000")
-        self.assertEqual(result["name"], "Contoso")
-
-    def test_get_multiple(self):
-        """Test get method for querying multiple records."""
-        # Setup mock return value (iterator)
-        expected_batch = [{"accountid": "1", "name": "A"}, {"accountid": "2", "name": "B"}]
-        self.client._odata._get_multiple.return_value = iter([expected_batch])
-
-        # Execute query
-        result_iterator = self.client.get("account", filter="statecode eq 0", top=10)
-
-        # Consume iterator to verify content
-        results = list(result_iterator)
-
-        self.client._odata._get_multiple.assert_called_once_with(
-            "account",
-            select=None,
-            filter="statecode eq 0",
-            orderby=None,
-            top=10,
-            expand=None,
-            page_size=None,
-            count=False,
-            include_annotations=None,
-        )
-        self.assertEqual(len(results), 1)
-        self.assertEqual(len(results[0]), 2)
-        self.assertEqual(results[0][0]["name"], "A")
-        self.assertEqual(results[0][1]["name"], "B")
+class TestDataverseClientConstruction(unittest.TestCase):
+    """Tests for DataverseClient construction and lifecycle."""
 
     def test_empty_base_url_raises(self):
         """DataverseClient raises ValueError when base_url is empty."""
+        mock_credential = MagicMock(spec=TokenCredential)
         with self.assertRaises(ValueError):
-            DataverseClient("", self.mock_credential)
+            DataverseClient("", mock_credential)
+
+    def test_trailing_slash_stripped(self):
+        """DataverseClient strips trailing slash from base_url."""
+        mock_credential = MagicMock(spec=TokenCredential)
+        client = DataverseClient("https://example.crm.dynamics.com/", mock_credential)
+        self.assertEqual(client._base_url, "https://example.crm.dynamics.com")
+
+    def test_namespace_attributes_present(self):
+        """Client exposes records, query, tables, files, dataframe, batch namespaces."""
+        mock_credential = MagicMock(spec=TokenCredential)
+        client = DataverseClient("https://example.crm.dynamics.com", mock_credential)
+        for attr in ("records", "query", "tables", "files", "dataframe", "batch"):
+            self.assertTrue(hasattr(client, attr), f"Missing namespace: {attr}")
+
+
+class TestRemovedClientMethods(unittest.TestCase):
+    """Verify all 12 deprecated flat methods were removed from DataverseClient in 1.0 GA.
+
+    These methods previously delegated to namespace equivalents (records.*, query.*,
+    tables.*, files.*). They were fully removed; callers must use the namespaces directly.
+    """
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+
+    def test_create_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.create("account", {"name": "Test"})
+
+    def test_update_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.update("account", "guid-1", {"name": "Test"})
+
+    def test_delete_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.delete("account", "guid-1")
+
+    def test_get_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.get("account", "guid-1")
+
+    def test_query_sql_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.query_sql("SELECT name FROM account")
+
+    def test_get_table_info_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.get_table_info("account")
+
+    def test_create_table_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.create_table("new_Test", {})
+
+    def test_delete_table_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.delete_table("new_Test")
+
+    def test_list_tables_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.list_tables()
+
+    def test_create_columns_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.create_columns("account", {})
+
+    def test_delete_columns_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.delete_columns("account", [])
+
+    def test_upload_file_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.upload_file("account", "guid-1", "file_col", "/path/file.pdf")
 
 
 class TestCreateLookupField(unittest.TestCase):
