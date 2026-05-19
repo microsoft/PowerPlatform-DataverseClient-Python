@@ -18,8 +18,31 @@ What this example covers:
     5) Query and join data across tables
     6) Clean up (delete tables)
 
+    Note: The last step (cleanup) automatically deletes all demo tables.
+    Comment out the cleanup() call in run_demo() if you want to keep the
+    tables in your environment for inspection.
+
+Why pandas DataFrames?
+    This example uses client.dataframe (pandas) instead of raw dict/list CRUD
+    because DataFrames provide significant advantages for multi-record operations:
+
+    - Batch operations are natural: create 100 records from a DataFrame in one
+      call vs. looping over 100 dicts
+    - Column operations (broadcast a value, compute derived fields) are one-liners
+      instead of for-loops
+    - Joins and aggregations across tables use pandas merge/groupby -- far more
+      readable than manual dict matching
+    - NaN/None handling is built in (clear_nulls flag controls whether missing
+      values clear server fields or are skipped)
+    - NumPy type normalization is automatic (int64, float64, Timestamps all
+      serialize to JSON correctly without manual conversion)
+
+    The SDK also supports plain dict/list CRUD via client.records for single-record
+    operations or when pandas is not needed. Both approaches use the same underlying
+    Dataverse Web API calls.
+
 Prerequisites:
-    pip install PowerPlatform-Dataverse-Client
+    pip install "PowerPlatform-Dataverse-Client[async]"
     pip install azure-identity
 """
 

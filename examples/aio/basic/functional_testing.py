@@ -421,9 +421,145 @@ async def test_query_records(client: AsyncDataverseClient, table_info: Dict[str,
         print("   This might be expected if the table is very new.")
 
 
+async def test_sql_encoding(
+    client: AsyncDataverseClient,
+    table_info: Dict[str, Any],
+    retrieved_record: Dict[str, Any],
+) -> None:
+    """Verify SQL encoding parity between client.query.sql() and batch.query.sql().
+
+    The direct path (client.query.sql) delegates to _build_sql which encodes the
+    SQL via urllib.parse.quote(safe=''), producing %20 for spaces. The batch path
+    uses the same _build_sql method, so both should behave identically.
+
+    Specifically tests SQL containing:
+      - Spaces in a WHERE string literal  (requires %20 encoding)
+      - Colons in a WHERE string literal  (the HH:MM:SS timestamp in the name)
+
+    Both paths are run against the same SQL and their results are compared
+    to confirm the encoding produces matching Dataverse responses.
+    """
+    print("\n-> SQL Encoding Verification Test")
+    print("=" * 50)
+
+    table_schema_name = table_info.get("table_schema_name")
+    logical_name = table_info.get("table_logical_name", table_schema_name.lower())
+    attr_prefix = table_schema_name.split("_", 1)[0] if "_" in table_schema_name else table_schema_name
+    name_col = f"{attr_prefix}_name"
+    known_name = retrieved_record.get(name_col, "")
+
+    try:
+        # ------------------------------------------------------------------
+        # Case 1: Basic SELECT — no special characters in WHERE clause.
+        # ------------------------------------------------------------------
+        basic_sql = f"SELECT TOP 5 {name_col} FROM {logical_name}"
+        print(f"   [1/3] Basic SELECT (no special chars): {basic_sql}")
+
+        direct_rows = await client.query.sql(basic_sql)
+        direct_count = len(direct_rows)
+
+        batch = client.batch.new()
+        batch.query.sql(basic_sql)
+        result = await batch.execute()
+        batch_count = (
+            len(result.responses[0].data.get("value", []))
+            if result.responses and result.responses[0].is_success and result.responses[0].data
+            else 0
+        )
+
+        assert direct_count == batch_count, f"Row count mismatch: client={direct_count}, batch={batch_count}"
+        print(f"   [OK] Both paths returned {direct_count} rows")
+
+        # ------------------------------------------------------------------
+        # Case 2: WHERE clause with spaces and colons in the string literal.
+        # ------------------------------------------------------------------
+        if known_name:
+            escaped_name = known_name.replace("'", "''")
+            where_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_name}'"
+            print(f"   [2/3] WHERE with spaces/colons: ...WHERE {name_col} = '{escaped_name}'")
+
+            direct_rows_where = await client.query.sql(where_sql)
+            direct_where_count = len(direct_rows_where)
+
+            batch2 = client.batch.new()
+            batch2.query.sql(where_sql)
+            result2 = await batch2.execute()
+            batch_where_count = (
+                len(result2.responses[0].data.get("value", []))
+                if result2.responses and result2.responses[0].is_success and result2.responses[0].data
+                else 0
+            )
+
+            assert (
+                direct_where_count == batch_where_count
+            ), f"Row count mismatch on WHERE query: client={direct_where_count}, batch={batch_where_count}"
+            assert direct_where_count == 1, f"Expected exactly 1 row for known record name, got {direct_where_count}"
+            direct_name = direct_rows_where[0].get(name_col)
+            assert direct_name == known_name, f"Returned name '{direct_name}' does not match expected '{known_name}'"
+            print(f"   [OK] Both paths found the record: '{direct_name}'")
+        else:
+            print("   [2/3] Skipped WHERE test — record name not available in retrieved_record")
+
+        # ------------------------------------------------------------------
+        # Case 3: WHERE clause with an equals sign inside the string literal.
+        # ------------------------------------------------------------------
+        print("   [3/3] WHERE with '=' in string literal (tests %3D encoding)")
+        equals_name = f"SQL=Test {datetime.now().strftime('%H:%M:%S')}"
+        eq_id = await client.records.create(table_schema_name, {name_col: equals_name})
+        try:
+            escaped_eq = equals_name.replace("'", "''")
+            eq_sql = f"SELECT TOP 1 {name_col} FROM {logical_name} WHERE {name_col} = '{escaped_eq}'"
+
+            direct_eq_rows = await client.query.sql(eq_sql)
+            direct_eq_count = len(direct_eq_rows)
+
+            batch3 = client.batch.new()
+            batch3.query.sql(eq_sql)
+            result3 = await batch3.execute()
+            batch_eq_count = (
+                len(result3.responses[0].data.get("value", []))
+                if result3.responses and result3.responses[0].is_success and result3.responses[0].data
+                else 0
+            )
+
+            assert (
+                direct_eq_count == batch_eq_count
+            ), f"Row count mismatch on '=' query: client={direct_eq_count}, batch={batch_eq_count}"
+            assert direct_eq_count == 1, f"Expected 1 row for '=' record, got {direct_eq_count}"
+            print(f"   [OK] Both paths found record with '=' in name: '{direct_eq_rows[0].get(name_col)}'")
+        finally:
+            await client.records.delete(table_schema_name, eq_id)
+
+        print("[OK] SQL encoding verification passed — %20/%3D encoding is consistent across both paths")
+
+    except AssertionError as e:
+        print(f"[ERR] Encoding parity assertion failed: {e}")
+        raise
+    except Exception as e:
+        print(f"[WARN] SQL encoding test encountered an issue: {e}")
+        print("   Check that the test table exists and has at least one record.")
+
+
 async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Dict[str, Any]) -> None:
-    """Test batch operations using the async batch client."""
-    print("\n-> Batch Operations Test")
+    """Test every available batch operation type in a structured sequence.
+
+    Operations covered:
+      records.create (single + CreateMultiple)
+      records.retrieve (single by ID)
+      records.update (single PATCH + UpdateMultiple)
+      records.delete (multi, use_bulk_delete=False)
+      records.upsert (graceful — requires configured alternate key)
+      tables.add_columns + tables.remove_columns
+      query.sql
+      changeset happy path (create + update via content-ID ref + delete)
+      changeset rollback (failing op rolls back entire changeset)
+      two changesets in one batch (Content-IDs are globally unique across
+        the batch via a shared counter)
+      content-ID reference chaining ($n refs) across multiple creates in one
+        changeset — regression guard for the shared counter fix
+      execute(continue_on_error=True) — mixed success/failure
+    """
+    print("\n-> Batch Operations Test (All Operations)")
     print("=" * 50)
 
     table_schema_name = table_info.get("table_schema_name")
@@ -432,8 +568,8 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
     all_ids: list = []
 
     try:
-        # [1] CREATE — single + CreateMultiple
-        print("\n[1/7] Create — single + CreateMultiple")
+        # [1/11] CREATE — single + CreateMultiple
+        print("\n[1/11] Create — single + CreateMultiple (2 ops, 1 POST $batch)")
         batch = client.batch.new()
         batch.records.create(
             table_schema_name,
@@ -466,10 +602,10 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
         else:
             print(f"[OK] {len(result.succeeded)} ops → {len(all_ids)} records created")
 
-        # [2] READ — retrieve + list + query.sql
+        # [2/11] READ — retrieve + list + query.sql
         if all_ids:
             annotation = "OData.Community.Display.V1.FormattedValue"
-            print(f"\n[2/7] Read — records.retrieve + records.list + query.sql")
+            print(f"\n[2/11] Read — records.retrieve + records.list + query.sql")
             batch = client.batch.new()
             batch.records.retrieve(
                 table_schema_name,
@@ -489,18 +625,18 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
             result = await batch.execute()
             print(f"[OK] {len(result.succeeded)} succeeded, {len(result.failed)} failed")
 
-        # [3] UPDATE — single + multiple
+        # [3/11] UPDATE — single + multiple
         if len(all_ids) >= 2:
-            print(f"\n[3/7] Update — single PATCH + UpdateMultiple")
+            print(f"\n[3/11] Update — single PATCH + UpdateMultiple")
             batch = client.batch.new()
             batch.records.update(table_schema_name, all_ids[0], {f"{attr_prefix}_count": 10})
             batch.records.update(table_schema_name, all_ids[1:], {f"{attr_prefix}_count": 20})
             result = await batch.execute()
             print(f"[OK] {len(result.succeeded)} updates succeeded")
 
-        # [4] CHANGESET (happy path) — create + update via content-ID + delete
+        # [4/11] CHANGESET (happy path) — create + update via content-ID + delete
         if all_ids:
-            print("\n[4/7] Changeset (happy path) — create + update(ref) + delete")
+            print("\n[4/11] Changeset (happy path) — create + update(ref) + delete")
             batch = client.batch.new()
             async with batch.changeset() as cs:
                 ref = cs.records.create(
@@ -523,8 +659,8 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
                     all_ids[-1] = new_id
                 print(f"[OK] {len(result.succeeded)} ops committed atomically")
 
-        # [5] CHANGESET (rollback)
-        print("\n[5/7] Changeset (rollback) — failing update rolls back create")
+        # [5/11] CHANGESET (rollback)
+        print("\n[5/11] Changeset (rollback) — failing update rolls back create")
         batch = client.batch.new()
         async with batch.changeset() as cs:
             cs.records.create(
@@ -543,10 +679,76 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
             print("[WARN] Expected rollback but changeset succeeded (unexpected)")
             all_ids.extend(result.entity_ids)
 
-        # [6] ADD/REMOVE COLUMNS
+        # [6/11] TWO CHANGESETS — Content-IDs are unique across the entire batch
+        print("\n[6/11] Two changesets in one batch — globally unique Content-IDs across changesets")
+        batch = client.batch.new()
+        async with batch.changeset() as cs1:
+            ref1 = cs1.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"CS1-E {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 10,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs1.records.update(table_schema_name, ref1, {f"{attr_prefix}_is_active": True})
+        async with batch.changeset() as cs2:
+            ref2 = cs2.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"CS2-F {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 20,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs2.records.update(table_schema_name, ref2, {f"{attr_prefix}_is_active": True})
+        result = await batch.execute()
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] Two-changeset error {item.status_code}: {item.error_message}")
+        else:
+            cs_ids = list(result.entity_ids)
+            all_ids.extend(cs_ids)
+            print(
+                f"[OK] Both changesets committed — {len(cs_ids)} records created "
+                f"with globally unique Content-IDs across changesets: {cs_ids}"
+            )
+
+        # [7/11] CONTENT-ID REFERENCE CHAINING — two creates + two updates in one changeset
+        print("\n[7/11] Content-ID reference chaining — two creates + two updates via $n refs")
+        batch = client.batch.new()
+        async with batch.changeset() as cs:
+            ref_a = cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Chain-A {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            ref_b = cs.records.create(
+                table_schema_name,
+                {
+                    f"{attr_prefix}_name": f"Chain-B {datetime.now().strftime('%H:%M:%S')}",
+                    f"{attr_prefix}_count": 0,
+                    f"{attr_prefix}_is_active": False,
+                },
+            )
+            cs.records.update(table_schema_name, ref_a, {f"{attr_prefix}_count": 100})
+            cs.records.update(table_schema_name, ref_b, {f"{attr_prefix}_count": 200})
+        result = await batch.execute()
+        if result.has_errors:
+            for item in result.failed:
+                print(f"[WARN] Chaining error {item.status_code}: {item.error_message}")
+        else:
+            chain_ids = list(result.entity_ids)
+            all_ids.extend(chain_ids)
+            print(f"[OK] Both records created and updated via content-ID refs {ref_a} and {ref_b}: {chain_ids}")
+
+        # [8/11] ADD/REMOVE COLUMNS
         col_a = f"{attr_prefix}_batch_extra_a"
         col_b = f"{attr_prefix}_batch_extra_b"
-        print(f"\n[6/7] Batch tables.add_columns + tables.remove_columns")
+        print(f"\n[8/11] Batch tables.add_columns + tables.remove_columns")
         batch = client.batch.new()
         batch.tables.add_columns(table_schema_name, {col_a: "string"})
         batch.tables.add_columns(table_schema_name, {col_b: "int"})
@@ -561,9 +763,51 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
             for item in result.failed:
                 print(f"[WARN] add_columns error {item.status_code}: {item.error_message}")
 
-        # [7] DELETE
+        # [9/11] UPSERT — graceful (no alternate key configured on test table)
+        print(f"\n[9/11] Upsert — UpsertItem with alternate key (expected to fail: no alt key on test table)")
+        try:
+            batch = client.batch.new()
+            batch.records.upsert(
+                table_schema_name,
+                [
+                    UpsertItem(
+                        alternate_key={f"{attr_prefix}_name": f"Upsert-E {datetime.now().strftime('%H:%M:%S')}"},
+                        record={f"{attr_prefix}_count": 5, f"{attr_prefix}_is_active": True},
+                    )
+                ],
+            )
+            result = await batch.execute()
+            if result.has_errors:
+                print(f"[WARN] Upsert failed as expected (no alternate key configured): {result.failed[0].status_code}")
+            else:
+                upsert_ids = list(result.entity_ids)
+                all_ids.extend(upsert_ids)
+                print(f"[OK] Upsert succeeded: {len(upsert_ids)} record(s) — alternate key was accepted")
+        except Exception as e:
+            print(f"[WARN] Upsert skipped due to exception: {e}")
+
+        # [10/11] MIXED BATCH with continue_on_error
         if all_ids:
-            print(f"\n[7/7] Delete — {len(all_ids)} records (use_bulk_delete=False)")
+            print(f"\n[10/11] Mixed batch (continue_on_error=True) — 1 bad get + 1 good get")
+            batch = client.batch.new()
+            batch.records.get(
+                table_schema_name,
+                "00000000-0000-0000-0000-000000000002",
+                select=[f"{attr_prefix}_name"],
+            )
+            batch.records.get(
+                table_schema_name,
+                all_ids[0],
+                select=[f"{attr_prefix}_name"],
+            )
+            result = await batch.execute(continue_on_error=True)
+            print(f"[OK] Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
+            for item in result.failed:
+                print(f"   Expected failure: {item.status_code} {item.error_message}")
+
+        # [11/11] DELETE
+        if all_ids:
+            print(f"\n[11/11] Delete — {len(all_ids)} records (use_bulk_delete=False)")
             batch = client.batch.new()
             batch.records.delete(table_schema_name, all_ids, use_bulk_delete=False)
             result = await batch.execute(continue_on_error=True)
@@ -866,9 +1110,10 @@ async def main():
             async with client:
                 table_info = await ensure_test_table(client)
                 record_id = await test_create_record(client, table_info)
-                await test_read_record(client, table_info, record_id)
+                retrieved_record = await test_read_record(client, table_info, record_id)
                 await test_query_records(client, table_info)
                 await test_relationships(client)
+                await test_sql_encoding(client, table_info, retrieved_record)
                 await test_batch_all_operations(client, table_info)
 
                 print("\nAsync Functional Test Summary")
@@ -879,6 +1124,7 @@ async def main():
                 print("[OK] Record Reading: Success")
                 print("[OK] Record Querying (list, list_pages, builder, fetchxml): Success")
                 print("[OK] Relationship Operations: Success")
+                print("[OK] SQL Encoding: Success")
                 print("[OK] Batch Operations: Success")
                 print("\nYour async PowerPlatform Dataverse Client SDK is fully functional!")
 

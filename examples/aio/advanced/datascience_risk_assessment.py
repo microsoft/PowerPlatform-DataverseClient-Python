@@ -34,10 +34,12 @@ Prerequisites (required -- included in SDK dependencies):
     pip install PowerPlatform-Dataverse-Client
     pip install azure-identity
 
-Additional libraries (optional -- used for visualization and LLM):
-    pip install matplotlib
+Additional libraries (optional -- used for visualization and LLM; not part
+of the SDK and must be installed separately. Pick ONE LLM provider):
+    pip install matplotlib          # for charts / visualization
     pip install azure-ai-inference   # Option A: Azure AI Foundry / Azure OpenAI
     pip install openai               # Option B: OpenAI / Azure OpenAI
+    pip install github-copilot-sdk   # Option C: GitHub Copilot SDK (requires Copilot CLI)
 """
 
 import asyncio

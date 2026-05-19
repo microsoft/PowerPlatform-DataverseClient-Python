@@ -230,15 +230,15 @@ async def main():
             # Step 6: Verify
             # ------------------------------------------------------------------
             print("\n6. Verifying records...")
-            async for record in client.records.list_pages(
+            records = await client.records.list(
                 TABLE_NAME,
                 select=["new_productname", "new_price", KEY_COLUMN.lower()],
-            ):
-                for item in record:
-                    ext_id = item.get(KEY_COLUMN.lower(), "?")
-                    name = item.get("new_productname", "?")
-                    price = item.get("new_price", "?")
-                    print(f"   {ext_id}: {name} @ ${price}")
+            )
+            for record in records:
+                ext_id = record.get(KEY_COLUMN.lower(), "?")
+                name = record.get("new_productname", "?")
+                price = record.get("new_price", "?")
+                print(f"   {ext_id}: {name} @ ${price}")
 
             # ------------------------------------------------------------------
             # Step 7: List alternate keys

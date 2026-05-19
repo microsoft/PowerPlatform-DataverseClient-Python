@@ -11,9 +11,33 @@ that all async imports, classes, and methods are correctly installed.
 
 ## Installation
 
-```bash
-pip install PowerPlatform-Dataverse-Client azure-identity
-```
+### For End Users (Production/Consumption):
+1. Install the published SDK from PyPI with the async extra:
+   ```bash
+   pip install "PowerPlatform-Dataverse-Client[async]"
+   ```
+
+2. Install Azure Identity for authentication:
+   ```bash
+   pip install azure-identity
+   ```
+
+### For Developers (Contributing/Local Development):
+1. Clone the repository and navigate to the project directory
+2. Install in editable/development mode:
+   ```bash
+   pip install -e ".[async,dev]"
+   ```
+
+**Key Differences:**
+- `pip install "PowerPlatform-Dataverse-Client[async]"` → Downloads and installs the published package from PyPI with aiohttp
+- `pip install -e ".[async,dev]"` → Installs from local source code in "editable" mode
+
+**Editable Mode Benefits:**
+- Changes to source code are immediately available (no reinstall needed)
+- Perfect for development, testing, and contributing
+- Examples and tests can access the local codebase
+- Supports debugging and live code modifications
 
 ## What This Script Does
 
