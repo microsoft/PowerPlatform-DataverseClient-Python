@@ -2940,7 +2940,7 @@ class TestBuildCreateEntity(unittest.TestCase):
         req = self.od._build_create_entity("new_TestTable", {})
         self.assertEqual(req.method, "POST")
 
-    def test_url_targets_entity_definitions(self):
+    def test_url_targets_create_entities(self):
         """_build_create_entity URL ends with /CreateEntities."""
         req = self.od._build_create_entity("new_TestTable", {})
         self.assertTrue(req.url.endswith("/CreateEntities"))
