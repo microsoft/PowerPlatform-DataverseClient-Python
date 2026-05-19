@@ -391,6 +391,8 @@ class TestDataframeGetDeprecation(unittest.TestCase):
 
     def test_dataframe_other_methods_no_warning(self):
         """dataframe.sql(), dataframe.create(), etc. must NOT warn."""
+        import pandas as pd
+        from PowerPlatform.Dataverse.models.record import Record
 
         self.client._odata._query_sql.return_value = []
 
