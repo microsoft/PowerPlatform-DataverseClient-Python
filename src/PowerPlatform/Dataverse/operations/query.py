@@ -72,6 +72,8 @@ class QueryOperations:
         Example:
             Build and execute a query fluently::
 
+                from PowerPlatform.Dataverse.models.filters import col
+
                 for record in (client.query.builder("account")
                                .select("name", "revenue")
                                .where(col("statecode") == 0)
