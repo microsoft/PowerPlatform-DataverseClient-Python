@@ -53,6 +53,27 @@ class TestOperationContextValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             OperationContext(user_agent_context="justaplainstring")
 
+    def test_reject_unknown_key(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="ssn=123-45-6789")
+
+    def test_reject_unknown_skill(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="app=test/1.0;skill=not-a-real-skill;agent=claude-code")
+
+    def test_reject_unknown_agent(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="app=test/1.0;skill=dv-data;agent=not-a-real-agent")
+
+    def test_reject_pii_in_valid_key_format(self):
+        """Even structurally valid key=value should fail if key is not in allowlist."""
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="name=john;password=secret123")
+
+    def test_reject_invalid_app_format(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="app=noslash")
+
 
 class TestOperationContextConfig(unittest.TestCase):
     """Tests for operation_context on DataverseConfig."""

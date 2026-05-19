@@ -23,20 +23,49 @@ if TYPE_CHECKING:
 # Values: alphanumeric, hyphens, underscores, dots, slashes.
 _CONTEXT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+(;[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+)*$")
 
+# Allowed keys and their value patterns for PII prevention.
+# Only these keys are accepted; unknown keys are rejected.
+_ALLOWED_KEYS = frozenset({"app", "skill", "agent"})
+_ALLOWED_SKILLS = frozenset(
+    {
+        "dv-connect",
+        "dv-data",
+        "dv-query",
+        "dv-metadata",
+        "dv-solution",
+        "dv-admin",
+        "dv-security",
+        "unknown",
+    }
+)
+_ALLOWED_AGENTS = frozenset(
+    {
+        "claude-code",
+        "copilot",
+        "cursor",
+        "codex",
+        "unknown",
+    }
+)
+# app values: must start with a known prefix followed by /<semver-like>
+_APP_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
+
 
 @dataclass(frozen=True)
 class OperationContext:
     """Caller-defined context appended to outbound ``User-Agent`` headers.
 
     The context string is validated to be semicolon-separated ``key=value`` pairs
-    (e.g. ``"app=myapp/1.0;agent=claude-code"``).  Free-form text, email
-    addresses, and other potentially sensitive strings are rejected.
+    using only allowed keys (``app``, ``skill``, ``agent``) with values from
+    closed allowlists.  Free-form text, email addresses, PII, and unknown keys
+    are rejected.
 
     :param user_agent_context: Attribution string in ``key=value;key=value`` format.
     :type user_agent_context: :class:`str`
 
-    :raises ValueError: If the string is empty, contains control characters, or
-        does not match the required ``key=value`` format.
+    :raises ValueError: If the string is empty, contains control characters,
+        does not match the required ``key=value`` format, or uses unknown
+        keys/values.
     """
 
     user_agent_context: str
@@ -54,6 +83,17 @@ class OperationContext:
                 "Keys and values may contain alphanumerics, hyphens, underscores, "
                 "dots, and slashes."
             )
+        # Key/value allowlist validation
+        for pair in val.split(";"):
+            key, _, value = pair.partition("=")
+            if key not in _ALLOWED_KEYS:
+                raise ValueError(f"Unknown operation_context key '{key}'. " f"Allowed keys: {sorted(_ALLOWED_KEYS)}")
+            if key == "skill" and value not in _ALLOWED_SKILLS:
+                raise ValueError(f"Unknown skill '{value}'. Allowed: {sorted(_ALLOWED_SKILLS)}")
+            if key == "agent" and value not in _ALLOWED_AGENTS:
+                raise ValueError(f"Unknown agent '{value}'. Allowed: {sorted(_ALLOWED_AGENTS)}")
+            if key == "app" and not _APP_PATTERN.match(value):
+                raise ValueError(f"Invalid app value '{value}'. Expected format: '<name>/<version>'.")
 
 
 @dataclass(frozen=True)
