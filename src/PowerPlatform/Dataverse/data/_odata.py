@@ -1448,7 +1448,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 per_lang[lang] = label_text
             options.append(
                 {
-                    "@odata.type": f"{prefix}.OptionMetadata",
+                    "@odata.type": f"{prefix}OptionMetadata",
                     "Value": m.value,
                     "Label": self._build_localizedlabels_payload(per_lang),
                 }
