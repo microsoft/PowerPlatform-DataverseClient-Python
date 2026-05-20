@@ -816,18 +816,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         attributes: List[Dict[str, Any]],
         solution_unique_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        url = f"{self.api}/EntityDefinitions"
+        url = f"{self.api}/CreateEntities"
         payload = {
-            "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
-            "SchemaName": table_schema_name,
-            "DisplayName": self._label(display_name),
-            "DisplayCollectionName": self._label(display_name + "s"),
-            "Description": self._label(f"Custom entity for {display_name}"),
-            "OwnershipType": "UserOwned",
-            "HasActivities": False,
-            "HasNotes": True,
-            "IsActivity": False,
-            "Attributes": attributes,
+            "Entities": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
+                    "SchemaName": table_schema_name,
+                    "DisplayName": self._label(display_name),
+                    "DisplayCollectionName": self._label(display_name + "s"),
+                    "Description": self._label(f"Custom entity for {display_name}"),
+                    "OwnershipType": "UserOwned",
+                    "HasActivities": False,
+                    "HasNotes": True,
+                    "IsActivity": False,
+                    "Attributes": attributes,
+                }
+            ]
         }
         params = None
         if solution_unique_name:
@@ -1298,9 +1302,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             )
 
         attributes: List[Dict[str, Any]] = []
-        attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True))
+        attributes.append(self._attribute_payload(primary_attr_schema, "string", is_primary_name=True, complex=True))
         for col_name, dtype in schema.items():
-            payload = self._attribute_payload(col_name, dtype)
+            payload = self._attribute_payload(col_name, dtype, complex=True)
             if not payload:
                 raise ValueError(f"Unsupported column type '{dtype}' for '{col_name}'.")
             attributes.append(payload)
