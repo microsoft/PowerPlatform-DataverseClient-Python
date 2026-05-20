@@ -77,14 +77,13 @@ class AsyncDataverseClient:
     Example:
         **Recommended -- async context manager** (enables HTTP connection pooling)::
 
-            from azure.identity import InteractiveBrowserCredential
+            from azure.identity.aio import ClientSecretCredential
             from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
-            credential = InteractiveBrowserCredential()
-
-            async with AsyncDataverseClient("https://org.crm.dynamics.com", credential) as client:
-                record_id = await client.records.create("account", {"name": "Contoso Ltd"})
-                await client.records.update("account", record_id, {"telephone1": "555-0100"})
+            async with ClientSecretCredential(tenant_id, client_id, client_secret) as credential:
+                async with AsyncDataverseClient("https://org.crm.dynamics.com", credential) as client:
+                    record_id = await client.records.create("account", {"name": "Contoso Ltd"})
+                    await client.records.update("account", record_id, {"telephone1": "555-0100"})
             # Session closed, caches cleared automatically
 
         **Manual lifecycle**::

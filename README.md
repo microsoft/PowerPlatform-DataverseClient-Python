@@ -798,26 +798,30 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 
 ### Quick start
 
+`AsyncDataverseClient` requires an async-compatible credential (`async def get_token()`). Use credentials from `azure.identity.aio` for production, or `AzureCliCredential` for local development:
+
 ```python
 import asyncio
-from azure.identity import InteractiveBrowserCredential
+from azure.identity.aio import ClientSecretCredential
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
 async def main():
-    credential = InteractiveBrowserCredential()
-    async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
-        # Create a contact
-        contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
+    async with ClientSecretCredential(tenant_id, client_id, client_secret) as credential:
+        async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+            # Create a contact
+            contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
-        # Read it back
-        contact = await client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
-        print(f"Created: {contact['firstname']} {contact['lastname']}")
+            # Read it back
+            contact = await client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
+            print(f"Created: {contact['firstname']} {contact['lastname']}")
 
-        # Clean up
-        await client.records.delete("contact", contact_id)
+            # Clean up
+            await client.records.delete("contact", contact_id)
 
 asyncio.run(main())
 ```
+
+> **Interactive browser (development):** `InteractiveBrowserCredential` from `azure.identity` is sync-only and cannot be passed directly. See [examples/aio/_auth.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/aio/_auth.py) for an async wrapper used by the example scripts.
 
 ### Standalone usage (without `async with`)
 
