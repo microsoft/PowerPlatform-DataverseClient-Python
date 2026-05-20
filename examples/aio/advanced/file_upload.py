@@ -200,7 +200,7 @@ async def main():
                     async with client._scoped_odata() as od:
                         dl_url = f"{od.api}/{entity_set}({record_id})/{small_file_attr_schema.lower()}/$value"
                         resp = await od._request("get", dl_url)
-                        content = await resp.read() if hasattr(resp, "read") else (resp.content or b"")
+                        content = resp._body if hasattr(resp, "_body") else b""
 
                     downloaded_hash = hashlib.sha256(content).hexdigest() if content else None
                     hash_match = (downloaded_hash == src_hash) if (downloaded_hash and src_hash) else None
@@ -270,7 +270,7 @@ async def main():
                     async with client._scoped_odata() as od:
                         dl_url = f"{od.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"
                         resp = await od._request("get", dl_url)
-                        content_chunk = await resp.read() if hasattr(resp, "read") else (resp.content or b"")
+                        content_chunk = resp._body if hasattr(resp, "_body") else b""
 
                     dst_hash_chunk = hashlib.sha256(content_chunk).hexdigest() if content_chunk else None
                     hash_match_chunk = (
