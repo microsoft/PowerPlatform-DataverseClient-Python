@@ -330,7 +330,12 @@ class _ODataBase:
         }
 
     def _enum_optionset_payload(
-        self, column_schema_name: str, enum_cls: type[Enum], is_primary_name: bool = False
+        self,
+        column_schema_name: str,
+        enum_cls: type[Enum],
+        is_primary_name: bool = False,
+        *,
+        complex: bool = False,
     ) -> Dict[str, Any]:
         """Create local (IsGlobal=False) PicklistAttributeMetadata from an Enum subclass.
 
@@ -341,7 +346,14 @@ class _ODataBase:
         Keys inside per-language dict may be either enum member objects or their names.
         If a language lacks a label for a member, member.name is used as fallback.
         The client's configured language code is always ensured to exist.
+
+        :param complex: When ``True``, emit ``ComplexPicklistAttributeMetadata`` /
+            ``ComplexOptionSetMetadata`` types required by the ``CreateEntities``
+            action. When ``False`` (default), emit the standard types used by the
+            ``EntityDefinitions/{id}/Attributes`` endpoint.
         """
+        prefix = "Microsoft.Dynamics.CRM.Complex" if complex else "Microsoft.Dynamics.CRM."
+
         all_member_items = list(enum_cls.__members__.items())
         if not all_member_items:
             raise ValueError(f"Enum {enum_cls.__name__} has no members")
@@ -402,7 +414,7 @@ class _ODataBase:
                 per_lang[lang] = label_text
             options.append(
                 {
-                    "@odata.type": "Microsoft.Dynamics.CRM.OptionMetadata",
+                    "@odata.type": f"{prefix}OptionMetadata",
                     "Value": m.value,
                     "Label": self._build_localizedlabels_payload(per_lang),
                 }
@@ -410,33 +422,48 @@ class _ODataBase:
 
         attr_label = column_schema_name.split("_")[-1]
         return {
-            "@odata.type": "Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
+            "@odata.type": f"{prefix}PicklistAttributeMetadata",
             "SchemaName": column_schema_name,
             "DisplayName": self._label(attr_label),
             "RequiredLevel": {"Value": "None"},
             "IsPrimaryName": bool(is_primary_name),
             "OptionSet": {
-                "@odata.type": "Microsoft.Dynamics.CRM.OptionSetMetadata",
+                "@odata.type": f"{prefix}OptionSetMetadata",
                 "IsGlobal": False,
                 "Options": options,
             },
         }
 
     def _attribute_payload(
-        self, column_schema_name: str, dtype: Any, *, is_primary_name: bool = False
+        self,
+        column_schema_name: str,
+        dtype: Any,
+        *,
+        is_primary_name: bool = False,
+        complex: bool = False,
     ) -> Optional[Dict[str, Any]]:
+        """Build attribute metadata payload for a column.
+
+        :param complex: When ``True``, emit ``Complex*AttributeMetadata`` types
+            required by the ``CreateEntities`` action. When ``False`` (default),
+            emit the standard ``*AttributeMetadata`` types used by the
+            ``EntityDefinitions/{id}/Attributes`` endpoint.
+        """
         # Enum-based local option set support
         if isinstance(dtype, type) and issubclass(dtype, Enum):
-            return self._enum_optionset_payload(column_schema_name, dtype, is_primary_name=is_primary_name)
+            return self._enum_optionset_payload(
+                column_schema_name, dtype, is_primary_name=is_primary_name, complex=complex
+            )
         if not isinstance(dtype, str):
             raise ValueError(
                 f"Unsupported column spec type for '{column_schema_name}': {type(dtype)} (expected str or Enum subclass)"
             )
         dtype_l = dtype.lower().strip()
         label = column_schema_name.split("_")[-1]
+        prefix = "Microsoft.Dynamics.CRM.Complex" if complex else "Microsoft.Dynamics.CRM."
         if dtype_l in ("string", "text"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                "@odata.type": f"{prefix}StringAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -446,7 +473,7 @@ class _ODataBase:
             }
         if dtype_l in ("memo", "multiline"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                "@odata.type": f"{prefix}MemoAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -456,7 +483,7 @@ class _ODataBase:
             }
         if dtype_l in ("int", "integer"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
+                "@odata.type": f"{prefix}IntegerAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -466,7 +493,7 @@ class _ODataBase:
             }
         if dtype_l in ("decimal", "money"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+                "@odata.type": f"{prefix}DecimalAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -476,7 +503,7 @@ class _ODataBase:
             }
         if dtype_l in ("float", "double"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+                "@odata.type": f"{prefix}DoubleAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -486,7 +513,7 @@ class _ODataBase:
             }
         if dtype_l in ("datetime", "date"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+                "@odata.type": f"{prefix}DateTimeAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -495,12 +522,12 @@ class _ODataBase:
             }
         if dtype_l in ("bool", "boolean"):
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.BooleanAttributeMetadata",
+                "@odata.type": f"{prefix}BooleanAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
                 "OptionSet": {
-                    "@odata.type": "Microsoft.Dynamics.CRM.BooleanOptionSetMetadata",
+                    "@odata.type": f"{prefix}BooleanOptionSetMetadata",
                     "TrueOption": {
                         "Value": 1,
                         "Label": self._label("True"),
@@ -514,7 +541,7 @@ class _ODataBase:
             }
         if dtype_l == "file":
             return {
-                "@odata.type": "Microsoft.Dynamics.CRM.FileAttributeMetadata",
+                "@odata.type": f"{prefix}FileAttributeMetadata",
                 "SchemaName": column_schema_name,
                 "DisplayName": self._label(label),
                 "RequiredLevel": {"Value": "None"},
@@ -533,14 +560,14 @@ class _ODataBase:
         primary_column: Optional[str] = None,
         display_name: Optional[str] = None,
     ) -> _RawRequest:
-        """Build an EntityDefinitions POST request without sending it."""
+        """Build an CreateEntities POST request without sending it."""
         if primary_column:
             primary_attr = primary_column
         else:
             primary_attr = f"{table.split('_', 1)[0]}_Name" if "_" in table else "new_Name"
-        attributes = [self._attribute_payload(primary_attr, "string", is_primary_name=True)]
+        attributes = [self._attribute_payload(primary_attr, "string", is_primary_name=True, complex=True)]
         for col_name, dtype in columns.items():
-            attr = self._attribute_payload(col_name, dtype)
+            attr = self._attribute_payload(col_name, dtype, complex=True)
             if not attr:
                 raise ValidationError(
                     f"Unsupported column type '{dtype}' for column '{col_name}'.",
@@ -552,18 +579,22 @@ class _ODataBase:
                 raise TypeError("display_name must be a non-empty string when provided")
         label = display_name if display_name is not None else table
         body = {
-            "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
-            "SchemaName": table,
-            "DisplayName": self._label(label),
-            "DisplayCollectionName": self._label(label + "s"),
-            "Description": self._label(f"Custom entity for {label}"),
-            "OwnershipType": "UserOwned",
-            "HasActivities": False,
-            "HasNotes": True,
-            "IsActivity": False,
-            "Attributes": attributes,
+            "Entities": [
+                {
+                    "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
+                    "SchemaName": table,
+                    "DisplayName": self._label(label),
+                    "DisplayCollectionName": self._label(label + "s"),
+                    "Description": self._label(f"Custom entity for {label}"),
+                    "OwnershipType": "UserOwned",
+                    "HasActivities": False,
+                    "HasNotes": True,
+                    "IsActivity": False,
+                    "Attributes": attributes,
+                }
+            ]
         }
-        url = f"{self.api}/EntityDefinitions"
+        url = f"{self.api}/CreateEntities"
         if solution:
             url += f"?SolutionUniqueName={solution}"
         return _RawRequest(
