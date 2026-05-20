@@ -97,7 +97,7 @@ class _AsyncBatchClient(_BatchBase):
             headers["Prefer"] = "odata.continue-on-error"
 
         url = f"{self._od.api}/$batch"
-        r = await self._od._request(
+        response = await self._od._request(
             "post",
             url,
             data=body.encode("utf-8"),
@@ -109,7 +109,7 @@ class _AsyncBatchClient(_BatchBase):
             expected=(200, 202, 207, 400),
         )
 
-        return self._parse_batch_response(r)
+        return self._parse_batch_response(response)
 
     # ------------------------------------------------------------------
     # Intent resolution dispatcher
@@ -273,12 +273,11 @@ class _AsyncBatchClient(_BatchBase):
     async def _resolve_table_remove_columns(self, op: _TableRemoveColumns) -> List[_RawRequest]:
         columns = [op.columns] if isinstance(op.columns, str) else list(op.columns)
         metadata_id = await self._require_entity_metadata(op.table)
-        attr_metas = [
-            await self._od._get_attribute_metadata(metadata_id, col_name, extra_select="@odata.type,AttributeType")
-            for col_name in columns
-        ]
         requests: List[_RawRequest] = []
-        for col_name, attr_meta in zip(columns, attr_metas):
+        for col_name in columns:
+            attr_meta = await self._od._get_attribute_metadata(
+                metadata_id, col_name, extra_select="@odata.type,AttributeType"
+            )
             if not attr_meta or not attr_meta.get("MetadataId"):
                 raise MetadataError(
                     f"Column '{col_name}' not found on table '{op.table}'.",
