@@ -83,14 +83,13 @@ from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 from PowerPlatform.Dataverse.models.record import QueryResult
 from PowerPlatform.Dataverse.models.table_info import TableInfo
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
 SEPARATOR = "=" * 72
 _WARN_GAP_MS = 200.0  # max acceptable canary gap in milliseconds
-_WARN_SPEEDUP = 2.0   # min acceptable speedup ratio
+_WARN_SPEEDUP = 2.0  # min acceptable speedup ratio
 
 
 def heading(title: str) -> None:
@@ -112,6 +111,7 @@ def _speedup_line(label: str, seq_s: float, conc_s: float) -> str:
 # ---------------------------------------------------------------------------
 # Canary infrastructure
 # ---------------------------------------------------------------------------
+
 
 async def _canary(ticks: List[float], stop: asyncio.Event) -> None:
     """Append monotonic timestamps every 10 ms until *stop* is set."""
@@ -146,16 +146,14 @@ async def _with_canary(coro_fn: Callable) -> tuple[Any, float, int, float]:
 def _canary_line(label: str, elapsed_ms: float, ticks: int, gap_ms: float) -> tuple[str, bool]:
     ok = gap_ms < _WARN_GAP_MS
     status = "[OK]  " if ok else "[WARN]"
-    line = (
-        f"  {status} {label}\n"
-        f"         call={elapsed_ms:.0f}ms  canary_ticks={ticks}  max_gap={gap_ms:.1f}ms"
-    )
+    line = f"  {status} {label}\n" f"         call={elapsed_ms:.0f}ms  canary_ticks={ticks}  max_gap={gap_ms:.1f}ms"
     return line, ok
 
 
 # ---------------------------------------------------------------------------
 # Test 1: Non-blocking reads (GET operations)
 # ---------------------------------------------------------------------------
+
 
 async def run_test1_nonblocking_reads(client: AsyncDataverseClient) -> None:
     """
@@ -180,21 +178,21 @@ async def run_test1_nonblocking_reads(client: AsyncDataverseClient) -> None:
     """
 
     calls = [
-        ("records.list(account, top=5)",
-         lambda: client.records.list("account", top=5)),
-        ("tables.list(filter=IsPrivate...)",
-         lambda: client.tables.list(
-             filter="IsPrivate eq false",
-             select=["LogicalName", "SchemaName"],
-         )),
-        ("tables.get(account)",
-         lambda: client.tables.get("account")),
-        ("query.sql(SELECT TOP 5 ...)",
-         lambda: client.query.sql("SELECT TOP 5 name FROM account ORDER BY name")),
-        ("query.fetchxml(...).execute()",
-         lambda: client.query.fetchxml(fetchxml).execute()),
-        ("query.builder(account).top(5).execute()",
-         lambda: client.query.builder("account").select("name").top(5).execute()),
+        ("records.list(account, top=5)", lambda: client.records.list("account", top=5)),
+        (
+            "tables.list(filter=IsPrivate...)",
+            lambda: client.tables.list(
+                filter="IsPrivate eq false",
+                select=["LogicalName", "SchemaName"],
+            ),
+        ),
+        ("tables.get(account)", lambda: client.tables.get("account")),
+        ("query.sql(SELECT TOP 5 ...)", lambda: client.query.sql("SELECT TOP 5 name FROM account ORDER BY name")),
+        ("query.fetchxml(...).execute()", lambda: client.query.fetchxml(fetchxml).execute()),
+        (
+            "query.builder(account).top(5).execute()",
+            lambda: client.query.builder("account").select("name").top(5).execute(),
+        ),
     ]
 
     all_ok = True
@@ -219,6 +217,7 @@ async def run_test1_nonblocking_reads(client: AsyncDataverseClient) -> None:
 # Test 2: Read throughput — sequential vs concurrent
 # ---------------------------------------------------------------------------
 
+
 async def run_test2_read_throughput(client: AsyncDataverseClient, n: int) -> None:
     """
     Compare sequential vs concurrent execution for read operations.
@@ -233,12 +232,9 @@ async def run_test2_read_throughput(client: AsyncDataverseClient, n: int) -> Non
     )
 
     ops = [
-        ("records.list(account, top=5)",
-         lambda: client.records.list("account", top=5)),
-        ("query.sql(SELECT TOP 5 ...)",
-         lambda: client.query.sql("SELECT TOP 5 name FROM account ORDER BY name")),
-        ("tables.get(account)",
-         lambda: client.tables.get("account")),
+        ("records.list(account, top=5)", lambda: client.records.list("account", top=5)),
+        ("query.sql(SELECT TOP 5 ...)", lambda: client.query.sql("SELECT TOP 5 name FROM account ORDER BY name")),
+        ("tables.get(account)", lambda: client.tables.get("account")),
     ]
 
     overall_seq = overall_conc = 0.0
@@ -271,6 +267,7 @@ async def run_test2_read_throughput(client: AsyncDataverseClient, n: int) -> Non
 # ---------------------------------------------------------------------------
 # Test 3: Write concurrency — POST path
 # ---------------------------------------------------------------------------
+
 
 async def run_test3_write_concurrency(client: AsyncDataverseClient, n: int) -> None:
     """
@@ -307,9 +304,7 @@ async def run_test3_write_concurrency(client: AsyncDataverseClient, n: int) -> N
 
     # Concurrent creates
     t0 = time.monotonic()
-    conc_ids = list(await asyncio.gather(
-        *[client.records.create("contact", _payload(i, "Con")) for i in range(n)]
-    ))
+    conc_ids = list(await asyncio.gather(*[client.records.create("contact", _payload(i, "Con")) for i in range(n)]))
     conc_s = time.monotonic() - t0
 
     line, speedup = _speedup_line(f"records.create(contact) x{n}", seq_s, conc_s)
@@ -331,6 +326,7 @@ async def run_test3_write_concurrency(client: AsyncDataverseClient, n: int) -> N
 # ---------------------------------------------------------------------------
 # Test 4: Pagination non-blocking
 # ---------------------------------------------------------------------------
+
 
 async def run_test4_pagination_nonblocking(client: AsyncDataverseClient) -> None:
     """
@@ -374,20 +370,15 @@ async def run_test4_pagination_nonblocking(client: AsyncDataverseClient) -> None
 
     async def _paginate_builder():
         pages = 0
-        async for _page in (
-            client.query.builder("account")
-            .select("name")
-            .page_size(5)
-            .execute_pages()
-        ):
+        async for _page in client.query.builder("account").select("name").page_size(5).execute_pages():
             pages += 1
             if pages >= 3:
                 break
 
     paginators = [
         ("records.list_pages(account, page_size=5)", _paginate_records),
-        ("query.fetchxml(...).execute_pages()",       _paginate_fetchxml),
-        ("query.builder(...).execute_pages()",        _paginate_builder),
+        ("query.fetchxml(...).execute_pages()", _paginate_fetchxml),
+        ("query.builder(...).execute_pages()", _paginate_builder),
     ]
 
     all_ok = True
@@ -408,6 +399,7 @@ async def run_test4_pagination_nonblocking(client: AsyncDataverseClient) -> None
 # ---------------------------------------------------------------------------
 # Test 5: Mixed fan-out (different operation types simultaneously)
 # ---------------------------------------------------------------------------
+
 
 async def run_test5_mixed_fanout(client: AsyncDataverseClient) -> None:
     """
@@ -434,13 +426,11 @@ async def run_test5_mixed_fanout(client: AsyncDataverseClient) -> None:
     """
 
     ops = {
-        "records.list(account, top=3)":            lambda: client.records.list("account", top=3),
-        "tables.get(account)":                     lambda: client.tables.get("account"),
-        "tables.get(contact)":                     lambda: client.tables.get("contact"),
-        "query.sql(SELECT TOP 3 ...)":             lambda: client.query.sql(
-            "SELECT TOP 3 name FROM account ORDER BY name"
-        ),
-        "query.fetchxml(...).execute()":           lambda: client.query.fetchxml(fetchxml).execute(),
+        "records.list(account, top=3)": lambda: client.records.list("account", top=3),
+        "tables.get(account)": lambda: client.tables.get("account"),
+        "tables.get(contact)": lambda: client.tables.get("contact"),
+        "query.sql(SELECT TOP 3 ...)": lambda: client.query.sql("SELECT TOP 3 name FROM account ORDER BY name"),
+        "query.fetchxml(...).execute()": lambda: client.query.fetchxml(fetchxml).execute(),
         "query.builder(account).top(3).execute()": lambda: (
             client.query.builder("account").select("name").top(3).execute()
         ),
@@ -486,6 +476,7 @@ async def run_test5_mixed_fanout(client: AsyncDataverseClient) -> None:
 # Test 6: Error resilience in gather()
 # ---------------------------------------------------------------------------
 
+
 async def run_test6_error_resilience(client: AsyncDataverseClient) -> None:
     """
     Verify that one failing call in asyncio.gather() does not prevent
@@ -507,11 +498,11 @@ async def run_test6_error_resilience(client: AsyncDataverseClient) -> None:
     nonexistent_table = "new_TableThatDefinitelyDoesNotExist_xyz987"
 
     coros = [
-        client.records.list("account", top=3),                            # good
-        client.records.list("contact", top=3),                            # good
-        client.query.sql("SELECT TOP 3 name FROM account ORDER BY name"), # good
-        client.query.sql(bad_sql),                                        # bad — invalid SQL
-        client.records.list(nonexistent_table, top=1),                   # bad — table not found
+        client.records.list("account", top=3),  # good
+        client.records.list("contact", top=3),  # good
+        client.query.sql("SELECT TOP 3 name FROM account ORDER BY name"),  # good
+        client.query.sql(bad_sql),  # bad — invalid SQL
+        client.records.list(nonexistent_table, top=1),  # bad — table not found
     ]
 
     t0 = time.monotonic()
@@ -542,6 +533,7 @@ async def run_test6_error_resilience(client: AsyncDataverseClient) -> None:
 # ---------------------------------------------------------------------------
 # Test 7: Real-world fan-out — metadata for multiple tables
 # ---------------------------------------------------------------------------
+
 
 async def run_test7_metadata_fanout(client: AsyncDataverseClient) -> None:
     """
@@ -588,6 +580,7 @@ async def run_test7_metadata_fanout(client: AsyncDataverseClient) -> None:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 async def main() -> None:
     print(SEPARATOR)
