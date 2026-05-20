@@ -99,10 +99,7 @@ class AsyncFetchXmlQuery:
                     headers={"Prefer": _PREFER_HEADER},
                     params={"fetchXml": current_xml},
                 )
-                try:
-                    data = r.json()
-                except Exception:
-                    data = {}
+                data = r.json() if hasattr(r, "json") else {}
 
                 items = data.get("value") if isinstance(data, dict) else None
                 page_records: List[Record] = []

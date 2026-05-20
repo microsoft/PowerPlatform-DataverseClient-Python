@@ -500,17 +500,6 @@ class TestAsyncFetchXmlQueryPaging:
         assert len(result) == 2
         assert any("simple paging" in str(warning.message) for warning in w)
 
-    async def test_execute_json_parse_error_yields_empty_page(self, async_client, mock_od):
-        """execute() yields an empty page when the response body cannot be parsed as JSON."""
-        mock_od._entity_set_from_schema_name = AsyncMock(return_value="accounts")
-
-        resp = MagicMock()
-        resp.json = MagicMock(side_effect=Exception("invalid json"))
-        mock_od._request = AsyncMock(return_value=resp)
-
-        result = await async_client.query.fetchxml(_SIMPLE_FETCHXML).execute()
-        assert len(result) == 0
-
     async def test_execute_raises_on_max_pages_exceeded(self, async_client, mock_od):
         """execute() raises ValidationError when paging exceeds the maximum page limit."""
         import urllib.parse
