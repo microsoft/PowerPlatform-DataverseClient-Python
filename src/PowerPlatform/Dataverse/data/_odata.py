@@ -12,27 +12,15 @@ from enum import Enum
 from dataclasses import dataclass, field
 import unicodedata
 import time
-import re
 import json
-import uuid
 import warnings
 from datetime import datetime, timezone
-import importlib.resources as ir
-from contextlib import contextmanager
-from contextvars import ContextVar
 
-from urllib.parse import quote as _url_quote, parse_qs, urlparse
+from urllib.parse import quote as _url_quote
 
 from ..core._http import _HttpClient
 from ._upload import _FileUploadMixin
 from ._relationships import _RelationshipOperationsMixin
-from ..models.relationship import (
-    LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
-    CascadeConfiguration,
-)
-from ..models.labels import Label, LocalizedLabel
-from ..common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 from ..core.errors import *
 from ._raw_request import _RawRequest
 from ..core._error_codes import (
@@ -48,119 +36,20 @@ from ..core._error_codes import (
     METADATA_TABLE_NOT_FOUND,
     METADATA_TABLE_ALREADY_EXISTS,
     METADATA_COLUMN_NOT_FOUND,
-    VALIDATION_UNSUPPORTED_CACHE_KIND,
 )
 
-from .. import __version__ as _SDK_VERSION
-
-_USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
-_GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-_CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
-_DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
-
-
-def _extract_pagingcookie(next_link: str) -> Optional[str]:
-    """Extract the raw pagingcookie value from a SQL ``@odata.nextLink`` URL.
-
-    The Dataverse SQL endpoint has a server-side bug where the pagingcookie
-    (containing first/last record GUIDs) does not advance between pages even
-    though ``pagenumber`` increments. Detecting a repeated cookie lets the
-    pagination loop break instead of looping indefinitely.
-
-    Returns the pagingcookie string if present, or ``None`` if not found.
-    """
-    try:
-        qs = parse_qs(urlparse(next_link).query)
-        skiptoken = qs.get("$skiptoken", [None])[0]
-        if not skiptoken:
-            return None
-        # parse_qs already URL-decodes the value once, giving the outer XML with
-        # pagingcookie still percent-encoded (e.g. pagingcookie="%3ccookie...").
-        # A second decode is intentionally omitted: decoding again would turn %22
-        # into " inside the cookie XML, breaking the regex and causing every page
-        # to extract the same truncated prefix regardless of the actual GUIDs.
-        m = re.search(r'pagingcookie="([^"]+)"', skiptoken)
-        if m:
-            return m.group(1)
-    except Exception:
-        pass
-    return None
+from ._odata_base import (
+    _ODataBase,
+    _GUID_RE,
+    _extract_pagingcookie,
+    _USER_AGENT,
+    _DEFAULT_EXPECTED_STATUSES,
+    _RequestContext,
+)
 
 
-@dataclass
-class _RequestContext:
-    """Structured request context used by ``_request`` to clarify payload and metadata."""
-
-    method: str
-    url: str
-    expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES
-    headers: Optional[Dict[str, str]] = None
-    kwargs: Dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def build(
-        cls,
-        method: str,
-        url: str,
-        *,
-        expected: tuple[int, ...] = _DEFAULT_EXPECTED_STATUSES,
-        merge_headers: Optional[Callable[[Optional[Dict[str, str]]], Dict[str, str]]] = None,
-        **kwargs: Any,
-    ) -> "_RequestContext":
-        headers = kwargs.get("headers")
-        headers = merge_headers(headers) if merge_headers else (headers or {})
-        headers.setdefault("x-ms-client-request-id", str(uuid.uuid4()))
-        headers.setdefault("x-ms-correlation-id", _CALL_SCOPE_CORRELATION_ID.get())
-        kwargs["headers"] = headers
-        return cls(
-            method=method,
-            url=url,
-            expected=expected,
-            headers=headers,
-            kwargs=kwargs or {},
-        )
-
-
-class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
+class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
     """Dataverse Web API client: CRUD, SQL-over-API, and table metadata helpers."""
-
-    @staticmethod
-    def _escape_odata_quotes(value: str) -> str:
-        """Escape single quotes for OData queries (by doubling them)."""
-        return value.replace("'", "''")
-
-    @staticmethod
-    def _normalize_cache_key(table_schema_name: str) -> str:
-        """Normalize table_schema_name to lowercase for case-insensitive cache keys."""
-        return table_schema_name.lower() if isinstance(table_schema_name, str) else ""
-
-    @staticmethod
-    def _lowercase_keys(record: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert all dictionary keys to lowercase for case-insensitive column names.
-
-        Dataverse LogicalNames for attributes are stored lowercase, but users may
-        provide PascalCase names (matching SchemaName). This normalizes the input.
-
-        Keys containing ``@odata.`` (e.g. ``new_CustomerId@odata.bind``) are
-        preserved as-is because the navigation property portion before ``@``
-        must retain its original casing (case-sensitive navigation property name).  The OData
-        parser validates ``@odata.bind`` property names **case-sensitively**
-        against the entity's declared navigation properties, so lowercasing
-        these keys causes ``400 - undeclared property`` errors.
-        """
-        if not isinstance(record, dict):
-            return record
-        return {k.lower() if isinstance(k, str) and "@odata." not in k else k: v for k, v in record.items()}
-
-    @staticmethod
-    def _lowercase_list(items: Optional[List[str]]) -> Optional[List[str]]:
-        """Convert all strings in a list to lowercase for case-insensitive column names.
-
-        Used for $select and $orderby parameters where column names must be lowercase.
-        """
-        if not items:
-            return items
-        return [item.lower() if isinstance(item, str) else item for item in items]
 
     def __init__(
         self,
@@ -183,22 +72,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         :type session: :class:`requests.Session` | ``None``
         :raises ValueError: If ``base_url`` is empty after stripping.
         """
+        super().__init__(base_url, config)
         self.auth = auth
-        self.base_url = (base_url or "").rstrip("/")
-        if not self.base_url:
-            raise ValueError("base_url is required.")
-        self.api = f"{self.base_url}/api/data/v9.2"
-        self.config = (
-            config
-            or __import__(
-                "PowerPlatform.Dataverse.core.config", fromlist=["DataverseConfig"]
-            ).DataverseConfig.from_env()
-        )
-        self._http_logger = None
-        if self.config.log_config is not None:
-            from ..core._http_logger import _HttpLogger
-
-            self._http_logger = _HttpLogger(self.config.log_config)
         self._http = _HttpClient(
             retries=self.config.http_retries,
             backoff=self.config.http_backoff,
@@ -206,23 +81,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             session=session,
             logger=self._http_logger,
         )
-        ctx_obj = self.config.operation_context
-        self._operation_context = ctx_obj.user_agent_context if ctx_obj else None
-        self._logical_to_entityset_cache: dict[str, str] = {}
-        # Cache: normalized table_schema_name (lowercase) -> primary id attribute (e.g. accountid)
-        self._logical_primaryid_cache: dict[str, str] = {}
-        self._picklist_label_cache: dict[str, dict] = {}
-        self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
-
-    @contextmanager
-    def _call_scope(self):
-        """Context manager to generate a new correlation id for each SDK call scope."""
-        shared_id = str(uuid.uuid4())
-        token = _CALL_SCOPE_CORRELATION_ID.set(shared_id)
-        try:
-            yield shared_id
-        finally:
-            _CALL_SCOPE_CORRELATION_ID.reset(token)
 
     def close(self) -> None:
         """Close the OData client and release resources.
@@ -230,14 +88,9 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         Clears all internal caches and closes the underlying HTTP client.
         Safe to call multiple times.
         """
-        self._logical_to_entityset_cache.clear()
-        self._logical_primaryid_cache.clear()
-        self._picklist_label_cache.clear()
+        super().close()
         if self._http is not None:
             self._http.close()
-        if self._http_logger is not None:
-            self._http_logger.close()
-            self._http_logger = None
 
     def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
@@ -421,36 +274,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             return out
         return []
 
-    def _build_alternate_key_str(self, alternate_key: Dict[str, Any]) -> str:
-        """Build an OData alternate key segment from a mapping of key names to values.
-
-        String values are single-quoted and escaped; all other values are rendered as-is.
-
-        :param alternate_key: Mapping of alternate key attribute names to their values.
-            Must be a non-empty dict with string keys.
-        :type alternate_key: ``dict[str, Any]``
-
-        :return: Comma-separated key=value pairs suitable for use in a URL segment.
-        :rtype: ``str``
-
-        :raises ValueError: If ``alternate_key`` is empty.
-        :raises TypeError: If any key in ``alternate_key`` is not a string.
-        """
-        if not alternate_key:
-            raise ValueError("alternate_key must be a non-empty dict")
-        bad_keys = [k for k in alternate_key if not isinstance(k, str)]
-        if bad_keys:
-            raise TypeError(f"alternate_key keys must be strings; got: {bad_keys!r}")
-        parts = []
-        for k, v in alternate_key.items():
-            k_lower = k.lower() if isinstance(k, str) else k
-            if isinstance(v, str):
-                v_escaped = self._escape_odata_quotes(v)
-                parts.append(f"{k_lower}='{v_escaped}'")
-            else:
-                parts.append(f"{k_lower}={v}")
-        return ",".join(parts)
-
     def _upsert(
         self,
         entity_set: str,
@@ -621,23 +444,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         if isinstance(body, dict):
             job_id = body.get("JobId")
         return job_id
-
-    def _format_key(self, key: str) -> str:
-        k = key.strip()
-        if k.startswith("(") and k.endswith(")"):
-            return k
-        # Escape single quotes in alternate key values
-        if "=" in k and "'" in k:
-
-            def esc(match):
-                # match.group(1) is the key, match.group(2) is the value
-                return f"{match.group(1)}='{self._escape_odata_quotes(match.group(2))}'"
-
-            k = re.sub(r"(\w+)=\'([^\']*)\'", esc, k)
-            return f"({k})"
-        if len(k) == 36 and "-" in k:
-            return f"({k})"
-        return f"({k})"
 
     def _update(self, table_schema_name: str, key: str, data: Dict[str, Any]) -> None:
         """Update an existing record by GUID.
@@ -811,165 +617,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
                 yield [x for x in items if isinstance(x, dict)]
             next_link = data.get("@odata.nextLink") or data.get("odata.nextLink") if isinstance(data, dict) else None
 
-    # ----------------------- SQL guardrail patterns --------------------
-    _SQL_WRITE_RE = re.compile(
-        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
-        re.IGNORECASE,
-    )
-    _SQL_COMMENT_RE = re.compile(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/|--[^\n]*", re.DOTALL)
-    _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
-    _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
-        r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
-        re.IGNORECASE,
-    )
-    # Server-blocked SQL patterns (save the round-trip by catching early)
-    _SQL_UNSUPPORTED_JOIN_RE = re.compile(
-        r"\b(?:CROSS\s+JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|FULL\s+(?:OUTER\s+)?JOIN)\b",
-        re.IGNORECASE,
-    )
-    _SQL_UNION_RE = re.compile(r"\bUNION\b", re.IGNORECASE)
-    _SQL_HAVING_RE = re.compile(r"\bHAVING\b", re.IGNORECASE)
-    _SQL_CTE_RE = re.compile(r"^\s*WITH\b", re.IGNORECASE)
-    _SQL_SUBQUERY_RE = re.compile(
-        r"\bIN\s*\(\s*SELECT\b|\bEXISTS\s*\(\s*SELECT\b|\(\s*SELECT\b.*\bFROM\b",
-        re.IGNORECASE,
-    )
-    # SELECT * is intentionally rejected -- not a technical limitation but a
-    # deliberate design decision.  Wide entities (e.g. account has 307 columns)
-    # make SELECT * extremely expensive on shared database infrastructure.
-    # COUNT(*) is NOT matched because COUNT appears before the *.
-    _SQL_SELECT_STAR_RE = re.compile(
-        r"\bSELECT\b\s+(?:DISTINCT\s+)?(?:TOP\s+\d+(?:\s+PERCENT)?\s+)?\*\s",
-        re.IGNORECASE,
-    )
-
-    def _sql_guardrails(self, sql: str) -> str:
-        """Apply safety guardrails to a SQL query before sending to the server.
-
-        Checks split into two categories:
-
-        **Blocked** (``ValidationError`` -- saves a server round-trip):
-
-        1. Write statements (INSERT/UPDATE/DELETE/DROP/etc.)
-        2. CROSS JOIN, RIGHT JOIN, FULL OUTER JOIN (server rejects these)
-        3. UNION / UNION ALL (server rejects)
-        4. HAVING clause (server rejects)
-        5. CTE / WITH clause (server rejects)
-        6. Subqueries -- IN (SELECT ...), EXISTS (SELECT ...) (server rejects)
-        7. SELECT * -- intentional design decision, not a technical limitation.
-           Wide entities make wildcard selects extremely expensive on shared
-           database infrastructure.  ``COUNT(*)`` is not affected.
-
-        **Warned** (``UserWarning`` -- query still executes):
-
-        8. Leading-wildcard LIKE (full table scan)
-        9. Implicit cross join FROM a, b (cartesian product)
-
-        All blocked patterns are also blocked by the server, but catching
-        them here saves the network round-trip and provides clearer error
-        messages. To bypass a specific check (e.g., if the server adds
-        support in the future), all checks are in this single method.
-
-        :param sql: The SQL string (already stripped).
-        :return: The SQL string (unchanged).
-        :raises ValidationError: If the SQL contains a blocked pattern.
-        """
-        # --- BLOCKED (save server round-trip) ---
-
-        # 1. Block writes (strip SQL comments first to catch comment-prefixed writes)
-        sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
-        if self._SQL_WRITE_RE.search(sql_no_comments):
-            raise ValidationError(
-                "SQL endpoint is read-only. Use client.records or "
-                "client.dataframe for write operations "
-                "(INSERT/UPDATE/DELETE are not supported).",
-                subcode=VALIDATION_SQL_WRITE_BLOCKED,
-            )
-
-        # 2. Block unsupported JOIN types
-        m = self._SQL_UNSUPPORTED_JOIN_RE.search(sql)
-        if m:
-            raise ValidationError(
-                f"Unsupported JOIN type: '{m.group(0).strip()}'. "
-                "Only INNER JOIN and LEFT JOIN are supported by the "
-                "Dataverse SQL endpoint.",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # 3. Block UNION
-        if self._SQL_UNION_RE.search(sql):
-            raise ValidationError(
-                "UNION is not supported by the Dataverse SQL endpoint. "
-                "Execute separate queries and combine results in Python "
-                "(e.g. pd.concat([df1, df2])).",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # 4. Block HAVING
-        if self._SQL_HAVING_RE.search(sql):
-            raise ValidationError(
-                "HAVING is not supported by the Dataverse SQL endpoint. "
-                "Use WHERE to filter before GROUP BY instead.",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # 5. Block CTE / WITH
-        if self._SQL_CTE_RE.search(sql):
-            raise ValidationError(
-                "CTE (WITH ... AS) is not supported by the Dataverse SQL "
-                "endpoint. Use separate queries and combine in Python.",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # 6. Block subqueries
-        if self._SQL_SUBQUERY_RE.search(sql):
-            raise ValidationError(
-                "Subqueries are not supported by the Dataverse SQL "
-                "endpoint. Use separate SQL calls and combine results "
-                "in Python (e.g. step 1: get IDs, step 2: WHERE IN).",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # 7. Block SELECT * -- intentional design decision.
-        # Wide entities (e.g. account has 307 columns) make wildcard selects
-        # extremely expensive on shared database infrastructure.
-        # COUNT(*) is NOT matched: _SQL_SELECT_STAR_RE requires * to be the
-        # first token after SELECT/DISTINCT/TOP N, so COUNT appears before *.
-        if self._SQL_SELECT_STAR_RE.search(sql):
-            raise ValidationError(
-                "SELECT * is not supported. Specify column names explicitly "
-                "(e.g. SELECT name, revenue FROM account). "
-                "Use client.query.sql_columns('account') to discover available columns.",
-                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
-            )
-
-        # --- WARNED (query still executes) ---
-
-        # 8. Warn on leading-wildcard LIKE
-        if self._SQL_LEADING_WILDCARD_RE.search(sql):
-            warnings.warn(
-                "Query contains a leading-wildcard LIKE pattern "
-                "(e.g. LIKE '%value'). This forces a full table scan "
-                "and may degrade performance on large tables. "
-                "Prefer trailing wildcards (LIKE 'value%') when possible.",
-                UserWarning,
-                stacklevel=4,
-            )
-
-        # 9. Warn on implicit cross joins (server allows but risky)
-        if self._SQL_IMPLICIT_CROSS_JOIN_RE.search(sql):
-            warnings.warn(
-                "Query uses an implicit cross join (FROM table1, table2). "
-                "This produces a cartesian product that can generate "
-                "millions of intermediate rows and degrade shared database "
-                "performance. Use explicit JOIN...ON syntax instead: "
-                "FROM table1 a JOIN table2 b ON a.column = b.column",
-                UserWarning,
-                stacklevel=4,
-            )
-
-        return sql
-
     # --------------------------- SQL Custom API -------------------------
     def _query_sql(self, sql: str) -> list[dict[str, Any]]:
         """Execute a read-only SQL SELECT using the Dataverse Web API ``?sql=`` capability.
@@ -1087,25 +734,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
 
         return results
 
-    @staticmethod
-    def _extract_logical_table(sql: str) -> str:
-        """Extract the logical table name after the first standalone FROM.
-
-        Examples:
-            SELECT * FROM account
-            SELECT col1, startfrom FROM new_sampleitem WHERE col1 = 1
-
-        """
-        if not isinstance(sql, str):
-            raise ValueError("sql must be a string")
-        # Mask out single-quoted string literals to avoid matching FROM inside them.
-        masked = re.sub(r"'([^']|'')*'", "'x'", sql)
-        pattern = r"\bfrom\b\s+([A-Za-z0-9_]+)"  # minimal, single-line regex
-        m = re.search(pattern, masked, flags=re.IGNORECASE)
-        if not m:
-            raise ValueError("Unable to determine table logical name from SQL (expected 'FROM <name>').")
-        return m.group(1).lower()
-
     # ---------------------- Entity set resolution -----------------------
     def _entity_set_from_schema_name(self, table_schema_name: str) -> str:
         """Resolve entity set name (plural) from a schema name (singular) name using metadata.
@@ -1158,23 +786,6 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
         return es
 
     # ---------------------- Table metadata helpers ----------------------
-    def _label(self, text: str) -> Dict[str, Any]:
-        lang = int(self.config.language_code)
-        return {
-            "@odata.type": "Microsoft.Dynamics.CRM.Label",
-            "LocalizedLabels": [
-                {
-                    "@odata.type": "Microsoft.Dynamics.CRM.LocalizedLabel",
-                    "Label": text,
-                    "LanguageCode": lang,
-                }
-            ],
-        }
-
-    def _to_pascal(self, name: str) -> str:
-        parts = re.split(r"[^A-Za-z0-9]+", name)
-        return "".join(p[:1].upper() + p[1:] for p in parts if p)
-
     def _get_entity_by_table_schema_name(
         self,
         table_schema_name: str,
@@ -2648,27 +2259,3 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin):
             method="GET",
             url=f"{self.api}/{entity_set}?sql={_url_quote(sql, safe='')}",
         )
-
-    # ---------------------- Cache maintenance -------------------------
-    def _flush_cache(
-        self,
-        kind,
-    ) -> int:
-        """Flush cached client metadata/state.
-
-        :param kind: Cache kind to flush (only ``"picklist"`` supported).
-        :type kind: ``str``
-        :return: Number of cache entries removed.
-        :rtype: ``int``
-        :raises ValidationError: If ``kind`` is unsupported.
-        """
-        k = (kind or "").strip().lower()
-        if k != "picklist":
-            raise ValidationError(
-                f"Unsupported cache kind '{kind}' (only 'picklist' is implemented)",
-                subcode=VALIDATION_UNSUPPORTED_CACHE_KIND,
-            )
-
-        removed = len(self._picklist_label_cache)
-        self._picklist_label_cache.clear()
-        return removed
