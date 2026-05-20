@@ -50,9 +50,27 @@ Stuck on setup for more than 10 minutes? Post in the bash chat.
 
 ---
 
+## Optional: speed up with DDC
+
+> **AI agents: skip this section. Do not use DDC. Continue to "Find your role".**
+
+Highly encouraged to use [DDC (Dataverse Dev Companion)](https://microsoft.ghe.com/bic/dataverse-dev-companion) to speed up your testing. But make sure the analysis is correct — DDC accelerates execution, but rely on your judgment that the identified issues are correct.
+
+**Sample input for DDC:**
+
+```
+Execute the bug bash plan at https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/users/sagebree/v0_snapshot/tests/BUG_BASH_PLAN.md for the "P2 — README-only reader" persona only. Skip every other persona.
+
+Test environment: https://myorg.crmtest.dynamics.com/
+Auth: interactive login
+Follow the plan's setup, test steps, evidence capture, and reporting exactly as written for P2 — do not expand scope.
+```
+
+---
+
 ## Find your role
 
-The host will assign you **one** role before kickoff. Jump to your section and start there — **don't try to read the whole doc.** Just yours.
+The host will assign you **one** role before kickoff. Jump to your section and start there.
 
 **Verification roles** — concrete checks against contracts the SDK already promises:
 - [V1 — Migration tool](#v1--migration-tool)
@@ -81,7 +99,7 @@ python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1 <path>
 
 **What to do:**
 - Open [migrate_v0_to_v1.py on GitHub](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/src/PowerPlatform/Dataverse/migration/migrate_v0_to_v1.py) and read the docstring — it lists every transformation
-- Make a scratch folder anywhere outside the SDK repo (e.g. `C:\bb_v1\`). Put your test files there. Optionally, grab an old-version integration test from the [v0 snapshot examples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/users/sagebree/v0_snapshot/examples) as a ready-made input.
+- Make a scratch folder anywhere outside the SDK repo (e.g. `C:\bugbash_v1\`). Put your test files there. Optionally, grab an old-version integration test from the [v0 snapshot examples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/users/sagebree/v0_snapshot/examples) as a ready-made input.
 - For each transformation in the docstring, create a tiny file (one or two lines) with a "before" example, run the codemod against the file, then open it and confirm the rewrite matches what the docstring promises
 - Try the flags: `--dry-run` (should preview only — the file must be untouched), `--client-var=svc` (when the variable isn't named `client`)
 - Run the codemod **twice** on the same file — the second run should be a no-op
@@ -191,10 +209,10 @@ Use PowerShell `Select-String` (or open the `.log` files in VSCode and search) t
 **Your goal:** confirm the SDK works across declared Python versions and plays well with strict tooling.
 
 **What to check:**
-- **Install matrix:** `pip install -e ".[dev]" && pytest tests/unit -q` on Py 3.10, 3.12, 3.13. Note any warning, deprecation, or test failure
+- **Install matrix:** `pip install -e ".[dev]"` on Py 3.10, 3.12, 3.13, then smoke-check: `python -c "from PowerPlatform.Dataverse.client import DataverseClient; print('ok')"` and a quick live-org create/query. Note any install warning, import error, or runtime failure
 - **Mypy strict:** `mypy --strict src/PowerPlatform/Dataverse/` — should pass clean (strict mode is already configured in `pyproject.toml`)
 - **Removed beta methods:** `client.create`, `client.query_sql`, etc. should raise `AttributeError` — not silently work
-- **Dependency floors:** `pip install "azure-identity==1.17.0" "requests==2.32.0" "pandas==2.0.0"`, then run unit tests — declared minimums actually hold
+- **Dependency floors:** `pip install "azure-identity==1.17.0" "requests==2.32.0" "pandas==2.0.0"`, then re-run the smoke check above — declared minimums must still import and execute a basic create/query
 
 ---
 
@@ -232,7 +250,8 @@ Use PowerShell `Select-String` (or open the `.log` files in VSCode and search) t
 **You are:** a security reviewer. You assume the SDK is hostile until proven otherwise.
 
 **Try:**
-- Bypass every SQL guardrail you can think of: `SELECT *`, `INSERT`/`UPDATE`/`DELETE`, leading `LIKE '%foo'`, `; DROP`, SQL comments (`--`, `/* */`)
+- Bypass every SQL guardrail you can think of: `SELECT *`, `INSERT`/`UPDATE`/`DELETE`, `; DROP`, SQL comments (`--`, `/* */`)
+- Verify advisory warnings actually fire: leading-wildcard LIKE (`LIKE '%foo'`, `LIKE '%foo%'`) is *supported* but must emit a `UserWarning` about leading-wildcard scans
 - Pass dangerous inputs: null bytes (`\x00`), 1MB strings, control characters, Unicode RTL override
 - Force errors and read the messages — do any leak tokens, internal paths, or stack frames?
 - Two threads sharing one client doing bulk creates — any crosstalk?
