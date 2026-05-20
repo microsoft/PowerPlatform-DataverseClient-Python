@@ -365,11 +365,11 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                 f"alternate_keys and records must have the same length " f"({len(alternate_keys)} != {len(records)})"
             )
         logical_name = table_schema_name.lower()
-        lowered_records = [self._lowercase_keys(r) for r in records]
-        converted = [await self._convert_labels_to_ints(table_schema_name, r) for r in lowered_records]
         targets: List[Dict[str, Any]] = []
-        for alt_key, record_processed in zip(alternate_keys, converted):
+        for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = await self._convert_labels_to_ints(table_schema_name, record_processed)
             conflicting = {
                 k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
             }
@@ -1475,11 +1475,8 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         deleted: List[str] = []
         needs_picklist_flush = False
 
-        attr_metas = [
-            await self._get_attribute_metadata(metadata_id, col, extra_select="@odata.type,AttributeType")
-            for col in names
-        ]
-        for column_name, attr_meta in zip(names, attr_metas):
+        for column_name in names:
+            attr_meta = await self._get_attribute_metadata(metadata_id, column_name, extra_select="@odata.type,AttributeType")
             if not attr_meta:
                 raise MetadataError(
                     f"Column '{column_name}' not found on table '{entity_schema}'.",
@@ -1535,12 +1532,13 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         if not all(isinstance(r, dict) for r in records):
             raise TypeError("All items for multi-create must be dicts")
         logical_name = table.lower()
-        lowered = [self._lowercase_keys(r) for r in records]
-        converted = [await self._convert_labels_to_ints(table, r) for r in lowered]
-        enriched = [
-            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"} if "@odata.type" not in r else r
-            for r in converted
-        ]
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = await self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
         return _RawRequest(
             method="POST",
             url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.CreateMultiple",
@@ -1588,12 +1586,13 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         :meth:`_build_update_multiple` (which assembles from ids + changes).
         """
         logical_name = table.lower()
-        lowered = [self._lowercase_keys(r) for r in records]
-        converted = [await self._convert_labels_to_ints(table, r) for r in lowered]
-        enriched = [
-            {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"} if "@odata.type" not in r else r
-            for r in converted
-        ]
+        enriched = []
+        for r in records:
+            r = self._lowercase_keys(r)
+            r = await self._convert_labels_to_ints(table, r)
+            if "@odata.type" not in r:
+                r = {**r, "@odata.type": f"Microsoft.Dynamics.CRM.{logical_name}"}
+            enriched.append(r)
         return _RawRequest(
             method="POST",
             url=f"{self.api}/{entity_set}/Microsoft.Dynamics.CRM.UpdateMultiple",
@@ -1658,11 +1657,11 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                 subcode="upsert_length_mismatch",
             )
         logical_name = table.lower()
-        lowered_records = [self._lowercase_keys(r) for r in records]
-        converted = [await self._convert_labels_to_ints(table, r) for r in lowered_records]
         targets: List[Dict[str, Any]] = []
-        for alt_key, record_processed in zip(alternate_keys, converted):
+        for alt_key, record in zip(alternate_keys, records):
             alt_key_lower = self._lowercase_keys(alt_key)
+            record_processed = self._lowercase_keys(record)
+            record_processed = await self._convert_labels_to_ints(table, record_processed)
             conflicting = {
                 k for k in set(alt_key_lower) & set(record_processed) if alt_key_lower[k] != record_processed[k]
             }
