@@ -148,6 +148,66 @@ class AsyncQueryOperations:
             rows = await od._query_sql(sql)
             return [Record.from_api_response("", row) for row in rows]
 
+    # --------------------------------------------------------------- fetchxml
+
+    def fetchxml(self, xml: str) -> AsyncFetchXmlQuery:
+        """Return an inert :class:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery` object.
+
+        No HTTP request is made until
+        :meth:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery.execute`
+        or
+        :meth:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery.execute_pages`
+        is called on the returned object.
+
+        :param xml: Well-formed FetchXML query string. The root ``<entity name="...">``
+            element determines the entity set endpoint.
+        :type xml: :class:`str`
+        :return: Inert async query object.
+        :rtype: :class:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery`
+        :raises ValidationError: If the FetchXML is not a string, is empty, or exceeds the URL
+            length limit when encoded.
+        :raises ValueError: If the FetchXML is missing a root ``<entity>`` element or name.
+
+        Example::
+
+            query = client.query.fetchxml(\"\"\"
+              <fetch top="50">
+                <entity name="account">
+                  <attribute name="name" />
+                </entity>
+              </fetch>
+            \"\"\")
+
+            # Eager — all pages collected:
+            result = await query.execute()
+            df = result.to_dataframe()
+
+            # Lazy — one page at a time:
+            async for page in query.execute_pages():
+                process(page.to_dataframe())
+        """
+        if not isinstance(xml, str):
+            raise ValidationError("xml must be a string")
+        xml = xml.strip()
+        if not xml:
+            raise ValidationError("xml must not be empty")
+        if len(_url_quote(xml, safe="")) > _MAX_URL_LENGTH:
+            raise ValidationError(
+                f"FetchXML exceeds the Dataverse URL length limit ({_MAX_URL_LENGTH:,} characters) when encoded. "
+                "Use a $batch POST request to send FetchXML in the request body where the limit is 64 KB."
+            )
+        try:
+            root_el = _ET.fromstring(xml)
+        except _ET.ParseError as exc:
+            raise ValidationError(f"xml is not well-formed: {exc}") from exc
+        entity_el = root_el.find("entity")
+        if entity_el is None:
+            raise ValueError("FetchXML must contain an <entity> child element")
+        entity_name = entity_el.get("name", "")
+        if not entity_name:
+            raise ValueError("FetchXML <entity> element must have a 'name' attribute")
+        return AsyncFetchXmlQuery(xml, entity_name, self._client)
+
     # --------------------------------------------------------------- sql_columns
 
     async def sql_columns(
@@ -231,66 +291,6 @@ class AsyncQueryOperations:
             )
         result.sort(key=lambda x: (not x["is_pk"], not x["is_name"], x["name"]))
         return result
-
-    # --------------------------------------------------------------- fetchxml
-
-    def fetchxml(self, xml: str) -> AsyncFetchXmlQuery:
-        """Return an inert :class:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery` object.
-
-        No HTTP request is made until
-        :meth:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery.execute`
-        or
-        :meth:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery.execute_pages`
-        is called on the returned object.
-
-        :param xml: Well-formed FetchXML query string. The root ``<entity name="...">``
-            element determines the entity set endpoint.
-        :type xml: :class:`str`
-        :return: Inert async query object.
-        :rtype: :class:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery`
-        :raises ValidationError: If the FetchXML is not a string, is empty, or exceeds the URL
-            length limit when encoded.
-        :raises ValueError: If the FetchXML is missing a root ``<entity>`` element or name.
-
-        Example::
-
-            query = client.query.fetchxml(\"\"\"
-              <fetch top="50">
-                <entity name="account">
-                  <attribute name="name" />
-                </entity>
-              </fetch>
-            \"\"\")
-
-            # Eager — all pages collected:
-            result = await query.execute()
-            df = result.to_dataframe()
-
-            # Lazy — one page at a time:
-            async for page in query.execute_pages():
-                process(page.to_dataframe())
-        """
-        if not isinstance(xml, str):
-            raise ValidationError("xml must be a string")
-        xml = xml.strip()
-        if not xml:
-            raise ValidationError("xml must not be empty")
-        if len(_url_quote(xml, safe="")) > _MAX_URL_LENGTH:
-            raise ValidationError(
-                f"FetchXML exceeds the Dataverse URL length limit ({_MAX_URL_LENGTH:,} characters) when encoded. "
-                "Use a $batch POST request to send FetchXML in the request body where the limit is 64 KB."
-            )
-        try:
-            root_el = _ET.fromstring(xml)
-        except _ET.ParseError as exc:
-            raise ValidationError(f"xml is not well-formed: {exc}") from exc
-        entity_el = root_el.find("entity")
-        if entity_el is None:
-            raise ValueError("FetchXML must contain an <entity> child element")
-        entity_name = entity_el.get("name", "")
-        if not entity_name:
-            raise ValueError("FetchXML <entity> element must have a 'name' attribute")
-        return AsyncFetchXmlQuery(xml, entity_name, self._client)
 
     # =========================================================================
     # OData helpers -- discover columns, navigation properties, and bind values
