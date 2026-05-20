@@ -800,24 +800,21 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 
 ```python
 import asyncio
-from azure.identity.aio import InteractiveBrowserCredential
+from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
 async def main():
     credential = InteractiveBrowserCredential()
-    try:
-        async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
-            # Create a contact
-            contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
+    async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+        # Create a contact
+        contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
 
-            # Read it back
-            contact = await client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
-            print(f"Created: {contact['firstname']} {contact['lastname']}")
+        # Read it back
+        contact = await client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
+        print(f"Created: {contact['firstname']} {contact['lastname']}")
 
-            # Clean up
-            await client.records.delete("contact", contact_id)
-    finally:
-        await credential.close()
+        # Clean up
+        await client.records.delete("contact", contact_id)
 
 asyncio.run(main())
 ```

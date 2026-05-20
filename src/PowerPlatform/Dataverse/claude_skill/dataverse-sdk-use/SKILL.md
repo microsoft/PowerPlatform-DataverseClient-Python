@@ -594,7 +594,8 @@ The SDK ships a full async client, `AsyncDataverseClient`, under `PowerPlatform.
 
 ### Import
 ```python
-from azure.identity.aio import InteractiveBrowserCredential  # or ClientSecretCredential, etc.
+from azure.identity import InteractiveBrowserCredential  # development (sync, works with async client)
+from azure.identity.aio import ClientSecretCredential  # production (native async)
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 ```
 

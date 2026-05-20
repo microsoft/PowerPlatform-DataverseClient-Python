@@ -77,7 +77,7 @@ class AsyncDataverseClient:
     Example:
         **Recommended -- async context manager** (enables HTTP connection pooling)::
 
-            from azure.identity.aio import InteractiveBrowserCredential
+            from azure.identity import InteractiveBrowserCredential
             from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
             credential = InteractiveBrowserCredential()
