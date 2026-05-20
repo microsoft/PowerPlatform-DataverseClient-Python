@@ -25,7 +25,7 @@ Capabilities PROVEN to work:
 - AND/OR, NOT IN, NOT LIKE boolean logic
 - Deep JOINs (5-8 tables) with no server depth limit
 - SQL helper functions: sql_columns (sql_select/sql_join/sql_joins removed at GA)
-- OData helper functions: odata_select, odata_expands, odata_expand, odata_bind
+- OData helper functions: odata_expands (odata_select/odata_expand/odata_bind are sync-only deprecated helpers)
 - SQL vs OData side-by-side comparison
 
 Not supported (server rejects):
@@ -935,17 +935,12 @@ async def _run_examples(client):
         # ==============================================================
         # 30. OData Helper Functions
         # ==============================================================
-        heading(30, "OData Helper Functions (query.odata_* — deprecated at GA)")
+        heading(30, "OData Helper Functions (query.odata_expands)")
         print(
-            "odata_select(), odata_expand(), and odata_bind() still work at GA\n"
-            "but emit DeprecationWarning. Use the typed query builder instead.\n"
-            "odata_expands() is kept without deprecation."
+            "odata_expands() discovers navigation properties for $expand and @odata.bind.\n"
+            "odata_select(), odata_expand(), and odata_bind() are deprecated sync-only helpers\n"
+            "not available on the async client. Use sql_columns() and odata_expands() instead."
         )
-
-        # odata_select
-        log_call(f"client.query.odata_select('{parent_table}')")
-        odata_cols = await client.query.odata_select(parent_table)
-        print(f"[OK] {len(odata_cols)} columns for $select: {odata_cols[:5]}...")
 
         # odata_expands
         log_call(f"client.query.odata_expands('{child_table}')")
@@ -954,23 +949,6 @@ async def _run_examples(client):
             print(f"[OK] {len(expands)} expand targets:")
             for e in expands[:5]:
                 print(f"  nav={e['nav_property']:30s} -> {e['target_table']}")
-        except Exception as e:
-            print(f"[WARN] {e}")
-
-        # odata_expand (single target)
-        try:
-            nav = await client.query.odata_expand(child_table, parent_table)
-            print(f"\n[OK] odata_expand('{child_table}', '{parent_table}') = '{nav}'")
-            print("  Usage: client.query.builder('" + child_table + "').expand('" + nav + "').execute()")
-        except Exception as e:
-            print(f"[WARN] {e}")
-
-        # odata_bind
-        log_call("client.query.odata_bind(...)")
-        try:
-            bind = await client.query.odata_bind(child_table, parent_table, team_ids[0])
-            print(f"[OK] {bind}")
-            print("  Merge into create/update payload: {{'new_Title': 'X', **bind}}")
         except Exception as e:
             print(f"[WARN] {e}")
 

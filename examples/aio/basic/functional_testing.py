@@ -94,6 +94,7 @@ async def setup_authentication():
     print("=" * 50)
 
     org_url = get_dataverse_org_url()
+    client = None
     try:
         credential = AsyncInteractiveBrowserCredential()
         client = AsyncDataverseClient(org_url, credential)
@@ -111,6 +112,8 @@ async def setup_authentication():
 
     except Exception as e:
         print(f"[ERR] Authentication failed: {e}")
+        if client is not None:
+            await client.aclose()
         sys.exit(1)
 
 
@@ -790,12 +793,12 @@ async def test_batch_all_operations(client: AsyncDataverseClient, table_info: Di
         if all_ids:
             print(f"\n[10/11] Mixed batch (continue_on_error=True) — 1 bad get + 1 good get")
             batch = client.batch.new()
-            batch.records.get(
+            batch.records.retrieve(
                 table_schema_name,
                 "00000000-0000-0000-0000-000000000002",
                 select=[f"{attr_prefix}_name"],
             )
-            batch.records.get(
+            batch.records.retrieve(
                 table_schema_name,
                 all_ids[0],
                 select=[f"{attr_prefix}_name"],
