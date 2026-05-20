@@ -4,27 +4,65 @@
 """
 Async concurrency benchmark and validation for the Dataverse Python SDK.
 
-Validates seven properties of the async client end-to-end:
+Measures async-sequential vs async-concurrent performance (not async vs sync).
+Speedup = time for N sequential awaits / time for N concurrent gather() calls.
 
-  1. Non-blocking reads     — GET calls do not freeze the event loop.
-  2. Read throughput        — N reads via asyncio.gather() beat sequential.
-  3. Write concurrency      — N parallel creates beat sequential; POST path.
-  4. Pagination non-blocking— async generator yields between pages (canary
-                              keeps ticking between page fetches).
-  5. Mixed fan-out          — different operation types run simultaneously.
-  6. Error resilience       — one failing call in gather() does not kill
-                              the others (return_exceptions=True pattern).
-  7. Real-world fan-out     — metadata for multiple tables in parallel.
+Tests
+-----
+1. Non-blocking reads (canary)
+   A background task ticks every 10 ms while each GET call runs. Measures the
+   max gap between ticks. A blocking call (e.g. requests instead of aiohttp,
+   or time.sleep instead of asyncio.sleep) would starve the canary and produce
+   a gap equal to the full round-trip. Covers: records.list, tables.list,
+   tables.get, query.sql, query.fetchxml, query.builder.
+
+2. Read throughput (sequential vs concurrent)
+   Runs N reads sequentially then N reads with asyncio.gather(). Confirms the
+   HTTP GET path actually parallelizes. An internal lock or misplaced await
+   would collapse the speedup to ~1x. Covers: records.list, query.sql,
+   tables.get.
+
+3. Write concurrency (POST path)
+   Same as Test 2 but for records.create() (POST). The POST path uses a
+   different timeout branch (120 s vs 10 s for GET) and different server
+   behavior. A separate test ensures writes are also truly concurrent, not
+   just reads. Creates N records in parallel then cleans them up.
+
+4. Pagination non-blocking (async generator canary)
+   Runs list_pages(), fetchxml().execute_pages(), and builder().execute_pages()
+   while the canary ticks. Verifies the async generator yields control back to
+   the event loop between page fetches. A generator that does not await
+   properly between pages would block other tasks during multi-page queries.
+
+5. Mixed fan-out (cross-operation concurrency)
+   Fires 6 different operation types simultaneously in one gather(): records.list,
+   tables.get (x2), query.sql, query.fetchxml, query.builder. A shared internal
+   resource (metadata cache lock, single connection) could accidentally serialize
+   different operation types even if same-type parallelism works fine. This test
+   catches cross-operation serialization.
+
+6. Error resilience
+   Fires 5 calls — 3 good, 2 intentionally bad — using gather(return_exceptions=True).
+   Verifies the 3 good calls complete and return results despite the 2 failures.
+   Without return_exceptions=True, one exception cancels all in-flight coroutines.
+   Validates the correct usage pattern and confirms the SDK does not suppress
+   exceptions in a way that would break this pattern.
+
+7. Real-world metadata fan-out
+   Fetches schema info for 6 tables sequentially then in parallel. The most
+   common real-world async use case: an application needs metadata for several
+   tables at startup. Demonstrates the pattern works end-to-end with real results.
 
 How to interpret results
 ------------------------
+- Speedup: async-sequential vs async-concurrent, not async vs sync.
+  Expect 3-15x on WAN. Low speedup (<2x) suggests server throttling
+  or accidental serialization in the SDK.
 - Max tick gap (canary tests): Windows timer resolution is ~15 ms, so gaps
   up to ~30 ms are normal. Gaps > 200 ms indicate a blocking call.
-- Speedup: depends on network latency. Expect 3-15x on WAN. Very low
-  speedup (<2x) suggests server throttling or accidental serialization.
 
-Tip: run with PYTHONASYNCIODEBUG=1 for the asyncio debug mode which logs
-a warning whenever a coroutine holds the event loop for more than 100 ms.
+Tip: run with PYTHONASYNCIODEBUG=1 to log a warning whenever a coroutine
+holds the event loop for more than 100 ms.
 
 Requirements:
     pip install PowerPlatform-Dataverse-Client[async] azure-identity
