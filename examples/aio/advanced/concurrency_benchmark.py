@@ -9,49 +9,20 @@ Speedup = time for N sequential awaits / time for N concurrent gather() calls.
 
 Tests
 -----
-1. Non-blocking reads (canary)
-   A background task ticks every 10 ms while each GET call runs. Measures the
-   max gap between ticks. A blocking call (e.g. requests instead of aiohttp,
-   or time.sleep instead of asyncio.sleep) would starve the canary and produce
-   a gap equal to the full round-trip. Covers: records.list, tables.list,
-   tables.get, query.sql, query.fetchxml, query.builder.
-
-2. Read throughput (sequential vs concurrent)
-   Runs N reads sequentially then N reads with asyncio.gather(). Confirms the
-   HTTP GET path actually parallelizes. An internal lock or misplaced await
-   would collapse the speedup to ~1x. Covers: records.list, query.sql,
-   tables.get.
-
-3. Write concurrency (POST path)
-   Same as Test 2 but for records.create() (POST). The POST path uses a
-   different timeout branch (120 s vs 10 s for GET) and different server
-   behavior. A separate test ensures writes are also truly concurrent, not
-   just reads. Creates N records in parallel then cleans them up.
-
-4. Pagination non-blocking (async generator canary)
-   Runs list_pages(), fetchxml().execute_pages(), and builder().execute_pages()
-   while the canary ticks. Verifies the async generator yields control back to
-   the event loop between page fetches. A generator that does not await
-   properly between pages would block other tasks during multi-page queries.
-
-5. Mixed fan-out (cross-operation concurrency)
-   Fires 6 different operation types simultaneously in one gather(): records.list,
-   tables.get (x2), query.sql, query.fetchxml, query.builder. A shared internal
-   resource (metadata cache lock, single connection) could accidentally serialize
-   different operation types even if same-type parallelism works fine. This test
-   catches cross-operation serialization.
-
-6. Error resilience
-   Fires 5 calls — 3 good, 2 intentionally bad — using gather(return_exceptions=True).
-   Verifies the 3 good calls complete and return results despite the 2 failures.
-   Without return_exceptions=True, one exception cancels all in-flight coroutines.
-   Validates the correct usage pattern and confirms the SDK does not suppress
-   exceptions in a way that would break this pattern.
-
-7. Real-world metadata fan-out
-   Fetches schema info for 6 tables sequentially then in parallel. The most
-   common real-world async use case: an application needs metadata for several
-   tables at startup. Demonstrates the pattern works end-to-end with real results.
+1. Non-blocking reads     — canary ticks every 10 ms during GET calls; large gap
+                            means the event loop was blocked.
+2. Read throughput        — N sequential vs N concurrent reads; confirms GET path
+                            parallelizes.
+3. Write concurrency      — N sequential vs N concurrent creates; confirms POST
+                            path (different timeout branch) also parallelizes.
+4. Pagination non-blocking— canary ticks during list_pages/execute_pages; confirms
+                            async generators yield between page fetches.
+5. Mixed fan-out          — 6 different operation types fired simultaneously;
+                            catches cross-operation serialization.
+6. Error resilience       — 3 good + 2 bad calls in gather(return_exceptions=True);
+                            confirms failures don't cancel successful calls.
+7. Real-world fan-out     — metadata for 6 tables fetched in parallel; end-to-end
+                            validation of the most common async use case.
 
 How to interpret results
 ------------------------
