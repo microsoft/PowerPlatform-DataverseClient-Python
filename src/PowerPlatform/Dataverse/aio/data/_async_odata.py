@@ -1476,7 +1476,9 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         needs_picklist_flush = False
 
         for column_name in names:
-            attr_meta = await self._get_attribute_metadata(metadata_id, column_name, extra_select="@odata.type,AttributeType")
+            attr_meta = await self._get_attribute_metadata(
+                metadata_id, column_name, extra_select="@odata.type,AttributeType"
+            )
             if not attr_meta:
                 raise MetadataError(
                     f"Column '{column_name}' not found on table '{entity_schema}'.",
