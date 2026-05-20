@@ -802,11 +802,11 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 
 ```python
 import asyncio
-from azure.identity.aio import ClientSecretCredential
+from azure.identity.aio import DefaultAzureCredential
 from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
 
 async def main():
-    async with ClientSecretCredential(tenant_id, client_id, client_secret) as credential:
+    async with DefaultAzureCredential() as credential:
         async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
             # Create a contact
             contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
