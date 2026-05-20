@@ -144,22 +144,22 @@ class _AsyncHttpClient:
                 t0 = time.monotonic()
                 async with self._session.request(method, url, **kwargs) as resp:
                     body = await resp.read()
-                    materialized = _AsyncResponse(resp.status, dict(resp.headers), body)
+                    response = _AsyncResponse(resp.status, dict(resp.headers), body)
                 elapsed_ms = (time.monotonic() - t0) * 1000
 
                 if self._logger is not None:
                     # Only decode text when body logging is enabled — avoids
                     # unnecessary overhead for large payloads when max_body_bytes == 0.
-                    resp_body = materialized.text if self._logger.body_logging_enabled else None
+                    resp_body = response.text if self._logger.body_logging_enabled else None
                     self._logger.log_response(
                         method,
                         url,
-                        status_code=materialized.status,
-                        headers=materialized.headers,
+                        status_code=response.status,
+                        headers=response.headers,
                         body=resp_body,
                         elapsed_ms=elapsed_ms,
                     )
-                return materialized
+                return response
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if self._logger is not None:
                     self._logger.log_error(
