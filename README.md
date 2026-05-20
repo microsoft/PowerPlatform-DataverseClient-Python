@@ -798,8 +798,6 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 
 ### Quick start
 
-`AsyncDataverseClient` requires an async-compatible credential (`async def get_token()`). Use credentials from `azure.identity.aio` for production, or `AzureCliCredential` for local development:
-
 ```python
 import asyncio
 from azure.identity.aio import DefaultAzureCredential
@@ -821,7 +819,7 @@ async def main():
 asyncio.run(main())
 ```
 
-> **Interactive browser (development):** `InteractiveBrowserCredential` from `azure.identity` is sync-only and cannot be passed directly. See [examples/aio/_auth.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/aio/_auth.py) for an async wrapper used by the example scripts.
+> **Note:** `InteractiveBrowserCredential` from `azure.identity` is sync-only and cannot be used directly with the async client. See [examples/aio/_auth.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/aio/_auth.py) for an async wrapper.
 
 ### Standalone usage (without `async with`)
 
