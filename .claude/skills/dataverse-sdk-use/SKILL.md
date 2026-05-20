@@ -28,11 +28,23 @@ Use the PowerPlatform Dataverse Client Python SDK to interact with Microsoft Dat
 The SDK supports Dataverse's native bulk operations: Pass lists to `create()`, `update()` for automatic bulk processing, for `delete()`, set `use_bulk_delete` when passing lists to use bulk operation
 
 ### Paging
-- Control page size with `page_size` parameter
+- Control page size with `page_size` parameter on `records.list()`, `records.list_pages()`, or `QueryBuilder.page_size()`
 - Use `top` parameter to limit total records returned
+- **Preferred**: `client.query.builder(table)....execute_pages()` — composable `where(col(...))` filters, formatted values, expand with nested selects, full pagination control
+- Simple streaming shortcut: `records.list_pages(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` — string-based OData filter only, yields one `QueryResult` per page
+- `execute(by_page=True/False)` is **deprecated** and emits `UserWarning`; use `execute_pages()` instead
+- `QueryBuilder.to_dataframe()` is **deprecated**; use `.execute().to_dataframe()` instead
+
+### QueryResult
+- Returned by `records.list()`, `records.retrieve()`, `execute()`, and each page from `list_pages()` / `execute_pages()`
+- Iterable: `for record in result` — each item is a `dict`-like `Record`
+- `.to_dataframe()` — convert to pandas DataFrame
+- `.first()` — return the first record or `None` (safe: returns `None` on empty result)
+- `result[n]` — index access returns a `Record`; `result[n:m]` returns a `QueryResult`
+- `len(result)` — number of records in this result/page
 
 ### DataFrame Support
-- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.get()`, `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()`
+- DataFrame operations are accessed via the `client.dataframe` namespace: `client.dataframe.create()`, `client.dataframe.update()`, `client.dataframe.delete()` — `client.dataframe.get()` is deprecated; use `client.query.builder(table).where(...).execute().to_dataframe()` instead
 
 ## Common Operations
 
@@ -85,28 +97,92 @@ contact_ids = client.records.create("contact", contacts)
 #### Read Records
 ```python
 # Get single record by ID
-account = client.records.get("account", account_id, select=["name", "telephone1"])
+account = client.records.retrieve("account", account_id, select=["name", "telephone1"])
 
-# Query with filter (paginated)
-for page in client.records.get(
-    "account",
-    select=["accountid", "name"],      # select is case-insensitive (automatically lowercased)
-    filter="statecode eq 0",           # filter must use lowercase logical names (not transformed)
-    top=100,
-):
+# With expand — fetch a related record in the same HTTP request
+account = client.records.retrieve(
+    "account", account_id,
+    select=["name"],
+    expand=["primarycontactid"],
+)
+contact = (account.get("primarycontactid") or {})
+print(contact.get("fullname"))
+
+# Simple shortcut — use records.list() only for basic filter + select without composable logic.
+# Follows @odata.nextLink automatically and loads all matching records into memory.
+# For filtering, sorting, expansion, or formatted values, prefer client.query.builder() (see below).
+result = client.records.list("account", filter="statecode eq 0", select=["name", "accountid"])
+for record in result:
+    print(record["name"])
+```
+
+#### Query Builder (Preferred for Filtering, Sorting, Expand, Formatted Values)
+
+Use `client.query.builder()` for any query that goes beyond simple filter + select. It provides composable `where(col(...))` expressions, formatted value support, nested expansion, and streaming — all with a fluent API.
+
+```python
+from PowerPlatform.Dataverse.models.filters import col
+from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+
+# Basic query with composable filter and sort
+result = (client.query.builder("account")
+          .select("accountid", "name", "statecode")
+          .where(col("statecode") == 0)
+          .order_by("name asc")
+          .execute())
+for record in result:
+    print(record["name"])
+
+# Composable filters — AND / OR / NOT using Python operators
+result = (client.query.builder("contact")
+          .select("fullname", "emailaddress1")
+          .where((col("statecode") == 0) & (col("emailaddress1").contains("@contoso.com")))
+          .execute())
+
+# Formatted values — display labels for option sets, currency symbols, etc.
+result = (client.query.builder("account")
+          .select("accountid", "name", "industrycode")
+          .where(col("statecode") == 0)
+          .include_formatted_values()
+          .execute())
+for record in result:
+    label = record.get("industrycode@OData.Community.Display.V1.FormattedValue")
+    print(record["name"], label)
+
+# Navigation property expansion with nested column select
+result = (client.query.builder("account")
+          .select("name")
+          .expand(ExpandOption("primarycontactid").select("fullname", "emailaddress1"))
+          .where(col("statecode") == 0)
+          .execute())
+for record in result:
+    contact = record.get("primarycontactid", {})
+    print(f"{record['name']} - {contact.get('fullname', 'N/A')}")
+
+# Stream large result sets page-by-page (memory-efficient)
+for page in (client.query.builder("account")
+             .select("accountid", "name")
+             .where(col("statecode") == 0)
+             .order_by("name asc")
+             .page_size(500)
+             .execute_pages()):
     for record in page:
         print(record["name"])
 
-# Query with navigation property expansion (case-sensitive!)
-for page in client.records.get(
-    "account",
-    select=["name"],
-    expand=["primarycontactid"],  # Navigation properties are case-sensitive!
-    filter="statecode eq 0",      # Column names must be lowercase logical names
-):
-    for account in page:
-        contact = account.get("primarycontactid", {})
-        print(f"{account['name']} - {contact.get('fullname', 'N/A')}")
+# Convert query results to a DataFrame
+df = (client.query.builder("account")
+      .select("accountid", "name")
+      .where(col("statecode") == 0)
+      .execute()
+      .to_dataframe())
+
+# Limit total results
+result = client.query.builder("account").select("name").top(100).execute()
+
+# Simple streaming shortcut via records.list_pages() (string filter only, same params as records.list())
+for page in client.records.list_pages("account", filter="statecode eq 0", select=["name"], page_size=500):
+    for record in page:
+        print(record["name"])
 ```
 
 #### Create Records with Lookup Bindings (@odata.bind)
@@ -179,18 +255,24 @@ client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 
 The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
 
+> **Note:** `client.dataframe.get()` is deprecated. Use `client.query.builder(table).select(...).where(...).execute().to_dataframe()` instead. `QueryBuilder.to_dataframe()` (without `.execute()`) is also deprecated — always call `.execute()` first.
+
 ```python
 import pandas as pd
 
-# Query records -- returns a single DataFrame
-df = client.dataframe.get("account", filter="statecode eq 0", select=["name"])
+# Query records -- returns a single DataFrame (GA pattern: .execute().to_dataframe())
+from PowerPlatform.Dataverse.models.filters import col
+df = client.query.builder("account").where(col("statecode") == 0).select("name").execute().to_dataframe()
 print(f"Got {len(df)} rows")
 
-# Limit results with top for large tables
-df = client.dataframe.get("account", select=["name"], top=100)
+# Limit results with top
+df = client.query.builder("account").select("name").top(100).execute().to_dataframe()
+
+# Via records.list() (simpler for basic queries)
+df = client.records.list("account", filter="statecode eq 0", select=["name"]).to_dataframe()
 
 # Fetch single record as one-row DataFrame
-df = client.dataframe.get("account", record_id=account_id, select=["name"])
+df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
 
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
@@ -221,6 +303,34 @@ results = client.query.sql(
 )
 for record in results:
     print(record["name"])
+```
+
+### FetchXML Queries
+
+`client.query.fetchxml(xml)` returns an inert `FetchXmlQuery` object — **no HTTP request is made** until `.execute()` or `.execute_pages()` is called.
+
+```python
+xml = """
+<fetch top="50">
+  <entity name="account">
+    <attribute name="accountid" />
+    <attribute name="name" />
+    <filter>
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+  </entity>
+</fetch>
+"""
+
+# Load all results into memory (simple, small-to-medium sets)
+query = client.query.fetchxml(xml)
+result = query.execute()              # returns QueryResult — all pages fetched upfront
+for record in result:
+    print(record["name"])
+
+# Stream page-by-page (large sets or early exit)
+for page in query.execute_pages():    # yields one QueryResult per HTTP page
+    process(page.to_dataframe())
 ```
 
 ### Table Management
@@ -380,7 +490,8 @@ Use `client.batch` to send multiple operations in one HTTP request. All batch me
 batch = client.batch.new()
 batch.records.create("account", {"name": "Contoso"})
 batch.records.update("account", account_id, {"telephone1": "555-0100"})
-batch.records.get("account", account_id, select=["name"])
+batch.records.retrieve("account", account_id, select=["name"], expand=["primarycontactid"], include_annotations="OData.Community.Display.V1.FormattedValue")  # single record with expand
+batch.records.list("account", filter="statecode eq 0", select=["name"], orderby=["name asc"], top=50, page_size=25, count=True)  # multi-record, single page
 batch.query.sql("SELECT TOP 5 name FROM account")
 
 result = batch.execute()
@@ -412,7 +523,8 @@ print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 
 **Batch limitations:**
 - Maximum 1000 operations per batch
-- Paginated `records.get()` (without `record_id`) is not supported in batch
+- `batch.records.get()` is deprecated; use `batch.records.retrieve()` for single records
+- `batch.records.list()` returns a single page (no pagination); use `top` to bound results
 - `flush_cache()` is not supported in batch
 
 ## Error Handling
@@ -430,7 +542,7 @@ from PowerPlatform.Dataverse.core.errors import (
 from PowerPlatform.Dataverse.client import DataverseClient
 
 try:
-    client.records.get("account", "invalid-id")
+    client.records.retrieve("account", "invalid-id")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
     print(f"Error code: {e.code}")
@@ -464,16 +576,17 @@ except ValidationError as e:
 
 ### Performance Optimization
 
-1. **Use bulk operations** - Pass lists to create/update/delete for automatic optimization
-2. **Specify select fields** - Limit returned columns to reduce payload size
-3. **Control page size** - Use `top` and `page_size` parameters appropriately
-4. **Reuse client instances** - Don't create new clients for each operation
-5. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
-6. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
-7. **Always include customization prefix** for custom tables/columns
-8. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
-9. **Test in non-production environments** first
-10. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
+1. **Prefer `client.query.builder()` for any non-trivial query** — use the builder for filtering, sorting, expansion, or formatted values; `records.list()` is a convenience shortcut for simple filter+select only
+2. **Use bulk operations** - Pass lists to create/update/delete for automatic optimization
+3. **Specify select fields** - Limit returned columns to reduce payload size
+4. **Control page size** - Use `top` and `page_size` parameters appropriately; use `execute_pages()` for large sets
+5. **Reuse client instances** - Don't create new clients for each operation
+6. **Use production credentials** - ClientSecretCredential or CertificateCredential for unattended operations
+7. **Error handling** - Implement retry logic for transient errors (`e.is_transient`)
+8. **Always include customization prefix** for custom tables/columns
+9. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
+10. **Test in non-production environments** first
+11. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
 
 ## Additional Resources
 
@@ -486,9 +599,10 @@ Load these resources as needed during development:
 
 ## Key Reminders
 
-1. **Schema names are required** - Never use display names
-2. **Custom tables need prefixes** - Include customization prefix (e.g., "new_")
-3. **Filter is case-sensitive** - Use lowercase logical names
-4. **Bulk operations are encouraged** - Pass lists for optimization
-5. **No trailing slashes in URLs** - Format: `https://org.crm.dynamics.com`
-6. **Structured errors** - Check `is_transient` for retry logic
+1. **Use `client.query.builder()` for queries** — it's the primary query pattern; `records.list()` is a shortcut for trivial filter+select only
+2. **Schema names are required** - Never use display names
+3. **Custom tables need prefixes** - Include customization prefix (e.g., "new_")
+4. **Filter is case-sensitive** - Use lowercase logical names
+5. **Bulk operations are encouraged** - Pass lists for optimization
+6. **No trailing slashes in URLs** - Format: `https://org.crm.dynamics.com`
+7. **Structured errors** - Check `is_transient` for retry logic

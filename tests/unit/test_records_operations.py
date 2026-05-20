@@ -389,5 +389,95 @@ class TestRecordOperations(unittest.TestCase):
         self.client._odata._upsert_multiple.assert_not_called()
 
 
+class TestListPages(unittest.TestCase):
+    """Unit tests for records.list_pages()."""
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.client._odata = MagicMock()
+
+    def test_list_pages_returns_iterator(self):
+        self.client._odata._get_multiple.return_value = iter([[{"name": "A"}], [{"name": "B"}]])
+        result = self.client.records.list_pages("account")
+        import types
+
+        self.assertIsInstance(result, types.GeneratorType)
+
+    def test_list_pages_yields_query_result_per_page(self):
+        from PowerPlatform.Dataverse.models.record import QueryResult
+
+        self.client._odata._get_multiple.return_value = iter([[{"name": "A"}], [{"name": "B"}]])
+        pages = list(self.client.records.list_pages("account"))
+        self.assertEqual(len(pages), 2)
+        for page in pages:
+            self.assertIsInstance(page, QueryResult)
+
+    def test_list_pages_page_contents(self):
+        self.client._odata._get_multiple.return_value = iter([[{"name": "A"}], [{"name": "B"}, {"name": "C"}]])
+        pages = list(self.client.records.list_pages("account"))
+        self.assertEqual(len(pages[0]), 1)
+        self.assertEqual(len(pages[1]), 2)
+
+    def test_list_pages_passes_filter(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", filter="statecode eq 0"))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("filter") or call_kwargs[1].get("filter"), "statecode eq 0")
+
+    def test_list_pages_passes_select(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", select=["name"]))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("select") or call_kwargs[1].get("select"), ["name"])
+
+    def test_list_pages_passes_top(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", top=50))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("top") or call_kwargs[1].get("top"), 50)
+
+    def test_list_pages_no_deprecation_warning(self):
+        import warnings
+
+        self.client._odata._get_multiple.return_value = iter([])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            list(self.client.records.list_pages("account", filter="statecode eq 0"))
+        deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        self.assertEqual(len(deprecations), 0)
+
+    def test_list_pages_passes_orderby(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", orderby=["name asc"]))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("orderby"), ["name asc"])
+
+    def test_list_pages_passes_expand(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", expand=["primarycontactid"]))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("expand"), ["primarycontactid"])
+
+    def test_list_pages_passes_page_size(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", page_size=200))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("page_size"), 200)
+
+    def test_list_pages_passes_count(self):
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", count=True))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertTrue(call_kwargs.kwargs.get("count"))
+
+    def test_list_pages_passes_include_annotations(self):
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        self.client._odata._get_multiple.return_value = iter([])
+        list(self.client.records.list_pages("account", include_annotations=annotation))
+        call_kwargs = self.client._odata._get_multiple.call_args
+        self.assertEqual(call_kwargs.kwargs.get("include_annotations"), annotation)
+
+
 if __name__ == "__main__":
     unittest.main()

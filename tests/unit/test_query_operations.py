@@ -179,9 +179,13 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_flat_default(self):
         """builder().execute() should return flat records by default."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1", "name": "Test"}]])
 
-        records = list(self.client.query.builder("account").select("name").filter_eq("statecode", 0).top(10).execute())
+        records = list(
+            self.client.query.builder("account").select("name").where(col("statecode") == 0).top(10).execute()
+        )
 
         self.client._odata._get_multiple.assert_called_once_with(
             "account",
@@ -220,13 +224,15 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_all_params(self):
         """builder().execute() should forward all parameters."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         self.client._odata._get_multiple.return_value = iter([[{"name": "Test"}]])
 
         list(
             self.client.query.builder("account")
             .select("name", "revenue")
-            .filter_eq("statecode", 0)
-            .filter_gt("revenue", 1000000)
+            .where(col("statecode") == 0)
+            .where(col("revenue") > 1000000)
             .order_by("revenue", descending=True)
             .expand("primarycontactid")
             .top(50)
@@ -248,13 +254,13 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_execute_with_where(self):
         """builder().where().execute() should compile expression to filter."""
-        from PowerPlatform.Dataverse.models.filters import eq, gt
+        from PowerPlatform.Dataverse.models.filters import col
 
         self.client._odata._get_multiple.return_value = iter([[{"name": "Test"}]])
 
         list(
             self.client.query.builder("account")
-            .where((eq("statecode", 0) | eq("statecode", 1)) & gt("revenue", 100000))
+            .where(((col("statecode") == 0) | (col("statecode") == 1)) & (col("revenue") > 100000))
             .execute()
         )
 
@@ -265,10 +271,12 @@ class TestQueryOperations(unittest.TestCase):
         )
 
     def test_builder_execute_with_filter_in(self):
-        """builder().filter_in().execute() should forward CRM.In filter to _get_multiple."""
+        """builder().where(col().in_()).execute() should forward CRM.In filter to _get_multiple."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
 
-        list(self.client.query.builder("account").select("name").filter_in("statecode", [0, 1, 2]).execute())
+        list(self.client.query.builder("account").select("name").where(col("statecode").in_([0, 1, 2])).execute())
 
         call_kwargs = self.client._odata._get_multiple.call_args
         self.assertEqual(
@@ -277,13 +285,15 @@ class TestQueryOperations(unittest.TestCase):
         )
 
     def test_builder_execute_with_where_filter_in(self):
-        """builder().where(filter_in(...) & ...).execute() should compile composed expression."""
-        from PowerPlatform.Dataverse.models.filters import filter_in, gt
+        """builder().where(col().in_() & ...).execute() should compile composed expression."""
+        from PowerPlatform.Dataverse.models.filters import col
 
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
 
         list(
-            self.client.query.builder("account").where(filter_in("statecode", [0, 1]) & gt("revenue", 100000)).execute()
+            self.client.query.builder("account")
+            .where(col("statecode").in_([0, 1]) & (col("revenue") > 100000))
+            .execute()
         )
 
         call_kwargs = self.client._odata._get_multiple.call_args
@@ -293,14 +303,15 @@ class TestQueryOperations(unittest.TestCase):
         )
 
     def test_builder_execute_with_filter_between_datetimes(self):
-        """builder().filter_between() with datetimes should forward correct OData."""
+        """builder().where(col().between()).execute() should forward correct OData."""
         from datetime import datetime, timezone
+        from PowerPlatform.Dataverse.models.filters import col
 
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
 
         start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         end = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-        list(self.client.query.builder("account").filter_between("createdon", start, end).execute())
+        list(self.client.query.builder("account").where(col("createdon").between(start, end)).execute())
 
         call_kwargs = self.client._odata._get_multiple.call_args
         self.assertEqual(
@@ -309,10 +320,12 @@ class TestQueryOperations(unittest.TestCase):
         )
 
     def test_builder_execute_with_filter_not_in(self):
-        """builder().filter_not_in().execute() should forward CRM.NotIn filter."""
+        """builder().where(col().not_in()).execute() should forward CRM.NotIn filter."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
 
-        list(self.client.query.builder("account").select("name").filter_not_in("statecode", [2, 3]).execute())
+        list(self.client.query.builder("account").select("name").where(col("statecode").not_in([2, 3])).execute())
 
         call_kwargs = self.client._odata._get_multiple.call_args
         self.assertEqual(
@@ -321,10 +334,12 @@ class TestQueryOperations(unittest.TestCase):
         )
 
     def test_builder_execute_with_filter_not_between(self):
-        """builder().filter_not_between().execute() should forward negated between filter."""
+        """builder().where(col().not_between()).execute() should forward negated between filter."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         self.client._odata._get_multiple.return_value = iter([[{"accountid": "1"}]])
 
-        list(self.client.query.builder("account").filter_not_between("revenue", 100000, 500000).execute())
+        list(self.client.query.builder("account").where(col("revenue").not_between(100000, 500000)).execute())
 
         call_kwargs = self.client._odata._get_multiple.call_args
         self.assertEqual(
@@ -334,6 +349,8 @@ class TestQueryOperations(unittest.TestCase):
 
     def test_builder_full_fluent_workflow(self):
         """End-to-end test of the fluent query workflow."""
+        from PowerPlatform.Dataverse.models.filters import col
+
         expected_records = [
             {"accountid": "1", "name": "Big Corp", "revenue": 5000000},
             {"accountid": "2", "name": "Mega Inc", "revenue": 4000000},
@@ -343,8 +360,8 @@ class TestQueryOperations(unittest.TestCase):
         records = list(
             self.client.query.builder("account")
             .select("name", "revenue")
-            .filter_eq("statecode", 0)
-            .filter_gt("revenue", 1000000)
+            .where(col("statecode") == 0)
+            .where(col("revenue") > 1000000)
             .order_by("revenue", descending=True)
             .expand("primarycontactid")
             .top(10)
@@ -357,23 +374,24 @@ class TestQueryOperations(unittest.TestCase):
         self.assertEqual(records[1]["name"], "Mega Inc")
 
     def test_builder_to_dataframe(self):
-        """builder().to_dataframe() should delegate to client.dataframe.get()."""
+        """builder().to_dataframe() should collect records into a DataFrame."""
         import pandas as pd
+        from PowerPlatform.Dataverse.models.filters import raw
 
-        expected_df = pd.DataFrame([{"name": "Contoso", "revenue": 1000}])
-        self.client.dataframe = MagicMock()
-        self.client.dataframe.get.return_value = expected_df
+        expected_records = [{"name": "Contoso", "revenue": 1000}]
+        self.client._odata._get_multiple.return_value = iter([expected_records])
 
         result = (
             self.client.query.builder("account")
             .select("name", "revenue")
-            .filter_eq("statecode", 0)
+            .where(raw("statecode eq 0"))
             .order_by("name")
             .top(50)
+            .execute()
             .to_dataframe()
         )
 
-        self.client.dataframe.get.assert_called_once_with(
+        self.client._odata._get_multiple.assert_called_once_with(
             "account",
             select=["name", "revenue"],
             filter="statecode eq 0",
@@ -384,7 +402,9 @@ class TestQueryOperations(unittest.TestCase):
             count=False,
             include_annotations=None,
         )
-        pd.testing.assert_frame_equal(result, expected_df)
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["name"], "Contoso")
 
 
 # ===================================================================
@@ -526,239 +546,25 @@ class TestSqlColumns(unittest.TestCase):
         self.assertNotIn("createdbyname", names)
 
 
-class TestSqlSelect(unittest.TestCase):
-    """Tests for client.query.sql_select()."""
+class TestRemovedSqlHelpers(unittest.TestCase):
+    """sql_select(), sql_join(), sql_joins() are removed at GA — raise AttributeError."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
         self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
         self.client._odata = MagicMock()
 
-    def test_returns_comma_separated(self):
-        self.client._odata._list_columns.return_value = [
-            {
-                "LogicalName": "accountid",
-                "AttributeType": "Uniqueidentifier",
-                "IsPrimaryId": True,
-                "IsPrimaryName": False,
-                "DisplayName": {},
-            },
-            {
-                "LogicalName": "name",
-                "AttributeType": "String",
-                "IsPrimaryId": False,
-                "IsPrimaryName": True,
-                "DisplayName": {},
-            },
-            {
-                "LogicalName": "revenue",
-                "AttributeType": "Money",
-                "IsPrimaryId": False,
-                "IsPrimaryName": False,
-                "DisplayName": {},
-            },
-        ]
-        result = self.client.query.sql_select("account")
-        self.assertIn("accountid", result)
-        self.assertIn("name", result)
-        self.assertIn("revenue", result)
-        self.assertEqual(result.count(","), 2)  # 3 cols = 2 commas
+    def test_sql_select_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.query.sql_select("account")
 
+    def test_sql_joins_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.query.sql_joins("contact")
 
-class TestSqlJoins(unittest.TestCase):
-    """Tests for client.query.sql_joins()."""
-
-    def setUp(self):
-        self.mock_credential = MagicMock(spec=TokenCredential)
-        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
-        self.client._odata = MagicMock()
-
-    def _mock_rels(self, rels):
-        self.client._odata._list_table_relationships.return_value = rels
-
-    def test_outgoing_lookups(self):
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "parentcustomerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "contact_customer_accounts",
-                },
-            ]
-        )
-        joins = self.client.query.sql_joins("contact")
-        self.assertEqual(len(joins), 1)
-        j = joins[0]
-        self.assertEqual(j["column"], "parentcustomerid")
-        self.assertEqual(j["target"], "account")
-        self.assertEqual(j["target_pk"], "accountid")
-        self.assertIn("JOIN account", j["join_clause"])
-        self.assertIn("parentcustomerid", j["join_clause"])
-
-    def test_ignores_incoming_rels(self):
-        self._mock_rels(
-            [
-                # This is an incoming relationship (account is referenced, not referencing)
-                {
-                    "ReferencingEntity": "opportunity",
-                    "ReferencingAttribute": "customerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "opp_customer_accounts",
-                },
-            ]
-        )
-        joins = self.client.query.sql_joins("account")
-        self.assertEqual(len(joins), 0)
-
-    def test_polymorphic_returns_multiple(self):
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "opportunity",
-                    "ReferencingAttribute": "customerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "opp_customer_accounts",
-                },
-                {
-                    "ReferencingEntity": "opportunity",
-                    "ReferencingAttribute": "customerid",
-                    "ReferencedEntity": "contact",
-                    "ReferencedAttribute": "contactid",
-                    "SchemaName": "opp_customer_contacts",
-                },
-            ]
-        )
-        joins = self.client.query.sql_joins("opportunity")
-        self.assertEqual(len(joins), 2)
-        targets = {j["target"] for j in joins}
-        self.assertEqual(targets, {"account", "contact"})
-        # Both use the same source column
-        self.assertTrue(all(j["column"] == "customerid" for j in joins))
-
-    def test_empty_relationships(self):
-        self._mock_rels([])
-        joins = self.client.query.sql_joins("account")
-        self.assertEqual(joins, [])
-
-    def test_alias_collision_same_first_letter(self):
-        """Two targets starting with the same letter get distinct aliases."""
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "parentcustomerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "contact_customer_accounts",
-                },
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "regardingobjectid",
-                    "ReferencedEntity": "annotation",
-                    "ReferencedAttribute": "annotationid",
-                    "SchemaName": "contact_annotation",
-                },
-            ]
-        )
-        joins = self.client.query.sql_joins("contact")
-        self.assertEqual(len(joins), 2)
-        aliases = [j["join_clause"].split()[2] for j in joins]
-        self.assertEqual(len(set(aliases)), 2, "aliases must be unique")
-        self.assertNotEqual(aliases[0], aliases[1])
-
-    def test_alias_collision_same_target_table(self):
-        """Two lookups to the same table (e.g. ownerid + createdby -> systemuser) get distinct aliases."""
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "ownerid",
-                    "ReferencedEntity": "systemuser",
-                    "ReferencedAttribute": "systemuserid",
-                    "SchemaName": "contact_ownerid_systemuser",
-                },
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "createdby",
-                    "ReferencedEntity": "systemuser",
-                    "ReferencedAttribute": "systemuserid",
-                    "SchemaName": "contact_createdby_systemuser",
-                },
-            ]
-        )
-        joins = self.client.query.sql_joins("contact")
-        self.assertEqual(len(joins), 2)
-        aliases = [j["join_clause"].split()[2] for j in joins]
-        self.assertEqual(len(set(aliases)), 2, "aliases must be unique")
-        self.assertNotEqual(aliases[0], aliases[1])
-
-
-class TestSqlJoin(unittest.TestCase):
-    """Tests for client.query.sql_join()."""
-
-    def setUp(self):
-        self.mock_credential = MagicMock(spec=TokenCredential)
-        self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
-        self.client._odata = MagicMock()
-
-    def _mock_rels(self, rels):
-        self.client._odata._list_table_relationships.return_value = rels
-
-    def test_generates_join_clause(self):
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "parentcustomerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "contact_customer_accounts",
-                },
-            ]
-        )
-        result = self.client.query.sql_join("contact", "account", from_alias="c", to_alias="a")
-        self.assertEqual(result, "JOIN account a ON c.parentcustomerid = a.accountid")
-
-    def test_default_aliases(self):
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "parentcustomerid",
-                    "ReferencedEntity": "account",
-                    "ReferencedAttribute": "accountid",
-                    "SchemaName": "contact_customer_accounts",
-                },
-            ]
-        )
-        result = self.client.query.sql_join("contact", "account")
-        self.assertIn("JOIN account a ON contact.parentcustomerid = a.accountid", result)
-
-    def test_no_relationship_raises(self):
-        self._mock_rels([])
-        with self.assertRaises(ValueError) as ctx:
-            self.client.query.sql_join("contact", "nonexistent")
-        self.assertIn("No relationship found", str(ctx.exception))
-
-    def test_case_insensitive_target(self):
-        self._mock_rels(
-            [
-                {
-                    "ReferencingEntity": "contact",
-                    "ReferencingAttribute": "ownerid",
-                    "ReferencedEntity": "systemuser",
-                    "ReferencedAttribute": "systemuserid",
-                    "SchemaName": "contact_owner",
-                },
-            ]
-        )
-        result = self.client.query.sql_join("contact", "SystemUser", from_alias="c", to_alias="su")
-        self.assertIn("JOIN systemuser su", result)
-        self.assertIn("c.ownerid = su.systemuserid", result)
+    def test_sql_join_removed(self):
+        with self.assertRaises(AttributeError):
+            self.client.query.sql_join("contact", "account")
 
 
 # ===================================================================
@@ -767,12 +573,17 @@ class TestSqlJoin(unittest.TestCase):
 
 
 class TestOdataSelect(unittest.TestCase):
-    """Tests for client.query.odata_select()."""
+    """Tests for client.query.odata_select() — deprecated at GA, still functional."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
         self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
         self.client._odata = MagicMock()
+
+    def test_emits_deprecation_warning(self):
+        self.client._odata._list_columns.return_value = []
+        with self.assertWarns(DeprecationWarning):
+            self.client.query.odata_select("account")
 
     def test_returns_list_of_strings(self):
         self.client._odata._list_columns.return_value = [
@@ -791,7 +602,11 @@ class TestOdataSelect(unittest.TestCase):
                 "DisplayName": {},
             },
         ]
-        result = self.client.query.odata_select("account")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = self.client.query.odata_select("account")
         self.assertIsInstance(result, list)
         self.assertIn("accountid", result)
         self.assertIn("name", result)
@@ -807,7 +622,11 @@ class TestOdataSelect(unittest.TestCase):
                 "DisplayName": {},
             },
         ]
-        cols = self.client.query.odata_select("account")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            cols = self.client.query.odata_select("account")
         self.assertEqual(cols, ["name"])
 
 
@@ -914,12 +733,27 @@ class TestOdataExpands(unittest.TestCase):
 
 
 class TestOdataExpand(unittest.TestCase):
-    """Tests for client.query.odata_expand()."""
+    """Tests for client.query.odata_expand() — deprecated at GA, still functional."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
         self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
         self.client._odata = MagicMock()
+
+    def test_emits_deprecation_warning(self):
+        self.client._odata._list_table_relationships.return_value = [
+            {
+                "ReferencingEntity": "contact",
+                "ReferencingAttribute": "parentcustomerid",
+                "ReferencedEntity": "account",
+                "ReferencedAttribute": "accountid",
+                "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
+                "SchemaName": "contact_customer_accounts",
+            },
+        ]
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        with self.assertWarns(DeprecationWarning):
+            self.client.query.odata_expand("contact", "account")
 
     def test_returns_nav_property(self):
         self.client._odata._list_table_relationships.return_value = [
@@ -933,7 +767,11 @@ class TestOdataExpand(unittest.TestCase):
             },
         ]
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
-        result = self.client.query.odata_expand("contact", "account")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = self.client.query.odata_expand("contact", "account")
         self.assertEqual(result, "parentcustomerid_account")
 
     def test_no_relationship_raises(self):
@@ -954,20 +792,24 @@ class TestOdataExpand(unittest.TestCase):
             },
         ]
         self.client._odata._entity_set_from_schema_name.return_value = "systemusers"
-        result = self.client.query.odata_expand("contact", "SystemUser")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = self.client.query.odata_expand("contact", "SystemUser")
         self.assertEqual(result, "ownerid_systemuser")
 
 
 class TestOdataBind(unittest.TestCase):
-    """Tests for client.query.odata_bind()."""
+    """Tests for client.query.odata_bind() — deprecated at GA, still functional."""
 
     def setUp(self):
         self.mock_credential = MagicMock(spec=TokenCredential)
         self.client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
         self.client._odata = MagicMock()
 
-    def test_returns_bind_dict(self):
-        self.client._odata._list_table_relationships.return_value = [
+    def _rel(self):
+        return [
             {
                 "ReferencingEntity": "contact",
                 "ReferencingAttribute": "parentcustomerid",
@@ -977,10 +819,23 @@ class TestOdataBind(unittest.TestCase):
                 "SchemaName": "contact_customer_accounts",
             },
         ]
+
+    def test_emits_deprecation_warning(self):
+        self.client._odata._list_table_relationships.return_value = self._rel()
+        self.client._odata._entity_set_from_schema_name.return_value = "accounts"
+        with self.assertWarns(DeprecationWarning):
+            self.client.query.odata_bind("contact", "account", "some-guid")
+
+    def test_returns_bind_dict(self):
+        self.client._odata._list_table_relationships.return_value = self._rel()
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
         guid = "12345678-1234-1234-1234-123456789abc"
-        result = self.client.query.odata_bind("contact", "account", guid)
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            result = self.client.query.odata_bind("contact", "account", guid)
         self.assertIsInstance(result, dict)
         self.assertEqual(len(result), 1)
         key = list(result.keys())[0]
@@ -994,19 +849,14 @@ class TestOdataBind(unittest.TestCase):
 
     def test_usable_in_create_payload(self):
         """Result can be merged into a create payload via **spread."""
-        self.client._odata._list_table_relationships.return_value = [
-            {
-                "ReferencingEntity": "contact",
-                "ReferencingAttribute": "parentcustomerid",
-                "ReferencedEntity": "account",
-                "ReferencedAttribute": "accountid",
-                "ReferencingEntityNavigationPropertyName": "parentcustomerid_account",
-                "SchemaName": "contact_customer_accounts",
-            },
-        ]
+        self.client._odata._list_table_relationships.return_value = self._rel()
         self.client._odata._entity_set_from_schema_name.return_value = "accounts"
 
-        bind = self.client.query.odata_bind("contact", "account", "some-guid")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            bind = self.client.query.odata_bind("contact", "account", "some-guid")
         payload = {"firstname": "Jane", "lastname": "Doe", **bind}
         self.assertIn("parentcustomerid_account@odata.bind", payload)
         self.assertEqual(payload["firstname"], "Jane")

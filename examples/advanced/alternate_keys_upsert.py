@@ -100,29 +100,37 @@ def main():
     client = DataverseClient(base_url, credential)
 
     # ------------------------------------------------------------------
-    # Step 1: Create table
+    # Step 1: Create table (skip if already exists)
     # ------------------------------------------------------------------
     print("\n1. Creating table...")
-    table_info = backoff(
-        lambda: client.tables.create(
-            TABLE_NAME,
-            columns={
-                KEY_COLUMN: "string",
-                "new_ProductName": "string",
-                "new_Price": "decimal",
-            },
+    table_info = client.tables.get(TABLE_NAME)
+    if table_info:
+        print(f"   Table already exists: {TABLE_NAME} (skipped)")
+    else:
+        table_info = backoff(
+            lambda: client.tables.create(
+                TABLE_NAME,
+                columns={
+                    KEY_COLUMN: "string",
+                    "new_ProductName": "string",
+                    "new_Price": "decimal",
+                },
+            )
         )
-    )
-    print(f"   Created: {table_info.get('table_schema_name', TABLE_NAME)}")
-
-    time.sleep(10)  # Wait for metadata propagation
+        print(f"   Created: {table_info.get('table_schema_name', TABLE_NAME)}")
+        time.sleep(10)  # Wait for metadata propagation
 
     # ------------------------------------------------------------------
-    # Step 2: Create alternate key
+    # Step 2: Create alternate key (skip if already exists)
     # ------------------------------------------------------------------
     print("\n2. Creating alternate key...")
-    key_info = backoff(lambda: client.tables.create_alternate_key(TABLE_NAME, KEY_NAME, [KEY_COLUMN.lower()]))
-    print(f"   Key created: {key_info.schema_name} (id={key_info.metadata_id})")
+    existing_keys = client.tables.get_alternate_keys(TABLE_NAME)
+    existing_key = next((k for k in existing_keys if k.schema_name == KEY_NAME), None)
+    if existing_key:
+        print(f"   Alternate key already exists: {KEY_NAME} (skipped)")
+    else:
+        key_info = backoff(lambda: client.tables.create_alternate_key(TABLE_NAME, KEY_NAME, [KEY_COLUMN.lower()]))
+        print(f"   Key created: {key_info.schema_name} (id={key_info.metadata_id})")
 
     # ------------------------------------------------------------------
     # Step 3: Wait for key to become Active
@@ -212,15 +220,14 @@ def main():
     # Step 6: Verify
     # ------------------------------------------------------------------
     print("\n6. Verifying records...")
-    for page in client.records.get(
+    for record in client.records.list(
         TABLE_NAME,
         select=["new_productname", "new_price", KEY_COLUMN.lower()],
     ):
-        for record in page:
-            ext_id = record.get(KEY_COLUMN.lower(), "?")
-            name = record.get("new_productname", "?")
-            price = record.get("new_price", "?")
-            print(f"   {ext_id}: {name} @ ${price}")
+        ext_id = record.get(KEY_COLUMN.lower(), "?")
+        name = record.get("new_productname", "?")
+        price = record.get("new_price", "?")
+        print(f"   {ext_id}: {name} @ ${price}")
 
     # ------------------------------------------------------------------
     # Step 7: List alternate keys

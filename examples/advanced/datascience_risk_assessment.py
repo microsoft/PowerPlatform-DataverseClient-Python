@@ -50,6 +50,7 @@ import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.models.filters import col, raw
 
 # -- Optional imports (graceful degradation if not installed) ------
 
@@ -272,43 +273,42 @@ def step1_extract(client):
     print("=" * 60)
 
     # Pull accounts
-    accounts = client.dataframe.get(
-        TABLE_ACCOUNTS,
-        select=["accountid", "name", "revenue", "numberofemployees", "industrycode"],
-        filter="statecode eq 0",
-        top=200,
+    accounts = (
+        client.query.builder(TABLE_ACCOUNTS)
+        .select("accountid", "name", "revenue", "numberofemployees", "industrycode")
+        .where(col("statecode") == 0)
+        .top(200)
+        .execute()
+        .to_dataframe()
     )
     print(f"[OK] Extracted {len(accounts)} active accounts")
 
     # Pull open cases (service incidents)
-    cases = client.dataframe.get(
-        TABLE_CASES,
-        select=[
-            "incidentid",
-            "_customerid_value",
-            "title",
-            "severitycode",
-            "prioritycode",
-            "createdon",
-        ],
-        filter="statecode eq 0",
-        top=1000,
+    cases = (
+        client.query.builder(TABLE_CASES)
+        .select("incidentid", "_customerid_value", "title", "severitycode", "prioritycode", "createdon")
+        .where(raw("statecode eq 0"))
+        .top(1000)
+        .execute()
+        .to_dataframe()
     )
     print(f"[OK] Extracted {len(cases)} open cases")
 
     # Pull active opportunities
-    opportunities = client.dataframe.get(
-        TABLE_OPPORTUNITIES,
-        select=[
+    opportunities = (
+        client.query.builder(TABLE_OPPORTUNITIES)
+        .select(
             "opportunityid",
             "_parentaccountid_value",
             "name",
             "estimatedvalue",
             "closeprobability",
             "estimatedclosedate",
-        ],
-        filter="statecode eq 0",
-        top=1000,
+        )
+        .where(col("statecode") == 0)
+        .top(1000)
+        .execute()
+        .to_dataframe()
     )
     print(f"[OK] Extracted {len(opportunities)} active opportunities")
 
