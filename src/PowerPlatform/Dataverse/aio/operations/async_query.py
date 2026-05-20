@@ -159,10 +159,13 @@ class AsyncQueryOperations:
         :meth:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery.execute_pages`
         is called on the returned object.
 
+        Use for SQL-JOIN scenarios, aggregate queries, or other operations that
+        the OData builder endpoint cannot express.
+
         :param xml: Well-formed FetchXML query string. The root ``<entity name="...">``
             element determines the entity set endpoint.
         :type xml: :class:`str`
-        :return: Inert async query object.
+        :return: Inert async query object with ``.execute()`` and ``.execute_pages()`` methods.
         :rtype: :class:`~PowerPlatform.Dataverse.models.async_fetchxml_query.AsyncFetchXmlQuery`
         :raises ValidationError: If the FetchXML is not a string, is empty, or exceeds the URL
             length limit when encoded.
@@ -174,15 +177,19 @@ class AsyncQueryOperations:
               <fetch top="50">
                 <entity name="account">
                   <attribute name="name" />
+                  <link-entity name="contact" from="parentcustomerid"
+                               to="accountid" alias="c" link-type="inner">
+                    <attribute name="fullname" />
+                  </link-entity>
                 </entity>
               </fetch>
             \"\"\")
 
-            # Eager — all pages collected:
+            # Eager — collect all pages:
             result = await query.execute()
             df = result.to_dataframe()
 
-            # Lazy — one page at a time:
+            # Lazy — process one page at a time:
             async for page in query.execute_pages():
                 process(page.to_dataframe())
         """
@@ -191,11 +198,19 @@ class AsyncQueryOperations:
         xml = xml.strip()
         if not xml:
             raise ValidationError("xml must not be empty")
+        # Fast-fail before any HTTP is attempted; execute_pages() re-checks the full URL
+        # (base + encoded XML) on each page.
         if len(_url_quote(xml, safe="")) > _MAX_URL_LENGTH:
             raise ValidationError(
                 f"FetchXML exceeds the Dataverse URL length limit ({_MAX_URL_LENGTH:,} characters) when encoded. "
                 "Use a $batch POST request to send FetchXML in the request body where the limit is 64 KB."
             )
+        # Parse only to verify well-formedness and extract the entity name needed for the
+        # request URL. Structural and semantic validation is intentionally left to the server
+        # to avoid duplicating rules that may diverge from Dataverse's own enforcement.
+        # ElementTree does not resolve external entities or expand recursive internal entity
+        # references, so pathological inputs of that kind raise ParseError rather than
+        # consuming resources.
         try:
             root_el = _ET.fromstring(xml)
         except _ET.ParseError as exc:
