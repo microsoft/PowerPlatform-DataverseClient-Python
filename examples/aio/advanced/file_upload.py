@@ -233,7 +233,7 @@ async def main():
                     async with client._scoped_odata() as od:
                         dl_url = f"{od.api}/{entity_set}({record_id})/{small_file_attr_schema.lower()}/$value"
                         resp_r = await od._request("get", dl_url)
-                        content_r = await resp_r.read() if hasattr(resp_r, "read") else (resp_r.content or b"")
+                        content_r = resp_r._body if hasattr(resp_r, "_body") else b""
 
                     dl_hash_r = hashlib.sha256(content_r).hexdigest() if content_r else None
                     hash_match_r = (dl_hash_r == replace_hash) if (dl_hash_r and replace_hash) else None
@@ -305,7 +305,7 @@ async def main():
                     async with client._scoped_odata() as od:
                         dl_url = f"{od.api}/{entity_set}({record_id})/{chunk_file_attr_schema.lower()}/$value"
                         resp_rc = await od._request("get", dl_url)
-                        content_rc = await resp_rc.read() if hasattr(resp_rc, "read") else (resp_rc.content or b"")
+                        content_rc = resp_rc._body if hasattr(resp_rc, "_body") else b""
 
                     dl_hash_rc = hashlib.sha256(content_rc).hexdigest() if content_rc else None
                     hash_match_rc = (dl_hash_rc == replace_hash_c) if (dl_hash_rc and replace_hash_c) else None
