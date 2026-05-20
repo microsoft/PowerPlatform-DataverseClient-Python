@@ -414,7 +414,9 @@ class _ODataBase:
                 per_lang[lang] = label_text
             options.append(
                 {
-                    "@odata.type": f"{prefix}OptionMetadata",
+                    # OptionMetadata has no "Complex" variant in the EDM model -
+                    # only the outer PicklistAttributeMetadata/OptionSetMetadata do.
+                    "@odata.type": "Microsoft.Dynamics.CRM.OptionMetadata",
                     "Value": m.value,
                     "Label": self._build_localizedlabels_payload(per_lang),
                 }
