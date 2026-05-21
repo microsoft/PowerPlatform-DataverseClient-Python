@@ -593,7 +593,7 @@ class TableOperations:
 
         Alternate keys allow upsert operations to identify records by one or
         more columns instead of the primary GUID. After creation the key is
-        queued for index building; its :attr:`~AlternateKeyInfo.status` will
+        queued for index building; its :attr:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo.status` will
         transition from ``"Pending"`` to ``"Active"`` once the index is ready.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).

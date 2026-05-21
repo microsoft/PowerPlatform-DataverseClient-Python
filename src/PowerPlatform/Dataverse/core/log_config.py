@@ -4,7 +4,7 @@
 """
 Local file logging configuration for Dataverse SDK HTTP diagnostics.
 
-Provides :class:`LogConfig`, an opt-in configuration for writing request/response
+Provides :class:`~PowerPlatform.Dataverse.core.log_config.LogConfig`, an opt-in configuration for writing request/response
 traces to ``.log`` files with automatic header redaction and timestamped filenames.
 """
 

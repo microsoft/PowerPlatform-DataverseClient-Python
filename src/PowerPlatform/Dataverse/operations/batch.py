@@ -72,7 +72,7 @@ class ChangeSetRecordOperations:
     create/update/delete). Only write operations are allowed — GET is not
     permitted inside a changeset.
 
-    Do not instantiate directly; use :attr:`ChangeSet.records`.
+    Do not instantiate directly; use ``ChangeSet.records``.
     """
 
     def __init__(self, cs_internal: _ChangeSet) -> None:
@@ -136,7 +136,7 @@ class ChangeSet:
     A transactional group of single-record write operations.
 
     All operations succeed or are rolled back together. Use as a context
-    manager or call :attr:`records` to add operations directly.
+    manager or call ``records`` to add operations directly.
 
     Do not instantiate directly; use :meth:`BatchRequest.changeset`.
 
@@ -412,7 +412,7 @@ class BatchRecordOperations:
 
         :param table: Table schema name (e.g. ``"account"``).
         :type table: :class:`str`
-        :param filter: Optional OData ``$filter`` expression or :class:`FilterExpression`.
+        :param filter: Optional OData ``$filter`` expression or :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`.
         :type filter: str or FilterExpression or None
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
@@ -574,7 +574,7 @@ class BatchTableOperations:
         Add column-create operations to the batch (one per column).
 
         The table's ``MetadataId`` is resolved at execute time. Each column
-        produces one entry in :attr:`BatchResult.responses`.
+        produces one entry in :attr:`~PowerPlatform.Dataverse.models.batch.BatchResult.responses`.
 
         :param table: Schema name of the target table.
         :type table: :class:`str`
@@ -589,7 +589,7 @@ class BatchTableOperations:
 
         The table's ``MetadataId`` and each column's ``MetadataId`` are resolved
         at execute time. Each column produces one entry in
-        :attr:`BatchResult.responses`.
+        :attr:`~PowerPlatform.Dataverse.models.batch.BatchResult.responses`.
 
         :param table: Schema name of the target table.
         :type table: :class:`str`
@@ -926,7 +926,7 @@ class BatchRequest:
     Builder for constructing and executing a Dataverse OData ``$batch`` request.
 
     Obtain via :meth:`BatchOperations.new` (``client.batch.new()``). Add operations
-    through :attr:`records`, :attr:`tables`, :attr:`query`, and :attr:`dataframe`,
+    through ``records``, ``tables``, ``query``, and ``dataframe``,
     optionally group writes
     into a :meth:`changeset`, then call :meth:`execute`.
 
