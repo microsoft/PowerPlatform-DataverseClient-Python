@@ -1,25 +1,92 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Tests that every symbol in __all__ is importable from each package namespace,
-and that re-exported objects are identical to their originals."""
+"""Tests for package-level imports.
+
+The three sub-packages (``core``, ``models``, ``operations``) deliberately keep
+``__all__`` empty to avoid creating duplicate doc-tool entries for re-exported
+symbols. Symbols are still importable from the package namespace because
+Python's ``from package import Symbol`` does not consult ``__all__``.
+
+These tests verify:
+1. ``__all__`` is empty (locks in the design decision).
+2. Every expected public symbol is still importable from the package namespace.
+3. Each imported symbol is the same object as its source definition.
+"""
 
 import unittest
 
 
+CORE_EXPECTED = [
+    "DataverseConfig",
+    "DataverseError",
+    "HttpError",
+    "LogConfig",
+    "MetadataError",
+    "OperationContext",
+    "SQLParseError",
+    "ValidationError",
+]
+
+MODELS_EXPECTED = [
+    "AlternateKeyInfo",
+    "BatchItemResponse",
+    "BatchResult",
+    "CascadeConfiguration",
+    "ColumnInfo",
+    "ColumnProxy",
+    "DataverseModel",
+    "ExpandOption",
+    "FetchXmlQuery",
+    "FilterExpression",
+    "Label",
+    "LocalizedLabel",
+    "LookupAttributeMetadata",
+    "ManyToManyRelationshipMetadata",
+    "OneToManyRelationshipMetadata",
+    "QueryBuilder",
+    "QueryParams",
+    "QueryResult",
+    "Record",
+    "RelationshipInfo",
+    "TableInfo",
+    "UpsertItem",
+    "col",
+    "raw",
+]
+
+OPERATIONS_EXPECTED = [
+    "BatchDataFrameOperations",
+    "BatchOperations",
+    "BatchQueryOperations",
+    "BatchRecordOperations",
+    "BatchRequest",
+    "BatchTableOperations",
+    "ChangeSet",
+    "ChangeSetRecordOperations",
+    "DataFrameOperations",
+    "FileOperations",
+    "QueryOperations",
+    "RecordOperations",
+    "TableOperations",
+]
+
+
 class TestCoreExports(unittest.TestCase):
-    """Verify package-level exports for PowerPlatform.Dataverse.core.
+    """Verify package-level imports for PowerPlatform.Dataverse.core."""
 
-    Checks that every symbol in __all__ is reachable from the package namespace
-    and that each re-export is the identical object as its source definition.
-    """
-
-    def test_all_symbols_importable(self):
-        """Every name listed in __all__ is accessible as an attribute of the package."""
+    def test_all_is_empty(self):
+        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
         import PowerPlatform.Dataverse.core as m
 
-        for name in m.__all__:
-            self.assertTrue(hasattr(m, name), f"{name!r} is in __all__ but missing from PowerPlatform.Dataverse.core")
+        self.assertEqual(m.__all__, [])
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.core as m
+
+        for name in CORE_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.core")
 
     def test_identity(self):
         """Re-exported objects are the same objects as their source definitions."""
@@ -45,18 +112,20 @@ class TestCoreExports(unittest.TestCase):
 
 
 class TestModelsExports(unittest.TestCase):
-    """Verify package-level exports for PowerPlatform.Dataverse.models.
+    """Verify package-level imports for PowerPlatform.Dataverse.models."""
 
-    Checks that every symbol in __all__ is reachable from the package namespace
-    and that each re-export is the identical object as its source definition.
-    """
-
-    def test_all_symbols_importable(self):
-        """Every name listed in __all__ is accessible as an attribute of the package."""
+    def test_all_is_empty(self):
+        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
         import PowerPlatform.Dataverse.models as m
 
-        for name in m.__all__:
-            self.assertTrue(hasattr(m, name), f"{name!r} is in __all__ but missing from PowerPlatform.Dataverse.models")
+        self.assertEqual(m.__all__, [])
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.models as m
+
+        for name in MODELS_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.models")
 
     def test_identity(self):
         """Re-exported objects are the same objects as their source definitions."""
@@ -105,20 +174,20 @@ class TestModelsExports(unittest.TestCase):
 
 
 class TestOperationsExports(unittest.TestCase):
-    """Verify package-level exports for PowerPlatform.Dataverse.operations.
+    """Verify package-level imports for PowerPlatform.Dataverse.operations."""
 
-    Checks that every symbol in __all__ is reachable from the package namespace
-    and that each re-export is the identical object as its source definition.
-    """
-
-    def test_all_symbols_importable(self):
-        """Every name listed in __all__ is accessible as an attribute of the package."""
+    def test_all_is_empty(self):
+        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
         import PowerPlatform.Dataverse.operations as m
 
-        for name in m.__all__:
-            self.assertTrue(
-                hasattr(m, name), f"{name!r} is in __all__ but missing from PowerPlatform.Dataverse.operations"
-            )
+        self.assertEqual(m.__all__, [])
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.operations as m
+
+        for name in OPERATIONS_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.operations")
 
     def test_identity(self):
         """Re-exported objects are the same objects as their source definitions."""
