@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Union
 
 import pandas as pd
 
@@ -57,6 +57,29 @@ __all__ = [
     "ChangeSet",
     "ChangeSetRecordOperations",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Shared interface for batch operation namespaces
+# ---------------------------------------------------------------------------
+
+
+class _BatchContext(Protocol):
+    """Structural interface required by batch operation namespaces.
+
+    The operation namespaces (BatchRecordOperations, BatchTableOperations, etc.)
+    are pure (no I/O) and shared by both the sync and async batch implementations.
+    This Protocol allows them to type-annotate their ``batch`` parameter correctly
+    without importing either concrete class (``BatchRequest`` or
+    ``AsyncBatchRequest``), which would otherwise require ``# type: ignore``.
+
+    Both :class:`~PowerPlatform.Dataverse.operations.batch.BatchRequest` and
+    :class:`~PowerPlatform.Dataverse.aio.operations.async_batch.AsyncBatchRequest`
+    satisfy this protocol structurally — no explicit inheritance needed.
+    """
+
+    _items: List[Any]
+    records: Any  # used by BatchDataFrameOperations to delegate create/update/delete
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +203,7 @@ class BatchRecordOperations:
     Do not instantiate directly; use ``batch.records``.
     """
 
-    def __init__(self, batch: "BatchRequest") -> None:
+    def __init__(self, batch: "_BatchContext") -> None:
         self._batch = batch
 
     def create(
@@ -482,7 +505,7 @@ class BatchTableOperations:
     Do not instantiate directly; use ``batch.tables``.
     """
 
-    def __init__(self, batch: "BatchRequest") -> None:
+    def __init__(self, batch: "_BatchContext") -> None:
         self._batch = batch
 
     def create(
@@ -720,7 +743,7 @@ class BatchQueryOperations:
     Do not instantiate directly; use ``batch.query``.
     """
 
-    def __init__(self, batch: "BatchRequest") -> None:
+    def __init__(self, batch: "_BatchContext") -> None:
         self._batch = batch
 
     def sql(self, sql: str) -> None:
@@ -774,7 +797,7 @@ class BatchDataFrameOperations:
         result = batch.execute()
     """
 
-    def __init__(self, batch: "BatchRequest") -> None:
+    def __init__(self, batch: "_BatchContext") -> None:
         self._batch = batch
 
     def create(self, table: str, records: pd.DataFrame) -> None:
