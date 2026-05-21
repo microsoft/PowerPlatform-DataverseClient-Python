@@ -16,7 +16,6 @@ These tests verify:
 
 import unittest
 
-
 CORE_EXPECTED = [
     "DataverseConfig",
     "DataverseError",
