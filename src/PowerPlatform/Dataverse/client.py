@@ -27,7 +27,7 @@ class DataverseClient:
 
     This client provides a simple, stable interface for interacting with Dataverse environments
     through the Web API. It handles authentication via Azure Identity and delegates HTTP operations
-    to an internal :class:`~PowerPlatform.Dataverse.data._odata._ODataClient`.
+    to an internal OData client.
 
     Key capabilities:
         - OData CRUD operations: create, read, update, delete records
