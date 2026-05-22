@@ -26,3 +26,7 @@ Thumbs.db
 # Claude local settings
 .claude/*.local.json
 .claude/*.local.md
+
+# Generated outputs from running example scripts
+examples/advanced/prodev_output/
+examples/advanced/risk_assessment_output/
