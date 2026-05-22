@@ -50,7 +50,7 @@ import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.models import col, raw
+from PowerPlatform.Dataverse.models.filters import col, raw
 
 # -- Optional imports (graceful degradation if not installed) ------
 

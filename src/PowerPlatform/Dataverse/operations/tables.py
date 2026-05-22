@@ -344,7 +344,7 @@ class TableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     LookupAttributeMetadata,
                     OneToManyRelationshipMetadata,
                     Label,
@@ -420,7 +420,7 @@ class TableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models import (
+                from PowerPlatform.Dataverse.models.relationship import (
                     ManyToManyRelationshipMetadata,
                 )
 
@@ -593,7 +593,7 @@ class TableOperations:
 
         Alternate keys allow upsert operations to identify records by one or
         more columns instead of the primary GUID. After creation the key is
-        queued for index building; its :attr:`~PowerPlatform.Dataverse.models.table_info.AlternateKeyInfo.status` will
+        queued for index building; its :attr:`~AlternateKeyInfo.status` will
         transition from ``"Pending"`` to ``"Active"`` once the index is ready.
 
         :param table: Schema name of the table (e.g. ``"new_Product"``).

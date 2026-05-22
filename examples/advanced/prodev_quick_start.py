@@ -56,7 +56,7 @@ import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.models import col
+from PowerPlatform.Dataverse.models.filters import col
 
 # -- Table schema names --
 # Uses the standard 'new_' publisher prefix (default Dataverse publisher).

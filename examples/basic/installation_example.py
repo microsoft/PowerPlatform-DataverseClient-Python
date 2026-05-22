@@ -60,7 +60,10 @@ import subprocess
 from typing import Optional
 from datetime import datetime
 
-from PowerPlatform.Dataverse.operations import FileOperations, QueryOperations, RecordOperations, TableOperations
+from PowerPlatform.Dataverse.operations.records import RecordOperations
+from PowerPlatform.Dataverse.operations.query import QueryOperations
+from PowerPlatform.Dataverse.operations.tables import TableOperations
+from PowerPlatform.Dataverse.operations.files import FileOperations
 
 
 def validate_imports():
@@ -82,7 +85,7 @@ def validate_imports():
 
         print(f"  [OK] Core errors: HttpError, MetadataError")
 
-        from PowerPlatform.Dataverse.core import DataverseConfig
+        from PowerPlatform.Dataverse.core.config import DataverseConfig
 
         print(f"  [OK] Core config: DataverseConfig")
 

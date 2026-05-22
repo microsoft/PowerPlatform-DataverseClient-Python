@@ -18,8 +18,6 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .log_config import LogConfig
 
-__all__ = ["DataverseConfig", "OperationContext"]
-
 # key=value pairs separated by semicolons.
 # Keys: alphanumeric, hyphens, underscores.
 # Values: alphanumeric, hyphens, underscores, dots, slashes.

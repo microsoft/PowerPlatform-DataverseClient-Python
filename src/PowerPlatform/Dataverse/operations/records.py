@@ -548,14 +548,14 @@ class RecordOperations:
         count: bool = False,
         include_annotations: Optional[str] = None,
     ) -> QueryResult:
-        """Fetch multiple records and return them as a :class:`~PowerPlatform.Dataverse.models.record.QueryResult`.
+        """Fetch multiple records and return them as a :class:`QueryResult`.
 
         GA replacement for ``records.get(table, filter=...)``. All pages are
-        collected eagerly and returned as a single :class:`~PowerPlatform.Dataverse.models.record.QueryResult`.
+        collected eagerly and returned as a single :class:`QueryResult`.
 
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
-        :param filter: Optional OData filter string or :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`.
+        :param filter: Optional OData filter string or :class:`FilterExpression`.
         :type filter: str or FilterExpression or None
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
@@ -572,7 +572,7 @@ class RecordOperations:
         :param include_annotations: OData annotation pattern for the
             ``Prefer: odata.include-annotations`` header, or ``None``.
         :type include_annotations: :class:`str` or None
-        :return: All matching records collected into a :class:`~PowerPlatform.Dataverse.models.record.QueryResult`.
+        :return: All matching records collected into a :class:`QueryResult`.
         :rtype: :class:`~PowerPlatform.Dataverse.models.record.QueryResult`
 
         Example::
@@ -622,7 +622,7 @@ class RecordOperations:
         count: bool = False,
         include_annotations: Optional[str] = None,
     ) -> Iterator[QueryResult]:
-        """Lazily yield one :class:`~PowerPlatform.Dataverse.models.record.QueryResult` per HTTP page.
+        """Lazily yield one :class:`QueryResult` per HTTP page.
 
         Streaming counterpart to :meth:`list`. Each iteration triggers one
         network request via ``@odata.nextLink``. One-shot — do not iterate
@@ -630,7 +630,7 @@ class RecordOperations:
 
         :param table: Schema name of the table (e.g. ``"account"``).
         :type table: :class:`str`
-        :param filter: Optional OData filter string or :class:`~PowerPlatform.Dataverse.models.filters.FilterExpression`.
+        :param filter: Optional OData filter string or :class:`FilterExpression`.
         :type filter: str or FilterExpression or None
         :param select: Optional list of column logical names to include.
         :type select: list[str] or None
@@ -647,7 +647,7 @@ class RecordOperations:
         :param include_annotations: OData annotation pattern for the
             ``Prefer: odata.include-annotations`` header, or ``None``.
         :type include_annotations: :class:`str` or None
-        :return: Iterator of per-page :class:`~PowerPlatform.Dataverse.models.record.QueryResult` objects.
+        :return: Iterator of per-page :class:`QueryResult` objects.
         :rtype: Iterator[:class:`~PowerPlatform.Dataverse.models.record.QueryResult`]
 
         Example::
@@ -703,7 +703,7 @@ class RecordOperations:
         Example:
             Upsert a single record using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models import UpsertItem
+                from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
                 client.records.upsert("account", [
                     UpsertItem(
@@ -723,7 +723,7 @@ class RecordOperations:
 
             Upsert multiple records using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models import UpsertItem
+                from PowerPlatform.Dataverse.models.upsert import UpsertItem
 
                 client.records.upsert("account", [
                     UpsertItem(
