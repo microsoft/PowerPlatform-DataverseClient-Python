@@ -34,4 +34,29 @@ from .relationship import (
 from .table_info import AlternateKeyInfo, ColumnInfo, TableInfo
 from .upsert import UpsertItem
 
-__all__: list[str] = []
+__all__ = [
+    "AlternateKeyInfo",
+    "BatchItemResponse",
+    "BatchResult",
+    "CascadeConfiguration",
+    "ColumnInfo",
+    "ColumnProxy",
+    "DataverseModel",
+    "ExpandOption",
+    "FetchXmlQuery",
+    "FilterExpression",
+    "Label",
+    "LocalizedLabel",
+    "LookupAttributeMetadata",
+    "ManyToManyRelationshipMetadata",
+    "OneToManyRelationshipMetadata",
+    "QueryBuilder",
+    "QueryParams",
+    "QueryResult",
+    "Record",
+    "RelationshipInfo",
+    "TableInfo",
+    "UpsertItem",
+    "col",
+    "raw",
+]

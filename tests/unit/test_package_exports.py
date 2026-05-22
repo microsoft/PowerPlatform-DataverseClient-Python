@@ -1,20 +1,29 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-"""Tests for package-level imports.
+"""Tests for package-level re-exports.
 
-The three sub-packages (``core``, ``models``, ``operations``) deliberately keep
-``__all__`` empty to avoid creating duplicate doc-tool entries for re-exported
-symbols. Symbols are still importable from the package namespace because
-Python's ``from package import Symbol`` does not consult ``__all__``.
+Each package (``PowerPlatform.Dataverse``, ``core``, ``models``, ``operations``)
+re-exports its public symbols and declares them in ``__all__``. This gives users
+short, stable import paths (``from PowerPlatform.Dataverse.models import Record``)
+that survive internal module reorganization.
 
 These tests verify:
-1. ``__all__`` is empty (locks in the design decision).
-2. Every expected public symbol is still importable from the package namespace.
-3. Each imported symbol is the same object as its source definition.
+1. ``__all__`` matches the expected list exactly (catches accidental drift).
+2. Every name in ``__all__`` is importable from the package namespace.
+3. Each re-export is the same object as its source definition.
 """
 
 import unittest
+
+DATAVERSE_EXPECTED = [
+    "DataverseClient",
+    "DataverseModel",
+    "QueryResult",
+    "__version__",
+    "col",
+    "raw",
+]
 
 CORE_EXPECTED = [
     "DataverseConfig",
@@ -71,14 +80,46 @@ OPERATIONS_EXPECTED = [
 ]
 
 
+class TestDataverseTopLevelExports(unittest.TestCase):
+    """Verify top-level PowerPlatform.Dataverse package exports."""
+
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
+        import PowerPlatform.Dataverse as m
+
+        self.assertEqual(sorted(m.__all__), sorted(DATAVERSE_EXPECTED))
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse as m
+
+        for name in DATAVERSE_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse")
+
+    def test_identity(self):
+        """Re-exported objects are the same objects as their source definitions."""
+        import PowerPlatform.Dataverse as m
+        from PowerPlatform.Dataverse.client import DataverseClient
+        from PowerPlatform.Dataverse.models.filters import col, raw
+        from PowerPlatform.Dataverse.models.protocol import DataverseModel
+        from PowerPlatform.Dataverse.models.record import QueryResult
+
+        self.assertIs(m.DataverseClient, DataverseClient)
+        self.assertIs(m.DataverseModel, DataverseModel)
+        self.assertIs(m.QueryResult, QueryResult)
+        self.assertIs(m.col, col)
+        self.assertIs(m.raw, raw)
+        self.assertIsInstance(m.__version__, str)
+
+
 class TestCoreExports(unittest.TestCase):
     """Verify package-level imports for PowerPlatform.Dataverse.core."""
 
-    def test_all_is_empty(self):
-        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
         import PowerPlatform.Dataverse.core as m
 
-        self.assertEqual(m.__all__, [])
+        self.assertEqual(sorted(m.__all__), sorted(CORE_EXPECTED))
 
     def test_expected_symbols_importable(self):
         """Every expected public symbol is reachable from the package namespace."""
@@ -113,11 +154,11 @@ class TestCoreExports(unittest.TestCase):
 class TestModelsExports(unittest.TestCase):
     """Verify package-level imports for PowerPlatform.Dataverse.models."""
 
-    def test_all_is_empty(self):
-        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
         import PowerPlatform.Dataverse.models as m
 
-        self.assertEqual(m.__all__, [])
+        self.assertEqual(sorted(m.__all__), sorted(MODELS_EXPECTED))
 
     def test_expected_symbols_importable(self):
         """Every expected public symbol is reachable from the package namespace."""
@@ -175,11 +216,11 @@ class TestModelsExports(unittest.TestCase):
 class TestOperationsExports(unittest.TestCase):
     """Verify package-level imports for PowerPlatform.Dataverse.operations."""
 
-    def test_all_is_empty(self):
-        """``__all__`` is deliberately empty to avoid doc-tool duplication."""
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
         import PowerPlatform.Dataverse.operations as m
 
-        self.assertEqual(m.__all__, [])
+        self.assertEqual(sorted(m.__all__), sorted(OPERATIONS_EXPECTED))
 
     def test_expected_symbols_importable(self):
         """Every expected public symbol is reachable from the package namespace."""
