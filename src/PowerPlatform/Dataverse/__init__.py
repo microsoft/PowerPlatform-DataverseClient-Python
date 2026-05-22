@@ -8,10 +8,10 @@ from importlib.metadata import version
 # transitive import of those modules runs.
 __version__ = version("PowerPlatform-Dataverse-Client")
 
-from .client import DataverseClient  # noqa: E402
-from .models.filters import col, raw  # noqa: E402
-from .models.protocol import DataverseModel  # noqa: E402
-from .models.record import QueryResult  # noqa: E402
+from .client import DataverseClient
+from .models.filters import col, raw
+from .models.protocol import DataverseModel
+from .models.record import QueryResult
 
 __all__ = [
     "DataverseClient",

@@ -10,7 +10,7 @@ complex filter conditions.
 
 Example::
 
-    from PowerPlatform.Dataverse.models import col, raw
+    from PowerPlatform.Dataverse.models.filters import col, raw
 
     # Preferred GA idiom — col() proxy
     expr = col("statecode") == 0
@@ -373,7 +373,7 @@ class ColumnProxy:
 
     Example::
 
-        from PowerPlatform.Dataverse.models import col
+        from PowerPlatform.Dataverse.models.filters import col
 
         expr = col("statecode") == 0               # equality
         expr = col("revenue") > 1_000_000          # comparison
@@ -512,7 +512,7 @@ def col(name: str) -> ColumnProxy:
 
     This is the preferred GA idiom for constructing filter expressions::
 
-        from PowerPlatform.Dataverse.models import col
+        from PowerPlatform.Dataverse.models.filters import col
 
         expr = col("statecode") == 0
         expr = col("revenue") > 1_000_000
