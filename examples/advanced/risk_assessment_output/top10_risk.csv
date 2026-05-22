@@ -1,0 +1,11 @@
+name,risk_score,risk_tier,total_cases,high_severity_cases,pipeline_value
+Contoso Ltd,42.5,Medium,0,0,0.0
+Babbage & Co.,42.5,Medium,0,0,0.0
+DF-Batch-A,42.5,Medium,0,0,0.0
+DF-Batch-B,42.5,Medium,0,0,0.0
+Contoso Ltd,42.5,Medium,0,0,0.0
+Babbage & Co.,42.5,Medium,0,0,0.0
+DF-Batch-A,42.5,Medium,0,0,0.0
+DF-Batch-B,42.5,Medium,0,0,0.0
+Contoso Ltd,42.5,Medium,0,0,0.0
+Babbage & Co.,42.5,Medium,0,0,0.0

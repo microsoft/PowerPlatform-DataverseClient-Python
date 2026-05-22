@@ -29,7 +29,7 @@ import time
 
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core import MetadataError
+from PowerPlatform.Dataverse.core.errors import MetadataError
 import requests
 
 # ---------------------------------------------------------------------------

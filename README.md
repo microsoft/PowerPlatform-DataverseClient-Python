@@ -823,7 +823,7 @@ The client raises structured exceptions for different error scenarios:
 
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core import HttpError, ValidationError
+from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 
 try:
     client.records.retrieve("account", "invalid-id")

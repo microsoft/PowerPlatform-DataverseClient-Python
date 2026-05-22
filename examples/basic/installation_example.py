@@ -78,7 +78,7 @@ def validate_imports():
         print(f"  [OK] Client class: PowerPlatform.Dataverse.client.DataverseClient")
 
         # Test submodule imports
-        from PowerPlatform.Dataverse.core import HttpError, MetadataError
+        from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 
         print(f"  [OK] Core errors: HttpError, MetadataError")
 

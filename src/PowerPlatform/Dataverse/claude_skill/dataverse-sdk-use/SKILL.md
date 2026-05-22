@@ -532,7 +532,7 @@ print(f"Succeeded: {len(result.succeeded)}, Failed: {len(result.failed)}")
 The SDK provides structured exceptions with detailed error information:
 
 ```python
-from PowerPlatform.Dataverse.core import (
+from PowerPlatform.Dataverse.core.errors import (
     DataverseError,
     HttpError,
     MetadataError,
