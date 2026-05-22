@@ -10,7 +10,7 @@ against Dataverse tables with method chaining.
 Example::
 
     # Via client (recommended) -- flat iteration over records
-    from PowerPlatform.Dataverse.models.filters import col
+    from PowerPlatform.Dataverse.models import col
 
     for record in (client.query.builder("account")
                    .select("name", "revenue")
@@ -22,7 +22,7 @@ Example::
         print(record["name"])
 
     # With composable expression tree
-    from PowerPlatform.Dataverse.models.filters import col, raw
+    from PowerPlatform.Dataverse.models import col, raw
 
     for record in (client.query.builder("account")
                    .select("name", "revenue")
@@ -245,7 +245,7 @@ class _QueryBuilderBase:
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             query = (QueryBuilder("account")
                      .where((col("statecode") == 0) | (col("statecode") == 1))
@@ -461,7 +461,7 @@ class QueryBuilder(_QueryBuilderBase):
     Example:
         Standalone query construction::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             query = (QueryBuilder("account")
                      .select("name")
@@ -506,7 +506,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             for record in (client.query.builder("account")
                            .select("name")
@@ -587,7 +587,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             for page in (client.query.builder("account")
                          .select("name")
@@ -652,7 +652,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             df = (client.query.builder("account")
                   .select("name", "telephone1")

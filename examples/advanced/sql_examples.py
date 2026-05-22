@@ -46,7 +46,7 @@ from enum import IntEnum
 import pandas as pd
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import MetadataError
+from PowerPlatform.Dataverse.core import MetadataError
 import requests
 
 # ---------------------------------------------------------------------------
@@ -322,7 +322,7 @@ def _run_examples(client):
             "infrastructure. Specify columns explicitly instead.\n"
             "Use client.query.sql_columns('account') to discover column names."
         )
-        from PowerPlatform.Dataverse.core.errors import ValidationError as _VE
+        from PowerPlatform.Dataverse.core import ValidationError as _VE
 
         try:
             client.query.sql(f"SELECT * FROM {parent_table}")

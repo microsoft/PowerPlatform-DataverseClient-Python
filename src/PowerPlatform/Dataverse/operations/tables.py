@@ -344,7 +344,7 @@ class TableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models.relationship import (
+                from PowerPlatform.Dataverse.models import (
                     LookupAttributeMetadata,
                     OneToManyRelationshipMetadata,
                     Label,
@@ -420,7 +420,7 @@ class TableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models.relationship import (
+                from PowerPlatform.Dataverse.models import (
                     ManyToManyRelationshipMetadata,
                 )
 

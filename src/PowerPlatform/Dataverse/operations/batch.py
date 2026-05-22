@@ -327,7 +327,7 @@ class BatchRecordOperations:
 
         Example::
 
-            from PowerPlatform.Dataverse.models.upsert import UpsertItem
+            from PowerPlatform.Dataverse.models import UpsertItem
 
             batch.records.upsert("account", [
                 UpsertItem(

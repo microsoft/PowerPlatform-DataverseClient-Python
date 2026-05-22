@@ -703,7 +703,7 @@ class RecordOperations:
         Example:
             Upsert a single record using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+                from PowerPlatform.Dataverse.models import UpsertItem
 
                 client.records.upsert("account", [
                     UpsertItem(
@@ -723,7 +723,7 @@ class RecordOperations:
 
             Upsert multiple records using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+                from PowerPlatform.Dataverse.models import UpsertItem
 
                 client.records.upsert("account", [
                     UpsertItem(

@@ -209,7 +209,7 @@ a PATCH request; multiple items use the `UpsertMultiple` bulk action.
 > upsert requests will be rejected by Dataverse with a 400 error.
 
 ```python
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
+from PowerPlatform.Dataverse.models import UpsertItem
 
 # Upsert a single record
 client.records.upsert("account", [
@@ -346,7 +346,7 @@ query = (client.query.builder("contact")
 For complex logic (OR, NOT, grouping), compose expressions with `&`, `|`, `~`:
 
 ```python
-from PowerPlatform.Dataverse.models.filters import col
+from PowerPlatform.Dataverse.models import col
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
 for record in (client.query.builder("account")
@@ -397,7 +397,7 @@ if record:
 **Nested expand with options** -- expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
 
 ```python
-from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.models import ExpandOption
 
 # Expand related tasks with filtering and sorting
 for record in (client.query.builder("account")
@@ -614,12 +614,14 @@ client.tables.delete("new_Product")
 Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
 
 ```python
-from PowerPlatform.Dataverse.models.relationship import (
+from PowerPlatform.Dataverse.models import (
+    CascadeConfiguration,
+    Label,
+    LocalizedLabel,
     LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
+    OneToManyRelationshipMetadata,
 )
-from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 # Create a one-to-many relationship: Department (1) -> Employee (N)
 # This adds a "Department" lookup field to the Employee table
@@ -821,7 +823,7 @@ The client raises structured exceptions for different error scenarios:
 
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+from PowerPlatform.Dataverse.core import HttpError, ValidationError
 
 try:
     client.records.retrieve("account", "invalid-id")
@@ -862,8 +864,7 @@ Enable file-based HTTP logging to capture all requests and responses for debuggi
 
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.config import DataverseConfig
-from PowerPlatform.Dataverse.core.log_config import LogConfig
+from PowerPlatform.Dataverse.core import DataverseConfig, LogConfig
 
 log_cfg = LogConfig(
     log_folder="./my_logs",      # Directory for log files (created if missing)

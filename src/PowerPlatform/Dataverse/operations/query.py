@@ -33,7 +33,7 @@ class QueryOperations:
 
     Example::
 
-        from PowerPlatform.Dataverse.models.filters import col
+        from PowerPlatform.Dataverse.models import col
 
         client = DataverseClient(base_url, credential)
 
@@ -72,7 +72,7 @@ class QueryOperations:
         Example:
             Build and execute a query fluently::
 
-                from PowerPlatform.Dataverse.models.filters import col
+                from PowerPlatform.Dataverse.models import col
 
                 for record in (client.query.builder("account")
                                .select("name", "revenue")
@@ -86,7 +86,7 @@ class QueryOperations:
 
             With composable expression tree::
 
-                from PowerPlatform.Dataverse.models.filters import col
+                from PowerPlatform.Dataverse.models import col
 
                 for record in (client.query.builder("account")
                                .where((col("statecode") == 0) | (col("statecode") == 1))
