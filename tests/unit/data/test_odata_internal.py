@@ -1518,6 +1518,11 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_Count", "int")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
 
+    def test_complex_int_dtype(self):
+        """'int' with complex=True produces ComplexIntegerAttributeMetadata."""
+        result = self.od._attribute_payload("new_Count", "int", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata")
+
     def test_integer_dtype_alias(self):
         """'integer' is an alias for 'int'."""
         result = self.od._attribute_payload("new_Count", "integer")
@@ -1527,6 +1532,11 @@ class TestAttributePayload(unittest.TestCase):
         """'decimal' produces DecimalAttributeMetadata."""
         result = self.od._attribute_payload("new_Price", "decimal")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DecimalAttributeMetadata")
+
+    def test_complex_decimal_dtype(self):
+        """'decimal' with complex=True produces ComplexDecimalAttributeMetadata."""
+        result = self.od._attribute_payload("new_Price", "decimal", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDecimalAttributeMetadata")
 
     def test_money_dtype_alias(self):
         """'money' is an alias for 'decimal'."""
@@ -1538,6 +1548,11 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_Score", "float")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DoubleAttributeMetadata")
 
+    def test_complex_float_dtype(self):
+        """'float' with complex=True produces ComplexDoubleAttributeMetadata."""
+        result = self.od._attribute_payload("new_Score", "float", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDoubleAttributeMetadata")
+
     def test_double_dtype_alias(self):
         """'double' is an alias for 'float'."""
         result = self.od._attribute_payload("new_Score", "double")
@@ -1547,6 +1562,11 @@ class TestAttributePayload(unittest.TestCase):
         """'datetime' produces DateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata")
+
+    def test_complex_datetime_dtype(self):
+        """'datetime' with complex=True produces ComplexDateTimeAttributeMetadata."""
+        result = self.od._attribute_payload("new_CreatedDate", "datetime", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexDateTimeAttributeMetadata")
 
     def test_date_dtype_alias(self):
         """'date' is an alias for 'datetime'."""
@@ -1558,6 +1578,11 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_IsActive", "bool")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.BooleanAttributeMetadata")
 
+    def test_complex_bool_dtype(self):
+        """'bool' with complex=True produces ComplexBooleanAttributeMetadata."""
+        result = self.od._attribute_payload("new_IsActive", "bool", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexBooleanAttributeMetadata")
+
     def test_boolean_dtype_alias(self):
         """'boolean' is an alias for 'bool'."""
         result = self.od._attribute_payload("new_IsActive", "boolean")
@@ -1567,6 +1592,11 @@ class TestAttributePayload(unittest.TestCase):
         """'file' produces FileAttributeMetadata."""
         result = self.od._attribute_payload("new_Attachment", "file")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.FileAttributeMetadata")
+
+    def test_complex_file_dtype(self):
+        """'file' with complex=True produces ComplexFileAttributeMetadata."""
+        result = self.od._attribute_payload("new_Attachment", "file", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexFileAttributeMetadata")
 
     def test_non_string_dtype_raises_value_error(self):
         """Non-string dtype raises ValueError."""
@@ -1582,6 +1612,15 @@ class TestAttributePayload(unittest.TestCase):
         self.assertEqual(result["FormatName"], {"Value": "Text"})
         self.assertNotIn("IsPrimaryName", result)
 
+    def test_complex_memo_type(self):
+        """'memo' with complex=True produces ComplexMemoAttributeMetadata with MaxLength 4000."""
+        result = self.od._attribute_payload("new_Notes", "memo", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexMemoAttributeMetadata")
+        self.assertEqual(result["SchemaName"], "new_Notes")
+        self.assertEqual(result["MaxLength"], 4000)
+        self.assertEqual(result["FormatName"], {"Value": "Text"})
+        self.assertNotIn("IsPrimaryName", result)
+
     def test_multiline_alias(self):
         """'multiline' produces identical payload to 'memo'."""
         memo_result = self.od._attribute_payload("new_Description", "memo")
@@ -1592,6 +1631,13 @@ class TestAttributePayload(unittest.TestCase):
         """'string' produces StringAttributeMetadata with MaxLength 200."""
         result = self.od._attribute_payload("new_Title", "string")
         self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.StringAttributeMetadata")
+        self.assertEqual(result["MaxLength"], 200)
+        self.assertEqual(result["FormatName"], {"Value": "Text"})
+
+    def test_complex_string_type_max_length(self):
+        """'string' with complex=True produces ComplexStringAttributeMetadata with MaxLength 200."""
+        result = self.od._attribute_payload("new_Title", "string", complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata")
         self.assertEqual(result["MaxLength"], 200)
         self.assertEqual(result["FormatName"], {"Value": "Text"})
 
@@ -1819,7 +1865,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {}, primary_column_schema_name="new_CustomName")
         post_json = self.od._request.call_args.kwargs["json"]
-        attrs = post_json["Attributes"]
+        attrs = post_json["Entities"][0]["Attributes"]
         primary_attr = next((a for a in attrs if a.get("IsPrimaryName")), None)
         self.assertIsNotNone(primary_attr)
         self.assertEqual(primary_attr["SchemaName"], "new_CustomName")
@@ -1829,7 +1875,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {}, display_name="My Test Table")
         post_json = self.od._request.call_args.kwargs["json"]
-        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        label_value = post_json["Entities"][0]["DisplayName"]["LocalizedLabels"][0]["Label"]
         self.assertEqual(label_value, "My Test Table")
 
     def test_display_name_defaults_to_schema_name(self):
@@ -1837,7 +1883,7 @@ class TestCreateTable(unittest.TestCase):
         self._setup_for_create()
         self.od._create_table("new_TestTable", {})
         post_json = self.od._request.call_args.kwargs["json"]
-        label_value = post_json["DisplayName"]["LocalizedLabels"][0]["Label"]
+        label_value = post_json["Entities"][0]["DisplayName"]["LocalizedLabels"][0]["Label"]
         self.assertEqual(label_value, "new_TestTable")
 
     def test_display_name_empty_string_raises(self):
@@ -2855,7 +2901,7 @@ class TestBuildCreateEntity(unittest.TestCase):
 
     def _body(self, **kwargs):
         req = self.od._build_create_entity("new_TestTable", {}, **kwargs)
-        return json.loads(req.body)
+        return json.loads(req.body)["Entities"][0]
 
     def test_display_name_used_in_payload_when_provided(self):
         """_build_create_entity uses the provided display_name in DisplayName."""
@@ -2894,10 +2940,10 @@ class TestBuildCreateEntity(unittest.TestCase):
         req = self.od._build_create_entity("new_TestTable", {})
         self.assertEqual(req.method, "POST")
 
-    def test_url_targets_entity_definitions(self):
-        """_build_create_entity URL ends with /EntityDefinitions."""
+    def test_url_targets_create_entities(self):
+        """_build_create_entity URL ends with /CreateEntities."""
         req = self.od._build_create_entity("new_TestTable", {})
-        self.assertTrue(req.url.endswith("/EntityDefinitions"))
+        self.assertTrue(req.url.endswith("/CreateEntities"))
 
     def test_solution_appended_to_url(self):
         """_build_create_entity appends SolutionUniqueName to URL when solution is given."""
@@ -2942,7 +2988,7 @@ class TestBuildCreateEntity(unittest.TestCase):
     def test_primary_column_explicit(self):
         """_build_create_entity uses explicit primary_column when provided."""
         req = self.od._build_create_entity("new_TestTable", {}, primary_column="new_CustomName")
-        body = json.loads(req.body)
+        body = json.loads(req.body)["Entities"][0]
         attrs = body["Attributes"]
         primary = next(a for a in attrs if a.get("IsPrimaryName"))
         self.assertEqual(primary["SchemaName"], "new_CustomName")
@@ -2950,7 +2996,7 @@ class TestBuildCreateEntity(unittest.TestCase):
     def test_primary_column_derived_no_prefix(self):
         """Primary column defaults to 'new_Name' when table has no underscore."""
         req = self.od._build_create_entity("TestTable", {})
-        body = json.loads(req.body)
+        body = json.loads(req.body)["Entities"][0]
         primary = next(a for a in body["Attributes"] if a.get("IsPrimaryName"))
         self.assertEqual(primary["SchemaName"], "new_Name")
 
@@ -2961,7 +3007,7 @@ class TestBuildCreateEntity(unittest.TestCase):
         body = (
             self._body.__func__(self, **{})
             if False
-            else json.loads(self.od._build_create_entity("new_TestTable", {"new_Price": "decimal"}).body)
+            else json.loads(self.od._build_create_entity("new_TestTable", {"new_Price": "decimal"}).body)["Entities"][0]
         )
         schemas = [a["SchemaName"] for a in body["Attributes"]]
         self.assertIn("new_Price", schemas)
