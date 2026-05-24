@@ -728,6 +728,26 @@ class TestCreateTable:
         with pytest.raises(TypeError):
             await client._create_table("new_Product", {}, display_name=123)
 
+    async def test_create_table_posts_complex_attribute_metadata(self):
+        """_create_table forwards complex=True so the POST body uses Complex*AttributeMetadata variants."""
+        client = _make_client()
+        not_found = _resp(json_data={"value": []}, status=200)
+        create_resp = _resp(status=204)
+        entity_resp = _resp(
+            json_data=_entity_def(entity_set="new_products", schema="new_Product", logical="new_product"),
+            status=200,
+        )
+        client._request.side_effect = [not_found, create_resp, entity_resp]
+        await client._create_table("new_Product", {"new_Title": "string"})
+        # second call is the CreateEntities POST
+        post_call = client._request.call_args_list[1]
+        body = post_call.kwargs["json"]
+        attrs = body["Entities"][0]["Attributes"]
+        types = [a["@odata.type"] for a in attrs]
+        assert "Microsoft.Dynamics.CRM.ComplexStringAttributeMetadata" in types
+        # primary-name attribute is also string, so both attrs should be Complex variants
+        assert all(t.startswith("Microsoft.Dynamics.CRM.Complex") for t in types)
+
 
 # ---------------------------------------------------------------------------
 # _create_columns() / _delete_columns()
@@ -1716,6 +1736,35 @@ class TestCreateEntityEdgeCases:
         client._get_entity_by_table_schema_name = AsyncMock(return_value={"EntitySetName": "ts", "LogicalName": "t"})
         with pytest.raises(RuntimeError, match="MetadataId missing"):
             await client._create_entity("t", "t", "T", [])
+
+    async def test_create_entity_url_targets_create_entities(self):
+        """_create_entity POSTs to /CreateEntities (not /EntityDefinitions)."""
+        client = _make_client()
+        client._request.return_value = _resp(status=204)
+        client._get_entity_by_table_schema_name = AsyncMock(
+            return_value={"EntitySetName": "ts", "MetadataId": "m1", "LogicalName": "t"}
+        )
+        await client._create_entity("new_table", "New Table", [])
+        args, _ = client._request.call_args
+        url = args[1]
+        assert url.endswith("/CreateEntities")
+
+    async def test_create_entity_payload_wraps_in_entities_array(self):
+        """_create_entity payload wraps the entity body in an Entities[0] array with ComplexEntityMetadata."""
+        client = _make_client()
+        client._request.return_value = _resp(status=204)
+        client._get_entity_by_table_schema_name = AsyncMock(
+            return_value={"EntitySetName": "ts", "MetadataId": "m1", "LogicalName": "t"}
+        )
+        await client._create_entity("new_table", "New Table", [{"SchemaName": "new_col"}])
+        _, kwargs = client._request.call_args
+        body = kwargs["json"]
+        assert "Entities" in body
+        assert isinstance(body["Entities"], list) and len(body["Entities"]) == 1
+        entity = body["Entities"][0]
+        assert entity["@odata.type"] == "Microsoft.Dynamics.CRM.ComplexEntityMetadata"
+        assert entity["SchemaName"] == "new_table"
+        assert entity["Attributes"] == [{"SchemaName": "new_col"}]
 
 
 class TestWaitForAttributeVisibilityWithDelay:
