@@ -1,0 +1,24 @@
+**********************
+PowerShell transcript start
+Start time: 20260518173652
+Username: REDMOND\abelmilash
+RunAs User: REDMOND\abelmilash
+Configuration Name: 
+Machine: LAPTOP-TTK1RHIJ (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.1.0_x64__8wekyb3d8bbwe\pwsh.dll -noexit -command try { . "c:\Users\abelmilash\AppData\Local\Programs\Microsoft VS Code\07ff9d6178\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 25756
+PSVersion: 7.6.1
+PSEdition: Core
+GitCommitId: 7.6.1
+OS: Microsoft Windows 10.0.26100
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.4
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\abelmilash\Repos\PowerPlatform-DataverseClient-Python\functional_testing_output.txt
+[OK] Test record deleted successfully
+Do you want to delete the test table? (y/N): y
+[OK] Test table deleted successfully
+]633;D;0]633;A]633;P;Cwd=C:\x5cUsers\x5cabelmilash\x5cRepos\x5cPowerPlatform-DataverseClient-PythonPS C:\Users\abelmilash\Repos\PowerPlatform-DataverseClient-Python> ]633;B

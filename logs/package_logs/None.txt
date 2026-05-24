@@ -1,0 +1,4 @@
+INFO - py2docfx.convert_prepare.pack - Unpacking to: C:\Users\abelmilash\Repos\PowerPlatform-DataverseClient-Python\.conda\Lib\site-packages\py2docfx\dist_temp\0\powerplatform_dataverse_client-0.1.0b11...OK
+
+INFO - py2docfx.convert_prepare.pack - Unpacking to: C:\Users\abelmilash\Repos\PowerPlatform-DataverseClient-Python\.conda\Lib\site-packages\py2docfx\dist_temp\0\powerplatform_dataverse_client-0.1.0b11...OK
+

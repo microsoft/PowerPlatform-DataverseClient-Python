@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>PowerPlatform.Dataverse.operations.dataframe &#8212; PowerPlatform-Dataverse-Client 0.1.0b11 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/alabaster.css?v=12dfc556" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../../../../_static/documentation_options.js?v=88ca9cf6"></script>
+    <script src="../../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" />
+    <link rel="next" title="PowerPlatform.Dataverse.operations.files" href="../files/index.html" />
+    <link rel="prev" title="PowerPlatform.Dataverse.operations.batch" href="../batch/index.html" />
+   
+  <link rel="stylesheet" href="../../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-PowerPlatform.Dataverse.operations.dataframe">
+<span id="powerplatform-dataverse-operations-dataframe"></span><h1>PowerPlatform.Dataverse.operations.dataframe<a class="headerlink" href="#module-PowerPlatform.Dataverse.operations.dataframe" title="Link to this heading">¶</a></h1>
+<p>DataFrame CRUD operations namespace for the Dataverse SDK.</p>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations" title="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DataFrameOperations</span></code></a></p></td>
+<td><p>Namespace for pandas DataFrame CRUD operations.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.operations.dataframe.</span></span><span class="sig-name descname"><span class="pre">DataFrameOperations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><span class="pre">PowerPlatform.Dataverse.client.DataverseClient</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations" title="Link to this definition">¶</a></dt>
+<dd><p>Namespace for pandas DataFrame CRUD operations.</p>
+<p>Accessed via <code class="docutils literal notranslate"><span class="pre">client.dataframe</span></code>. Provides DataFrame-oriented wrappers
+around the record-level CRUD operations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>client</strong> (<a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><em>DataverseClient</em></a>) – The parent <a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataverseClient</span></code></a> instance.</p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">DataverseClient</span><span class="p">(</span><span class="n">base_url</span><span class="p">,</span> <span class="n">credential</span><span class="p">)</span>
+
+<span class="c1"># Query records as a DataFrame</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span> <span class="n">top</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+
+<span class="c1"># Create records from a DataFrame</span>
+<span class="n">new_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Fabrikam&quot;</span><span class="p">}])</span>
+<span class="n">new_df</span><span class="p">[</span><span class="s2">&quot;accountid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">new_df</span><span class="p">)</span>
+
+<span class="c1"># Update records</span>
+<span class="n">new_df</span><span class="p">[</span><span class="s2">&quot;telephone1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;555-0100&quot;</span><span class="p">,</span> <span class="s2">&quot;555-0200&quot;</span><span class="p">]</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">new_df</span><span class="p">,</span> <span class="n">id_column</span><span class="o">=</span><span class="s2">&quot;accountid&quot;</span><span class="p">)</span>
+
+<span class="c1"># Delete records</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">new_df</span><span class="p">[</span><span class="s2">&quot;accountid&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.sql">
+<span class="sig-name descname"><span class="pre">sql</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sql</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pandas.DataFrame</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.sql" title="Link to this definition">¶</a></dt>
+<dd><p>Execute a SQL query and return the results as a pandas DataFrame.</p>
+<p>Delegates to <a class="reference internal" href="../query/index.html#PowerPlatform.Dataverse.operations.query.QueryOperations.sql" title="PowerPlatform.Dataverse.operations.query.QueryOperations.sql"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sql()</span></code></a>
+and converts the list of records into a single DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>sql</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Supported SQL SELECT statement.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataFrame containing all result rows. Returns an empty
+DataFrame when no rows match.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>DataFrame</em></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../../core/errors/index.html#PowerPlatform.Dataverse.core.errors.ValidationError" title="PowerPlatform.Dataverse.core.errors.ValidationError"><strong>ValidationError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">sql</span></code> is not a string or is empty.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>SQL query to DataFrame:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span>
+    <span class="s2">&quot;SELECT TOP 100 name, revenue FROM account &quot;</span>
+    <span class="s2">&quot;WHERE statecode = 0 ORDER BY revenue&quot;</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="si">}</span><span class="s2"> rows&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>Aggregate query to DataFrame:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span>
+    <span class="s2">&quot;SELECT a.name, COUNT(c.contactid) as cnt &quot;</span>
+    <span class="s2">&quot;FROM account a &quot;</span>
+    <span class="s2">&quot;JOIN contact c ON a.accountid = c.parentcustomerid &quot;</span>
+    <span class="s2">&quot;GROUP BY a.name&quot;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">record_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orderby</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expand</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_annotations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pandas.DataFrame</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.get" title="Link to this definition">¶</a></dt>
+<dd><p>Fetch records and return as a single pandas DataFrame.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">record_id</span></code> is provided, returns a single-row DataFrame.
+When <code class="docutils literal notranslate"><span class="pre">record_id</span></code> is None, internally iterates all pages and returns one
+consolidated DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>record_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Optional GUID to fetch a specific record. If None, queries multiple records.</p></li>
+<li><p><strong>select</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of attribute logical names to retrieve.</p></li>
+<li><p><strong>filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Optional OData filter string. Column names must use exact lowercase logical names.</p></li>
+<li><p><strong>orderby</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of attributes to sort by.</p></li>
+<li><p><strong>top</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> or None) – Optional maximum number of records to return.</p></li>
+<li><p><strong>expand</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of navigation properties to expand (case-sensitive).</p></li>
+<li><p><strong>page_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> or None) – Optional number of records per page for pagination.</p></li>
+<li><p><strong>count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, adds <code class="docutils literal notranslate"><span class="pre">$count=true</span></code> to include a total
+record count in the response.</p></li>
+<li><p><strong>include_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – OData annotation pattern for the
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.include-annotations</span></code> header (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;*&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;OData.Community.Display.V1.FormattedValue&quot;</span></code>), or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataFrame containing all matching records. Returns an empty DataFrame
+when no records match.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>DataFrame</em></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">record_id</span></code> is not a non-empty string, or if
+query parameters (<code class="docutils literal notranslate"><span class="pre">filter</span></code>, <code class="docutils literal notranslate"><span class="pre">orderby</span></code>, <code class="docutils literal notranslate"><span class="pre">top</span></code>, <code class="docutils literal notranslate"><span class="pre">expand</span></code>,
+<code class="docutils literal notranslate"><span class="pre">page_size</span></code>) are provided alongside <code class="docutils literal notranslate"><span class="pre">record_id</span></code>.</p>
+</dd>
+</dl>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>For large tables, use <code class="docutils literal notranslate"><span class="pre">top</span></code> or <code class="docutils literal notranslate"><span class="pre">filter</span></code> to limit the result set.</p>
+</div>
+<p class="rubric">Example</p>
+<p>Fetch a single record as a DataFrame:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">record_id</span><span class="o">=</span><span class="n">account_id</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Query with filtering:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="s2">&quot;statecode eq 0&quot;</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="si">}</span><span class="s2"> active accounts&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Limit result size:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span> <span class="n">top</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">records</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pandas.Series</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create records from a pandas DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>records</strong> (<em>DataFrame</em>) – DataFrame where each row is a record to create.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Series of created record GUIDs, aligned with the input DataFrame index.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Series</em></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">records</span></code> is not a pandas DataFrame.</p></li>
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">records</span></code> is empty or the number of returned
+IDs does not match the number of input rows.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>All rows are sent in a single <code class="docutils literal notranslate"><span class="pre">CreateMultiple</span></code> request. For very
+large DataFrames, consider splitting into smaller batches to avoid
+request timeouts.</p>
+</div>
+<p class="rubric">Example</p>
+<p>Create records from a DataFrame:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0100&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Fabrikam&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0200&quot;</span><span class="p">},</span>
+<span class="p">])</span>
+<span class="n">df</span><span class="p">[</span><span class="s2">&quot;accountid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id_column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clear_nulls</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.update" title="Link to this definition">¶</a></dt>
+<dd><p>Update records from a pandas DataFrame.</p>
+<p>Each row in the DataFrame represents an update. The <code class="docutils literal notranslate"><span class="pre">id_column</span></code> specifies which
+column contains the record GUIDs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>changes</strong> (<em>DataFrame</em>) – DataFrame where each row contains a record GUID and the fields to update.</p></li>
+<li><p><strong>id_column</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of the DataFrame column containing record GUIDs.</p></li>
+<li><p><strong>clear_nulls</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – When <code class="docutils literal notranslate"><span class="pre">False</span></code> (default), missing values (NaN/None) are skipped
+(the field is left unchanged on the server). When <code class="docutils literal notranslate"><span class="pre">True</span></code>, missing values are sent
+as <code class="docutils literal notranslate"><span class="pre">null</span></code> to Dataverse, clearing the field. Use <code class="docutils literal notranslate"><span class="pre">True</span></code> only when you intentionally
+want NaN/None values to clear fields.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">changes</span></code> is not a pandas DataFrame.</p></li>
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">changes</span></code> is empty, <code class="docutils literal notranslate"><span class="pre">id_column</span></code> is not found in the
+DataFrame, <code class="docutils literal notranslate"><span class="pre">id_column</span></code> contains invalid (non-string, empty, or whitespace-only)
+values, or no updatable columns exist besides <code class="docutils literal notranslate"><span class="pre">id_column</span></code>.
+When <code class="docutils literal notranslate"><span class="pre">clear_nulls</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code> (default), rows where all change values
+are NaN/None produce empty patches and are silently skipped. If all rows
+are skipped, the method returns without making an API call. When
+<code class="docutils literal notranslate"><span class="pre">clear_nulls</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code>, NaN/None values become explicit nulls, so
+rows are never skipped.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>All rows are sent in a single <code class="docutils literal notranslate"><span class="pre">UpdateMultiple</span></code> request (or a
+single PATCH for one row). For very large DataFrames, consider
+splitting into smaller batches to avoid request timeouts.</p>
+</div>
+<p class="rubric">Example</p>
+<p>Update records with different values per row:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span>
+    <span class="p">{</span><span class="s2">&quot;accountid&quot;</span><span class="p">:</span> <span class="s2">&quot;guid-1&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0100&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;accountid&quot;</span><span class="p">:</span> <span class="s2">&quot;guid-2&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0200&quot;</span><span class="p">},</span>
+<span class="p">])</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">id_column</span><span class="o">=</span><span class="s2">&quot;accountid&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Broadcast the same change to all records:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;accountid&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;guid-1&quot;</span><span class="p">,</span> <span class="s2">&quot;guid-2&quot;</span><span class="p">,</span> <span class="s2">&quot;guid-3&quot;</span><span class="p">]})</span>
+<span class="n">df</span><span class="p">[</span><span class="s2">&quot;websiteurl&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;https://example.com&quot;</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">id_column</span><span class="o">=</span><span class="s2">&quot;accountid&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Clear a field by setting clear_nulls=True:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([{</span><span class="s2">&quot;accountid&quot;</span><span class="p">:</span> <span class="s2">&quot;guid-1&quot;</span><span class="p">,</span> <span class="s2">&quot;websiteurl&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}])</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">id_column</span><span class="o">=</span><span class="s2">&quot;accountid&quot;</span><span class="p">,</span> <span class="n">clear_nulls</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.delete">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.Series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bulk_delete</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.dataframe.DataFrameOperations.delete" title="Link to this definition">¶</a></dt>
+<dd><p>Delete records by passing a pandas Series of GUIDs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>ids</strong> (<em>Series</em>) – Series of record GUIDs to delete.</p></li>
+<li><p><strong>use_bulk_delete</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – When <code class="docutils literal notranslate"><span class="pre">True</span></code> (default) and <code class="docutils literal notranslate"><span class="pre">ids</span></code> contains multiple values, execute the BulkDelete
+action and return its async job identifier. When <code class="docutils literal notranslate"><span class="pre">False</span></code> each record is deleted sequentially.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">ids</span></code> is not a pandas Series.</p></li>
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">ids</span></code> contains invalid (non-string, empty, or
+whitespace-only) values.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>BulkDelete job ID when deleting multiple records via BulkDelete;
+<code class="docutils literal notranslate"><span class="pre">None</span></code> when deleting a single record, using sequential deletion, or
+when <code class="docutils literal notranslate"><span class="pre">ids</span></code> is empty.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Delete records using a Series:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">ids</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s2">&quot;guid-1&quot;</span><span class="p">,</span> <span class="s2">&quot;guid-2&quot;</span><span class="p">,</span> <span class="s2">&quot;guid-3&quot;</span><span class="p">])</span>
+<span class="n">client</span><span class="o">.</span><span class="n">dataframe</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">ids</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../../index.html">PowerPlatform-Dataverse-Client</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../../index.html">PowerPlatform</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../../index.html">API Reference</a><ul>
+  <li><a href="../../../index.html">PowerPlatform</a><ul>
+  <li><a href="../../index.html">PowerPlatform.Dataverse</a><ul>
+  <li><a href="../index.html">PowerPlatform.Dataverse.operations</a><ul>
+      <li>Previous: <a href="../batch/index.html" title="previous chapter">PowerPlatform.Dataverse.operations.batch</a></li>
+      <li>Next: <a href="../files/index.html" title="next chapter">PowerPlatform.Dataverse.operations.files</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="../../../../../_sources/autoapi/PowerPlatform/Dataverse/operations/dataframe/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

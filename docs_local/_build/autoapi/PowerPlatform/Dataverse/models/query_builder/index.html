@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>PowerPlatform.Dataverse.models.query_builder &#8212; PowerPlatform-Dataverse-Client 0.1.0b11 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/alabaster.css?v=12dfc556" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../../../../_static/documentation_options.js?v=88ca9cf6"></script>
+    <script src="../../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" />
+    <link rel="next" title="PowerPlatform.Dataverse.models.record" href="../record/index.html" />
+    <link rel="prev" title="PowerPlatform.Dataverse.models.protocol" href="../protocol/index.html" />
+   
+  <link rel="stylesheet" href="../../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-PowerPlatform.Dataverse.models.query_builder">
+<span id="powerplatform-dataverse-models-query-builder"></span><h1>PowerPlatform.Dataverse.models.query_builder<a class="headerlink" href="#module-PowerPlatform.Dataverse.models.query_builder" title="Link to this heading">¶</a></h1>
+<p>Fluent query builder for constructing OData queries.</p>
+<p>Provides a type-safe, discoverable interface for building complex queries
+against Dataverse tables with method chaining.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Via client (recommended) -- flat iteration over records</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;revenue&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1_000_000</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">,</span> <span class="n">descending</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">execute</span><span class="p">()):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+
+<span class="c1"># With composable expression tree</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span><span class="p">,</span> <span class="n">raw</span>
+
+<span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;revenue&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">))</span>
+               <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">100000</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">execute</span><span class="p">()):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+
+<span class="c1"># Lazy paged iteration (one QueryResult per HTTP page)</span>
+<span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">execute_pages</span><span class="p">()):</span>
+    <span class="n">process_batch</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+
+<span class="c1"># Get results as a pandas DataFrame</span>
+<span class="n">df</span> <span class="o">=</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+      <span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span>
+</pre></div>
+</div>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams" title="PowerPlatform.Dataverse.models.query_builder.QueryParams"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QueryParams</span></code></a></p></td>
+<td><p>Typed dictionary returned by <code class="docutils literal notranslate"><span class="pre">QueryBuilder.build()</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="PowerPlatform.Dataverse.models.query_builder.ExpandOption"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ExpandOption</span></code></a></p></td>
+<td><p>Structured options for an <code class="docutils literal notranslate"><span class="pre">$expand</span></code> navigation property.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder" title="PowerPlatform.Dataverse.models.query_builder.QueryBuilder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QueryBuilder</span></code></a></p></td>
+<td><p>Fluent interface for building and executing OData queries against a sync client.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.query_builder.</span></span><span class="sig-name descname"><span class="pre">QueryParams</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">TypedDict</span></code></p>
+<p>Typed dictionary returned by <code class="docutils literal notranslate"><span class="pre">QueryBuilder.build()</span></code>.</p>
+<p>Provides IDE autocomplete when passing build results to
+<code class="docutils literal notranslate"><span class="pre">client.records.list()</span></code> manually.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.table">
+<span class="sig-name descname"><span class="pre">table</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.table" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.select">
+<span class="sig-name descname"><span class="pre">select</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.select" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.filter">
+<span class="sig-name descname"><span class="pre">filter</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.filter" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.orderby">
+<span class="sig-name descname"><span class="pre">orderby</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.orderby" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.expand">
+<span class="sig-name descname"><span class="pre">expand</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.expand" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.top">
+<span class="sig-name descname"><span class="pre">top</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.top" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.page_size">
+<span class="sig-name descname"><span class="pre">page_size</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.page_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.count">
+<span class="sig-name descname"><span class="pre">count</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.count" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryParams.include_annotations">
+<span class="sig-name descname"><span class="pre">include_annotations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryParams.include_annotations" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.query_builder.</span></span><span class="sig-name descname"><span class="pre">ExpandOption</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">relation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="Link to this definition">¶</a></dt>
+<dd><p>Structured options for an <code class="docutils literal notranslate"><span class="pre">$expand</span></code> navigation property.</p>
+<p>Allows specifying nested <code class="docutils literal notranslate"><span class="pre">$select</span></code>, <code class="docutils literal notranslate"><span class="pre">$filter</span></code>, <code class="docutils literal notranslate"><span class="pre">$orderby</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">$top</span></code> options for a single navigation property expansion, following
+the OData <code class="docutils literal notranslate"><span class="pre">$expand</span></code> syntax.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>relation</strong> (<em>str</em>) – Navigation property name (case-sensitive).</p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Expand Account_Tasks with nested options</span>
+<span class="n">opt</span> <span class="o">=</span> <span class="p">(</span><span class="n">ExpandOption</span><span class="p">(</span><span class="s2">&quot;Account_Tasks&quot;</span><span class="p">)</span>
+       <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;subject&quot;</span><span class="p">,</span> <span class="s2">&quot;createdon&quot;</span><span class="p">)</span>
+       <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">&quot;contains(subject,&#39;Task&#39;)&quot;</span><span class="p">)</span>
+       <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;createdon&quot;</span><span class="p">,</span> <span class="n">descending</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+       <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+
+<span class="n">query</span> <span class="o">=</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="n">opt</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">execute</span><span class="p">())</span>
+</pre></div>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.relation">
+<span class="sig-name descname"><span class="pre">relation</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.relation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.select">
+<span class="sig-name descname"><span class="pre">select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">columns</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="PowerPlatform.Dataverse.models.query_builder.ExpandOption"><span class="pre">ExpandOption</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.select" title="Link to this definition">¶</a></dt>
+<dd><p>Select specific columns from the expanded entity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>columns</strong> – Column names to select.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self for method chaining.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.filter">
+<span class="sig-name descname"><span class="pre">filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_str</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="PowerPlatform.Dataverse.models.query_builder.ExpandOption"><span class="pre">ExpandOption</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.filter" title="Link to this definition">¶</a></dt>
+<dd><p>Filter the expanded collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_str</strong> – OData <code class="docutils literal notranslate"><span class="pre">$filter</span></code> expression.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self for method chaining.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.order_by">
+<span class="sig-name descname"><span class="pre">order_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">descending</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="PowerPlatform.Dataverse.models.query_builder.ExpandOption"><span class="pre">ExpandOption</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.order_by" title="Link to this definition">¶</a></dt>
+<dd><p>Sort the expanded collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>column</strong> – Column name to sort by.</p></li>
+<li><p><strong>descending</strong> – Sort descending if <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self for method chaining.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.top">
+<span class="sig-name descname"><span class="pre">top</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption" title="PowerPlatform.Dataverse.models.query_builder.ExpandOption"><span class="pre">ExpandOption</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.top" title="Link to this definition">¶</a></dt>
+<dd><p>Limit expanded results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>count</strong> – Maximum number of expanded records.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self for method chaining.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.ExpandOption.to_odata">
+<span class="sig-name descname"><span class="pre">to_odata</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.ExpandOption.to_odata" title="Link to this definition">¶</a></dt>
+<dd><p>Compile to OData <code class="docutils literal notranslate"><span class="pre">$expand</span></code> syntax.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>OData expand string like <code class="docutils literal notranslate"><span class="pre">&quot;Nav($select=col1,col2;$filter=...)&quot;</span></code></p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryBuilder">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.query_builder.</span></span><span class="sig-name descname"><span class="pre">QueryBuilder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">_QueryBuilderBase</span></code></p>
+<p>Fluent interface for building and executing OData queries against a sync client.</p>
+<p>Provides method chaining for constructing complex queries with
+composable filter expressions. Can be used standalone (via <code class="docutils literal notranslate"><span class="pre">build()</span></code>)
+or bound to a client (via <a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute" title="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>table</strong> (<em>str</em>) – Table schema name to query.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">table</span></code> is empty.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Standalone query construction:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="n">query</span> <span class="o">=</span> <span class="p">(</span><span class="n">QueryBuilder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+         <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="n">params</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">build</span><span class="p">()</span>
+<span class="c1"># {&quot;table&quot;: &quot;account&quot;, &quot;select&quot;: [&quot;name&quot;],</span>
+<span class="c1">#  &quot;filter&quot;: &quot;statecode eq 0&quot;, &quot;top&quot;: 10}</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute">
+<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_page</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_BY_PAGE_UNSET</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><span class="pre">PowerPlatform.Dataverse.models.record.QueryResult</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><span class="pre">PowerPlatform.Dataverse.models.record.QueryResult</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute" title="Link to this definition">¶</a></dt>
+<dd><p>Execute the query and return results.</p>
+<p>Returns a <a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>
+with all pages collected. Use <a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages" title="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute_pages()</span></code></a> for lazy per-page
+iteration.</p>
+<p>This method is only available when the QueryBuilder was created
+via <code class="docutils literal notranslate"><span class="pre">client.query.builder(table)</span></code>.  Standalone <code class="docutils literal notranslate"><span class="pre">QueryBuilder</span></code>
+instances should use <code class="docutils literal notranslate"><span class="pre">build()</span></code> to get parameters and pass them
+to <code class="docutils literal notranslate"><span class="pre">client.records.list()</span></code> manually.</p>
+<p>At least one of <code class="docutils literal notranslate"><span class="pre">select()</span></code>, <code class="docutils literal notranslate"><span class="pre">where()</span></code>, or <code class="docutils literal notranslate"><span class="pre">top()</span></code> must be
+called before <code class="docutils literal notranslate"><span class="pre">execute()</span></code>; otherwise a <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code> is
+raised to prevent accidental full-table scans.</p>
+<div class="deprecated">
+<p><span class="versionmodified deprecated">Deprecated since version The: </span><code class="docutils literal notranslate"><span class="pre">by_page</span></code> parameter is deprecated. Use <a class="reference internal" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages" title="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute_pages()</span></code></a>
+for lazy per-page iteration, or plain <code class="docutils literal notranslate"><span class="pre">execute()</span></code> (no flag) for
+the default eager result.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>
+with all pages collected (default), or page iterator (deprecated
+<code class="docutils literal notranslate"><span class="pre">by_page=True</span></code>).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult">QueryResult</a> or Iterator[<a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult">QueryResult</a>]</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If no <code class="docutils literal notranslate"><span class="pre">select</span></code>, <code class="docutils literal notranslate"><span class="pre">where</span></code>, or <code class="docutils literal notranslate"><span class="pre">top</span></code>
+constraint has been set.</p></li>
+<li><p><strong>RuntimeError</strong> – If the query was not created via
+<code class="docutils literal notranslate"><span class="pre">client.query.builder()</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+               <span class="o">.</span><span class="n">execute</span><span class="p">()):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages">
+<span class="sig-name descname"><span class="pre">execute_pages</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><span class="pre">PowerPlatform.Dataverse.models.record.QueryResult</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.execute_pages" title="Link to this definition">¶</a></dt>
+<dd><p>Lazily yield one <a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>
+per HTTP page.</p>
+<p>Each iteration triggers a network request via <code class="docutils literal notranslate"><span class="pre">&#64;odata.nextLink</span></code>.
+One-shot — do not iterate more than once.</p>
+<p>At least one of <code class="docutils literal notranslate"><span class="pre">select()</span></code>, <code class="docutils literal notranslate"><span class="pre">where()</span></code>, or <code class="docutils literal notranslate"><span class="pre">top()</span></code> must be
+called before <code class="docutils literal notranslate"><span class="pre">execute_pages()</span></code>; otherwise a <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code> is
+raised to prevent accidental full-table scans.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Iterator of per-page <a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Iterator[<a class="reference internal" href="../record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult">QueryResult</a>]</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If no <code class="docutils literal notranslate"><span class="pre">select</span></code>, <code class="docutils literal notranslate"><span class="pre">where</span></code>, or <code class="docutils literal notranslate"><span class="pre">top</span></code>
+constraint has been set.</p></li>
+<li><p><strong>RuntimeError</strong> – If the query was not created via
+<code class="docutils literal notranslate"><span class="pre">client.query.builder()</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">execute_pages</span><span class="p">()):</span>
+    <span class="n">process</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.query_builder.QueryBuilder.to_dataframe">
+<span class="sig-name descname"><span class="pre">to_dataframe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pandas.DataFrame</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.query_builder.QueryBuilder.to_dataframe" title="Link to this definition">¶</a></dt>
+<dd><p>Execute the query and return results as a pandas DataFrame.</p>
+<div class="deprecated">
+<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">QueryBuilder.execute().to_dataframe()</span></code> instead.
+<code class="docutils literal notranslate"><span class="pre">QueryBuilder.to_dataframe()</span></code> will be removed in a future release.</p>
+</div>
+<p>All pages are consolidated into a single DataFrame.</p>
+<p>This method is only available when the QueryBuilder was created
+via <code class="docutils literal notranslate"><span class="pre">client.query.builder(table)</span></code>.</p>
+<p>At least one of <code class="docutils literal notranslate"><span class="pre">select()</span></code>, <code class="docutils literal notranslate"><span class="pre">where()</span></code>, or <code class="docutils literal notranslate"><span class="pre">top()</span></code> must be
+called before <code class="docutils literal notranslate"><span class="pre">to_dataframe()</span></code>; otherwise a <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code>
+is raised to prevent accidental full-table scans.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DataFrame containing all matching records. Returns an empty
+DataFrame when no records match.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>DataFrame</em></p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If no <code class="docutils literal notranslate"><span class="pre">select</span></code>, <code class="docutils literal notranslate"><span class="pre">where</span></code>, or <code class="docutils literal notranslate"><span class="pre">top</span></code>
+constraint has been set.</p></li>
+<li><p><strong>RuntimeError</strong> – If the query was not created via
+<code class="docutils literal notranslate"><span class="pre">client.query.builder()</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">builder</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+      <span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+      <span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../../index.html">PowerPlatform-Dataverse-Client</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../../index.html">PowerPlatform</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../../index.html">API Reference</a><ul>
+  <li><a href="../../../index.html">PowerPlatform</a><ul>
+  <li><a href="../../index.html">PowerPlatform.Dataverse</a><ul>
+  <li><a href="../index.html">PowerPlatform.Dataverse.models</a><ul>
+      <li>Previous: <a href="../protocol/index.html" title="previous chapter">PowerPlatform.Dataverse.models.protocol</a></li>
+      <li>Next: <a href="../record/index.html" title="next chapter">PowerPlatform.Dataverse.models.record</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="../../../../../_sources/autoapi/PowerPlatform/Dataverse/models/query_builder/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

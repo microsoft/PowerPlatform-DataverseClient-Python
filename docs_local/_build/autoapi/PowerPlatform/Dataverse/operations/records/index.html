@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>PowerPlatform.Dataverse.operations.records &#8212; PowerPlatform-Dataverse-Client 0.1.0b11 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/alabaster.css?v=12dfc556" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../../../../_static/documentation_options.js?v=88ca9cf6"></script>
+    <script src="../../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" />
+    <link rel="next" title="PowerPlatform.Dataverse.operations.tables" href="../tables/index.html" />
+    <link rel="prev" title="PowerPlatform.Dataverse.operations.query" href="../query/index.html" />
+   
+  <link rel="stylesheet" href="../../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-PowerPlatform.Dataverse.operations.records">
+<span id="powerplatform-dataverse-operations-records"></span><h1>PowerPlatform.Dataverse.operations.records<a class="headerlink" href="#module-PowerPlatform.Dataverse.operations.records" title="Link to this heading">¶</a></h1>
+<p>Record CRUD operations namespace for the Dataverse SDK.</p>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.operations.records.RecordOperations" title="PowerPlatform.Dataverse.operations.records.RecordOperations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">RecordOperations</span></code></a></p></td>
+<td><p>Namespace for record-level CRUD operations.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.operations.records.</span></span><span class="sig-name descname"><span class="pre">RecordOperations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><span class="pre">PowerPlatform.Dataverse.client.DataverseClient</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations" title="Link to this definition">¶</a></dt>
+<dd><p>Namespace for record-level CRUD operations.</p>
+<p>Accessed via <code class="docutils literal notranslate"><span class="pre">client.records</span></code>. Provides create, update, delete, and get
+operations on individual Dataverse records.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>client</strong> (<a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><em>DataverseClient</em></a>) – The parent <a class="reference internal" href="../../client/index.html#PowerPlatform.Dataverse.client.DataverseClient" title="PowerPlatform.Dataverse.client.DataverseClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataverseClient</span></code></a> instance.</p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span> <span class="o">=</span> <span class="n">DataverseClient</span><span class="p">(</span><span class="n">base_url</span><span class="p">,</span> <span class="n">credential</span><span class="p">)</span>
+
+<span class="c1"># Create a single record</span>
+<span class="n">guid</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso Ltd&quot;</span><span class="p">})</span>
+
+<span class="c1"># Get a record</span>
+<span class="n">record</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">guid</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+
+<span class="c1"># Update a record</span>
+<span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">guid</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0100&quot;</span><span class="p">})</span>
+
+<span class="c1"># Delete a record</span>
+<span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">guid</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.create" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Create one or more records in a Dataverse table.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">data</span></code> is a single dictionary, creates one record and returns its
+GUID as a string. When <code class="docutils literal notranslate"><span class="pre">data</span></code> is a list of dictionaries, creates all
+records via the <code class="docutils literal notranslate"><span class="pre">CreateMultiple</span></code> action and returns a list of GUIDs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>data</strong> (<em>dict</em><em> or </em><em>list</em><em>[</em><em>dict</em><em>]</em>) – A single record dictionary or a list of record dictionaries.
+Each dictionary maps column schema names to values.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A single GUID string for a single record, or a list of GUID
+strings for bulk creation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str or list[str]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">data</span></code> is not a dict or list[dict].</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Create a single record:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">guid</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso&quot;</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Created: </span><span class="si">{</span><span class="n">guid</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Create multiple records:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">guids</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Fabrikam&quot;</span><span class="p">},</span>
+<span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Created </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">guids</span><span class="p">)</span><span class="si">}</span><span class="s2"> accounts&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">changes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.update" title="Link to this definition">¶</a></dt>
+<dd><p>Update one or more records in a Dataverse table.</p>
+<p>Supports three usage patterns:</p>
+<ol class="arabic simple">
+<li><p><strong>Single</strong> – <code class="docutils literal notranslate"><span class="pre">update(&quot;account&quot;,</span> <span class="pre">&quot;guid&quot;,</span> <span class="pre">{&quot;name&quot;:</span> <span class="pre">&quot;New&quot;})</span></code></p></li>
+<li><p><strong>Broadcast</strong> – <code class="docutils literal notranslate"><span class="pre">update(&quot;account&quot;,</span> <span class="pre">[id1,</span> <span class="pre">id2],</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">1})</span></code>
+applies the same changes dict to every ID.</p></li>
+<li><p><strong>Paired</strong> – <code class="docutils literal notranslate"><span class="pre">update(&quot;account&quot;,</span> <span class="pre">[id1,</span> <span class="pre">id2],</span> <span class="pre">[ch1,</span> <span class="pre">ch2])</span></code>
+applies each changes dict to its corresponding ID (lists must be
+equal length).</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code>).</p></li>
+<li><p><strong>ids</strong> (<em>str</em><em> or </em><em>list</em><em>[</em><em>str</em><em>]</em>) – A single GUID string, or a list of GUID strings.</p></li>
+<li><p><strong>changes</strong> (<em>dict</em><em> or </em><em>list</em><em>[</em><em>dict</em><em>]</em>) – A dictionary of field changes (single/broadcast), or a
+list of dictionaries (paired, one per ID).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">ids</span></code> is not str or list[str], or if <code class="docutils literal notranslate"><span class="pre">changes</span></code>
+does not match the expected pattern.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Single update:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">account_id</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;telephone1&quot;</span><span class="p">:</span> <span class="s2">&quot;555-0100&quot;</span><span class="p">})</span>
+</pre></div>
+</div>
+<p>Broadcast update:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">id1</span><span class="p">,</span> <span class="n">id2</span><span class="p">],</span> <span class="p">{</span><span class="s2">&quot;statecode&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+</pre></div>
+</div>
+<p>Paired update:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span>
+    <span class="p">[</span><span class="n">id1</span><span class="p">,</span> <span class="n">id2</span><span class="p">],</span>
+    <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Name A&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Name B&quot;</span><span class="p">}],</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.delete">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.delete" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bulk_delete</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span></dt>
+<dd><p>Delete one or more records from a Dataverse table.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">ids</span></code> is a single string, deletes that one record. When <code class="docutils literal notranslate"><span class="pre">ids</span></code>
+is a list, either executes a BulkDelete action (returning the async job
+ID) or deletes each record sequentially depending on <code class="docutils literal notranslate"><span class="pre">use_bulk_delete</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code>).</p></li>
+<li><p><strong>ids</strong> (<em>str</em><em> or </em><em>list</em><em>[</em><em>str</em><em>]</em>) – A single GUID string, or a list of GUID strings.</p></li>
+<li><p><strong>use_bulk_delete</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – When True (default) and <code class="docutils literal notranslate"><span class="pre">ids</span></code> is a list, use
+the BulkDelete action and return its async job ID. When False, delete
+records one at a time.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The BulkDelete job ID when bulk-deleting; otherwise None.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">ids</span></code> is not str or list[str].</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Delete a single record:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">account_id</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Bulk delete:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">job_id</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">id1</span><span class="p">,</span> <span class="n">id2</span><span class="p">,</span> <span class="n">id3</span><span class="p">])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">record_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><span class="pre">PowerPlatform.Dataverse.models.record.Record</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.get" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orderby</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expand</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_annotations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><span class="pre">PowerPlatform.Dataverse.models.record.Record</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Fetch a single record by ID, or fetch multiple records with pagination.</p>
+<p>This method has two usage patterns:</p>
+<p><strong>Fetch a single record</strong> – <code class="docutils literal notranslate"><span class="pre">get(table,</span> <span class="pre">record_id,</span> <span class="pre">*,</span> <span class="pre">select=...)</span></code></p>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">record_id</span></code> as a positional argument to retrieve one record
+and get back a <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>. Query parameters (<code class="docutils literal notranslate"><span class="pre">filter</span></code>,
+<code class="docutils literal notranslate"><span class="pre">orderby</span></code>, <code class="docutils literal notranslate"><span class="pre">top</span></code>, <code class="docutils literal notranslate"><span class="pre">expand</span></code>, <code class="docutils literal notranslate"><span class="pre">page_size</span></code>) must not be provided.</p>
+<p><strong>Fetch multiple records</strong> – <code class="docutils literal notranslate"><span class="pre">get(table,</span> <span class="pre">*,</span> <span class="pre">select=...,</span> <span class="pre">filter=...,</span> <span class="pre">...)</span></code></p>
+<p>Omit <code class="docutils literal notranslate"><span class="pre">record_id</span></code> to perform a paginated fetch and get back a
+generator that yields one page (list of record dicts) at a time.
+Automatically follows <code class="docutils literal notranslate"><span class="pre">&#64;odata.nextLink</span></code> for server-side paging.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>record_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – GUID of the record to retrieve. When omitted,
+performs a multi-record fetch instead.</p></li>
+<li><p><strong>select</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of column logical names to include.
+Column names are automatically lowercased.</p></li>
+<li><p><strong>filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Optional OData <code class="docutils literal notranslate"><span class="pre">$filter</span></code> expression (e.g.
+<code class="docutils literal notranslate"><span class="pre">&quot;name</span> <span class="pre">eq</span> <span class="pre">'Contoso'&quot;</span></code>). Column names in filter expressions must
+use exact lowercase logical names. Only used for multi-record
+queries.</p></li>
+<li><p><strong>orderby</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of sort expressions (e.g.
+<code class="docutils literal notranslate"><span class="pre">[&quot;name</span> <span class="pre">asc&quot;,</span> <span class="pre">&quot;createdon</span> <span class="pre">desc&quot;]</span></code>). Column names are
+automatically lowercased. Only used for multi-record queries.</p></li>
+<li><p><strong>top</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> or None) – Optional maximum total number of records to return. Only
+used for multi-record queries.</p></li>
+<li><p><strong>expand</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of navigation properties to expand (e.g.
+<code class="docutils literal notranslate"><span class="pre">[&quot;primarycontactid&quot;]</span></code>). Case-sensitive; must match
+server-defined names exactly. Only used for multi-record queries.</p></li>
+<li><p><strong>page_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> or None) – Optional per-page size hint sent via
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.maxpagesize</span></code>. Only used for multi-record queries.</p></li>
+<li><p><strong>count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, adds <code class="docutils literal notranslate"><span class="pre">$count=true</span></code> to include a total
+record count in the response. Only used for multi-record queries.</p></li>
+<li><p><strong>include_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – OData annotation pattern for the
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.include-annotations</span></code> header (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;*&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;OData.Community.Display.V1.FormattedValue&quot;</span></code>), or <code class="docutils literal notranslate"><span class="pre">None</span></code>.
+Only used for multi-record queries.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A single <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><code class="xref py py-class docutils literal notranslate"><span class="pre">Record</span></code></a>
+when <code class="docutils literal notranslate"><span class="pre">record_id</span></code> is provided, or a generator yielding pages
+(lists of <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><code class="xref py py-class docutils literal notranslate"><span class="pre">Record</span></code></a>)
+when fetching multiple records.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><em>Record</em></a> or
+collections.abc.Iterable[list[<a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><em>Record</em></a>]]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">record_id</span></code> is provided but not a string.</p></li>
+<li><p><strong>ValueError</strong> – If query parameters are provided alongside
+<code class="docutils literal notranslate"><span class="pre">record_id</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Fetch a single record:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">record</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">account_id</span><span class="p">,</span> <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Fetch multiple records with pagination:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span>
+    <span class="nb">filter</span><span class="o">=</span><span class="s2">&quot;statecode eq 0&quot;</span><span class="p">,</span>
+    <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;telephone1&quot;</span><span class="p">],</span>
+    <span class="n">page_size</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">page</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.retrieve">
+<span class="sig-name descname"><span class="pre">retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">record_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expand</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_annotations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><span class="pre">PowerPlatform.Dataverse.models.record.Record</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.retrieve" title="Link to this definition">¶</a></dt>
+<dd><p>Fetch a single record by its GUID, returning <code class="docutils literal notranslate"><span class="pre">None</span></code> if not found.</p>
+<p>GA replacement for <code class="docutils literal notranslate"><span class="pre">records.get(table,</span> <span class="pre">record_id)</span></code>. Returns <code class="docutils literal notranslate"><span class="pre">None</span></code>
+instead of raising when the record does not exist (HTTP 404).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code>).</p></li>
+<li><p><strong>record_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GUID of the record to retrieve.</p></li>
+<li><p><strong>select</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of column logical names to include.</p></li>
+<li><p><strong>expand</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of navigation properties to expand (e.g.
+<code class="docutils literal notranslate"><span class="pre">[&quot;primarycontactid&quot;]</span></code>). Navigation property names are
+case-sensitive and must match the entity’s <code class="docutils literal notranslate"><span class="pre">$metadata</span></code>.</p></li>
+<li><p><strong>include_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – OData annotation pattern for the
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.include-annotations</span></code> header (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;*&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;OData.Community.Display.V1.FormattedValue&quot;</span></code>), or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Typed record, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if not found.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><code class="xref py py-class docutils literal notranslate"><span class="pre">Record</span></code></a> or None</p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">record</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">retrieve</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="n">account_id</span><span class="p">,</span>
+    <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;statuscode&quot;</span><span class="p">],</span>
+    <span class="n">expand</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;primarycontactid&quot;</span><span class="p">],</span>
+    <span class="n">include_annotations</span><span class="o">=</span><span class="s2">&quot;OData.Community.Display.V1.FormattedValue&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">contact</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;primarycontactid&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">contact</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fullname&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><span class="pre">PowerPlatform.Dataverse.models.filters.FilterExpression</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orderby</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expand</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_annotations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><span class="pre">PowerPlatform.Dataverse.models.record.QueryResult</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.list" title="Link to this definition">¶</a></dt>
+<dd><p>Fetch multiple records and return them as a <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>.</p>
+<p>GA replacement for <code class="docutils literal notranslate"><span class="pre">records.get(table,</span> <span class="pre">filter=...)</span></code>. All pages are
+collected eagerly and returned as a single <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code>).</p></li>
+<li><p><strong>filter</strong> (<em>str</em><em> or </em><a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><em>FilterExpression</em></a><em> or </em><em>None</em>) – Optional OData filter string or <a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><code class="xref py py-class docutils literal notranslate"><span class="pre">FilterExpression</span></code></a>.</p></li>
+<li><p><strong>select</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of column logical names to include.</p></li>
+<li><p><strong>orderby</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of sort expressions (e.g. <code class="docutils literal notranslate"><span class="pre">[&quot;name</span> <span class="pre">asc&quot;,</span> <span class="pre">&quot;createdon</span> <span class="pre">desc&quot;]</span></code>).</p></li>
+<li><p><strong>top</strong> (<em>int</em><em> or </em><em>None</em>) – Maximum total number of records to return.</p></li>
+<li><p><strong>expand</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of navigation properties to expand.</p></li>
+<li><p><strong>page_size</strong> (<em>int</em><em> or </em><em>None</em>) – Per-page size hint via <code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.maxpagesize</span></code>.</p></li>
+<li><p><strong>count</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, adds <code class="docutils literal notranslate"><span class="pre">$count=true</span></code> to include a total record count.</p></li>
+<li><p><strong>include_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – OData annotation pattern for the
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.include-annotations</span></code> header, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>All matching records collected into a <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a></p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse</span><span class="w"> </span><span class="kn">import</span> <span class="n">col</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">list</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span>
+    <span class="nb">filter</span><span class="o">=</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;statecode&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">select</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;statuscode&quot;</span><span class="p">],</span>
+    <span class="n">orderby</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name asc&quot;</span><span class="p">],</span>
+    <span class="n">top</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">include_annotations</span><span class="o">=</span><span class="s2">&quot;OData.Community.Display.V1.FormattedValue&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">result</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;statuscode@OData.Community.Display.V1.FormattedValue&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.list_pages">
+<span class="sig-name descname"><span class="pre">list_pages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><span class="pre">PowerPlatform.Dataverse.models.filters.FilterExpression</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">select</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orderby</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expand</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_annotations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><span class="pre">PowerPlatform.Dataverse.models.record.QueryResult</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.list_pages" title="Link to this definition">¶</a></dt>
+<dd><p>Lazily yield one <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a> per HTTP page.</p>
+<p>Streaming counterpart to <a class="reference internal" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.list" title="PowerPlatform.Dataverse.operations.records.RecordOperations.list"><code class="xref py py-meth docutils literal notranslate"><span class="pre">list()</span></code></a>. Each iteration triggers one
+network request via <code class="docutils literal notranslate"><span class="pre">&#64;odata.nextLink</span></code>. One-shot — do not iterate
+more than once.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code>).</p></li>
+<li><p><strong>filter</strong> (<em>str</em><em> or </em><a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><em>FilterExpression</em></a><em> or </em><em>None</em>) – Optional OData filter string or <a class="reference internal" href="../../models/filters/index.html#PowerPlatform.Dataverse.models.filters.FilterExpression" title="PowerPlatform.Dataverse.models.filters.FilterExpression"><code class="xref py py-class docutils literal notranslate"><span class="pre">FilterExpression</span></code></a>.</p></li>
+<li><p><strong>select</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of column logical names to include.</p></li>
+<li><p><strong>orderby</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of sort expressions (e.g. <code class="docutils literal notranslate"><span class="pre">[&quot;name</span> <span class="pre">asc&quot;,</span> <span class="pre">&quot;createdon</span> <span class="pre">desc&quot;]</span></code>).</p></li>
+<li><p><strong>top</strong> (<em>int</em><em> or </em><em>None</em>) – Maximum total number of records to return.</p></li>
+<li><p><strong>expand</strong> (<em>list</em><em>[</em><em>str</em><em>] or </em><em>None</em>) – Optional list of navigation properties to expand.</p></li>
+<li><p><strong>page_size</strong> (<em>int</em><em> or </em><em>None</em>) – Per-page size hint via <code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.maxpagesize</span></code>.</p></li>
+<li><p><strong>count</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, adds <code class="docutils literal notranslate"><span class="pre">$count=true</span></code> to include a total record count.</p></li>
+<li><p><strong>include_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – OData annotation pattern for the
+<code class="docutils literal notranslate"><span class="pre">Prefer:</span> <span class="pre">odata.include-annotations</span></code> header, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Iterator of per-page <a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a> objects.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Iterator[<a class="reference internal" href="../../models/record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>]</p>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">list_pages</span><span class="p">(</span>
+    <span class="s2">&quot;account&quot;</span><span class="p">,</span>
+    <span class="nb">filter</span><span class="o">=</span><span class="s2">&quot;statecode eq 0&quot;</span><span class="p">,</span>
+    <span class="n">orderby</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;name asc&quot;</span><span class="p">],</span>
+    <span class="n">page_size</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="n">process</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.operations.records.RecordOperations.upsert">
+<span class="sig-name descname"><span class="pre">upsert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../../models/upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><span class="pre">PowerPlatform.Dataverse.models.upsert.UpsertItem</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.operations.records.RecordOperations.upsert" title="Link to this definition">¶</a></dt>
+<dd><p>Upsert one or more records identified by alternate keys.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">items</span></code> contains a single entry, performs a single upsert via PATCH
+using the alternate key in the URL. When <code class="docutils literal notranslate"><span class="pre">items</span></code> contains multiple entries,
+uses the <code class="docutils literal notranslate"><span class="pre">UpsertMultiple</span></code> bulk action.</p>
+<p>Each item must be either a <a class="reference internal" href="../../models/upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><code class="xref py py-class docutils literal notranslate"><span class="pre">UpsertItem</span></code></a>
+or a plain <code class="docutils literal notranslate"><span class="pre">dict</span></code> with <code class="docutils literal notranslate"><span class="pre">&quot;alternate_key&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;record&quot;</span></code> keys (both dicts).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> (<em>str</em>) – Schema name of the table (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;account&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;new_MyTestTable&quot;</span></code>).</p></li>
+<li><p><strong>items</strong> (<em>list</em><em>[</em><a class="reference internal" href="../../models/upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><em>UpsertItem</em></a><em> | </em><em>dict</em><em>]</em>) – Non-empty list of <a class="reference internal" href="../../models/upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><code class="xref py py-class docutils literal notranslate"><span class="pre">UpsertItem</span></code></a>
+instances or dicts with <code class="docutils literal notranslate"><span class="pre">&quot;alternate_key&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;record&quot;</span></code> keys.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">items</span></code> is not a non-empty list, or if any element is
+neither a <a class="reference internal" href="../../models/upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><code class="xref py py-class docutils literal notranslate"><span class="pre">UpsertItem</span></code></a> nor a
+dict with <code class="docutils literal notranslate"><span class="pre">&quot;alternate_key&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;record&quot;</span></code> keys.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Upsert a single record using <code class="docutils literal notranslate"><span class="pre">UpsertItem</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">UpsertItem</span>
+
+<span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span>
+    <span class="n">UpsertItem</span><span class="p">(</span>
+        <span class="n">alternate_key</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-001&quot;</span><span class="p">},</span>
+        <span class="n">record</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso Ltd&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary account&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+<span class="p">])</span>
+</pre></div>
+</div>
+<p>Upsert a single record using a plain dict:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;alternate_key&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-001&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;record&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso Ltd&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary account&quot;</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">])</span>
+</pre></div>
+</div>
+<p>Upsert multiple records using <code class="docutils literal notranslate"><span class="pre">UpsertItem</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">PowerPlatform.Dataverse.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">UpsertItem</span>
+
+<span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span>
+    <span class="n">UpsertItem</span><span class="p">(</span>
+        <span class="n">alternate_key</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-001&quot;</span><span class="p">},</span>
+        <span class="n">record</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso Ltd&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary account&quot;</span><span class="p">},</span>
+    <span class="p">),</span>
+    <span class="n">UpsertItem</span><span class="p">(</span>
+        <span class="n">alternate_key</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-002&quot;</span><span class="p">},</span>
+        <span class="n">record</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Fabrikam Inc&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Partner account&quot;</span><span class="p">},</span>
+    <span class="p">),</span>
+<span class="p">])</span>
+</pre></div>
+</div>
+<p>Upsert multiple records using plain dicts:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">client</span><span class="o">.</span><span class="n">records</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="s2">&quot;account&quot;</span><span class="p">,</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;alternate_key&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-001&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;record&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Contoso Ltd&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary account&quot;</span><span class="p">},</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;alternate_key&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;accountnumber&quot;</span><span class="p">:</span> <span class="s2">&quot;ACC-002&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;record&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Fabrikam Inc&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Partner account&quot;</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">])</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">alternate_key</span></code> dict may contain multiple columns when the configured
+alternate key is composite, e.g.
+<code class="docutils literal notranslate"><span class="pre">{&quot;accountnumber&quot;:</span> <span class="pre">&quot;ACC-001&quot;,</span> <span class="pre">&quot;address1_postalcode&quot;:</span> <span class="pre">&quot;98052&quot;}</span></code>.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../../index.html">PowerPlatform-Dataverse-Client</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../../index.html">PowerPlatform</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../../index.html">API Reference</a><ul>
+  <li><a href="../../../index.html">PowerPlatform</a><ul>
+  <li><a href="../../index.html">PowerPlatform.Dataverse</a><ul>
+  <li><a href="../index.html">PowerPlatform.Dataverse.operations</a><ul>
+      <li>Previous: <a href="../query/index.html" title="previous chapter">PowerPlatform.Dataverse.operations.query</a></li>
+      <li>Next: <a href="../tables/index.html" title="next chapter">PowerPlatform.Dataverse.operations.tables</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="../../../../../_sources/autoapi/PowerPlatform/Dataverse/operations/records/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

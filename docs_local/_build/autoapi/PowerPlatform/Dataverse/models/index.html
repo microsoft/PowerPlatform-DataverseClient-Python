@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>PowerPlatform.Dataverse.models &#8212; PowerPlatform-Dataverse-Client 0.1.0b11 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/alabaster.css?v=12dfc556" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../../../_static/documentation_options.js?v=88ca9cf6"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="PowerPlatform.Dataverse.models.batch" href="batch/index.html" />
+    <link rel="prev" title="PowerPlatform.Dataverse.migration.migrate_v0_to_v1" href="../migration/migrate_v0_to_v1/index.html" />
+   
+  <link rel="stylesheet" href="../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-PowerPlatform.Dataverse.models">
+<span id="powerplatform-dataverse-models"></span><h1>PowerPlatform.Dataverse.models<a class="headerlink" href="#module-PowerPlatform.Dataverse.models" title="Link to this heading">¶</a></h1>
+<p>Data models and type definitions for the Dataverse SDK.</p>
+<p>Provides dataclasses and helpers for Dataverse entities:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="query_builder/index.html#PowerPlatform.Dataverse.models.query_builder.QueryBuilder" title="PowerPlatform.Dataverse.models.query_builder.QueryBuilder"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryBuilder</span></code></a>: Fluent query builder.</p></li>
+<li><p><a class="reference internal" href="filters/index.html#module-PowerPlatform.Dataverse.models.filters" title="PowerPlatform.Dataverse.models.filters"><code class="xref py py-mod docutils literal notranslate"><span class="pre">filters</span></code></a>: Composable OData filter expressions
+via <a class="reference internal" href="filters/index.html#PowerPlatform.Dataverse.models.filters.col" title="PowerPlatform.Dataverse.models.filters.col"><code class="xref py py-func docutils literal notranslate"><span class="pre">col()</span></code></a> and
+<a class="reference internal" href="filters/index.html#PowerPlatform.Dataverse.models.filters.raw" title="PowerPlatform.Dataverse.models.filters.raw"><code class="xref py py-func docutils literal notranslate"><span class="pre">raw()</span></code></a>.</p></li>
+<li><p><a class="reference internal" href="record/index.html#PowerPlatform.Dataverse.models.record.QueryResult" title="PowerPlatform.Dataverse.models.record.QueryResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">QueryResult</span></code></a>: Iterable result wrapper.</p></li>
+<li><p><a class="reference internal" href="record/index.html#PowerPlatform.Dataverse.models.record.Record" title="PowerPlatform.Dataverse.models.record.Record"><code class="xref py py-class docutils literal notranslate"><span class="pre">Record</span></code></a>: Dataverse entity record.</p></li>
+<li><p><a class="reference internal" href="upsert/index.html#PowerPlatform.Dataverse.models.upsert.UpsertItem" title="PowerPlatform.Dataverse.models.upsert.UpsertItem"><code class="xref py py-class docutils literal notranslate"><span class="pre">UpsertItem</span></code></a>: Upsert operation item.</p></li>
+<li><p><a class="reference internal" href="fetchxml_query/index.html#PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery" title="PowerPlatform.Dataverse.models.fetchxml_query.FetchXmlQuery"><code class="xref py py-class docutils literal notranslate"><span class="pre">FetchXmlQuery</span></code></a>: FetchXML query object.</p></li>
+<li><p><a class="reference internal" href="protocol/index.html#PowerPlatform.Dataverse.models.protocol.DataverseModel" title="PowerPlatform.Dataverse.models.protocol.DataverseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataverseModel</span></code></a>: Typed-model protocol.</p></li>
+</ul>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="batch/index.html">PowerPlatform.Dataverse.models.batch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fetchxml_query/index.html">PowerPlatform.Dataverse.models.fetchxml_query</a></li>
+<li class="toctree-l1"><a class="reference internal" href="filters/index.html">PowerPlatform.Dataverse.models.filters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="labels/index.html">PowerPlatform.Dataverse.models.labels</a></li>
+<li class="toctree-l1"><a class="reference internal" href="protocol/index.html">PowerPlatform.Dataverse.models.protocol</a></li>
+<li class="toctree-l1"><a class="reference internal" href="query_builder/index.html">PowerPlatform.Dataverse.models.query_builder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="record/index.html">PowerPlatform.Dataverse.models.record</a></li>
+<li class="toctree-l1"><a class="reference internal" href="relationship/index.html">PowerPlatform.Dataverse.models.relationship</a></li>
+<li class="toctree-l1"><a class="reference internal" href="table_info/index.html">PowerPlatform.Dataverse.models.table_info</a></li>
+<li class="toctree-l1"><a class="reference internal" href="upsert/index.html">PowerPlatform.Dataverse.models.upsert</a></li>
+</ul>
+</div>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../index.html">PowerPlatform-Dataverse-Client</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">PowerPlatform</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../index.html">API Reference</a><ul>
+  <li><a href="../../index.html">PowerPlatform</a><ul>
+  <li><a href="../index.html">PowerPlatform.Dataverse</a><ul>
+      <li>Previous: <a href="../migration/migrate_v0_to_v1/index.html" title="previous chapter">PowerPlatform.Dataverse.migration.migrate_v0_to_v1</a></li>
+      <li>Next: <a href="batch/index.html" title="next chapter">PowerPlatform.Dataverse.models.batch</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="../../../../_sources/autoapi/PowerPlatform/Dataverse/models/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -1,0 +1,191 @@
+PowerPlatform Dataverse Client SDK - Advanced Functional Testing
+======================================================================
+This script tests SDK functionality in a real Dataverse environment:
+  - Authentication & Connection
+  - Table Creation & Metadata Operations
+  - Record CRUD Operations
+  - Query Functionality
+  - Relationship Operations (1:N, N:N, lookup, get, delete)
+  - Batch Operations (create, read, update, changeset, delete)
+  - Interactive Cleanup
+======================================================================
+For installation validation, run examples/basic/installation_example.py first
+======================================================================
+
+-> Authentication Setup
+==================================================
+
+-> Dataverse Environment Setup
+==================================================
+Testing connection...
+C:\Users\abelmilash\Repos\PowerPlatform-DataverseClient-Python\.conda\Lib\site-packages\msal\oauth2cli\oauth2.py:407: UserWarning: response_mode='form_post' is recommended for better security. See https://www.rfc-editor.org/rfc/rfc9700.html#section-4.3.1
+  warnings.warn(
+[OK] Connection successful! Found 1556 tables.
+[OK] Found 866 user-owned tables (filter + select).
+
+-> Test Table Setup
+==================================================
+Creating new test table...
+[OK] Created test table: test_TestSDKFunctionality
+   Logical name: test_testsdkfunctionality
+   Entity set: test_testsdkfunctionalities
+
+-> Record Creation Test
+==================================================
+Creating test record...
+[OK] Record created successfully!
+   Record ID: 11179b49-1d53-f111-a821-00224808976e
+   Name: Test Record 17:54:33
+
+-> Record Reading Test
+==================================================
+Reading record: 11179b49-1d53-f111-a821-00224808976e
+[OK] Record retrieved successfully!
+   Retrieved data:
+     test_name: Test Record 17:54:33
+     test_description: This is a test record created by the SDK functionality test
+     test_count: 42
+     test_amount: 123.45
+     test_is_active: True
+[OK] include_annotations verified: test_is_active@OData.Community.Display.V1.FormattedValue = 'True'
+[OK] records.retrieve with expand=['owninguser']: owner='Aurora365 User1'
+
+-> Record Query Test
+==================================================
+Querying records with records.list()...
+   Record 1: Test Record 17:54:33 (Count: 42, Amount: 123.45)
+[OK] records.list() completed! Found 1 active records.
+
+Querying records with records.list_pages() (paged)...
+   Page 1: 1 record(s) â€” ['Test Record 17:54:33']
+[OK] records.list_pages() completed! 1 records across 1 page(s).
+
+Querying records.list() with orderby / page_size / count / include_annotations...
+   Records (ordered): ['Test Record 17:54:33']
+[OK] include_annotations verified: 'test_is_active@OData.Community.Display.V1.FormattedValue' present in list() results
+[OK] records.list() with extended params completed! 1 record(s).
+
+Querying records.list_pages() with orderby / page_size / include_annotations...
+[OK] include_annotations verified in list_pages() results
+[OK] records.list_pages() with extended params completed! 1 record(s).
+
+-> Relationship Tests
+==================================================
+Checking for leftover relationship test resources...
+
+Creating relationship test tables...
+[OK] Created parent table: test_RelParent
+[OK] Created child table: test_RelChild
+[OK] Created M:N table: test_RelProject
+
+  Test 1: Create 1:N relationship (core API)
+  ---------------------------------------------
+  [OK] Created 1:N relationship: test_RelParent_RelChild
+       Lookup: test_ParentId
+       ID: d5abd075-1d53-f111-a821-00224808976e
+
+  Test 2: Create lookup field (convenience API)
+  ---------------------------------------------
+  [OK] Created lookup: test_ManagerId
+       Relationship: contact_test_relchild_test_ManagerId
+
+  Test 3: Create N:N relationship
+  ---------------------------------------------
+  [OK] Created N:N relationship: test_relchild_relproject
+       ID: 9f10f78a-1d53-f111-a821-00224808976e
+
+  Test 4: Query relationship metadata
+  ---------------------------------------------
+  [OK] Retrieved 1:N: test_RelParent_RelChild
+       Referenced: test_relparent
+       Referencing: test_relchild
+  [OK] Retrieved N:N: test_relchild_relproject
+       Entity1: test_relchild
+       Entity2: test_relproject
+  [OK] Non-existent relationship returns None
+
+  Test 5: Delete relationships
+  ---------------------------------------------
+  [OK] Deleted 1:N relationship
+  [OK] Deleted lookup relationship
+  [OK] Deleted N:N relationship
+  [OK] Verified 1:N deletion (get returns None)
+
+[OK] All relationship tests passed!
+   (Cleaned up table: test_RelProject)
+   (Cleaned up table: test_RelChild)
+   (Cleaned up table: test_RelParent)
+
+-> SQL Encoding Verification Test
+==================================================
+   [1/3] Basic SELECT (no special chars): SELECT TOP 5 test_name FROM test_testsdkfunctionality
+   [OK] Both paths returned 1 rows
+   [2/3] WHERE with spaces/colons: ...WHERE test_name = 'Test Record 17:54:33'
+   [OK] Both paths found the record: 'Test Record 17:54:33'
+   [3/3] WHERE with '=' in string literal (tests %3D encoding)
+   [OK] Both paths found record with '=' in name: 'SQL=Test 18:00:34'
+[OK] SQL encoding verification passed â€” %20/%3D encoding is consistent across both paths
+
+-> Batch Operations Test (All Operations)
+==================================================
+
+[1/11] Create â€” single + CreateMultiple (2 ops, 1 POST $batch)
+[OK] 2 ops â†’ 1 records created: ['4fc0b923-1e53-f111-a821-00224808976e']
+
+[2/11] Read â€” records.retrieve + records.list(orderby/page_size/count/include_annotations) + tables.get + tables.list + query.sql (5 ops, 1 POST $batch)
+[OK] 5 succeeded, 0 failed
+   records.retrieve â†’ name='Batch-A 18:00:38', test_is_active@OData.Community.Display.V1.FormattedValue='True'
+   records.retrieve expand=['owninguser'] â†’ owner='Aurora365 User1'
+   records.list â†’ 4 row(s), ordered: ['Batch-A 18:00:38', 'Batch-B 18:00:38', 'Batch-C 18:00:38', 'Test Record 17:54:33']
+   [OK] include_annotations 'test_is_active@OData.Community.Display.V1.FormattedValue' present in batch.records.list() results
+   tables.get  â†’ LogicalName='None', EntitySet='None'
+   tables.list â†’ 1557 tables returned
+   query.sql   â†’ 4 rows returned
+
+[4/11] Changeset (happy path) â€” cs.create + cs.update(ref) + cs.delete (1 transaction)
+[OK] 3 ops committed atomically (create + update + delete)
+
+[5/11] Changeset (rollback) â€” cs.create + cs.update(nonexistent) â†’ full rollback
+[OK] Changeset rollback verified: changeset failed, no records created
+
+[6/11] Two changesets in one batch â€” globally unique Content-IDs across changesets
+[OK] Both changesets committed â€” 4 records created with globally unique Content-IDs across changesets: ['7da0a52a-1e53-f111-a821-00224808976e', '7da0a52a-1e53-f111-a821-00224808976e', '7ea0a52a-1e53-f111-a821-00224808976e', '7ea0a52a-1e53-f111-a821-00224808976e']
+
+[7/11] Content-ID reference chaining â€” two creates + two updates via $n refs
+[OK] Both records created and updated via content-ID refs $1 and $2: ['7fa0a52a-1e53-f111-a821-00224808976e', '80a0a52a-1e53-f111-a821-00224808976e', '7fa0a52a-1e53-f111-a821-00224808976e', '80a0a52a-1e53-f111-a821-00224808976e']
+
+[8/11] Batch tables.add_columns â€” two add-column requests in one batch
+[OK] 2 column(s) added via batch: test_batch_extra_a, test_batch_extra_b
+[OK] Removed 2 batch-added column(s) via batch.tables.remove_columns
+
+[9/11] Upsert â€” UpsertItem with alternate key (expected to fail: no alt key on test table)
+[WARN] Upsert failed as expected (no alternate key configured): 400
+
+[10/11] Mixed batch (continue_on_error=True) â€” 1 bad get + 1 good get
+examples/basic/functional_testing.py:874: DeprecationWarning: 'batch.records.get()' is deprecated; use 'batch.records.retrieve(table, record_id)' instead.
+  batch.records.get(
+examples/basic/functional_testing.py:879: DeprecationWarning: 'batch.records.get()' is deprecated; use 'batch.records.retrieve(table, record_id)' instead.
+  batch.records.get(
+[OK] Succeeded: 1, Failed: 1
+   Expected failure: 404 Entity 'test_testsdkfunctionality' With Id = 00000000-0000-0000-0000-000000000002 Does Not Exist
+
+[11/11] Delete â€” 9 records via multi-delete (use_bulk_delete=False, 1 POST $batch)
+[OK] Deleted 5, failed 4
+
+[OK] Batch all-operations test completed!
+
+Functional Test Summary
+==================================================
+[OK] Authentication: Success
+[OK] Table Operations: Success
+[OK] Record Creation: Success
+[OK] Record Reading: Success
+[OK] Record Querying: Success
+[OK] Relationship Operations: Success
+[OK] SQL Encoding: Success
+[OK] Batch Operations: Success
+
+Your PowerPlatform Dataverse Client SDK is fully functional!
+
+-> Cleanup
+==================================================

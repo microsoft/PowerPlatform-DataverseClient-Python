@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>PowerPlatform.Dataverse.models.relationship &#8212; PowerPlatform-Dataverse-Client 0.1.0b11 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/alabaster.css?v=12dfc556" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+    <script src="../../../../../_static/documentation_options.js?v=88ca9cf6"></script>
+    <script src="../../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" />
+    <link rel="next" title="PowerPlatform.Dataverse.models.table_info" href="../table_info/index.html" />
+    <link rel="prev" title="PowerPlatform.Dataverse.models.record" href="../record/index.html" />
+   
+  <link rel="stylesheet" href="../../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-PowerPlatform.Dataverse.models.relationship">
+<span id="powerplatform-dataverse-models-relationship"></span><h1>PowerPlatform.Dataverse.models.relationship<a class="headerlink" href="#module-PowerPlatform.Dataverse.models.relationship" title="Link to this heading">¶</a></h1>
+<p>Relationship models for Dataverse (input and output).</p>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration" title="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CascadeConfiguration</span></code></a></p></td>
+<td><p>Defines cascade behavior for relationship operations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata" title="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LookupAttributeMetadata</span></code></a></p></td>
+<td><p>Metadata for a lookup attribute.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata" title="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">OneToManyRelationshipMetadata</span></code></a></p></td>
+<td><p>Metadata for a one-to-many entity relationship.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata" title="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ManyToManyRelationshipMetadata</span></code></a></p></td>
+<td><p>Metadata for a many-to-many entity relationship.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">RelationshipInfo</span></code></a></p></td>
+<td><p>Typed return model for relationship metadata.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.relationship.</span></span><span class="sig-name descname"><span class="pre">CascadeConfiguration</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration" title="Link to this definition">¶</a></dt>
+<dd><p>Defines cascade behavior for relationship operations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>assign</strong> (<em>str</em>) – Cascade behavior for assign operations.</p></li>
+<li><p><strong>delete</strong> (<em>str</em>) – Cascade behavior for delete operations.</p></li>
+<li><p><strong>merge</strong> (<em>str</em>) – Cascade behavior for merge operations.</p></li>
+<li><p><strong>reparent</strong> (<em>str</em>) – Cascade behavior for reparent operations.</p></li>
+<li><p><strong>share</strong> (<em>str</em>) – Cascade behavior for share operations.</p></li>
+<li><p><strong>unshare</strong> (<em>str</em>) – Cascade behavior for unshare operations.</p></li>
+<li><p><strong>additional_properties</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – Optional dict of additional properties to include
+in the Web API payload (e.g., “Archive”, “RollupView”). These are merged
+last and can override default values.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Valid values for each parameter:</dt><dd><ul class="simple">
+<li><p>“Cascade”: Perform the operation on all related records</p></li>
+<li><p>“NoCascade”: Do not perform the operation on related records</p></li>
+<li><p>“RemoveLink”: Remove the relationship link but keep the records</p></li>
+<li><p>“Restrict”: Prevent the operation if related records exist</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.assign">
+<span class="sig-name descname"><span class="pre">assign</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'NoCascade'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.assign" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.delete">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'RemoveLink'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.delete" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.merge">
+<span class="sig-name descname"><span class="pre">merge</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'NoCascade'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.merge" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.reparent">
+<span class="sig-name descname"><span class="pre">reparent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'NoCascade'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.reparent" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.share">
+<span class="sig-name descname"><span class="pre">share</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'NoCascade'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.share" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.unshare">
+<span class="sig-name descname"><span class="pre">unshare</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'NoCascade'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.unshare" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.additional_properties">
+<span class="sig-name descname"><span class="pre">additional_properties</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.additional_properties" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration.to_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Convert to Web API JSON format.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">config</span> <span class="o">=</span> <span class="n">CascadeConfiguration</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="s2">&quot;Cascade&quot;</span><span class="p">,</span> <span class="n">assign</span><span class="o">=</span><span class="s2">&quot;NoCascade&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">config</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{</span>
+<span class="go">    &#39;Assign&#39;: &#39;NoCascade&#39;,</span>
+<span class="go">    &#39;Delete&#39;: &#39;Cascade&#39;,</span>
+<span class="go">    &#39;Merge&#39;: &#39;NoCascade&#39;,</span>
+<span class="go">    &#39;Reparent&#39;: &#39;NoCascade&#39;,</span>
+<span class="go">    &#39;Share&#39;: &#39;NoCascade&#39;,</span>
+<span class="go">    &#39;Unshare&#39;: &#39;NoCascade&#39;</span>
+<span class="go">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.relationship.</span></span><span class="sig-name descname"><span class="pre">LookupAttributeMetadata</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata" title="Link to this definition">¶</a></dt>
+<dd><p>Metadata for a lookup attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_name</strong> (<em>str</em>) – Schema name for the attribute (e.g., “new_AccountId”).</p></li>
+<li><p><strong>display_name</strong> (<a class="reference internal" href="../labels/index.html#PowerPlatform.Dataverse.models.labels.Label" title="PowerPlatform.Dataverse.models.labels.Label"><em>Label</em></a>) – Display name for the attribute.</p></li>
+<li><p><strong>description</strong> (<em>Optional</em><em>[</em><a class="reference internal" href="../labels/index.html#PowerPlatform.Dataverse.models.labels.Label" title="PowerPlatform.Dataverse.models.labels.Label"><em>Label</em></a><em>]</em>) – Optional description of the attribute.</p></li>
+<li><p><strong>required_level</strong> (<em>str</em>) – Requirement level for the attribute.</p></li>
+<li><p><strong>additional_properties</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – Optional dict of additional properties to include
+in the Web API payload. Useful for setting properties like “Targets” (to
+specify which entity types the lookup can reference), “LogicalName”,
+“IsSecured”, “IsValidForAdvancedFind”, etc. These are merged last and
+can override default values.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Valid required_level values:</dt><dd><ul class="simple">
+<li><p>“None”: The attribute is optional</p></li>
+<li><p>“Recommended”: The attribute is recommended</p></li>
+<li><p>“ApplicationRequired”: The attribute is required</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.schema_name">
+<span class="sig-name descname"><span class="pre">schema_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.schema_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.display_name">
+<span class="sig-name descname"><span class="pre">display_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../labels/index.html#PowerPlatform.Dataverse.models.labels.Label" title="PowerPlatform.Dataverse.models.labels.Label"><span class="pre">PowerPlatform.Dataverse.models.labels.Label</span></a></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.display_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.description">
+<span class="sig-name descname"><span class="pre">description</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../labels/index.html#PowerPlatform.Dataverse.models.labels.Label" title="PowerPlatform.Dataverse.models.labels.Label"><span class="pre">PowerPlatform.Dataverse.models.labels.Label</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.description" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.required_level">
+<span class="sig-name descname"><span class="pre">required_level</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'None'</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.required_level" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.additional_properties">
+<span class="sig-name descname"><span class="pre">additional_properties</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.additional_properties" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.LookupAttributeMetadata.to_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Convert to Web API JSON format.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">lookup</span> <span class="o">=</span> <span class="n">LookupAttributeMetadata</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">schema_name</span><span class="o">=</span><span class="s2">&quot;new_AccountId&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">display_name</span><span class="o">=</span><span class="n">Label</span><span class="p">([</span><span class="n">LocalizedLabel</span><span class="p">(</span><span class="s2">&quot;Account&quot;</span><span class="p">,</span> <span class="mi">1033</span><span class="p">)])</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lookup</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{</span>
+<span class="go">    &#39;@odata.type&#39;: &#39;Microsoft.Dynamics.CRM.LookupAttributeMetadata&#39;,</span>
+<span class="go">    &#39;SchemaName&#39;: &#39;new_AccountId&#39;,</span>
+<span class="go">    &#39;AttributeType&#39;: &#39;Lookup&#39;,</span>
+<span class="go">    &#39;AttributeTypeName&#39;: {&#39;Value&#39;: &#39;LookupType&#39;},</span>
+<span class="go">    &#39;DisplayName&#39;: {...},</span>
+<span class="go">    &#39;RequiredLevel&#39;: {&#39;Value&#39;: &#39;None&#39;, &#39;CanBeChanged&#39;: True, ...}</span>
+<span class="go">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.relationship.</span></span><span class="sig-name descname"><span class="pre">OneToManyRelationshipMetadata</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata" title="Link to this definition">¶</a></dt>
+<dd><p>Metadata for a one-to-many entity relationship.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_name</strong> (<em>str</em>) – Schema name for the relationship (e.g., “new_Account_Orders”).</p></li>
+<li><p><strong>referenced_entity</strong> (<em>str</em>) – Logical name of the referenced (parent) entity.</p></li>
+<li><p><strong>referencing_entity</strong> (<em>str</em>) – Logical name of the referencing (child) entity.</p></li>
+<li><p><strong>referenced_attribute</strong> (<em>str</em>) – Attribute on the referenced entity (typically the primary key).</p></li>
+<li><p><strong>cascade_configuration</strong> (<a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration" title="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration"><em>CascadeConfiguration</em></a>) – Cascade behavior configuration.</p></li>
+<li><p><strong>referencing_attribute</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – Optional name for the referencing attribute (usually auto-generated).</p></li>
+<li><p><strong>additional_properties</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – Optional dict of additional properties to include
+in the Web API payload. Useful for setting inherited properties like
+“IsValidForAdvancedFind”, “IsCustomizable”, “SecurityTypes”, etc.
+These are merged last and can override default values.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.schema_name">
+<span class="sig-name descname"><span class="pre">schema_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.schema_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referenced_entity">
+<span class="sig-name descname"><span class="pre">referenced_entity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referenced_entity" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referencing_entity">
+<span class="sig-name descname"><span class="pre">referencing_entity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referencing_entity" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referenced_attribute">
+<span class="sig-name descname"><span class="pre">referenced_attribute</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referenced_attribute" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.cascade_configuration">
+<span class="sig-name descname"><span class="pre">cascade_configuration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.CascadeConfiguration" title="PowerPlatform.Dataverse.models.relationship.CascadeConfiguration"><span class="pre">CascadeConfiguration</span></a></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.cascade_configuration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referencing_attribute">
+<span class="sig-name descname"><span class="pre">referencing_attribute</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.referencing_attribute" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.additional_properties">
+<span class="sig-name descname"><span class="pre">additional_properties</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.additional_properties" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.OneToManyRelationshipMetadata.to_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Convert to Web API JSON format.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">rel</span> <span class="o">=</span> <span class="n">OneToManyRelationshipMetadata</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">schema_name</span><span class="o">=</span><span class="s2">&quot;new_account_orders&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">referenced_entity</span><span class="o">=</span><span class="s2">&quot;account&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">referencing_entity</span><span class="o">=</span><span class="s2">&quot;new_order&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">referenced_attribute</span><span class="o">=</span><span class="s2">&quot;accountid&quot;</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rel</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{</span>
+<span class="go">    &#39;@odata.type&#39;: &#39;Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata&#39;,</span>
+<span class="go">    &#39;SchemaName&#39;: &#39;new_account_orders&#39;,</span>
+<span class="go">    &#39;ReferencedEntity&#39;: &#39;account&#39;,</span>
+<span class="go">    &#39;ReferencingEntity&#39;: &#39;new_order&#39;,</span>
+<span class="go">    &#39;ReferencedAttribute&#39;: &#39;accountid&#39;,</span>
+<span class="go">    &#39;CascadeConfiguration&#39;: {...}</span>
+<span class="go">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.relationship.</span></span><span class="sig-name descname"><span class="pre">ManyToManyRelationshipMetadata</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata" title="Link to this definition">¶</a></dt>
+<dd><p>Metadata for a many-to-many entity relationship.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_name</strong> (<em>str</em>) – Schema name for the relationship.</p></li>
+<li><p><strong>entity1_logical_name</strong> (<em>str</em>) – Logical name of the first entity.</p></li>
+<li><p><strong>entity2_logical_name</strong> (<em>str</em>) – Logical name of the second entity.</p></li>
+<li><p><strong>intersect_entity_name</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – Name for the intersect table (defaults to schema_name if not provided).</p></li>
+<li><p><strong>additional_properties</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – Optional dict of additional properties to include
+in the Web API payload. Useful for setting inherited properties like
+“IsValidForAdvancedFind”, “IsCustomizable”, “SecurityTypes”, or direct
+properties like “Entity1NavigationPropertyName”. These are merged last
+and can override default values.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.schema_name">
+<span class="sig-name descname"><span class="pre">schema_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.schema_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.entity1_logical_name">
+<span class="sig-name descname"><span class="pre">entity1_logical_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.entity1_logical_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.entity2_logical_name">
+<span class="sig-name descname"><span class="pre">entity2_logical_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.entity2_logical_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.intersect_entity_name">
+<span class="sig-name descname"><span class="pre">intersect_entity_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.intersect_entity_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.additional_properties">
+<span class="sig-name descname"><span class="pre">additional_properties</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.additional_properties" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.ManyToManyRelationshipMetadata.to_dict" title="Link to this definition">¶</a></dt>
+<dd><p>Convert to Web API JSON format.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">rel</span> <span class="o">=</span> <span class="n">ManyToManyRelationshipMetadata</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">schema_name</span><span class="o">=</span><span class="s2">&quot;new_account_contact&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">entity1_logical_name</span><span class="o">=</span><span class="s2">&quot;account&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">entity2_logical_name</span><span class="o">=</span><span class="s2">&quot;contact&quot;</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rel</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{</span>
+<span class="go">    &#39;@odata.type&#39;: &#39;Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata&#39;,</span>
+<span class="go">    &#39;SchemaName&#39;: &#39;new_account_contact&#39;,</span>
+<span class="go">    &#39;Entity1LogicalName&#39;: &#39;account&#39;,</span>
+<span class="go">    &#39;Entity2LogicalName&#39;: &#39;contact&#39;,</span>
+<span class="go">    &#39;IntersectEntityName&#39;: &#39;new_account_contact&#39;</span>
+<span class="go">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">PowerPlatform.Dataverse.models.relationship.</span></span><span class="sig-name descname"><span class="pre">RelationshipInfo</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="Link to this definition">¶</a></dt>
+<dd><p>Typed return model for relationship metadata.</p>
+<p>Returned by <a class="reference internal" href="../../operations/tables/index.html#PowerPlatform.Dataverse.operations.tables.TableOperations.create_one_to_many_relationship" title="PowerPlatform.Dataverse.operations.tables.TableOperations.create_one_to_many_relationship"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_one_to_many_relationship()</span></code></a>,
+<a class="reference internal" href="../../operations/tables/index.html#PowerPlatform.Dataverse.operations.tables.TableOperations.create_many_to_many_relationship" title="PowerPlatform.Dataverse.operations.tables.TableOperations.create_many_to_many_relationship"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_many_to_many_relationship()</span></code></a>,
+<a class="reference internal" href="../../operations/tables/index.html#PowerPlatform.Dataverse.operations.tables.TableOperations.get_relationship" title="PowerPlatform.Dataverse.operations.tables.TableOperations.get_relationship"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_relationship()</span></code></a>, and
+<a class="reference internal" href="../../operations/tables/index.html#PowerPlatform.Dataverse.operations.tables.TableOperations.create_lookup_field" title="PowerPlatform.Dataverse.operations.tables.TableOperations.create_lookup_field"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_lookup_field()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>relationship_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Relationship metadata GUID.</p></li>
+<li><p><strong>relationship_schema_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Relationship schema name.</p></li>
+<li><p><strong>relationship_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Either <code class="docutils literal notranslate"><span class="pre">&quot;one_to_many&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;many_to_many&quot;</span></code>.</p></li>
+<li><p><strong>lookup_schema_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Lookup field schema name (one-to-many only).</p></li>
+<li><p><strong>referenced_entity</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Parent entity logical name (one-to-many only).</p></li>
+<li><p><strong>referencing_entity</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Child entity logical name (one-to-many only).</p></li>
+<li><p><strong>entity1_logical_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – First entity logical name (many-to-many only).</p></li>
+<li><p><strong>entity2_logical_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Second entity logical name (many-to-many only).</p></li>
+</ul>
+</dd>
+</dl>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">create_one_to_many_relationship</span><span class="p">(</span><span class="n">lookup</span><span class="p">,</span> <span class="n">relationship</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">relationship_schema_name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">lookup_schema_name</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_id">
+<span class="sig-name descname"><span class="pre">relationship_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_schema_name">
+<span class="sig-name descname"><span class="pre">relationship_schema_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_schema_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_type">
+<span class="sig-name descname"><span class="pre">relationship_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.relationship_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.lookup_schema_name">
+<span class="sig-name descname"><span class="pre">lookup_schema_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.lookup_schema_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.referenced_entity">
+<span class="sig-name descname"><span class="pre">referenced_entity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.referenced_entity" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.referencing_entity">
+<span class="sig-name descname"><span class="pre">referencing_entity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.referencing_entity" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.entity1_logical_name">
+<span class="sig-name descname"><span class="pre">entity1_logical_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.entity1_logical_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.entity2_logical_name">
+<span class="sig-name descname"><span class="pre">entity2_logical_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.entity2_logical_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_one_to_many">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_one_to_many</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_schema_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lookup_schema_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">referenced_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">referencing_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><span class="pre">RelationshipInfo</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_one_to_many" title="Link to this definition">¶</a></dt>
+<dd><p>Create from a one-to-many relationship result.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>relationship_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Relationship metadata GUID.</p></li>
+<li><p><strong>relationship_schema_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Relationship schema name.</p></li>
+<li><p><strong>lookup_schema_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Lookup field schema name.</p></li>
+<li><p><strong>referenced_entity</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Parent entity logical name.</p></li>
+<li><p><strong>referencing_entity</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Child entity logical name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RelationshipInfo</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_many_to_many">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_many_to_many</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_schema_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entity1_logical_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entity2_logical_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><span class="pre">RelationshipInfo</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_many_to_many" title="Link to this definition">¶</a></dt>
+<dd><p>Create from a many-to-many relationship result.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>relationship_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> or None) – Relationship metadata GUID.</p></li>
+<li><p><strong>relationship_schema_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Relationship schema name.</p></li>
+<li><p><strong>entity1_logical_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – First entity logical name.</p></li>
+<li><p><strong>entity2_logical_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Second entity logical name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RelationshipInfo</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_api_response">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_api_response</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">response_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><span class="pre">RelationshipInfo</span></a></span></span><a class="headerlink" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo.from_api_response" title="Link to this definition">¶</a></dt>
+<dd><p>Create from a raw Dataverse Web API response.</p>
+<p>Detects one-to-many vs many-to-many from the <code class="docutils literal notranslate"><span class="pre">&#64;odata.type</span></code> field
+in the response and maps PascalCase keys to snake_case attributes.
+Dataverse only supports these two relationship types; an unrecognized
+<code class="docutils literal notranslate"><span class="pre">&#64;odata.type</span></code> raises <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>response_data</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>) – Raw relationship metadata from the Web API.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#PowerPlatform.Dataverse.models.relationship.RelationshipInfo" title="PowerPlatform.Dataverse.models.relationship.RelationshipInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RelationshipInfo</span></code></a></p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If the <code class="docutils literal notranslate"><span class="pre">&#64;odata.type</span></code> is not a recognized
+relationship type.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../../index.html">PowerPlatform-Dataverse-Client</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../../index.html">PowerPlatform</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../../index.html">API Reference</a><ul>
+  <li><a href="../../../index.html">PowerPlatform</a><ul>
+  <li><a href="../../index.html">PowerPlatform.Dataverse</a><ul>
+  <li><a href="../index.html">PowerPlatform.Dataverse.models</a><ul>
+      <li>Previous: <a href="../record/index.html" title="previous chapter">PowerPlatform.Dataverse.models.record</a></li>
+      <li>Next: <a href="../table_info/index.html" title="next chapter">PowerPlatform.Dataverse.models.table_info</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="../../../../../_sources/autoapi/PowerPlatform/Dataverse/models/relationship/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
