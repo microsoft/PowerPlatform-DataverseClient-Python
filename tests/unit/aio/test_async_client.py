@@ -235,7 +235,7 @@ class TestAsyncDataverseClientOperationContext:
 
     def test_config_alone_works(self):
         """Providing config= without context= uses config's operation_context."""
-        ctx = OperationContext(user_agent_context="app=test/1.0;skill=dv")
+        ctx = OperationContext(user_agent_context="app=test/1.0;skill=dv-data")
         config = DataverseConfig(operation_context=ctx)
         client = AsyncDataverseClient("https://org.crm.dynamics.com", _make_credential(), config=config)
-        assert client._config.operation_context.user_agent_context == "app=test/1.0;skill=dv"
+        assert client._config.operation_context.user_agent_context == "app=test/1.0;skill=dv-data"
