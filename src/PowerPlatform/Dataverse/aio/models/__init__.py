@@ -10,4 +10,10 @@ Provides async-specific models for Dataverse entities:
 - :class:`~PowerPlatform.Dataverse.aio.models.async_fetchxml_query.AsyncFetchXmlQuery`: Async FetchXML query.
 """
 
-__all__ = []
+from .async_fetchxml_query import AsyncFetchXmlQuery
+from .async_query_builder import AsyncQueryBuilder
+
+__all__ = [
+    "AsyncFetchXmlQuery",
+    "AsyncQueryBuilder",
+]

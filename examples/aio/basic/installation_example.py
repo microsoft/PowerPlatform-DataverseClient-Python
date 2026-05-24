@@ -60,10 +60,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PowerPlatform.Dataverse.aio.operations.async_records import AsyncRecordOperations
-from PowerPlatform.Dataverse.aio.operations.async_query import AsyncQueryOperations
-from PowerPlatform.Dataverse.aio.operations.async_tables import AsyncTableOperations
-from PowerPlatform.Dataverse.aio.operations.async_files import AsyncFileOperations
+from PowerPlatform.Dataverse.aio.operations import (
+    AsyncFileOperations,
+    AsyncQueryOperations,
+    AsyncRecordOperations,
+    AsyncTableOperations,
+)
 
 
 def validate_imports():
@@ -73,11 +75,11 @@ def validate_imports():
 
     try:
         from PowerPlatform.Dataverse import __version__
-        from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+        from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
         print(f"  [OK] Namespace: PowerPlatform.Dataverse.aio")
         print(f"  [OK] Package version: {__version__}")
-        print(f"  [OK] Async client: PowerPlatform.Dataverse.aio.async_client.AsyncDataverseClient")
+        print(f"  [OK] Async client: PowerPlatform.Dataverse.aio.AsyncDataverseClient")
 
         from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 
@@ -91,8 +93,7 @@ def validate_imports():
 
         print(f"  [OK] Async data layer: _AsyncODataClient")
 
-        from PowerPlatform.Dataverse.aio.models.async_fetchxml_query import AsyncFetchXmlQuery
-        from PowerPlatform.Dataverse.aio.models.async_query_builder import AsyncQueryBuilder
+        from PowerPlatform.Dataverse.aio.models import AsyncFetchXmlQuery, AsyncQueryBuilder
 
         print(f"  [OK] Async models: AsyncFetchXmlQuery, AsyncQueryBuilder")
 
@@ -192,7 +193,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _auth import AsyncInteractiveBrowserCredential
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 async def main():
     credential = AsyncInteractiveBrowserCredential()
@@ -304,7 +305,7 @@ async def interactive_test():
         return
 
     try:
-        from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+        from PowerPlatform.Dataverse.aio import AsyncDataverseClient
         from _auth import AsyncInteractiveBrowserCredential
 
         print("  Setting up authentication...")

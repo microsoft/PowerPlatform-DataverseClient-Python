@@ -28,7 +28,7 @@ import sys
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError
 from PowerPlatform.Dataverse.models.relationship import (
     LookupAttributeMetadata,

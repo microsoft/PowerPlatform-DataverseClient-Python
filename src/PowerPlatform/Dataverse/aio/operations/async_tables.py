@@ -343,12 +343,12 @@ class AsyncTableOperations:
         Example:
             Create a one-to-many relationship: Department (1) -> Employee (N)::
 
-                from PowerPlatform.Dataverse.models.relationship import (
-                    LookupAttributeMetadata,
-                    OneToManyRelationshipMetadata,
+                from PowerPlatform.Dataverse.models import (
+                    CascadeConfiguration,
                     Label,
                     LocalizedLabel,
-                    CascadeConfiguration,
+                    LookupAttributeMetadata,
+                    OneToManyRelationshipMetadata,
                 )
                 from PowerPlatform.Dataverse.common.constants import (
                     CASCADE_BEHAVIOR_REMOVE_LINK,
@@ -419,7 +419,7 @@ class AsyncTableOperations:
         Example:
             Create a many-to-many relationship: Employee <-> Project::
 
-                from PowerPlatform.Dataverse.models.relationship import (
+                from PowerPlatform.Dataverse.models import (
                     ManyToManyRelationshipMetadata,
                 )
 

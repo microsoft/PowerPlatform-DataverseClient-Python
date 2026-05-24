@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _auth import AsyncInteractiveBrowserCredential
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 from PowerPlatform.Dataverse.core.errors import MetadataError
 from PowerPlatform.Dataverse.models.filters import col
 from PowerPlatform.Dataverse.models.query_builder import ExpandOption

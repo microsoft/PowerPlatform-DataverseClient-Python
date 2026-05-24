@@ -24,7 +24,7 @@ Prerequisites:
 import asyncio
 import sys
 
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 from PowerPlatform.Dataverse.models.upsert import UpsertItem
 from pathlib import Path
 

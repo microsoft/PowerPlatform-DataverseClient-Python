@@ -450,7 +450,7 @@ class AsyncRecordOperations:
         Example:
             Upsert a single record using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+                from PowerPlatform.Dataverse.models import UpsertItem
 
                 await client.records.upsert("account", [
                     UpsertItem(
@@ -470,7 +470,7 @@ class AsyncRecordOperations:
 
             Upsert multiple records using ``UpsertItem``::
 
-                from PowerPlatform.Dataverse.models.upsert import UpsertItem
+                from PowerPlatform.Dataverse.models import UpsertItem
 
                 await client.records.upsert("account", [
                     UpsertItem(

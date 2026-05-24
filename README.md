@@ -801,7 +801,7 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 ```python
 import asyncio
 from azure.identity.aio import DefaultAzureCredential
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 async def main():
     async with DefaultAzureCredential() as credential:
@@ -818,8 +818,6 @@ async def main():
 
 asyncio.run(main())
 ```
-
-> **Note:** `InteractiveBrowserCredential` from `azure.identity` is sync-only and cannot be used directly with the async client. See [examples/aio/_auth.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/aio/_auth.py) for an async wrapper.
 
 ### Standalone usage (without `async with`)
 
@@ -867,7 +865,7 @@ batch = client.batch.new()
 batch.records.create("account", {"name": "Alpha"})
 batch.records.create("account", {"name": "Beta"})
 result = await batch.execute()
-print(f"Created {len(list(result.entity_ids))} records")
+print(f"Created {len(result.entity_ids)} records")
 
 # Atomic changeset
 batch = client.batch.new()

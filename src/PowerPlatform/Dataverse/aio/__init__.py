@@ -6,7 +6,9 @@ Async namespace for the PowerPlatform Dataverse SDK.
 
 Import the async client via::
 
-    from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+    from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 """
 
-__all__ = []
+from .async_client import AsyncDataverseClient
+
+__all__ = ["AsyncDataverseClient"]

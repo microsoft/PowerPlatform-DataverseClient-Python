@@ -36,7 +36,7 @@ class AsyncQueryOperations:
         async with AsyncDataverseClient(base_url, credential) as client:
 
             # Fluent query builder (recommended)
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             for record in await (client.query.builder("account")
                                  .select("name", "revenue")
@@ -72,7 +72,7 @@ class AsyncQueryOperations:
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             result = await (client.query.builder("account")
                             .select("name", "revenue")

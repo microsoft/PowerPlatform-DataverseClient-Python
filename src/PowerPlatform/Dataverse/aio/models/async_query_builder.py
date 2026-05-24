@@ -25,7 +25,7 @@ class AsyncQueryBuilder(_QueryBuilderBase):
 
     Example::
 
-        from PowerPlatform.Dataverse.models.filters import col
+        from PowerPlatform.Dataverse.models import col
 
         result = await (client.query.builder("account")
                         .select("name", "revenue")

@@ -20,7 +20,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from PowerPlatform.Dataverse.aio.async_client import AsyncDataverseClient
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _auth import AsyncInteractiveBrowserCredential
