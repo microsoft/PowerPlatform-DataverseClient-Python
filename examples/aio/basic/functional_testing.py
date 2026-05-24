@@ -25,6 +25,7 @@ Usage:
 
 import asyncio
 import sys
+from enum import Enum
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -1037,10 +1038,123 @@ async def test_relationships(client: AsyncDataverseClient) -> None:
                 print(f"   [WARN] Could not delete {tbl}: {e}")
 
 
+async def test_picklist_table(client: AsyncDataverseClient) -> str:
+    """Create a table with a local picklist column and write/read records.
+
+    Demonstrates:
+    - Defining a local OptionSet via an ``Enum`` subclass passed as the column ``dtype``.
+    - Optional multi-language labels via the ``__labels__`` class attribute.
+    - Writing records using either the enum member's integer value OR its label.
+    - Reading the integer value back, and the formatted label via
+      ``include_annotations="OData.Community.Display.V1.FormattedValue"``.
+
+    Returns the schema name of the table so the caller can clean it up later.
+    """
+    print("\n-> Picklist Column Test")
+    print("=" * 50)
+
+    table_schema_name = "test_PicklistAttribute"
+
+    # Define a local option set as an Enum. Optional __labels__ provides
+    # display labels per language code (1033 = English, 1036 = French).
+    class TaskStatus(Enum):
+        NotStarted = 1
+        InProgress = 2
+        Completed = 3
+        Cancelled = 4
+
+        __labels__ = {
+            1033: {
+                "NotStarted": "Not Started",
+                "InProgress": "In Progress",
+                "Completed": "Completed",
+                "Cancelled": "Cancelled",
+            },
+            1036: {
+                "NotStarted": "Non commencé",
+                "InProgress": "En cours",
+                "Completed": "Terminé",
+                "Cancelled": "Annulé",
+            },
+        }
+
+    record_id: Optional[str] = None
+    try:
+        # Drop any leftover table from a prior failed run so this example is idempotent.
+        try:
+            existing = await client.tables.get(table_schema_name)
+            if existing:
+                print(f"   Removing leftover '{table_schema_name}' from a previous run...")
+                await client.tables.delete(table_schema_name)
+        except Exception:
+            pass
+
+        print(f"Creating table '{table_schema_name}' with a picklist column 'test_status'...")
+
+        await client.tables.create(
+            table_schema_name,
+            primary_column="test_name",
+            columns={
+                "test_status": TaskStatus,  # Enum subclass => local picklist
+                "test_notes": "string",
+            },
+        )
+
+        table_info = await wait_for_table_metadata(client, table_schema_name)
+        print(f"[OK] Picklist table ready: entity_set='{table_info.get('entity_set_name')}'")
+
+        # --- Insert one record using the enum's integer value ---
+        rec_by_int = {
+            "test_name": f"Picklist Int {datetime.now().strftime('%H:%M:%S')}",
+            "test_status": TaskStatus.InProgress.value,  # integer 2
+            "test_notes": "Created using TaskStatus.InProgress.value",
+        }
+        record_id = await client.records.create(table_schema_name, rec_by_int)
+        print(f"[OK] Created record by int value: {record_id} (status={TaskStatus.InProgress.value})")
+
+        # --- Insert another record using the picklist label (SDK resolves label -> int) ---
+        rec_by_label = {
+            "test_name": f"Picklist Label {datetime.now().strftime('%H:%M:%S')}",
+            "test_status": "Completed",  # resolved via label cache to int 3
+            "test_notes": "Created using label string 'Completed'",
+        }
+        record_id_2 = await client.records.create(table_schema_name, rec_by_label)
+        print(f"[OK] Created record by label: {record_id_2} (status='Completed' -> 3)")
+
+        # --- Read back including the FormattedValue annotation ---
+        annotation = "OData.Community.Display.V1.FormattedValue"
+        retrieved = await client.records.retrieve(
+            table_schema_name,
+            record_id,
+            select=["test_name", "test_status"],
+            include_annotations=annotation,
+        )
+        status_int = retrieved.get("test_status")
+        status_label = retrieved.get(f"test_status@{annotation}")
+        print(f"   Retrieved: test_status={status_int}, formatted='{status_label}'")
+        assert status_int == TaskStatus.InProgress.value, f"expected {TaskStatus.InProgress.value}, got {status_int}"
+
+        # --- List records, filtering by the picklist column ---
+        completed = await client.records.list(
+            table_schema_name,
+            select=["test_name", "test_status"],
+            filter=f"test_status eq {TaskStatus.Completed.value}",
+            include_annotations=annotation,
+        )
+        print(f"[OK] Query by picklist value found {len(completed)} 'Completed' record(s).")
+
+    except HttpError as e:
+        print(f"[ERR] HTTP error during picklist test: {e}")
+        raise
+
+    return table_schema_name
+
+
 async def cleanup_test_data(
     client: AsyncDataverseClient,
     table_info: Dict[str, Any],
     record_id: str,
+    picklist_table_schema_name: Optional[str] = None,
 ) -> None:
     """Clean up test data."""
     print("\n-> Cleanup")
@@ -1089,6 +1203,30 @@ async def cleanup_test_data(
     else:
         print("Test table kept for future testing")
 
+    # --- Picklist test table cleanup ---
+    if picklist_table_schema_name:
+        picklist_cleanup = (
+            input(f"Do you want to delete the picklist test table '{picklist_table_schema_name}'? (y/N): ")
+            .strip()
+            .lower()
+        )
+        if picklist_cleanup in ["y", "yes"]:
+            for attempt in range(1, retries + 1):
+                try:
+                    await client.tables.delete(picklist_table_schema_name)
+                    print(f"[OK] Picklist test table '{picklist_table_schema_name}' deleted successfully")
+                    break
+                except HttpError as err:
+                    if attempt < retries:
+                        await asyncio.sleep(delay_seconds)
+                        continue
+                    print(f"[WARN] Failed to delete picklist test table: {err}")
+                except Exception as e:
+                    print(f"[WARN] Failed to delete picklist test table: {e}")
+                    break
+        else:
+            print("Picklist test table kept for future testing")
+
 
 async def main():
     """Main async test function."""
@@ -1115,6 +1253,7 @@ async def main():
                 record_id = await test_create_record(client, table_info)
                 retrieved_record = await test_read_record(client, table_info, record_id)
                 await test_query_records(client, table_info)
+                picklist_table_info = await test_picklist_table(client)
                 await test_relationships(client)
                 await test_sql_encoding(client, table_info, retrieved_record)
                 await test_batch_all_operations(client, table_info)
@@ -1126,12 +1265,13 @@ async def main():
                 print("[OK] Record Creation: Success")
                 print("[OK] Record Reading: Success")
                 print("[OK] Record Querying (list, list_pages, builder, fetchxml): Success")
+                print("[OK] Picklist Column: Success")
                 print("[OK] Relationship Operations: Success")
                 print("[OK] SQL Encoding: Success")
                 print("[OK] Batch Operations: Success")
                 print("\nYour async PowerPlatform Dataverse Client SDK is fully functional!")
 
-                await cleanup_test_data(client, table_info, record_id)
+                await cleanup_test_data(client, table_info, record_id, picklist_table_info)
         finally:
             await credential.close()
 
