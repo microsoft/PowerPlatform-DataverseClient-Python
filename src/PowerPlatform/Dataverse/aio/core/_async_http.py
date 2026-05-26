@@ -2,30 +2,60 @@
 # Licensed under the MIT license.
 
 """
-HTTP client with automatic retry logic and timeout handling.
+Async HTTP client with automatic retry logic and timeout handling.
 
-This module provides :class:`~PowerPlatform.Dataverse.core._http._HttpClient`, a wrapper
-around the requests library that adds configurable retry behavior for transient
+This module provides :class:`~PowerPlatform.Dataverse.aio.core._async_http._AsyncHttpClient`,
+a wrapper around the aiohttp library that adds configurable retry behavior for transient
 network errors and intelligent timeout management based on HTTP method types.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json as _json
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-import requests
+import aiohttp
 
 if TYPE_CHECKING:
-    from ._http_logger import _HttpLogger
+    from ...core._http_logger import _HttpLogger
 
-_TIMEOUT_WRITE_METHODS = 120
-_TIMEOUT_READ_METHODS = 10
+from ...core._http import _TIMEOUT_WRITE_METHODS, _TIMEOUT_READ_METHODS
 
 
-class _HttpClient:
+class _AsyncResponse:
+    """Materialized HTTP response returned by :class:`_AsyncHttpClient._request`.
+
+    The body is fully buffered before this object is constructed, so all
+    accessors are synchronous — no ``await`` required.
+
+    :param status: HTTP status code.
+    :param headers: Response headers as a plain dict.
+    :param body: Raw response body bytes.
     """
-    HTTP client with configurable retry logic and timeout handling.
+
+    __slots__ = ("status", "status_code", "headers", "_body")
+
+    def __init__(self, status: int, headers: Dict[str, str], body: bytes) -> None:
+        self.status = status
+        self.status_code = status
+        self.headers = headers
+        self._body = body
+
+    @property
+    def text(self) -> str:
+        """Response body decoded as UTF-8 text."""
+        return self._body.decode("utf-8", errors="replace") if self._body else ""
+
+    def json(self, content_type: Any = None) -> Any:
+        """Parse and return the response body as JSON."""
+        return _json.loads(self._body) if self._body else {}
+
+
+class _AsyncHttpClient:
+    """
+    Async HTTP client with configurable retry logic and timeout handling.
 
     Provides automatic retry behavior for transient failures and default timeout
     management for different HTTP methods.
@@ -36,10 +66,11 @@ class _HttpClient:
     :type backoff: :class:`float` | None
     :param timeout: Default request timeout in seconds. If None, uses per-method defaults.
     :type timeout: :class:`float` | None
-    :param session: Optional ``requests.Session`` for HTTP connection pooling.
-        When provided, all requests use this session (enabling TCP/TLS reuse).
-        When ``None``, each request uses ``requests.request()`` directly.
-    :type session: :class:`requests.Session` | None
+    :param session: ``aiohttp.ClientSession`` for HTTP connection pooling.
+        The session is owned by the caller (``AsyncDataverseClient``) and must remain
+        open for the lifetime of this client. Unlike the sync client, there is no
+        per-request fallback — a session must always be provided before making requests.
+    :type session: :class:`aiohttp.ClientSession` | None
     :param logger: Optional HTTP diagnostics logger. When provided, all requests,
         responses, and transport errors are logged with automatic header redaction.
     :type logger: ~PowerPlatform.Dataverse.core._http_logger._HttpLogger | None
@@ -50,7 +81,7 @@ class _HttpClient:
         retries: Optional[int] = None,
         backoff: Optional[float] = None,
         timeout: Optional[float] = None,
-        session: Optional[requests.Session] = None,
+        session: Optional[aiohttp.ClientSession] = None,
         logger: Optional["_HttpLogger"] = None,
     ) -> None:
         self.max_attempts = retries if retries is not None else 5
@@ -59,32 +90,39 @@ class _HttpClient:
         self._session = session
         self._logger = logger
 
-    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+    async def _request(self, method: str, url: str, **kwargs: Any) -> _AsyncResponse:
         """
-        Execute an HTTP request with automatic retry logic and timeout management.
+        Execute an HTTP request asynchronously with automatic retry logic and timeout management.
 
         Applies default timeouts based on HTTP method (120s for POST/PATCH/DELETE, 10s for others)
         and retries on network errors with exponential backoff.
+
+        The response body is fully buffered and returned as a :class:`_AsyncResponse` whose
+        accessors (``.text``, ``.json()``) are synchronous — no ``await`` required on the caller side.
 
         :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
         :type method: :class:`str`
         :param url: Target URL for the request.
         :type url: :class:`str`
-        :param kwargs: Additional arguments passed to ``requests.request()``, including headers, data, etc.
-        :return: HTTP response object.
-        :rtype: :class:`requests.Response`
-        :raises requests.exceptions.RequestException: If all retry attempts fail.
+        :param kwargs: Additional arguments passed to ``aiohttp.ClientSession.request()``,
+            including headers, data, etc.
+        :return: Materialized HTTP response with body fully buffered.
+        :rtype: :class:`_AsyncResponse`
+        :raises aiohttp.ClientError: If all retry attempts fail.
+        :raises RuntimeError: If no session has been set.
         """
+        if self._session is None:
+            raise RuntimeError("No aiohttp.ClientSession set. Set _session before making requests.")
+
         # If no timeout is provided, use the user-specified default timeout if set;
         # otherwise, apply per-method defaults (120s for POST/PATCH/DELETE, 10s for others).
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
-                kwargs["timeout"] = self.default_timeout
+                t = self.default_timeout
             else:
                 m = (method or "").lower()
-                kwargs["timeout"] = (
-                    _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
-                )
+                t = _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
+            kwargs["timeout"] = aiohttp.ClientTimeout(total=t)
 
         # Log outbound request once (before retry loop).
         # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.
@@ -103,27 +141,28 @@ class _HttpClient:
             )
 
         # Small backoff retry on network errors only
-        requester = self._session.request if self._session is not None else requests.request
         for attempt in range(self.max_attempts):
             try:
                 t0 = time.monotonic()
-                resp = requester(method, url, **kwargs)
+                async with self._session.request(method, url, **kwargs) as resp:
+                    body = await resp.read()
+                    response = _AsyncResponse(resp.status, dict(resp.headers), body)
                 elapsed_ms = (time.monotonic() - t0) * 1000
 
                 if self._logger is not None:
-                    # Only decode resp.text when body logging is enabled — avoids
+                    # Only decode text when body logging is enabled — avoids
                     # unnecessary overhead for large payloads when max_body_bytes == 0.
-                    resp_body = resp.text if self._logger.body_logging_enabled else None
+                    resp_body = response.text if self._logger.body_logging_enabled else None
                     self._logger.log_response(
                         method,
                         url,
-                        status_code=resp.status_code,
-                        headers=dict(resp.headers),
+                        status_code=response.status,
+                        headers=response.headers,
                         body=resp_body,
                         elapsed_ms=elapsed_ms,
                     )
-                return resp
-            except requests.exceptions.RequestException as exc:
+                return response
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if self._logger is not None:
                     self._logger.log_error(
                         method,
@@ -135,14 +174,14 @@ class _HttpClient:
                 if attempt == self.max_attempts - 1:
                     raise
                 delay = self.base_delay * (2**attempt)
-                time.sleep(delay)
+                await asyncio.sleep(delay)
                 continue
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the HTTP client and release resources.
 
         If a session was provided, closes it. Safe to call multiple times.
         """
         if self._session is not None:
-            self._session.close()
+            await self._session.close()
             self._session = None
