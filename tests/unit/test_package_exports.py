@@ -1,0 +1,267 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+"""Tests for package-level re-exports.
+
+Each package (``PowerPlatform.Dataverse``, ``core``, ``models``, ``operations``)
+re-exports its public symbols and declares them in ``__all__``. This gives users
+short, stable import paths (``from PowerPlatform.Dataverse.models import Record``)
+that survive internal module reorganization.
+
+These tests verify:
+1. ``__all__`` matches the expected list exactly (catches accidental drift).
+2. Every name in ``__all__`` is importable from the package namespace.
+3. Each re-export is the same object as its source definition.
+"""
+
+import unittest
+
+DATAVERSE_EXPECTED = [
+    "DataverseClient",
+    "DataverseModel",
+    "QueryResult",
+    "__version__",
+    "col",
+    "raw",
+]
+
+CORE_EXPECTED = [
+    "DataverseConfig",
+    "DataverseError",
+    "HttpError",
+    "LogConfig",
+    "MetadataError",
+    "OperationContext",
+    "SQLParseError",
+    "ValidationError",
+]
+
+MODELS_EXPECTED = [
+    "AlternateKeyInfo",
+    "BatchItemResponse",
+    "BatchResult",
+    "CascadeConfiguration",
+    "ColumnInfo",
+    "ColumnProxy",
+    "DataverseModel",
+    "ExpandOption",
+    "FetchXmlQuery",
+    "FilterExpression",
+    "Label",
+    "LocalizedLabel",
+    "LookupAttributeMetadata",
+    "ManyToManyRelationshipMetadata",
+    "OneToManyRelationshipMetadata",
+    "QueryBuilder",
+    "QueryParams",
+    "QueryResult",
+    "Record",
+    "RelationshipInfo",
+    "TableInfo",
+    "UpsertItem",
+    "col",
+    "raw",
+]
+
+OPERATIONS_EXPECTED = [
+    "BatchDataFrameOperations",
+    "BatchOperations",
+    "BatchQueryOperations",
+    "BatchRecordOperations",
+    "BatchRequest",
+    "BatchTableOperations",
+    "ChangeSet",
+    "ChangeSetRecordOperations",
+    "DataFrameOperations",
+    "FileOperations",
+    "QueryOperations",
+    "RecordOperations",
+    "TableOperations",
+]
+
+
+class TestDataverseTopLevelExports(unittest.TestCase):
+    """Verify top-level PowerPlatform.Dataverse package exports."""
+
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
+        import PowerPlatform.Dataverse as m
+
+        self.assertEqual(sorted(m.__all__), sorted(DATAVERSE_EXPECTED))
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse as m
+
+        for name in DATAVERSE_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse")
+
+    def test_identity(self):
+        """Re-exported objects are the same objects as their source definitions."""
+        import PowerPlatform.Dataverse as m
+        from PowerPlatform.Dataverse.client import DataverseClient
+        from PowerPlatform.Dataverse.models.filters import col, raw
+        from PowerPlatform.Dataverse.models.protocol import DataverseModel
+        from PowerPlatform.Dataverse.models.record import QueryResult
+
+        self.assertIs(m.DataverseClient, DataverseClient)
+        self.assertIs(m.DataverseModel, DataverseModel)
+        self.assertIs(m.QueryResult, QueryResult)
+        self.assertIs(m.col, col)
+        self.assertIs(m.raw, raw)
+        self.assertIsInstance(m.__version__, str)
+
+
+class TestCoreExports(unittest.TestCase):
+    """Verify package-level imports for PowerPlatform.Dataverse.core."""
+
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
+        import PowerPlatform.Dataverse.core as m
+
+        self.assertEqual(sorted(m.__all__), sorted(CORE_EXPECTED))
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.core as m
+
+        for name in CORE_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.core")
+
+    def test_identity(self):
+        """Re-exported objects are the same objects as their source definitions."""
+        import PowerPlatform.Dataverse.core as m
+        from PowerPlatform.Dataverse.core.config import DataverseConfig, OperationContext
+        from PowerPlatform.Dataverse.core.errors import (
+            DataverseError,
+            HttpError,
+            MetadataError,
+            SQLParseError,
+            ValidationError,
+        )
+        from PowerPlatform.Dataverse.core.log_config import LogConfig
+
+        self.assertIs(m.DataverseConfig, DataverseConfig)
+        self.assertIs(m.DataverseError, DataverseError)
+        self.assertIs(m.HttpError, HttpError)
+        self.assertIs(m.LogConfig, LogConfig)
+        self.assertIs(m.MetadataError, MetadataError)
+        self.assertIs(m.OperationContext, OperationContext)
+        self.assertIs(m.SQLParseError, SQLParseError)
+        self.assertIs(m.ValidationError, ValidationError)
+
+
+class TestModelsExports(unittest.TestCase):
+    """Verify package-level imports for PowerPlatform.Dataverse.models."""
+
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
+        import PowerPlatform.Dataverse.models as m
+
+        self.assertEqual(sorted(m.__all__), sorted(MODELS_EXPECTED))
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.models as m
+
+        for name in MODELS_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.models")
+
+    def test_identity(self):
+        """Re-exported objects are the same objects as their source definitions."""
+        import PowerPlatform.Dataverse.models as m
+        from PowerPlatform.Dataverse.models.batch import BatchItemResponse, BatchResult
+        from PowerPlatform.Dataverse.models.fetchxml_query import FetchXmlQuery
+        from PowerPlatform.Dataverse.models.filters import ColumnProxy, FilterExpression, col, raw
+        from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
+        from PowerPlatform.Dataverse.models.protocol import DataverseModel
+        from PowerPlatform.Dataverse.models.query_builder import ExpandOption, QueryBuilder, QueryParams
+        from PowerPlatform.Dataverse.models.record import QueryResult, Record
+        from PowerPlatform.Dataverse.models.relationship import (
+            CascadeConfiguration,
+            LookupAttributeMetadata,
+            ManyToManyRelationshipMetadata,
+            OneToManyRelationshipMetadata,
+            RelationshipInfo,
+        )
+        from PowerPlatform.Dataverse.models.table_info import AlternateKeyInfo, ColumnInfo, TableInfo
+        from PowerPlatform.Dataverse.models.upsert import UpsertItem
+
+        self.assertIs(m.AlternateKeyInfo, AlternateKeyInfo)
+        self.assertIs(m.BatchItemResponse, BatchItemResponse)
+        self.assertIs(m.BatchResult, BatchResult)
+        self.assertIs(m.CascadeConfiguration, CascadeConfiguration)
+        self.assertIs(m.ColumnInfo, ColumnInfo)
+        self.assertIs(m.ColumnProxy, ColumnProxy)
+        self.assertIs(m.DataverseModel, DataverseModel)
+        self.assertIs(m.ExpandOption, ExpandOption)
+        self.assertIs(m.FetchXmlQuery, FetchXmlQuery)
+        self.assertIs(m.FilterExpression, FilterExpression)
+        self.assertIs(m.Label, Label)
+        self.assertIs(m.LocalizedLabel, LocalizedLabel)
+        self.assertIs(m.LookupAttributeMetadata, LookupAttributeMetadata)
+        self.assertIs(m.ManyToManyRelationshipMetadata, ManyToManyRelationshipMetadata)
+        self.assertIs(m.OneToManyRelationshipMetadata, OneToManyRelationshipMetadata)
+        self.assertIs(m.QueryBuilder, QueryBuilder)
+        self.assertIs(m.QueryParams, QueryParams)
+        self.assertIs(m.QueryResult, QueryResult)
+        self.assertIs(m.Record, Record)
+        self.assertIs(m.RelationshipInfo, RelationshipInfo)
+        self.assertIs(m.TableInfo, TableInfo)
+        self.assertIs(m.UpsertItem, UpsertItem)
+        self.assertIs(m.col, col)
+        self.assertIs(m.raw, raw)
+
+
+class TestOperationsExports(unittest.TestCase):
+    """Verify package-level imports for PowerPlatform.Dataverse.operations."""
+
+    def test_all_matches_expected(self):
+        """``__all__`` matches the expected list exactly."""
+        import PowerPlatform.Dataverse.operations as m
+
+        self.assertEqual(sorted(m.__all__), sorted(OPERATIONS_EXPECTED))
+
+    def test_expected_symbols_importable(self):
+        """Every expected public symbol is reachable from the package namespace."""
+        import PowerPlatform.Dataverse.operations as m
+
+        for name in OPERATIONS_EXPECTED:
+            self.assertTrue(hasattr(m, name), f"{name!r} not importable from PowerPlatform.Dataverse.operations")
+
+    def test_identity(self):
+        """Re-exported objects are the same objects as their source definitions."""
+        import PowerPlatform.Dataverse.operations as m
+        from PowerPlatform.Dataverse.operations.batch import (
+            BatchDataFrameOperations,
+            BatchOperations,
+            BatchQueryOperations,
+            BatchRecordOperations,
+            BatchRequest,
+            BatchTableOperations,
+            ChangeSet,
+            ChangeSetRecordOperations,
+        )
+        from PowerPlatform.Dataverse.operations.dataframe import DataFrameOperations
+        from PowerPlatform.Dataverse.operations.files import FileOperations
+        from PowerPlatform.Dataverse.operations.query import QueryOperations
+        from PowerPlatform.Dataverse.operations.records import RecordOperations
+        from PowerPlatform.Dataverse.operations.tables import TableOperations
+
+        self.assertIs(m.BatchDataFrameOperations, BatchDataFrameOperations)
+        self.assertIs(m.BatchOperations, BatchOperations)
+        self.assertIs(m.BatchQueryOperations, BatchQueryOperations)
+        self.assertIs(m.BatchRecordOperations, BatchRecordOperations)
+        self.assertIs(m.BatchRequest, BatchRequest)
+        self.assertIs(m.BatchTableOperations, BatchTableOperations)
+        self.assertIs(m.ChangeSet, ChangeSet)
+        self.assertIs(m.ChangeSetRecordOperations, ChangeSetRecordOperations)
+        self.assertIs(m.DataFrameOperations, DataFrameOperations)
+        self.assertIs(m.FileOperations, FileOperations)
+        self.assertIs(m.QueryOperations, QueryOperations)
+        self.assertIs(m.RecordOperations, RecordOperations)
+        self.assertIs(m.TableOperations, TableOperations)
+
+
+if __name__ == "__main__":
+    unittest.main()

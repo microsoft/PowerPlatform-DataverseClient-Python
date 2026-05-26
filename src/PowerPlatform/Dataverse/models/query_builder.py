@@ -10,7 +10,7 @@ against Dataverse tables with method chaining.
 Example::
 
     # Via client (recommended) -- flat iteration over records
-    from PowerPlatform.Dataverse.models.filters import col
+    from PowerPlatform.Dataverse.models import col
 
     for record in (client.query.builder("account")
                    .select("name", "revenue")
@@ -22,7 +22,7 @@ Example::
         print(record["name"])
 
     # With composable expression tree
-    from PowerPlatform.Dataverse.models.filters import col, raw
+    from PowerPlatform.Dataverse.models import col, raw
 
     for record in (client.query.builder("account")
                    .select("name", "revenue")
@@ -74,7 +74,7 @@ _BY_PAGE_UNSET = object()
 
 
 class QueryParams(TypedDict, total=False):
-    """Typed dictionary returned by :meth:`QueryBuilder.build`.
+    """Typed dictionary returned by ``QueryBuilder.build()``.
 
     Provides IDE autocomplete when passing build results to
     ``client.records.list()`` manually.
@@ -187,7 +187,7 @@ class _QueryBuilderBase:
     Holds all query state and chaining methods (``select``, ``where``,
     ``order_by``, ``top``, ``page_size``, ``count``, ``expand``,
     ``include_annotations``, ``include_formatted_values``) and
-    :meth:`build`.
+    ``build()``.
 
     Subclasses add execution: :class:`QueryBuilder` for sync clients,
     :class:`~PowerPlatform.Dataverse.aio.models.async_query_builder.AsyncQueryBuilder`
@@ -245,7 +245,7 @@ class _QueryBuilderBase:
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             query = (QueryBuilder("account")
                      .where((col("statecode") == 0) | (col("statecode") == 1))
@@ -451,7 +451,7 @@ class QueryBuilder(_QueryBuilderBase):
     """Fluent interface for building and executing OData queries against a sync client.
 
     Provides method chaining for constructing complex queries with
-    composable filter expressions. Can be used standalone (via :meth:`build`)
+    composable filter expressions. Can be used standalone (via ``build()``)
     or bound to a client (via :meth:`execute`).
 
     :param table: Table schema name to query.
@@ -461,7 +461,7 @@ class QueryBuilder(_QueryBuilderBase):
     Example:
         Standalone query construction::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             query = (QueryBuilder("account")
                      .select("name")
@@ -483,7 +483,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         This method is only available when the QueryBuilder was created
         via ``client.query.builder(table)``.  Standalone ``QueryBuilder``
-        instances should use :meth:`build` to get parameters and pass them
+        instances should use ``build()`` to get parameters and pass them
         to ``client.records.list()`` manually.
 
         At least one of ``select()``, ``where()``, or ``top()`` must be
@@ -506,7 +506,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             for record in (client.query.builder("account")
                            .select("name")
@@ -587,7 +587,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             for page in (client.query.builder("account")
                          .select("name")
@@ -652,7 +652,7 @@ class QueryBuilder(_QueryBuilderBase):
 
         Example::
 
-            from PowerPlatform.Dataverse.models.filters import col
+            from PowerPlatform.Dataverse.models import col
 
             df = (client.query.builder("account")
                   .select("name", "telephone1")
