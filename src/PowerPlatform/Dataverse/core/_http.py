@@ -82,7 +82,9 @@ class _HttpClient:
                 kwargs["timeout"] = self.default_timeout
             else:
                 m = (method or "").lower()
-                kwargs["timeout"] = _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
+                kwargs["timeout"] = (
+                    _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
+                )
 
         # Log outbound request once (before retry loop).
         # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.
