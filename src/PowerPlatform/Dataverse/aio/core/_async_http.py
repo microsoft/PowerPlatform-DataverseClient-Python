@@ -21,6 +21,8 @@ import aiohttp
 if TYPE_CHECKING:
     from ...core._http_logger import _HttpLogger
 
+from ...core._http import _TIMEOUT_WRITE_METHODS, _TIMEOUT_READ_METHODS
+
 
 class _AsyncResponse:
     """Materialized HTTP response returned by :class:`_AsyncHttpClient._request`.
@@ -92,7 +94,7 @@ class _AsyncHttpClient:
         """
         Execute an HTTP request asynchronously with automatic retry logic and timeout management.
 
-        Applies default timeouts based on HTTP method (120s for POST/DELETE, 10s for others)
+        Applies default timeouts based on HTTP method (120s for POST/PATCH/DELETE, 10s for others)
         and retries on network errors with exponential backoff.
 
         The response body is fully buffered and returned as a :class:`_AsyncResponse` whose
@@ -113,13 +115,13 @@ class _AsyncHttpClient:
             raise RuntimeError("No aiohttp.ClientSession set. Set _session before making requests.")
 
         # If no timeout is provided, use the user-specified default timeout if set;
-        # otherwise, apply per-method defaults (120s for POST/DELETE, 10s for others).
+        # otherwise, apply per-method defaults (120s for POST/PATCH/DELETE, 10s for others).
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
                 t = self.default_timeout
             else:
                 m = (method or "").lower()
-                t = 120 if m in ("post", "delete") else 10
+                t = _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
             kwargs["timeout"] = aiohttp.ClientTimeout(total=t)
 
         # Log outbound request once (before retry loop).

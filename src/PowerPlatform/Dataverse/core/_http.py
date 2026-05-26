@@ -19,6 +19,9 @@ import requests
 if TYPE_CHECKING:
     from ._http_logger import _HttpLogger
 
+_TIMEOUT_WRITE_METHODS = 120
+_TIMEOUT_READ_METHODS = 10
+
 
 class _HttpClient:
     """
@@ -60,7 +63,7 @@ class _HttpClient:
         """
         Execute an HTTP request with automatic retry logic and timeout management.
 
-        Applies default timeouts based on HTTP method (120s for POST/DELETE, 10s for others)
+        Applies default timeouts based on HTTP method (120s for POST/PATCH/DELETE, 10s for others)
         and retries on network errors with exponential backoff.
 
         :param method: HTTP method (GET, POST, PUT, DELETE, etc.).
@@ -73,13 +76,13 @@ class _HttpClient:
         :raises requests.exceptions.RequestException: If all retry attempts fail.
         """
         # If no timeout is provided, use the user-specified default timeout if set;
-        # otherwise, apply per-method defaults (120s for POST/DELETE, 10s for others).
+        # otherwise, apply per-method defaults (120s for POST/PATCH/DELETE, 10s for others).
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
                 kwargs["timeout"] = self.default_timeout
             else:
                 m = (method or "").lower()
-                kwargs["timeout"] = 120 if m in ("post", "delete") else 10
+                kwargs["timeout"] = _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
 
         # Log outbound request once (before retry loop).
         # Use explicit key presence checks so falsy values (e.g. {}) are logged correctly.

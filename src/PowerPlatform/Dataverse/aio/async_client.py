@@ -208,13 +208,13 @@ class AsyncDataverseClient:
         """
         if self._closed:
             return
+        self._closed = True
         if self._odata is not None:
             await self._odata.close()
             self._odata = None
         if self._session is not None:
             await self._session.close()
             self._session = None
-        self._closed = True
 
     def _check_closed(self) -> None:
         """Raise :class:`RuntimeError` if the client has been closed."""

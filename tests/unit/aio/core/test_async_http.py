@@ -75,13 +75,13 @@ class TestAsyncHttpClientTimeout:
         _, kwargs = session.request.call_args
         assert kwargs["timeout"].total == 10
 
-    async def test_patch_uses_10s_default_timeout(self):
-        """PATCH requests use 10 s default (only POST/DELETE get 120 s)."""
+    async def test_patch_uses_120s_default_timeout(self):
+        """PATCH requests use 120 s default (same as POST/DELETE)."""
         session = _make_session()
         client = _AsyncHttpClient(retries=1, session=session)
         await client._request("patch", "https://example.com/data")
         _, kwargs = session.request.call_args
-        assert kwargs["timeout"].total == 10
+        assert kwargs["timeout"].total == 120
 
     async def test_custom_client_timeout_overrides_method_default(self):
         """Explicit default_timeout on the client overrides per-method defaults."""
