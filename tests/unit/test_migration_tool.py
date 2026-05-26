@@ -538,6 +538,75 @@ class TestUnrecognizedFilterKwargsEmitManualNote(unittest.TestCase):
             f"unexpected .filter_eq manual-review note for positional call: {notes!r}",
         )
 
+    # ------------------------------------------------------------------
+    # Bug raised in PR #184 review (Copilot on _can_extract_filter_method_args):
+    # arity-violating calls were treated as "extractable" as soon as the first
+    # arg was present. Migrator would then rewrite to .where(...) dropping the
+    # extras silently. With the shape gate tightened both predicates agree:
+    # malformed calls stay untouched AND get a [MANUAL] note.
+    # ------------------------------------------------------------------
+
+    def test_filter_raw_with_extra_arg_is_not_rewritten(self):
+        src = "q = b.filter_raw('a eq 1', 'EXTRA')\n"
+        out = _migrate(src)
+        self.assertEqual(out, src, "filter_raw with extra arg must not be rewritten")
+        notes = _find_manual(src)
+        self.assertTrue(
+            any(".filter_raw" in n for n in notes),
+            f"expected a .filter_raw manual-review note, got {notes!r}",
+        )
+
+    def test_unary_filter_with_extra_arg_is_not_rewritten(self):
+        # filter_null is documented as 1-arity; an extra positional is malformed
+        # and must surface to the user, not be silently dropped.
+        for unary in ("filter_null", "filter_not_null"):
+            with self.subTest(method=unary):
+                src = f"q = b.{unary}('col', 'EXTRA')\n"
+                out = _migrate(src)
+                self.assertEqual(out, src, f"{unary} with extra arg must not be rewritten")
+                notes = _find_manual(src)
+                self.assertTrue(
+                    any(f".{unary}" in n for n in notes),
+                    f"expected a .{unary} manual-review note, got {notes!r}",
+                )
+
+    def test_binary_filter_with_extra_arg_is_not_rewritten(self):
+        src = "q = b.filter_eq('a', 1, 'EXTRA')\n"
+        out = _migrate(src)
+        self.assertEqual(out, src, "filter_eq with extra arg must not be rewritten")
+        notes = _find_manual(src)
+        self.assertTrue(
+            any(".filter_eq" in n for n in notes),
+            f"expected a .filter_eq manual-review note, got {notes!r}",
+        )
+
+    def test_between_with_extra_arg_is_not_rewritten(self):
+        src = "q = b.filter_between('col', 1, 10, 'EXTRA')\n"
+        out = _migrate(src)
+        self.assertEqual(out, src, "filter_between with extra arg must not be rewritten")
+        notes = _find_manual(src)
+        self.assertTrue(
+            any(".filter_between" in n for n in notes),
+            f"expected a .filter_between manual-review note, got {notes!r}",
+        )
+
+    def test_canonical_arity_still_rewrites_cleanly(self):
+        # Regression guard: the shape tightening must not break legitimate calls.
+        for src, expected_sub in (
+            ("q = b.filter_eq('a', 1)\n", "where(col('a') == 1)"),
+            ("q = b.filter_raw('a eq 1')\n", "where(raw('a eq 1'))"),
+            ("q = b.filter_null('c')\n", "where(col('c').is_null())"),
+            ("q = b.filter_between('c', 1, 10)\n", "where(col('c').between(1, 10))"),
+        ):
+            with self.subTest(src=src.strip()):
+                out = _migrate(src)
+                self.assertIn(expected_sub, out, f"canonical call broken by tightening: {src!r} -> {out!r}")
+                notes = _find_manual(src)
+                self.assertFalse(
+                    any("kwargs/argument shape not recognized" in n for n in notes),
+                    f"unexpected shape-not-recognized note for canonical call: {notes!r}",
+                )
+
 
 # ---------------------------------------------------------------------------
 # Manual-review notes carry source line:col (bug repair: sub-finding A)
@@ -629,6 +698,81 @@ class TestMigrateFilePrependsPath(unittest.TestCase):
         )
         # The message body still mentions the API.
         self.assertIn("records.get", notes[0])
+
+    def test_note_line_col_match_migrated_output_after_import_insertion(self):
+        """Bug raised in PR #184 review (Copilot on migrate_file):
+        when the codemod inserts a new ``from ...filters import col`` line at
+        the top, every subsequent line shifts by +1. find_manual_patterns()
+        used to run against the *original* source, so a note that should
+        point at the actual records.get() line in the post-migration file
+        pointed one line too high. Editors / CI annotations then jumped to
+        the wrong line."""
+        import os
+        import tempfile
+        from pathlib import Path
+        from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import migrate_file
+
+        src = (
+            "import os\n"  # line 1 in both original and migrated
+            "q = client.query.builder('account').filter_eq('name', 'X')\n"  # line 2 in original
+            "client.records.get('a', 'b')\n"  # line 3 in original, becomes line 4 in migrated
+        )
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
+        try:
+            tmp.write(src)
+            tmp.close()
+            path = Path(tmp.name)
+            _, _, notes = migrate_file(path, dry_run=False)
+
+            # Locate the records.get note. There may be multiple notes; pick this one.
+            records_get_notes = [n for n in notes if "records.get" in n and "retrieve" in n]
+            self.assertEqual(len(records_get_notes), 1, f"expected exactly one records.get note, got {notes!r}")
+
+            # Verify the migrated file actually placed records.get on line 4.
+            migrated_lines = path.read_text(encoding="utf-8").splitlines()
+            records_get_line = next(i + 1 for i, line in enumerate(migrated_lines) if "records.get" in line)
+            self.assertEqual(
+                records_get_line,
+                4,
+                f"sanity check on migrated layout (col-import added at line 2); got {migrated_lines!r}",
+            )
+
+            # Now the note's "<path>:<line>:<col>:" prefix must match line 4,
+            # not the original line 3.
+            self.assertTrue(
+                records_get_notes[0].startswith(f"{path}:{records_get_line}:"),
+                f"note's line must match migrated output ({records_get_line}); got {records_get_notes[0]!r}",
+            )
+        finally:
+            os.unlink(tmp.name)
+
+    def test_rewritten_call_does_not_produce_stale_manual_note(self):
+        """A call the codemod successfully rewrote (e.g. ``client.create(...)``
+        → ``client.records.create(...)``) must not also produce a [MANUAL] note
+        about its v0 shape. Running find_manual_patterns on the *migrated*
+        source guarantees this because the v0 shape no longer exists there."""
+        import os
+        import tempfile
+        from pathlib import Path
+        from PowerPlatform.Dataverse.migration.migrate_v0_to_v1 import migrate_file
+
+        src = "client.create('account', {'name': 'X'})\n"
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
+        try:
+            tmp.write(src)
+            tmp.close()
+            path = Path(tmp.name)
+            _, _, notes = migrate_file(path, dry_run=False)
+            # The rewrite produced ``client.records.create(...)`` -- which is
+            # the canonical v1 form -- so no [MANUAL] notes should fire about it.
+            self.assertEqual(
+                notes,
+                [],
+                f"rewritten client.create should not produce a stale [MANUAL] note: {notes!r}",
+            )
+            self.assertIn("client.records.create", path.read_text(encoding="utf-8"))
+        finally:
+            os.unlink(tmp.name)
 
 
 # ---------------------------------------------------------------------------
@@ -916,6 +1060,51 @@ class TestNestedForPagingDetection(unittest.TestCase):
         self.assertFalse(
             any("nested-for paging" in n for n in notes),
             f"expected no paging note over list_pages(), got {notes!r}",
+        )
+
+    # ------------------------------------------------------------------
+    # Bug raised in PR #184 review (Copilot on visit_For):
+    # the detector matched any ``<x>.records.get(...)``, even when ``<x>``
+    # was completely unrelated to the configured client (e.g. a third-party
+    # object with its own .records attribute). The note would then advise
+    # the user to switch to ``client.records.list(...)``, replacing the
+    # wrong receiver name. Receiver must be the configured client_var or
+    # a known alias of it.
+    # ------------------------------------------------------------------
+
+    def test_unrelated_receiver_does_not_trigger_paging_note(self):
+        # database_pool is not the client, and not aliased to one -- the note
+        # must not fire here, even though the .records.get + nested-for shape
+        # matches structurally.
+        src = (
+            "database_pool = get_pool()\n"
+            "for page in database_pool.records.get(table):\n"
+            "    for row in page:\n"
+            "        print(row)\n"
+        )
+        notes = _find_manual(src)
+        self.assertFalse(
+            any("nested-for paging" in n for n in notes),
+            f"unrelated .records.get must not be flagged, got {notes!r}",
+        )
+
+    def test_alias_of_client_var_does_trigger_paging_note(self):
+        # When the user has aliased the client (``my_client = client``), the
+        # codemod tracks ``my_client`` in _known_client_names and the
+        # nested-for over ``my_client.records.get(...)`` is real v0 paging.
+        # Use ``--client-var=my_client`` so the alias's call sites match the
+        # rewrite path (otherwise only the constructor/alias note fires).
+        src = (
+            "client = DataverseClient(url, cred)\n"
+            "my_client = client\n"
+            'for page in my_client.records.get("account"):\n'
+            "    for rec in page:\n"
+            "        print(rec)\n"
+        )
+        notes = _find_manual(src, client_var="my_client")
+        self.assertTrue(
+            any("nested-for paging" in n for n in notes),
+            f"alias's nested-for must still flag, got {notes!r}",
         )
 
 
@@ -1651,6 +1840,29 @@ class TestImportLayoutPreservation(unittest.TestCase):
         # The single-line collapse symptom: every name on one line.
         self.assertNotIn("between, raw, col", out)
         self.assertNotIn("between, raw,col", out)
+
+    def test_single_alias_multiline_import_augmented_stays_multiline(self):
+        # Bug raised in PR #184 review (Copilot comment on _append_aliases_preserving_layout):
+        # a single-alias parenthesized multi-line import was flattened to one line
+        # because the separator template was only derived from existing[0].comma
+        # when len(existing) >= 2. The trailing comma of the only alias carries
+        # the newline trivia and must be promoted to the separator template.
+        src = (
+            "from PowerPlatform.Dataverse.models.filters import (\n"
+            "    raw,\n"
+            ")\n"
+            'rule = raw("a eq 1")\n'
+            "q = client.query.builder('account').filter_eq('name', 'X')\n"
+        )
+        out = _migrate(src)
+        # ``col`` should be on its own line at the same 4-space indent as ``raw``.
+        self.assertIn("    raw,", out)
+        self.assertIn("    col,", out)
+        # Symptom of the bug: both names jammed onto one line.
+        self.assertNotIn("raw, col,", out)
+        self.assertNotIn("raw,col,", out)
+        # And the closing paren must still appear on its own line.
+        self.assertIn("\n)", out)
 
     def test_multiline_import_pruned_stays_multiline(self):
         # Original imports include unused names; the codemod removes them but the

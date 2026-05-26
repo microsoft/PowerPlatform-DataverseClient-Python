@@ -258,10 +258,6 @@ def _arg(args: Sequence[cst.Arg], pos_index: int, *kwarg_names: str) -> Optional
     return _kwarg(args, *kwarg_names) if kwarg_names else None
 
 
-def _positional_count(args: Sequence[cst.Arg]) -> int:
-    return sum(1 for a in args if a.keyword is None)
-
-
 # Canonical v0 kwarg names per filter method. Used by both the migrator and the
 # manual-review finder so they agree on what counts as "recognized arg shape".
 # These names come from the b10-era QueryBuilder.filter_* signatures and the
@@ -372,8 +368,14 @@ class _V1Migrator(cst.CSTTransformer):
 
         # ----------------------------------------------------------------
         # .filter_*(...) -> .where(col(...) ...)
+        # Only rewrite when the args match the documented v0 shape exactly.
+        # If they don't (e.g. extra positionals, unknown kwargs), leave the
+        # call untouched -- the _ManualReviewFinder will emit a [MANUAL] note
+        # so the user notices and rewrites it by hand. Without the shape gate
+        # here, calls like .filter_raw('a', 'EXTRA') would be silently
+        # rewritten to .where(raw('a')) with the 'EXTRA' arg dropped.
         # ----------------------------------------------------------------
-        if method_name in _ALL_FILTER_METHODS:
+        if method_name in _ALL_FILTER_METHODS and _can_extract_filter_method_args(method_name, updated_node.args):
             where_arg = self._build_filter_arg(method_name, updated_node.args)
             if where_arg is not None:
                 return updated_node.with_changes(
@@ -748,9 +750,44 @@ def _append_aliases_preserving_layout(
     if not new_names:
         return existing
 
+    # Separator-comma template -- the comma+whitespace placed between *non-final*
+    # aliases. For multi-alias inputs we copy existing[0].comma (which already
+    # captures the original block's style). For single-alias inputs we still need
+    # to detect a multi-line layout: ``from X import (\n    raw,\n)`` has only
+    # one alias but its trailing comma carries the newline trivia, so we copy
+    # *that* as the separator. Truly inline single-alias imports (``import raw``)
+    # have ``MaybeSentinel.DEFAULT`` for the comma -- fall back to single-space.
+    separator_template: Optional[cst.Comma] = None
     if len(existing) >= 2 and isinstance(existing[0].comma, cst.Comma):
         separator_template = existing[0].comma
-    else:
+    elif len(existing) == 1 and isinstance(existing[0].comma, cst.Comma):
+        # Single-alias multi-line case: ``from X import (\n    raw,\n)`` has only
+        # one alias, so existing[0].comma is the *trailing* comma whose
+        # whitespace_after carries only ``\n`` (the closing paren sits at col 0
+        # with no indent). That bare ``\n`` is not a usable separator -- using
+        # it would put ``col`` flush against the left margin. Detect the
+        # multi-line shape and synthesize a separator that re-indents to a
+        # 4-space PEP 8 default (matches what black would produce for the
+        # multi-alias form).
+        sole = existing[0].comma
+        ws = sole.whitespace_after
+        is_multiline = False
+        if isinstance(ws, cst.SimpleWhitespace) and "\n" in ws.value:
+            is_multiline = True
+        elif isinstance(ws, cst.ParenthesizedWhitespace):
+            # ParenthesizedWhitespace always implies multi-line (it owns at least
+            # one newline) -- safe to treat as the multi-line case.
+            is_multiline = True
+        if is_multiline:
+            separator_template = cst.Comma(
+                whitespace_after=cst.ParenthesizedWhitespace(
+                    first_line=cst.TrailingWhitespace(),
+                    empty_lines=[],
+                    indent=True,
+                    last_line=cst.SimpleWhitespace("    "),
+                )
+            )
+    if separator_template is None:
         separator_template = cst.Comma(whitespace_after=cst.SimpleWhitespace(" "))
     trailing_template = existing[-1].comma
 
@@ -797,18 +834,42 @@ def _can_extract_filter_method_args(method_name: str, args: Sequence[cst.Arg]) -
     that the migrator and the manual-review finder agree on what counts as a
     rewriteable call. Used by the finder to emit a [MANUAL] note for any
     .filter_*() call shape the migrator cannot rewrite (e.g. unrecognized kwargs).
+
+    Also rejects calls that contain *extra* args beyond the documented shape.
+    Previously a call like ``.filter_raw('a eq 1', 'EXTRA')`` returned True
+    (because position 0 was present) and the migrator silently dropped the
+    extra arg in the rewrite -- losing real user code. By insisting on exact
+    arity here, malformed calls fall into the ``[MANUAL]`` path instead of
+    being miscompiled.
     """
     if method_name not in _ALL_FILTER_METHODS:
         return False
     col_name, val_name, extra_name = _FILTER_KWARGS.get(method_name, ("column", "value", None))
     if _arg(args, 0, col_name) is None:
         return False
+
+    # Determine the exact expected arity for this method.
     if method_name == "filter_raw" or method_name in _UNARY_FILTER_MAP:
-        return True
-    if val_name is None or _arg(args, 1, val_name) is None:
+        expected_arity = 1
+        allowed_kwargs = {col_name}
+    elif method_name in ("filter_between", "filter_not_between"):
+        if val_name is None or _arg(args, 1, val_name) is None:
+            return False
+        if extra_name is None or _arg(args, 2, extra_name) is None:
+            return False
+        expected_arity = 3
+        allowed_kwargs = {col_name, val_name, extra_name}
+    else:
+        if val_name is None or _arg(args, 1, val_name) is None:
+            return False
+        expected_arity = 2
+        allowed_kwargs = {col_name, val_name}
+
+    if len(args) != expected_arity:
         return False
-    if method_name in ("filter_between", "filter_not_between"):
-        return extra_name is not None and _arg(args, 2, extra_name) is not None
+    for a in args:
+        if isinstance(a.keyword, cst.Name) and a.keyword.value not in allowed_kwargs:
+            return False
     return True
 
 
@@ -1048,8 +1109,20 @@ class _ManualReviewFinder(cst.CSTTransformer):
             return
         if not (isinstance(inner.attr, cst.Name) and inner.attr.value == "records"):
             return
-        # The outer iter is some .records.get(...) call. Match only when the loop
-        # target is a single Name so we can compare with the inner For's iter.
+        # Require the .records receiver to actually be the configured client
+        # variable (or a known alias of it). Otherwise an unrelated
+        # ``database_pool.records.get(...)`` would be flagged with a note that
+        # advises rewriting to ``client.records.list(...)`` -- replacing the
+        # wrong receiver name. Comparing to _known_client_names (rather than
+        # only _client_var) lets the check work when the user has aliased
+        # the client (handled by _flag_non_default_client_assignment above).
+        receiver = inner.value
+        if not isinstance(receiver, cst.Name):
+            return
+        if receiver.value not in self._known_client_names:
+            return
+        # The outer iter is some <client>.records.get(...) call. Match only when
+        # the loop target is a single Name so we can compare with the inner For's iter.
         if not isinstance(node.target, cst.Name):
             return
         outer_var = node.target.value
@@ -1274,7 +1347,15 @@ def migrate_file(path: Path, *, dry_run: bool = False, client_var: str = "client
     except ValueError as exc:
         print(f"  [SKIP] {path}: {exc}", file=sys.stderr)
         return False, False, []
-    raw_notes = find_manual_patterns(original, client_var=client_var)
+    # Run the manual-pattern finder against the *migrated* source so the
+    # reported <line>:<col> coordinates match the file the user is now looking
+    # at on disk. Running it against ``original`` produced stale coordinates
+    # whenever the codemod inserted a new import (or otherwise shifted line
+    # numbers), so jumping from a CI/editor message landed on the wrong line.
+    # Calls that the codemod successfully rewrote no longer match the v0 finder
+    # in ``migrated`` -- that is the desired behavior: a rewritten call should
+    # not also produce a [MANUAL] note about its v0 shape.
+    raw_notes = find_manual_patterns(migrated, client_var=client_var)
     manual = [f"{path}:{note}" for note in raw_notes]
     changed = migrated != original
     if changed and dry_run:
