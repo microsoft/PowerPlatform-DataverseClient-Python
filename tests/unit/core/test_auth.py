@@ -33,3 +33,100 @@ class TestAuthManager(unittest.TestCase):
         self.assertIsInstance(result, _TokenPair)
         self.assertEqual(result.resource, "https://org.crm.dynamics.com/.default")
         self.assertEqual(result.access_token, "my-access-token")
+
+
+class TestTokenPairReprRedaction(unittest.TestCase):
+    """``_TokenPair.__repr__`` must not leak the bearer JWT.
+
+    Python's default dataclass ``__repr__`` would emit every field, including
+    ``access_token``. A single accidental ``print(pair)``, ``logging.debug(pair)``,
+    or traceback with locals would put the full JWT in a log/console where it
+    can be exfiltrated. The redaction mirrors how Authorization headers are
+    handled by ``_http_logger``.
+    """
+
+    # A realistic JWT shape -- 3 dot-separated base64-ish segments.
+    JWT = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.PAYLOAD.SIGNATURE"
+
+    def _make_pair(self) -> _TokenPair:
+        return _TokenPair(
+            resource="https://org.crm.dynamics.com/.default",
+            access_token=self.JWT,
+        )
+
+    def test_bug_repro_repr_does_not_leak_access_token(self):
+        """Exact bug-report repro: ``repr(_TokenPair(...))`` must not contain
+        any part of the JWT (header, payload, signature, or the joined form)."""
+        text = repr(self._make_pair())
+        self.assertNotIn(self.JWT, text)
+        for segment in self.JWT.split("."):
+            self.assertNotIn(segment, text, f"JWT segment {segment!r} leaked into repr: {text!r}")
+        self.assertIn("[REDACTED]", text)
+
+    def test_str_also_redacts(self):
+        """``str()`` falls back to ``__repr__`` when no ``__str__`` is defined,
+        so str must redact too -- covers f-strings, %s, and print()."""
+        self.assertNotIn(self.JWT, str(self._make_pair()))
+        self.assertIn("[REDACTED]", str(self._make_pair()))
+
+    def test_f_string_redacts(self):
+        """f-string interpolation goes through ``__format__`` → ``str`` →
+        ``__repr__``; verify the full chain redacts."""
+        text = f"{self._make_pair()}"
+        self.assertNotIn(self.JWT, text)
+        self.assertIn("[REDACTED]", text)
+
+    def test_percent_format_redacts(self):
+        """Both ``%r`` and ``%s`` formatting must redact -- they are the two
+        most common ways a token would slip into a printf-style log call."""
+        for fmt in ("%r", "%s"):
+            with self.subTest(fmt=fmt):
+                text = fmt % (self._make_pair(),)
+                self.assertNotIn(self.JWT, text)
+                self.assertIn("[REDACTED]", text)
+
+    def test_resource_remains_visible_in_repr(self):
+        """The resource scope is not sensitive and is useful for debugging
+        (it identifies which environment a token targets). Over-redacting it
+        would hurt diagnostics without improving security."""
+        text = repr(self._make_pair())
+        self.assertIn("https://org.crm.dynamics.com/.default", text)
+        self.assertIn("resource=", text)
+
+    def test_access_token_attribute_still_readable_programmatically(self):
+        """Only the *display* of the token is redacted -- the attribute
+        itself must remain the real string so callers like
+        ``_odata.py`` that read ``pair.access_token`` continue to work."""
+        pair = self._make_pair()
+        self.assertEqual(pair.access_token, self.JWT)
+
+    def test_dataclass_equality_preserved(self):
+        """``@dataclass(repr=False)`` must NOT also drop the auto-generated
+        ``__eq__`` -- equality by field value is part of the contract and
+        tests in this repo rely on it."""
+        a = _TokenPair(resource="r", access_token="t")
+        b = _TokenPair(resource="r", access_token="t")
+        c = _TokenPair(resource="r", access_token="other")
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, c)
+
+    def test_repr_shape_matches_dataclass_style(self):
+        """The redacted form should still *look* like a dataclass repr
+        (class name, parenthesized key=value pairs), so logs and exceptions
+        remain readable and grep-able."""
+        text = repr(_TokenPair(resource="r", access_token="t"))
+        self.assertTrue(text.startswith("_TokenPair("), f"bad repr shape: {text!r}")
+        self.assertTrue(text.endswith(")"), f"bad repr shape: {text!r}")
+        self.assertIn("resource=", text)
+        self.assertIn("access_token=", text)
+
+    def test_acquire_token_result_redacts_on_repr(self):
+        """End-to-end: a _TokenPair returned by _AuthManager._acquire_token
+        (the real production path) must also redact -- catches the case where
+        someone wraps a call in `logger.debug(manager._acquire_token(scope))`."""
+        mock_credential = MagicMock(spec=TokenCredential)
+        mock_credential.get_token.return_value = MagicMock(token=self.JWT)
+        manager = _AuthManager(mock_credential)
+        pair = manager._acquire_token("https://org.crm.dynamics.com/.default")
+        self.assertNotIn(self.JWT, repr(pair))
+        self.assertIn("[REDACTED]", repr(pair))

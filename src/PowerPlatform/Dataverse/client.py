@@ -50,7 +50,16 @@ class DataverseClient:
     :type context: ~PowerPlatform.Dataverse.core.config.OperationContext or None
 
     :raises ValueError: If ``base_url`` is missing or empty after trimming.
+    :raises ValueError: If ``base_url`` does not use HTTPS. Dataverse only
+        serves over HTTPS; constructing with ``http://`` would send the OAuth
+        bearer token unencrypted, so the check fails fast at construction.
     :raises ValueError: If both ``config`` and ``context`` are provided.
+    :raises AttributeError: If a v0 beta shortcut (``create``, ``update``,
+        ``delete``, ``get``, ``query_sql``, ``create_table``, ``delete_table``,
+        ``list_tables``, ``get_table_info``, ``create_columns``,
+        ``delete_columns``, ``upload_file``) is accessed. The error message
+        names the GA replacement and the codemod command. See
+        :attr:`_REMOVED_BETA_METHODS`.
 
     .. note::
         The client lazily initializes its internal OData client on first use, allowing lightweight construction without immediate network calls.
@@ -69,6 +78,12 @@ class DataverseClient:
     - ``client.files`` -- file upload operations
     - ``client.dataframe`` -- pandas DataFrame wrappers for record CRUD
     - ``client.batch`` -- batch multiple operations into a single HTTP request
+
+    v0 beta methods (``client.create``, ``client.query_sql``, etc.) were removed
+    in 1.0 GA. Calling one now raises :class:`AttributeError` with a message
+    naming the GA replacement and the codemod command -- previously these calls
+    raised a bare ``AttributeError`` with no migration hint, so debugging
+    half-migrated code was painful. See :attr:`_REMOVED_BETA_METHODS`.
 
     The client supports Python's context manager protocol for automatic resource
     cleanup and HTTP connection pooling:
@@ -95,6 +110,26 @@ class DataverseClient:
                 client.close()
     """
 
+    # v0 beta methods removed in 1.0 GA -> human-readable GA replacement.
+    # Kept in sync with ``migrate_v0_to_v1._CLIENT_SHORTCUTS``: any addition
+    # there should land here too so the runtime error and the codemod's
+    # rewrite always agree. ``__getattr__`` reads this to turn what used to
+    # be a bare ``AttributeError`` into one with an actionable hint.
+    _REMOVED_BETA_METHODS = {
+        "create": "client.records.create(table, data)",
+        "update": "client.records.update(table, record_id, data)",
+        "delete": "client.records.delete(table, record_id)",
+        "get": "client.records.get(table, ...)",
+        "query_sql": "client.query.sql(sql)",
+        "get_table_info": "client.tables.get(table)",
+        "create_table": "client.tables.create(...)",
+        "delete_table": "client.tables.delete(table)",
+        "list_tables": "client.tables.list()",
+        "create_columns": "client.tables.add_columns(table, ...)",
+        "delete_columns": "client.tables.remove_columns(table, ...)",
+        "upload_file": "client.files.upload(...)",
+    }
+
     def __init__(
         self,
         base_url: str,
@@ -111,6 +146,15 @@ class DataverseClient:
         self._base_url = (base_url or "").rstrip("/")
         if not self._base_url:
             raise ValueError("base_url is required.")
+        # Dataverse never serves over plaintext. A typo or copy-paste that leaves
+        # the scheme as ``http://`` would send the bearer token unencrypted on the
+        # very first request -- by then the credential is already on the wire.
+        # Fail-fast at construction so the leak can't happen.
+        if not self._base_url.lower().startswith("https://"):
+            raise ValueError(
+                f"base_url must use HTTPS (got {base_url!r}). Dataverse only serves "
+                f"over HTTPS; plaintext would send OAuth bearer tokens unencrypted."
+            )
         if config is not None:
             self._config = config
         elif context is not None:
@@ -214,6 +258,28 @@ class DataverseClient:
         """Raise :class:`RuntimeError` if the client has been closed."""
         if self._closed:
             raise RuntimeError("DataverseClient is closed")
+
+    def __getattr__(self, name: str):
+        """Surface a migration hint for v0 beta shortcuts removed at 1.0 GA.
+
+        Python only calls this when normal attribute lookup has failed, so the
+        GA namespaces (``records``, ``query``, ``tables``, ``files``,
+        ``dataframe``, ``batch``) -- which are set on the instance in
+        ``__init__`` -- never reach here. Names starting with ``_`` fall
+        through to a plain :class:`AttributeError` so pickling, ``copy.deepcopy``,
+        IDE introspection, and similar protocol lookups behave normally.
+        """
+        if name.startswith("_"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        new_call = self._REMOVED_BETA_METHODS.get(name)
+        if new_call is None:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        raise AttributeError(
+            f"'DataverseClient' has no attribute {name!r}. This was a v0 beta "
+            f"method removed in 1.0 GA. Use {new_call} instead. To migrate a "
+            f"codebase automatically, run: "
+            f"python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1 <path>"
+        )
 
     # ---------------- Cache utilities ----------------
 
