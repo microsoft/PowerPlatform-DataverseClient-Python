@@ -223,7 +223,11 @@ class _ODataBase:
         try:
             yield shared_id
         finally:
-            _CALL_SCOPE_CORRELATION_ID.reset(token)
+            try:
+                _CALL_SCOPE_CORRELATION_ID.reset(token)
+            except ValueError:
+                # Token from a different context — safe to ignore on early async generator exit.
+                pass
 
     def _format_key(self, key: str) -> str:
         k = key.strip()
