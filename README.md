@@ -486,10 +486,14 @@ results = (client.query.builder("account")
            .where(col("statecode") == 0)
            .count()
            .execute())
+print(len(results))   # QueryResult is sized — use len() to get the count
 
 # Via records.list() — count=True adds $count=true to the OData request
 results = client.records.list("account", filter="statecode eq 0", count=True)
+print(len(results))
 ```
+
+> **Accessing the count:** `QueryResult` is iterable and sized — call `len(results)` to get the number of records. There is no separate `.count` or `.total_count` attribute. Because the client auto-paginates, `len(results)` reflects every matching row fetched; the server's raw `@odata.count` annotation is not surfaced as a standalone field.
 
 **FetchXML queries** -- `client.query.fetchxml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
 
