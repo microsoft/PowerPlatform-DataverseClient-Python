@@ -104,14 +104,19 @@ from PowerPlatform.Dataverse.client import DataverseClient
 credential = InteractiveBrowserCredential()  # Browser authentication
 # credential = AzureCliCredential()          # If logged in via 'az login'
 
-# Production options
-# credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+# For Production options (service principal / app-only auth)
+# credential = ClientSecretCredential(
+#     tenant_id="...",      # ID of the service principal's tenant. Also called its "directory" ID.
+#     client_id="...",      # The service principal's client ID
+#     client_secret="...",  # Client secret value generated for the app (store in Key Vault / env var)
+# )
 # credential = CertificateCredential(tenant_id, client_id, cert_path)
 
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
+Ref: https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity?view=azure-python
 
-> **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
+> **Set up service principal authentication**: To use `ClientSecretCredential` or `CertificateCredential` you must first register an Azure AD app and grant it access to your Dataverse environment as an application user. See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** (covers app registration, obtaining `tenant_id` / `client_id` / `client_secret`, all credential types, and security configuration).
 
 ## Key concepts
 
