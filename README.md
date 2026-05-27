@@ -209,6 +209,26 @@ a PATCH request; multiple items use the `UpsertMultiple` bulk action.
 > maker portal → Table → Keys, or via the Dataverse API). Without a configured alternate key,
 > upsert requests will be rejected by Dataverse with a 400 error.
 
+Set up the key once before running the upsert examples:
+
+```python
+# One-time setup for the examples below: make accountnumber an alternate key on account
+key = client.tables.create_alternate_key(
+    "account",
+    "account_accountnumber_ak",
+    ["accountnumber"],
+    display_name="Account Number",
+)
+print(f"Created key {key.schema_name} ({key.metadata_id}), status={key.status}")
+
+# Optional: check key status (useful right after creation; status transitions Pending -> Active)
+for k in client.tables.get_alternate_keys("account"):
+    if k.schema_name == "account_accountnumber_ak":
+        print(f"{k.schema_name}: {k.status}")
+```
+
+Upsert usage
+
 ```python
 from PowerPlatform.Dataverse.models import UpsertItem
 
