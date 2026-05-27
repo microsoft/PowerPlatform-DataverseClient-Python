@@ -936,24 +936,64 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 
 ## Troubleshooting
 
+### Exception hierarchy
+
+The SDK raises structured exceptions that all inherit from a common base, `DataverseError`. Catching the base class is the safest fallback; catch the specific subclasses when you need to react differently to validation, metadata, SQL, or HTTP failures.
+
+```
+Exception
+└── DataverseError              # Base class for every SDK-raised error
+    ├── ValidationError         # Client-side input validation failed
+    ├── MetadataError           # Table/column/relationship metadata problem
+    ├── SQLParseError           # SQL query could not be parsed
+    └── HttpError               # Dataverse Web API returned a non-success status
+```
+
+All classes are importable from `PowerPlatform.Dataverse.core.errors` (or re-exported from `PowerPlatform.Dataverse.core`).
+
+| Exception | When it is raised | Typical examples |
+|-----------|-------------------|------------------|
+| **`DataverseError`** | Base class. Catch it to handle any SDK-originated failure in one block. | Fallback `except` clause. |
+| **`ValidationError`** | Client-side argument validation fails **before** a request is sent. | Empty/`None` table name, missing primary key, non-string SQL, invalid batch payload, unsupported column type in `create_table`. |
+| **`MetadataError`** | A metadata lookup or definition operation fails — usually an unknown or invalid table, column, or relationship. | Unknown logical name passed to `batch.create/update/delete`, `tables.create_column`, `relationships.create_*`, or `tables.delete`. |
+| **`SQLParseError`** | A SQL string passed to `client.query.sql(...)` cannot be parsed into a valid SELECT. | Unsupported SQL syntax, write statements (`INSERT`/`UPDATE`/`DELETE`), malformed queries. |
+| **`HttpError`** | The Dataverse Web API responded with a non-2xx status. Exposes `status_code`, `service_error_code`, `correlation_id`, `service_request_id`, `retry_after`, and `is_transient` (set for 408/429/503/504). | 401 (auth), 403 (permissions), 404 (record/table not found), 412 (concurrency/ETag), 429 (throttling), 5xx (server). |
+
+> **Note on timeouts and network errors.** Low-level network failures from the underlying `httpx` client are **not** wrapped by the SDK and surface as their original `httpx` exceptions — most commonly `httpx.ReadTimeout`, `httpx.ConnectTimeout`, and `httpx.TimeoutException` (their common base) on slow endpoints such as `relationships.list()` or large queries, and `httpx.ConnectError`/`httpx.NetworkError` for connectivity issues. Catch `httpx.HTTPError` to cover all of them, or `httpx.TimeoutException` for timeouts specifically. The async client (`PowerPlatform.Dataverse.aio`) surfaces `aiohttp.ClientError` and `asyncio.TimeoutError` analogously.
+
 ### General
 
-The client raises structured exceptions for different error scenarios:
-
 ```python
+import httpx
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+from PowerPlatform.Dataverse.core.errors import (
+    DataverseError,
+    HttpError,
+    MetadataError,
+    SQLParseError,
+    ValidationError,
+)
 
 try:
     client.records.retrieve("account", "invalid-id")
+except ValidationError as e:
+    print(f"Validation error: {e.message} (subcode={e.subcode})")
+except MetadataError as e:
+    print(f"Metadata error: {e.message} (subcode={e.subcode})")
+except SQLParseError as e:
+    print(f"SQL parse error: {e.message}")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
-    print(f"Error code: {e.code}")
-    print(f"Subcode: {e.subcode}")
+    print(f"Code: {e.code}  Subcode: {e.subcode}")
+    print(f"Service request id: {e.details.get('service_request_id')}")
     if e.is_transient:
-        print("This error may be retryable")
-except ValidationError as e:
-    print(f"Validation error: {e.message}")
+        print(f"Transient — retry after {e.details.get('retry_after')}s")
+except httpx.TimeoutException as e:
+    # ReadTimeout / ConnectTimeout / WriteTimeout from the underlying transport
+    print(f"Request timed out: {e}")
+except DataverseError as e:
+    # Catch-all for any other SDK-raised error
+    print(f"Dataverse error [{e.code}]: {e.message}")
 ```
 
 ### Authentication issues
