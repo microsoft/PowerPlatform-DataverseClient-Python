@@ -360,12 +360,9 @@ print(f"Got {len(df)} accounts")
 ```python
 # Comparison filters using col() expressions
 query = (client.query.builder("contact")
-         .where(col("statecode") == 0)                        # statecode eq 0
-         .where(col("revenue") > 1000000)                     # revenue gt 1000000
-         .where(col("name").contains("Corp"))                 # contains(name, 'Corp')
-         .where(col("statecode").in_([0, 1]))                 # Microsoft.Dynamics.CRM.In(...)
-         .where(col("revenue").between(100000, 500000))       # revenue ge 100000 and revenue le 500000
-         .where(col("telephone1").is_null())                  # telephone1 eq null
+         .where(col("email").contains("outlook.com"))       # contains(email from domain, 'outlook.com')
+         .where(col("creditlimit").between(10000, 50000))   # credit limit ge 10000 and revenue le 50000
+         .where(col("telephone1").is_null())                # telephone1 eq null
          )
 ```
 
