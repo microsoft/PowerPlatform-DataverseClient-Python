@@ -1286,10 +1286,12 @@ class TestLineEndingFidelity(unittest.TestCase):
         out = self._write_bytes_and_migrate(src)
         # Every newline in the output must still be CRLF: every \n preceded by \r,
         # equivalently CR count == LF count.
+        cr_count = out.count(b"\r")
+        lf_count = out.count(b"\n")
         self.assertEqual(
-            out.count(b"\r"),
-            out.count(b"\n"),
-            f"CRLF source must stay CRLF; got CR={out.count(b'\\r')} LF={out.count(b'\\n')}",
+            cr_count,
+            lf_count,
+            f"CRLF source must stay CRLF; got CR={cr_count} LF={lf_count}",
         )
         # Sanity: the actual rewrite is visible.
         self.assertIn(b".where(col(", out)

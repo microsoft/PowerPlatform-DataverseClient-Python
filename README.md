@@ -297,9 +297,6 @@ print(f"Found {len(df)} accounts")
 # Limit results with top for large tables
 df = client.query.builder("account").select("name").top(100).execute().to_dataframe()
 
-# Fetch a single record as a one-row DataFrame
-df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
-
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
     {"name": "Contoso", "telephone1": "555-0100"},
@@ -1085,6 +1082,44 @@ Each log file is timestamped and rotated automatically (default 10 MB per file, 
 > - **Control retention.** Log rotation keeps up to 5 files by default (`backup_count`).
 >   Delete logs after the debugging session; use secure deletion for regulated data.
 > - **Prevent source control leaks.** Add the log folder to `.gitignore` immediately.
+
+### HTTP timeouts and retries
+
+The client applies sensible per-method HTTP timeouts and automatically retries
+transient network errors. You can tune both via `DataverseConfig`.
+
+| Setting | Default | Applies to |
+|---------|---------|------------|
+| `http_timeout` | per-method (see below) | every request — overrides the per-method defaults when set |
+| `http_retries` | `5` | maximum attempts per request on network errors (`requests.exceptions.RequestException`) |
+| `http_backoff` | `0.5` | base delay in seconds between retries; doubles each attempt (`0.5s, 1s, 2s, 4s, …`) |
+
+When `http_timeout` is not set, the client uses:
+
+- **10 seconds** for `GET` (and any non-write method)
+- **120 seconds** for `POST`, `PATCH`, `DELETE`
+
+The 10s read default is comfortable for routine data queries but can be too tight
+for large metadata reads (e.g. `client.tables.list_relationships()`,
+`client.tables.list_columns()`) on orgs with many tables/relationships, or on the
+first call after an org wakes from idle. If you see `ReadTimeout` errors from
+those endpoints, raise the ceiling:
+
+```python
+from PowerPlatform.Dataverse.client import DataverseClient
+from PowerPlatform.Dataverse.core import DataverseConfig
+
+config = DataverseConfig(
+    http_timeout=120,   # seconds — applies to every request
+    http_retries=3,     # cap retries on slow metadata calls
+    http_backoff=1.0,
+)
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential, config=config)
+```
+
+> **Note:** Setting `http_timeout` overrides the per-method defaults for **all**
+> requests, not just metadata calls. Pick a value large enough for the slowest
+> operation you expect (typically metadata listing or bulk writes).
 
 ### Limitations
 
