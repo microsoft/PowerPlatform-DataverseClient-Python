@@ -265,6 +265,16 @@ async def _run_walkthrough(client):
         record_ids = [r.get("new_walkthroughdemoid")[:8] + "..." for r in page]
         print(f"  Page {page_num}: {len(page)} records - IDs: {record_ids}")
 
+    log_call(
+        "async for record in await client.query.builder(...).top(5).execute()  — QueryResult supports async iteration"
+    )
+    print("Iterating a QueryResult with `async for` (top 5 by quantity)...")
+    top_result = await backoff(
+        lambda: client.query.builder(table_name).order_by("new_Quantity", descending=True).top(5).execute()
+    )
+    async for record in top_result:
+        print(f"  - Qty={record.get('new_quantity')} Title={record.get('new_title')}")
+
     # ============================================================================
     # 7. QUERYBUILDER - FLUENT QUERIES
     # ============================================================================

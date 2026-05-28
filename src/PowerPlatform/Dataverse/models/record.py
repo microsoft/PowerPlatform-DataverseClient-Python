@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, KeysView, List, Optional, Union, ValuesView, ItemsView
+from typing import Any, AsyncIterator, Dict, Iterator, KeysView, List, Optional, Union, ValuesView, ItemsView
 
 __all__ = ["Record", "QueryResult"]
 
@@ -131,6 +131,10 @@ class QueryResult:
 
     def __iter__(self) -> Iterator[Record]:
         return iter(self.records)
+
+    async def __aiter__(self) -> AsyncIterator[Record]:
+        for record in self.records:
+            yield record
 
     def __len__(self) -> int:
         return len(self.records)
