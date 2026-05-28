@@ -185,6 +185,8 @@ client.records.update("account", account_id, {"telephone1": "555-0199"})
 client.records.delete("account", account_id)
 ```
 
+> **Deprecation note (migration from beta):** `client.records.get()` is deprecated and emits a `DeprecationWarning`. Use `client.records.retrieve(table, record_id)` for single-record reads (returns `None` on 404 instead of raising) and `client.records.list(table, filter=...)` / `client.records.list_pages(...)` for multi-record queries. Return types differ from the beta `get()`, so the codemod flags these for manual review rather than rewriting them — run `dataverse-migrate` (see [Query data](#query-data)) to locate every call site.
+
 ### Bulk operations
 
 ```python
