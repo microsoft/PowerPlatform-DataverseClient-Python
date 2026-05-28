@@ -23,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model and API surface additions (#175):
   - `QueryResult.__getitem__` — index access (`result[0]`) returns a `Record`; slice access (`result[1:5]`) returns a new `QueryResult`
   - `DataverseModel` structural `Protocol` (`models/protocol.py`) — implement on any entity class to enable typed integration with CRUD operations without specifying table names or serializing manually
-  - `col()`, `raw()`, `QueryResult`, and `DataverseModel` exported from the top-level `PowerPlatform.Dataverse` package
 - v0→v1 migration tool (#175):
   - Installed as the `dataverse-migrate` console script (also runnable via `python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1`)
   - Rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns
