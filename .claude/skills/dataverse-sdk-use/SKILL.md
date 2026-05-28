@@ -592,6 +592,8 @@ except ValidationError as e:
 
 The SDK ships a full async client, `AsyncDataverseClient`, under `PowerPlatform.Dataverse.aio`. Requires the `[async]` extra: `pip install "PowerPlatform-Dataverse-Client[async]"`.
 
+> **Note:** snippets in this section are fragments. Every `await` line assumes it lives inside an `async def main(): ...` body with `client` and `credential` already constructed (see the Client Initialization block for the wrapper). Outside an async function, `await` is a `SyntaxError`.
+
 ### Import
 ```python
 from azure.identity.aio import DefaultAzureCredential
@@ -600,6 +602,8 @@ from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 ### Client Initialization
 ```python
+# given: credential constructed (e.g. DefaultAzureCredential())
+
 # Context manager (recommended -- closes session and clears caches automatically)
 async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
     ...  # all operations here
@@ -615,6 +619,8 @@ finally:
 ### CRUD Operations
 Every sync method has an async equivalent -- add `await`:
 ```python
+# given: client is an open AsyncDataverseClient
+
 # Create
 account_id = await client.records.create("account", {"name": "Contoso Ltd"})
 
@@ -633,6 +639,7 @@ ids = await client.records.create("account", [{"name": "A"}, {"name": "B"}])
 
 ### Query Builder
 ```python
+# given: client is an open AsyncDataverseClient
 from PowerPlatform.Dataverse.models.filters import col
 
 # Collect all results
@@ -666,6 +673,8 @@ rows = await client.query.fetchxml(xml).execute()
 
 ### Batch and Changesets
 ```python
+# given: client is open; account_id from an earlier records.create
+
 # Plain batch
 batch = client.batch.new()
 batch.records.create("account", {"name": "Alpha"})
@@ -681,6 +690,7 @@ result = await batch.execute()
 
 ### DataFrame Operations
 ```python
+# given: client is an open AsyncDataverseClient
 import pandas as pd
 
 # Query to DataFrame

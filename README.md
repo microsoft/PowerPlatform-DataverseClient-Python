@@ -825,6 +825,8 @@ For a complete example see [examples/advanced/batch.py](https://github.com/micro
 
 The SDK ships a full async client, `AsyncDataverseClient`, for use in async applications. It mirrors every operation of the sync client — the same namespaces (`records`, `query`, `tables`, `files`, `batch`), the same method signatures, and the same return types.
 
+> ⓘ **Async snippets below are fragments.** Every example after `### Quick start` assumes it is nested inside an `async def main(): ...` body, with `client` and `credential` already constructed as shown in Quick start. Copying a fragment into a top-level `.py` file will raise `SyntaxError: 'await' outside function`. See [examples/aio/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio) for full runnable scripts.
+
 ### Install
 
 The async client requires `aiohttp`, which is an optional extra:
@@ -859,6 +861,7 @@ asyncio.run(main())
 ### Standalone usage (without `async with`)
 
 ```python
+# given: credential constructed as in Quick start (e.g. DefaultAzureCredential())
 client = AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential)
 try:
     account_id = await client.records.create("account", {"name": "Contoso Ltd"})
@@ -871,6 +874,7 @@ finally:
 The async query builder API is identical to the sync one:
 
 ```python
+# given: client is an open AsyncDataverseClient
 from PowerPlatform.Dataverse.models.filters import col
 
 # Execute and collect all results
@@ -898,6 +902,7 @@ async for page in (
 ### Batch and changesets
 
 ```python
+# given: client is open; account_id is the GUID returned by an earlier records.create
 batch = client.batch.new()
 batch.records.create("account", {"name": "Alpha"})
 batch.records.create("account", {"name": "Beta"})
