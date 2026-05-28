@@ -417,6 +417,28 @@ class TestTopLevelBatchError(unittest.TestCase):
             _raise_top_level_batch_error(mock_resp)
         self.assertEqual(ctx.exception.details.get("service_error_code"), "0x80040220")
 
+    def test_innererror_message_appended_to_top_level(self):
+        """error.innererror.message surfaces alongside the vague top-level
+        payload error, so the offending field reaches the user."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.json.return_value = {
+            "error": {
+                "code": "0x80060891",
+                "message": "Error identified in Payload provided by the user for Entity :contacts",
+                "innererror": {
+                    "message": "Field 'birthdate' is a Date type and cannot accept a DateTime value with offset.",
+                    "type": "System.Exception",
+                },
+            }
+        }
+        mock_resp.text = json.dumps(mock_resp.json.return_value)
+
+        with self.assertRaises(HttpError) as ctx:
+            _raise_top_level_batch_error(mock_resp)
+        self.assertIn("Error identified in Payload", str(ctx.exception))
+        self.assertIn("birthdate", str(ctx.exception))
+
 
 # ---------------------------------------------------------------------------
 # 8. Batch response without continue-on-error (first failure stops)

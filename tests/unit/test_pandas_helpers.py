@@ -189,6 +189,29 @@ class TestDataframeToRecords(unittest.TestCase):
         result = dataframe_to_records(df)
         self.assertEqual(result, [])
 
+    def test_multiindex_columns_raises(self):
+        """MultiIndex columns produce tuple keys that don't survive JSON
+        serialization. Reject up-front with a clear message instead of
+        letting a TypeError surface deep in the HTTP layer.
+        """
+        cols = pd.MultiIndex.from_tuples([("a", "firstname"), ("a", "lastname")])
+        df = pd.DataFrame([["x", "y"]], columns=cols)
+        with self.assertRaises(ValueError) as ctx:
+            dataframe_to_records(df)
+        msg = str(ctx.exception)
+        self.assertIn("MultiIndex", msg)
+        # The remediation must produce string column names, not tuples.
+        self.assertIn("'_'.join(map(str, col)) for col in df.columns.to_flat_index()", msg)
+
+    def test_multiindex_remediation_actually_works(self):
+        """The exact remediation in the error message must produce a
+        DataFrame that dataframe_to_records can serialize."""
+        cols = pd.MultiIndex.from_tuples([("a", "firstname"), ("a", "lastname")])
+        df = pd.DataFrame([["x", "y"]], columns=cols)
+        df.columns = ["_".join(map(str, col)) for col in df.columns.to_flat_index()]
+        records = dataframe_to_records(df)
+        self.assertEqual(records, [{"a_firstname": "x", "a_lastname": "y"}])
+
     def test_mixed_types(self):
         """DataFrame with mixed types (str, int, float, None, Timestamp) converts correctly."""
         ts = pd.Timestamp("2024-06-01")

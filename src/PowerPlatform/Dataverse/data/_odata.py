@@ -144,6 +144,14 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                     imsg = inner.get("message")
                     if isinstance(imsg, str) and imsg.strip():
                         msg = imsg.strip()
+                    # Dataverse nests a more specific message (e.g. offending
+                    # field/dtype) under error.innererror.message. Append it so
+                    # users don't have to chase the wire payload to debug.
+                    innererror = inner.get("innererror")
+                    if isinstance(innererror, dict):
+                        inner_msg = innererror.get("message")
+                        if isinstance(inner_msg, str) and inner_msg.strip() and inner_msg.strip() != msg:
+                            msg = f"{msg}: {inner_msg.strip()}"
                 else:
                     imsg2 = data.get("message")
                     if isinstance(imsg2, str) and imsg2.strip():
