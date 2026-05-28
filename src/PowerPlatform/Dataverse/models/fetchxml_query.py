@@ -52,7 +52,7 @@ class FetchXmlQuery:
         self._client = client
 
     def execute(self) -> QueryResult:
-        """Execute the FetchXML query and return all results as a :class:`QueryResult`.
+        """Execute the FetchXML query and return all results as a :class:`~PowerPlatform.Dataverse.models.record.QueryResult`.
 
         Blocking — fetches all pages upfront and holds every record in memory before
         returning. Simple for small-to-medium result sets; use :meth:`execute_pages`
@@ -72,7 +72,7 @@ class FetchXmlQuery:
         return QueryResult(all_records)
 
     def execute_pages(self) -> Iterator[QueryResult]:
-        """Lazily yield one :class:`QueryResult` per HTTP page.
+        """Lazily yield one :class:`~PowerPlatform.Dataverse.models.record.QueryResult` per HTTP page.
 
         Streaming — each iteration fires one HTTP request and yields one page.
         Prefer over :meth:`execute` when:
@@ -84,7 +84,7 @@ class FetchXmlQuery:
 
         One-shot — do not iterate more than once.
 
-        :return: Iterator of per-page :class:`QueryResult` objects.
+        :return: Iterator of per-page :class:`~PowerPlatform.Dataverse.models.record.QueryResult` objects.
         :rtype: Iterator[:class:`~PowerPlatform.Dataverse.models.record.QueryResult`]
 
         Example::

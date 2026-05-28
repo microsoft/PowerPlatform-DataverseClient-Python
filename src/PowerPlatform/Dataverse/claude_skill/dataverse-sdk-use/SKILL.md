@@ -212,7 +212,7 @@ client.records.update("account", [id1, id2, id3], {"industry": "Technology"})
 Creates or updates records identified by alternate keys. Single item -> PATCH; multiple items -> `UpsertMultiple` bulk action.
 > **Prerequisite**: The table must have an alternate key configured in Dataverse for the columns used in `alternate_key`. Without it, Dataverse will reject the request with a 400 error.
 ```python
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
+from PowerPlatform.Dataverse.models import UpsertItem
 
 # Single upsert
 client.records.upsert("account", [
@@ -403,12 +403,12 @@ client.tables.delete("new_Product")
 
 #### Create One-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.relationship import (
-    LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
+from PowerPlatform.Dataverse.models import (
+    CascadeConfiguration,
     Label,
     LocalizedLabel,
-    CascadeConfiguration,
+    LookupAttributeMetadata,
+    OneToManyRelationshipMetadata,
 )
 from PowerPlatform.Dataverse.common.constants import CASCADE_BEHAVIOR_REMOVE_LINK
 
@@ -435,7 +435,7 @@ print(f"Created lookup field: {result['lookup_schema_name']}")
 
 #### Create Many-to-Many Relationship
 ```python
-from PowerPlatform.Dataverse.models.relationship import ManyToManyRelationshipMetadata
+from PowerPlatform.Dataverse.models import ManyToManyRelationshipMetadata
 
 relationship = ManyToManyRelationshipMetadata(
     schema_name="new_employee_project",
@@ -535,9 +535,9 @@ The SDK provides structured exceptions with detailed error information:
 from PowerPlatform.Dataverse.core.errors import (
     DataverseError,
     HttpError,
-    ValidationError,
     MetadataError,
-    SQLParseError
+    SQLParseError,
+    ValidationError,
 )
 from PowerPlatform.Dataverse.client import DataverseClient
 
@@ -587,6 +587,115 @@ except ValidationError as e:
 9. **Use lowercase for column names, match `$metadata` for navigation properties** - Column names in `$select`/`$filter`/record payloads use lowercase LogicalNames. Navigation properties in `$expand` and `@odata.bind` keys are case-sensitive and must match the entity's `$metadata` (PascalCase for custom lookups like `new_CustomerId`, lowercase for system lookups like `parentaccountid`)
 10. **Test in non-production environments** first
 11. **Use named constants** - Import cascade behavior constants from `PowerPlatform.Dataverse.common.constants`
+
+## Async Client
+
+The SDK ships a full async client, `AsyncDataverseClient`, under `PowerPlatform.Dataverse.aio`. Requires the `[async]` extra: `pip install "PowerPlatform-Dataverse-Client[async]"`.
+
+### Import
+```python
+from azure.identity.aio import DefaultAzureCredential
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
+```
+
+### Client Initialization
+```python
+# Context manager (recommended -- closes session and clears caches automatically)
+async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    ...  # all operations here
+
+# Standalone (call aclose() in a finally block)
+client = AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential)
+try:
+    ...
+finally:
+    await client.aclose()
+```
+
+### CRUD Operations
+Every sync method has an async equivalent -- add `await`:
+```python
+# Create
+account_id = await client.records.create("account", {"name": "Contoso Ltd"})
+
+# Read
+account = await client.records.retrieve("account", account_id, select=["name", "telephone1"])
+
+# Update
+await client.records.update("account", account_id, {"telephone1": "555-0200"})
+
+# Delete
+await client.records.delete("account", account_id)
+
+# Bulk create
+ids = await client.records.create("account", [{"name": "A"}, {"name": "B"}])
+```
+
+### Query Builder
+```python
+from PowerPlatform.Dataverse.models.filters import col
+
+# Collect all results
+result = await (
+    client.query.builder("account")
+    .select("name", "telephone1")
+    .where(col("statecode") == 0)
+    .top(10)
+    .execute()
+)
+for record in result:
+    print(record["name"])
+
+# Lazy page iteration (memory-efficient)
+async for page in (
+    client.query.builder("account")
+    .select("name")
+    .page_size(500)
+    .execute_pages()
+):
+    for record in page:
+        print(record["name"])
+
+# SQL query
+rows = await client.query.sql("SELECT TOP 5 name FROM account")
+
+# FetchXML
+xml = '<fetch top="5"><entity name="account"><attribute name="name"/></entity></fetch>'
+rows = await client.query.fetchxml(xml).execute()
+```
+
+### Batch and Changesets
+```python
+# Plain batch
+batch = client.batch.new()
+batch.records.create("account", {"name": "Alpha"})
+result = await batch.execute()
+
+# Atomic changeset
+batch = client.batch.new()
+async with batch.changeset() as cs:
+    ref = cs.records.create("contact", {"firstname": "Alice"})
+    cs.records.update("account", account_id, {"primarycontactid@odata.bind": ref})
+result = await batch.execute()
+```
+
+### DataFrame Operations
+```python
+import pandas as pd
+
+# Query to DataFrame
+result = await (
+    client.query.builder("account")
+    .select("name", "telephone1")
+    .where(col("statecode") == 0)
+    .execute()
+)
+df = result.to_dataframe()
+
+# Create from DataFrame
+new_accounts = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
+ids = await client.dataframe.create("account", new_accounts)
+```
 
 ## Additional Resources
 

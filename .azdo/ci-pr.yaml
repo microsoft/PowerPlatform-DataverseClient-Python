@@ -43,7 +43,7 @@ extends:
         - script: |
             python -m pip install --upgrade pip
             python -m pip install flake8 black build diff-cover
-            python -m pip install -e .[dev]
+            python -m pip install -e .[dev,async]
           displayName: 'Install dependencies'
         
         - script: |
