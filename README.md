@@ -786,6 +786,13 @@ for item in result.failed:
     print(f"[ERR] {item.status_code}: {item.error_message}")
 ```
 
+> `continue_on_error=True` only affects how Dataverse handles per-operation
+> failures on the server. Client-side errors raised before the batch is sent
+> — such as `ValidationError` (e.g. exceeding the 1000-operation limit) or
+> `MetadataError` from metadata pre-resolution (`tables.delete`,
+> `tables.add_columns`, `tables.remove_columns`) — are still raised as
+> exceptions and must be handled with `try`/`except`.
+
 **DataFrame integration** -- feed pandas DataFrames directly into a batch:
 
 ```python

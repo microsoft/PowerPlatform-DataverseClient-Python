@@ -430,7 +430,7 @@ relationship = OneToManyRelationshipMetadata(
 )
 
 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-print(f"Created lookup field: {result['lookup_schema_name']}")
+print(f"Created lookup field: {result.lookup_schema_name}")
 ```
 
 #### Create Many-to-Many Relationship
@@ -444,7 +444,7 @@ relationship = ManyToManyRelationshipMetadata(
 )
 
 result = client.tables.create_many_to_many_relationship(relationship)
-print(f"Created: {result['relationship_schema_name']}")
+print(f"Created: {result.relationship_schema_name}")
 ```
 
 #### Convenience Method for Lookup Fields
@@ -463,10 +463,10 @@ result = client.tables.create_lookup_field(
 # Get relationship metadata
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
-    print(f"Found: {rel['SchemaName']}")
+    print(f"Found: {rel.relationship_schema_name}")
 
 # Delete relationship
-client.tables.delete_relationship(result["relationship_id"])
+client.tables.delete_relationship(result.relationship_id)
 ```
 
 ### File Operations
