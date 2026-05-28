@@ -7,53 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-05-28
 
+This is the first stable release. It establishes the v1 public API and removes all v0 beta methods.
+
+### Breaking Changes
+
+- All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, etc.) are removed; use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
+- `client.query.sql_select()`, `sql_joins()`, `sql_join()` are removed (#175)
+- `QueryBuilder.execute()` now returns a flat `QueryResult` instead of `Iterable[Record]`; use `execute_pages()` for lazy iteration (#175)
+
+  Run `dataverse-migrate --dry-run .` to automatically rewrite v0 call sites (`pip install PowerPlatform-Dataverse-Client[migration]`).
+
 ### Added
-- `AsyncDataverseClient` — full async counterpart to `DataverseClient`; all operation namespaces (`records`, `query`, `tables`, `files`, `batch`, `dataframe`) supported; requires `pip install PowerPlatform-Dataverse-Client[async]` (#171)
-- New record-fetch methods on `client.records` (#175):
-  - `retrieve(table, record_id, *, select, expand, include_annotations)` — fetch a single record by GUID; returns `None` on 404 instead of raising
-  - `list(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` — eager fetch returning a flat `QueryResult`; GA replacement for `records.get()` without a record ID
-  - `list_pages(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` — lazy iterator yielding one `QueryResult` per HTTP page; streaming counterpart to `list()`
-- FetchXML query support via `client.query.fetchxml(xml)` (#175):
-  - Returns an inert `FetchXmlQuery`; no HTTP request is made until `.execute()` or `.execute_pages()` is called
-  - Implements the correct Dataverse paging cookie algorithm with double URL-decoded `pagingcookie`, server-supplied `pagenumber`, and `morerecords` detection
-  - Enforces the 32,768-character URL limit and a 10,000-page circuit breaker against runaway iteration
-- New `QueryBuilder` methods (#175):
-  - `execute_pages()` — lazy per-page streaming returning one `QueryResult` per HTTP page; replaces deprecated `execute(by_page=True)`
-  - `where(expr)` — composable filter expressions using `col()` and Python operators (`==`, `>`, `&`, `|`, `~`); replaces deprecated `filter_eq()`, `filter_contains()`, and other `filter_*` helpers
-- Model and API surface additions (#175):
-  - `QueryResult.__getitem__` — index access (`result[0]`) returns a `Record`; slice access (`result[1:5]`) returns a new `QueryResult`
-  - `DataverseModel` structural `Protocol` (`models/protocol.py`) — implement on any entity class to enable typed integration with CRUD operations without specifying table names or serializing manually
-- v0→v1 migration tool (#175):
-  - Installed as the `dataverse-migrate` console script (also runnable via `python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1`)
-  - Rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query builder patterns
-  - Marks files requiring manual attention with `[NEEDS-MANUAL]`
-  - Requires `pip install PowerPlatform-Dataverse-Client[migration]`
-- Public types (`Record`, `DataverseError`, `QueryBuilder`, `BatchResult`, and others) are now importable directly from `PowerPlatform.Dataverse.models`, `PowerPlatform.Dataverse.core`, and `PowerPlatform.Dataverse.operations` without navigating into submodule paths (#165)
+
+- **Async client** — `AsyncDataverseClient` with full feature parity to the sync SDK; all operation namespaces available as `async def` with `async with` lifecycle management. Install with `pip install PowerPlatform-Dataverse-Client[async]` (#171)
+- **FetchXML** — `client.query.fetchxml(xml)` returns an inert `FetchXmlQuery` that executes lazily via `.execute()` or `.execute_pages()`; handles Dataverse paging, URL length limits, and a 10,000-page circuit breaker (#175)
+- **Streaming queries** — `QueryBuilder.execute_pages()` and `client.records.list_pages()` yield one `QueryResult` per HTTP page for memory-efficient iteration over large result sets (#175)
+- **Multi-record fetch** — `client.records.list()` returns an eager flat `QueryResult`; GA replacement for `records.get()` without a record ID. Supports `filter`, `select`, `orderby`, `expand`, `page_size`, `count`, and `include_annotations` (#175)
+- **Composable filters** — `QueryBuilder.where(col("name") == "Contoso")` with Python operators (`&`, `|`, `~`); replaces the deprecated `filter_eq()`, `filter_contains()`, and other `filter_*` helpers (#175)
+- **Single-record fetch** — `client.records.retrieve(table, id)` returns `None` on 404 instead of raising; accepts `select`, `expand`, and `include_annotations` (#175)
+- **`QueryResult` indexing** — `result[0]` returns a `Record`; `result[1:5]` returns a new `QueryResult` (#175)
+- **`DataverseModel` protocol** — structural `Protocol` for typed entity classes; enables CRUD operations without manual table names or dict serialization (#175)
+- **Migration tool** — `dataverse-migrate` console script rewrites v0 call sites to the v1 API with `--dry-run` support; marks files requiring manual attention with `[NEEDS-MANUAL]`. Requires `pip install PowerPlatform-Dataverse-Client[migration]` (#175)
+- **Shorter imports** — public types (`Record`, `DataverseError`, `QueryBuilder`, `BatchResult`, and others) now importable directly from `PowerPlatform.Dataverse.models`, `.core`, and `.operations` (#165)
 
 ### Changed
-- Query API changes (#175):
-  - `QueryBuilder.execute()` now returns a flat `QueryResult` (all pages collected eagerly) instead of `Iterable[Record]`
-  - `records.get()` deprecation extended: calling with a `record_id` emits `DeprecationWarning` directing callers to `retrieve()`; calling without a `record_id` directs callers to `list()`
-- `OperationContext` now validates keys against an allowlist (`app`, `skill`, `agent`) and values against per-key format rules; unknown keys or non-conforming values raise `ValidationError` at construction time, preventing PII from reaching the `User-Agent` header (#181)
-- `client.tables.create()` now uses the `CreateEntities` API instead of `EntityDefinitions`, improving performance of entity creation (#183)
-- `float` and `double` column precision default raised from 2 to 5 decimal places, preventing silent truncation of values like `2.718` (#185)
-- Server-side error detail (`error.innererror.message`) is now appended to `HttpError.message` on both single-request and batch paths, surfacing the offending field or data type without inspecting raw wire payloads (#185)
-- `pandas.DataFrame` with MultiIndex columns now raises a clear error with a flatten hint at the point of use, instead of producing broken tuple keys deep in the serialization path (#185)
 
-### Deprecated
-- Deprecated query API patterns (#175):
-  - `QueryBuilder.execute(by_page=True)` and `execute(by_page=False)` emit `UserWarning`; use `execute_pages()` and `execute()` respectively
-  - `client.query.odata_select()`, `client.query.odata_expands()`, `client.query.odata_expand()`, `client.query.odata_bind()` emit `DeprecationWarning`; navigation property helpers are replaced by `QueryBuilder.expand()`
-
-### Removed
-- Removed v0 API surface (#175):
-  - All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, etc.) removed; use the `client.records`, `client.query`, and `client.batch` namespaces
-  - `client.query.sql_select()`, `client.query.sql_joins()`, `client.query.sql_join()` removed
+- `OperationContext` now validates keys and values against an allowlist; unknown keys or non-conforming values raise `ValidationError`, preventing PII from reaching the `User-Agent` header (#181)
+- Table creation now uses the `CreateEntities` API, improving reliability (#183)
+- `float`/`double` column precision default raised from 2 to 5 decimal places, preventing silent truncation of values like `2.718` (#185)
+- Server inner error messages now surface in `HttpError.message` on both single-request and batch paths (#185)
+- `pandas.DataFrame` with MultiIndex columns now raises a descriptive error with a flatten hint instead of failing deep in serialization (#185)
 
 ### Fixed
-- SQL guardrails now block write statements and statement stacking even when hidden inside comments, string literals, or zero-width prefixes (#185)
-- `records.get()` deprecation warning now names both migration paths: `retrieve()` for single-by-ID lookups and `list(filter=...)` for filtered queries (#185)
-- Fixed client creation error on Python 3.10 and 3.11; all supported Python versions (3.10–3.14) now work correctly (#188)
+
+- `async for record in results:` now works correctly; `QueryResult` was missing `__aiter__` (#187)
+- Client creation no longer errors on Python 3.10 and 3.11 (#188)
+- SQL guardrails now catch write statements hidden inside comments, string literals, or zero-width prefixes (#185)
+
+### Deprecated
+
+- `QueryBuilder.execute(by_page=True/False)` — use `execute_pages()` and `execute()` respectively (#175)
+- `client.query.odata_select()`, `odata_expands()`, `odata_expand()`, `odata_bind()` — use `QueryBuilder.expand()` instead (#175)
 
 ## [0.1.0b10] - 2026-05-12
 
