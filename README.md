@@ -270,9 +270,6 @@ print(f"Found {len(df)} accounts")
 # Limit results with top for large tables
 df = client.query.builder("account").select("name").top(100).execute().to_dataframe()
 
-# Fetch a single record as a one-row DataFrame
-df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
-
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
     {"name": "Contoso", "telephone1": "555-0100"},
