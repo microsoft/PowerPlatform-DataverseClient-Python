@@ -197,7 +197,7 @@ payloads = [
 ids = client.records.create("account", payloads)
 
 # Bulk update (broadcast same change to all)
-client.records.update("account", ids, {"industry": "Technology"})
+client.records.update("account", ids, {"exchangerate": 1})
 
 # Bulk delete
 client.records.delete("account", ids, use_bulk_delete=True)
