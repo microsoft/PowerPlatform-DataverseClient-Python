@@ -529,3 +529,35 @@ class TestAsyncFetchXmlQueryPaging:
             warnings.simplefilter("always")
             with pytest.raises(ValidationError, match="exceeded"):
                 await async_client.query.fetchxml(_SIMPLE_FETCHXML).execute()
+
+
+class TestQueryResultAsyncIteration:
+    """QueryResult must support ``async for`` so callers can write
+    ``async for r in page`` after ``async for page in q.execute_pages()``.
+    """
+
+    def _records(self, n=3):
+        return [Record(id=f"id-{i}", table="account", data={"name": f"R{i}"}) for i in range(n)]
+
+    async def test_has_aiter(self):
+        qr = QueryResult(self._records())
+        assert hasattr(qr, "__aiter__")
+
+    async def test_async_for_yields_all_records(self):
+        qr = QueryResult(self._records(3))
+        result = [r async for r in qr]
+        assert len(result) == 3
+        assert [r["name"] for r in result] == ["R0", "R1", "R2"]
+
+    async def test_async_for_empty(self):
+        qr = QueryResult([])
+        result = [r async for r in qr]
+        assert result == []
+
+    async def test_sync_and_async_return_same_records(self):
+        qr = QueryResult(self._records(5))
+        sync_result = list(qr)
+        async_result = [r async for r in qr]
+        assert len(sync_result) == len(async_result)
+        for s, a in zip(sync_result, async_result):
+            assert s is a
