@@ -92,6 +92,66 @@ class TestBlockWriteStatements:
         with pytest.raises(ValidationError, match="read-only"):
             c._sql_guardrails(sql)
 
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            # Statement-stacked writes after a SELECT and a semicolon
+            "SELECT name FROM account; DROP TABLE account",
+            # Write hidden after a line comment that strips a newline
+            "SELECT name FROM account -- \nINSERT INTO account(name) VALUES('x')",
+            # Write after a malformed/nested block-comment dance
+            "/* /* nested */ */ DELETE FROM account",
+        ],
+    )
+    def test_writes_hidden_after_select_or_comments_blocked(self, sql):
+        c = _client()
+        with pytest.raises(ValidationError):
+            c._sql_guardrails(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT name FROM account; SELECT name FROM contact",
+            "SELECT name FROM account;",
+        ],
+    )
+    def test_semicolon_stacking_blocked(self, sql):
+        c = _client()
+        with pytest.raises(ValidationError, match="Multiple SQL statements"):
+            c._sql_guardrails(sql)
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            # Semicolon inside a string literal must not trip the check
+            "SELECT TOP 10 name FROM account WHERE name = ';'",
+            # Write keywords inside string literals must not trip the check
+            "SELECT TOP 10 name FROM account WHERE name = 'DROP ME'",
+            "SELECT TOP 10 name FROM account WHERE name = 'INSERT; DELETE'",
+        ],
+    )
+    def test_keywords_and_semicolons_inside_string_literals_allowed(self, sql):
+        c = _client()
+        result = c._sql_guardrails(sql)
+        assert "SELECT" in result
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            # ZWSP, ZWNJ, ZWJ, BOM before a write keyword must still be blocked.
+            # Python's \s does not match these, so an ^\s* anchor would miss
+            # them; the \b-based scan must catch them at the word boundary.
+            "​INSERT INTO account(name) VALUES('x')",
+            "‌DELETE FROM account",
+            "‍DROP TABLE account",
+            "﻿UPDATE account SET name = 'x'",
+        ],
+    )
+    def test_zero_width_prefixed_writes_blocked(self, sql):
+        c = _client()
+        with pytest.raises(ValidationError, match="read-only"):
+            c._sql_guardrails(sql)
+
 
 # ===================================================================
 # 1b. Block server-rejected SQL patterns (save round-trip)

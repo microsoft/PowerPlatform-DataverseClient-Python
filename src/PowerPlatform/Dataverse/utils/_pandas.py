@@ -39,7 +39,15 @@ def dataframe_to_records(df: pd.DataFrame, na_as_null: bool = False) -> List[Dic
     :param df: Input DataFrame.
     :param na_as_null: When False (default), missing values are omitted from each dict.
         When True, missing values are included as None (sends null to Dataverse, clearing the field).
+    :raises ValueError: If ``df`` has ``MultiIndex`` columns. Tuple column keys
+        do not round-trip through Dataverse's JSON encoder and produce a
+        confusing error far from the call site. Flatten to string column namesfirst.
     """
+    if isinstance(df.columns, pd.MultiIndex):
+        raise ValueError(
+            "MultiIndex columns are not supported. Flatten to string column names first, "
+            "for example: df.columns = ['_'.join(map(str, col)) for col in df.columns.to_flat_index()]."
+        )
     records = []
     for row in df.to_dict(orient="records"):
         clean = {}

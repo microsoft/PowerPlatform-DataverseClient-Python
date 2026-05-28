@@ -431,8 +431,11 @@ class RecordOperations:
         """
         if record_id is not None:
             warnings.warn(
-                "'records.get()' with a record_id is deprecated; "
-                "use 'client.records.retrieve(table, record_id)' instead.",
+                "'records.get(table, record_id)' is deprecated. "
+                "For a single record by ID, use "
+                "'client.records.retrieve(table, record_id)'. "
+                "For a filtered list, use "
+                "'client.records.list(table, filter=...)'.",
                 DeprecationWarning,
                 stacklevel=2,
             )
