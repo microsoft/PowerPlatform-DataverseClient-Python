@@ -198,8 +198,19 @@ class TestDataframeToRecords(unittest.TestCase):
         df = pd.DataFrame([["x", "y"]], columns=cols)
         with self.assertRaises(ValueError) as ctx:
             dataframe_to_records(df)
-        self.assertIn("MultiIndex", str(ctx.exception))
-        self.assertIn("to_flat_index", str(ctx.exception))
+        msg = str(ctx.exception)
+        self.assertIn("MultiIndex", msg)
+        # The remediation must produce string column names, not tuples.
+        self.assertIn("'_'.join(map(str, col)) for col in df.columns.to_flat_index()", msg)
+
+    def test_multiindex_remediation_actually_works(self):
+        """The exact remediation in the error message must produce a
+        DataFrame that dataframe_to_records can serialize."""
+        cols = pd.MultiIndex.from_tuples([("a", "firstname"), ("a", "lastname")])
+        df = pd.DataFrame([["x", "y"]], columns=cols)
+        df.columns = ["_".join(map(str, col)) for col in df.columns.to_flat_index()]
+        records = dataframe_to_records(df)
+        self.assertEqual(records, [{"a_firstname": "x", "a_lastname": "y"}])
 
     def test_mixed_types(self):
         """DataFrame with mixed types (str, int, float, None, Timestamp) converts correctly."""
