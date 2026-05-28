@@ -11,8 +11,8 @@ This is the first stable release. It establishes the v1 public API and removes a
 
 ### Breaking Changes
 
-- All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, etc.) are removed; use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
-- `client.query.sql_select()`, `sql_joins()`, `sql_join()` are removed (#175)
+- All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, `upload_file`, etc.) are removed (~570 lines); use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
+- `client.query.sql_select()`, `client.query.sql_joins()`, `client.query.sql_join()` are removed (#175)
 - `QueryBuilder.execute()` now returns a flat `QueryResult` instead of `Iterable[Record]`; use `execute_pages()` for lazy iteration (#175)
 
   Run `dataverse-migrate --dry-run .` to automatically rewrite v0 call sites (`pip install PowerPlatform-Dataverse-Client[migration]`).
@@ -20,18 +20,21 @@ This is the first stable release. It establishes the v1 public API and removes a
 ### Added
 
 - **Async client** — `AsyncDataverseClient` with full feature parity to the sync SDK; all operation namespaces available as `async def` with `async with` lifecycle management. Install with `pip install PowerPlatform-Dataverse-Client[async]` (#171)
-- **FetchXML** — `client.query.fetchxml(xml)` returns an inert `FetchXmlQuery` that executes lazily via `.execute()` or `.execute_pages()`; handles Dataverse paging, URL length limits, and a 10,000-page circuit breaker (#175)
-- **Streaming queries** — `QueryBuilder.execute_pages()` and `client.records.list_pages()` yield one `QueryResult` per HTTP page for memory-efficient iteration over large result sets (#175)
-- **Multi-record fetch** — `client.records.list()` returns an eager flat `QueryResult`; GA replacement for `records.get()` without a record ID. Supports `filter`, `select`, `orderby`, `expand`, `page_size`, `count`, and `include_annotations` (#175)
-- **Composable filters** — `QueryBuilder.where(col("name") == "Contoso")` with Python operators (`&`, `|`, `~`); replaces the deprecated `filter_eq()`, `filter_contains()`, and other `filter_*` helpers (#175)
-- **Single-record fetch** — `client.records.retrieve(table, id)` returns `None` on 404 instead of raising; accepts `select`, `expand`, and `include_annotations` (#175)
+- **Single-record fetch** — `client.records.retrieve(table, record_id, *, select, expand, include_annotations)` returns `None` on 404 instead of raising; `expand` adds `$expand` for navigation-property expansion on the single-record GET; `include_annotations` maps to the `Prefer: odata.include-annotations` header for formatted values and lookup labels (#175)
+- **Multi-record fetch** — `client.records.list(table, *, filter, select, top, orderby, expand, page_size, count, include_annotations)` returns an eager flat `QueryResult`; GA replacement for `records.get()` without a record ID; `page_size` controls `Prefer: odata.maxpagesize`, `count=True` adds `$count=true`, `include_annotations` requests formatted values (#175)
+- **Streaming multi-record fetch** — `client.records.list_pages(...)` yields one `QueryResult` per HTTP page; streaming counterpart to `list()` with the same parameter set (#175)
+- **FetchXML** — `client.query.fetchxml(xml)` returns an inert `FetchXmlQuery`; no HTTP call until `.execute()` or `.execute_pages()`. Paging implements the documented Dataverse algorithm: annotation parsed as outer XML, `pagingcookie` attribute double URL-decoded, server-supplied `pagenumber` used for the next page, `morerecords` handled as both `bool` and `"true"` string, `UserWarning` emitted on simple-paging fallback, 32,768-character URL limit enforced (documented Dataverse GET cap), 10,000-page circuit breaker against runaway iteration (#175)
+- **Streaming QueryBuilder** — `QueryBuilder.execute_pages()` lazily yields one `QueryResult` per HTTP page; replaces deprecated `execute(by_page=True)` (#175)
+- **Composable filters** — `QueryBuilder.where(col("name") == "Contoso")` with Python operators (`==`, `>`, `&`, `|`, `~`); replaces the deprecated `filter_eq()`, `filter_contains()`, and other `filter_*` helpers (#175)
 - **`QueryResult` indexing** — `result[0]` returns a `Record`; `result[1:5]` returns a new `QueryResult` (#175)
-- **`DataverseModel` protocol** — structural `Protocol` for typed entity classes; enables CRUD operations without manual table names or dict serialization (#175)
-- **Migration tool** — `dataverse-migrate` console script rewrites v0 call sites to the v1 API with `--dry-run` support; marks files requiring manual attention with `[NEEDS-MANUAL]`. Requires `pip install PowerPlatform-Dataverse-Client[migration]` (#175)
+- **`DataverseModel` protocol** — structural `Protocol` in `models/protocol.py` for typed entity classes; enables CRUD operations without manual table names or dict serialization (#175)
+- **Top-level re-exports** — `col()`, `raw()`, `QueryResult`, and `DataverseModel` importable directly from the top-level `PowerPlatform.Dataverse` package (#175)
 - **Shorter imports** — public types (`Record`, `DataverseError`, `QueryBuilder`, `BatchResult`, and others) now importable directly from `PowerPlatform.Dataverse.models`, `.core`, and `.operations` (#165)
+- **Migration tool** — installed as the `dataverse-migrate` console script (also runnable via `python -m PowerPlatform.Dataverse.migration.migrate_v0_to_v1`); rewrites v0 call sites to the v1 API with `--dry-run` support; covers `create`, `update`, `delete`, `get`, `list`, `fetchxml`, and query-builder patterns; auto-rewrites `QueryBuilder.to_dataframe()` → `.execute().to_dataframe()`; emits a `[NEEDS-MANUAL]` label for files with no auto-rewrites but manual attention needed, and appends a trailing note on `[MIGRATED]` lines when manual items remain. Requires the `[migration]` optional extra (`pip install PowerPlatform-Dataverse-Client[migration]`) (#175)
 
 ### Changed
 
+- `records.get()` deprecation extended: calling with a `record_id` emits `DeprecationWarning` directing callers to `retrieve()`; calling without a `record_id` directs callers to `list()` (#175)
 - `OperationContext` now validates keys and values against an allowlist; unknown keys or non-conforming values raise `ValidationError`, preventing PII from reaching the `User-Agent` header (#181)
 - Table creation now uses the `CreateEntities` API, improving reliability (#183)
 - `float`/`double` column precision default raised from 2 to 5 decimal places, preventing silent truncation of values like `2.718` (#185)
@@ -46,8 +49,8 @@ This is the first stable release. It establishes the v1 public API and removes a
 
 ### Deprecated
 
-- `QueryBuilder.execute(by_page=True/False)` — use `execute_pages()` and `execute()` respectively (#175)
-- `client.query.odata_select()`, `odata_expands()`, `odata_expand()`, `odata_bind()` — use `QueryBuilder.expand()` instead (#175)
+- `QueryBuilder.execute(by_page=True)` and `execute(by_page=False)` emit `UserWarning`; use `execute_pages()` and `execute()` respectively (#175)
+- `client.query.odata_select()`, `client.query.odata_expands()`, `client.query.odata_expand()`, `client.query.odata_bind()` emit `DeprecationWarning`; navigation-property helpers are replaced by `QueryBuilder.expand()` (#175)
 
 ## [0.1.0b10] - 2026-05-12
 
