@@ -17,13 +17,20 @@ _VALID_LOG_LEVELS: FrozenSet[str] = frozenset({"DEBUG", "INFO", "WARNING", "ERRO
 
 __all__ = ["LogConfig"]
 
-# Headers whose values must never appear in log files
+# Headers whose values must never appear in log files.
+#
+# ``set-cookie`` / ``cookie`` are session-bearing: Dataverse responses include
+# session identifiers (``ReqClientId``, ``orgId``, ...) with very long expiries.
+# Captured in a log file they enable session-replay against the same environment
+# for the lifetime of the cookie, so they get the same treatment as bearer tokens.
 _DEFAULT_REDACTED_HEADERS: FrozenSet[str] = frozenset(
     {
         "authorization",
         "proxy-authorization",
         "x-ms-authorization-auxiliary",
         "ocp-apim-subscription-key",
+        "set-cookie",
+        "cookie",
     }
 )
 
@@ -51,7 +58,11 @@ class LogConfig:
         sessions — bodies may contain PII and sensitive business data.
     :param redacted_headers: Header names (case-insensitive) whose values are
         replaced with ``"[REDACTED]"`` in logs. Defaults include
-        ``Authorization``, ``Proxy-Authorization``, etc.
+        ``Authorization``, ``Proxy-Authorization``,
+        ``X-MS-Authorization-Auxiliary``, ``Ocp-Apim-Subscription-Key``,
+        ``Set-Cookie``, and ``Cookie``. Cookie headers are redacted because
+        Dataverse responses include session-bearing values
+        (``ReqClientId``, ``orgId``) that enable session replay if leaked.
     :param log_level: Python logging level name. Default: ``"DEBUG"``.
     :param max_file_bytes: Max size per log file before rotation (bytes).
         Default: ``10_485_760`` (10 MB).

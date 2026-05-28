@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from azure.core.credentials import TokenCredential
 
 
-@dataclass
+@dataclass(repr=False)
 class _TokenPair:
     """
     Container for an OAuth2 access token and its associated resource scope.
@@ -25,10 +25,21 @@ class _TokenPair:
     :type resource: :class:`str`
     :param access_token: The access token string.
     :type access_token: :class:`str`
+
+    .. note::
+        ``repr()`` / ``str()`` redact ``access_token`` to ``[REDACTED]``. Python's
+        default dataclass ``__repr__`` would otherwise emit the full bearer
+        JWT, so any accidental ``print()``, ``logging.debug(self)``, or
+        ``traceback`` with locals dumps would leak the token. The redaction
+        mirrors the ``Authorization``-header treatment in
+        :mod:`~PowerPlatform.Dataverse.core._http_logger`.
     """
 
     resource: str
     access_token: str
+
+    def __repr__(self) -> str:
+        return f"_TokenPair(resource={self.resource!r}, access_token='[REDACTED]')"
 
 
 class _AuthManager:

@@ -32,6 +32,89 @@ class TestDataverseClientConstruction(unittest.TestCase):
             self.assertTrue(hasattr(client, attr), f"Missing namespace: {attr}")
 
 
+class TestDataverseClientRequiresHttps(unittest.TestCase):
+    """``base_url`` must use HTTPS. A bare ``http://`` would put the OAuth bearer
+    token on the wire in plaintext on the very first request -- by the time the
+    user noticed, the credential would already be exposed. The check fires at
+    construction so the leak is impossible.
+    """
+
+    def setUp(self):
+        self.mock_credential = MagicMock(spec=TokenCredential)
+
+    def test_bug_repro_http_url_is_rejected(self):
+        """Exact bug-report repro: ``http://myorg.crmtest.dynamics.com/``."""
+        with self.assertRaises(ValueError) as ctx:
+            DataverseClient("http://myorg.crmtest.dynamics.com/", self.mock_credential)
+        self.assertIn("HTTPS", str(ctx.exception))
+
+    def test_http_url_error_quotes_the_offending_value(self):
+        """The error must echo the bad URL so the user sees which input was
+        wrong -- otherwise the message in a stack trace is decontextualized."""
+        bad_url = "http://example.crm.dynamics.com"
+        with self.assertRaises(ValueError) as ctx:
+            DataverseClient(bad_url, self.mock_credential)
+        self.assertIn(bad_url, str(ctx.exception))
+
+    def test_https_url_accepted(self):
+        """Positive control: ``https://`` constructs normally."""
+        client = DataverseClient("https://example.crm.dynamics.com", self.mock_credential)
+        self.assertEqual(client._base_url, "https://example.crm.dynamics.com")
+
+    def test_scheme_check_is_case_insensitive(self):
+        """``HTTPS://`` / ``Https://`` are valid HTTPS URLs per RFC 3986;
+        rejecting them on case alone would be a footgun. The check must use
+        case-insensitive scheme comparison."""
+        for variant in ("HTTPS://example.crm.dynamics.com", "Https://example.crm.dynamics.com"):
+            with self.subTest(url=variant):
+                client = DataverseClient(variant, self.mock_credential)
+                self.assertTrue(client._base_url.lower().startswith("https://"))
+
+    def test_uppercase_http_is_rejected(self):
+        """The case-insensitive comparison must still reject ``HTTP://`` --
+        otherwise an attacker-controlled config string with mixed case would
+        bypass the guard."""
+        with self.assertRaises(ValueError):
+            DataverseClient("HTTP://example.crm.dynamics.com", self.mock_credential)
+
+    def test_no_scheme_is_rejected(self):
+        """Bare hostname (no scheme) must be rejected -- it would otherwise
+        be passed through to the request layer and produce a confusing
+        ``InvalidSchema`` error downstream instead of a clear ValueError."""
+        with self.assertRaises(ValueError):
+            DataverseClient("example.crm.dynamics.com", self.mock_credential)
+
+    def test_unrelated_scheme_is_rejected(self):
+        """``ftp://`` / ``file://`` / ``ws://`` etc. must be rejected. The
+        bug isn't only about ``http://`` -- any non-HTTPS scheme is unsafe."""
+        for url in ("ftp://example.com", "file:///etc/passwd", "ws://example.com"):
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    DataverseClient(url, self.mock_credential)
+
+    def test_https_lookalike_scheme_is_rejected(self):
+        """Defensive: schemes that *contain* ``https`` but aren't ``https://``
+        (e.g. a typo like ``htttps://``, or a custom scheme like
+        ``https-fake://``) must not slip through ``startswith("https://")``
+        as written. This locks in the exact prefix the validator checks."""
+        for url in ("htttps://example.com", "https-fake://example.com", "shttp://example.com"):
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    DataverseClient(url, self.mock_credential)
+
+    def test_https_check_runs_after_empty_check(self):
+        """Empty/missing ``base_url`` should still surface the existing
+        'base_url is required' message rather than the HTTPS one -- the
+        user can't fix HTTPS on something they haven't typed yet."""
+        with self.assertRaises(ValueError) as ctx:
+            DataverseClient("", self.mock_credential)
+        self.assertIn("base_url is required", str(ctx.exception))
+        # And ``None`` should also surface the empty-required path, not HTTPS.
+        with self.assertRaises(ValueError) as ctx2:
+            DataverseClient(None, self.mock_credential)  # type: ignore[arg-type]
+        self.assertIn("base_url is required", str(ctx2.exception))
+
+
 class TestRemovedClientMethods(unittest.TestCase):
     """Verify all 12 deprecated flat methods were removed from DataverseClient in 1.0 GA.
 
