@@ -724,6 +724,10 @@ def is_not_null(column: str) -> FilterExpression:
     return _ne_impl(column, None)
 
 
+# NOTE: Do not rename ``filter_in`` to ``in_`` -- the v0 -> v1 migration codemod
+# (migration/migrate_v0_to_v1.py, ``_FUNC_METHOD_MAP``/``_FUNC_KWARGS``) keys
+# this function by its public name to rewrite call sites. A rename here would
+# silently break those rewrites.
 def filter_in(column: str, values: Collection[Any]) -> FilterExpression:
     """In filter using ``Microsoft.Dynamics.CRM.In``.
 

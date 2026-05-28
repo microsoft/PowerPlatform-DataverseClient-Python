@@ -19,6 +19,7 @@ This skill provides guidance for developers working on the PowerPlatform Dataver
 4. **Update documentation** when adding features - Keep README and SKILL files (both copies) in sync
 5. **Consider backwards compatibility** - Avoid breaking changes
 6. **Internal vs public naming** - Modules, files, and functions not meant to be part of the public API must use a `_` prefix (e.g., `_odata.py`, `_relationships.py`). Files without the prefix (e.g., `constants.py`, `metadata.py`) are public and importable by SDK consumers
+7. **Async client** - The SDK ships a full async client (`AsyncDataverseClient`) under `src/PowerPlatform/Dataverse/aio/`. When adding a feature to the sync client, add it to the async client too. The async operation namespaces mirror the sync ones: `aio/operations/async_records.py`, `async_query.py`, `async_tables.py`, `async_batch.py`, `async_files.py`. Pure logic (payload builders, URL construction) goes in `data/_odata_base.py` — inherited by both `_ODataClient` and `_AsyncODataClient` — so it only needs to be written once; HTTP-calling code goes in `data/_odata.py` (sync) or `aio/data/_async_odata.py` (async). Async tests live in `tests/unit/aio/` and async examples in `examples/aio/`. The `aiohttp` dependency is an optional extra (`pip install "PowerPlatform-Dataverse-Client[async]"`) — do not move it into the required `dependencies` list in `pyproject.toml`.
 
 ### Dataverse Property Naming Rules
 

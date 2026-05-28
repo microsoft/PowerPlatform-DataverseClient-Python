@@ -51,6 +51,12 @@ def test_log_config_defaults():
     assert cfg.backup_count == 5
     assert "authorization" in cfg.redacted_headers
     assert "proxy-authorization" in cfg.redacted_headers
+    # set-cookie / cookie were added to the default set after a security report
+    # confirmed Dataverse session identifiers (ReqClientId, orgId) were being
+    # captured in plaintext log files. Lock the defaults so a future refactor
+    # cannot silently drop them.
+    assert "set-cookie" in cfg.redacted_headers
+    assert "cookie" in cfg.redacted_headers
 
 
 def test_log_config_frozen():
@@ -198,6 +204,106 @@ def test_custom_redacted_headers(tmp_path):
     content = _read_log(tmp_path)
     assert "my-secret" not in content
     assert "[REDACTED]" in content
+
+
+# ---------------------------------------------------------------------------
+# Cookie redaction -- session identifiers must not appear in logs.
+# Dataverse responses include ReqClientId / orgId in Set-Cookie with very long
+# expiries (2076 was observed in the wild); leaking them enables session replay
+# against the same environment for the cookie's full lifetime.
+# ---------------------------------------------------------------------------
+
+
+def test_bug_repro_set_cookie_value_redacted(tmp_path):
+    """Exact bug-report repro: a Dataverse-style Set-Cookie line must not
+    leak ReqClientId / orgId / expiry / path into the log file."""
+    cookie = (
+        "ReqClientId=9ab75712-744f-44e4-9779-80fab256c81d; "
+        "expires=Wed, 20-May-2076 22:04:46 GMT; path=/; secure; HttpOnly, "
+        "orgId=642c36da-b550-f111-a817-7c1e528d4a67"
+    )
+    logger = _make_logger(tmp_path)
+    logger.log_response(
+        "GET",
+        "https://example.crm.dynamics.com/api/data/v9.2/",
+        status_code=200,
+        headers={"Set-Cookie": cookie, "Content-Type": "application/json"},
+    )
+    content = _read_log(tmp_path)
+    # Every cookie attribute from the repro must be gone.
+    for leak in ("ReqClientId=", "orgId=", "9ab75712-744f-44e4", "642c36da", "20-May-2076"):
+        assert leak not in content, f"cookie attribute {leak!r} leaked into log:\n{content}"
+    # And the line must visibly show the redaction so readers know it was
+    # processed (not dropped by accident).
+    assert "Set-Cookie: [REDACTED]" in content
+
+
+def test_cookie_request_header_redacted(tmp_path):
+    """Outbound ``Cookie`` headers (request side) are equally session-bearing
+    and must also be redacted -- otherwise a cookie copy-pasted into a manual
+    call would leak through the request log."""
+    logger = _make_logger(tmp_path)
+    logger.log_request(
+        "GET",
+        "https://example.crm.dynamics.com/",
+        headers={"Cookie": "sessionid=super-secret-value; other=abc"},
+    )
+    content = _read_log(tmp_path)
+    assert "super-secret-value" not in content
+    assert "sessionid=" not in content
+    assert "Cookie: [REDACTED]" in content
+
+
+def test_cookie_redaction_case_insensitive(tmp_path):
+    """``set-cookie`` / ``SET-COOKIE`` / ``Set-Cookie`` are all the same
+    header per RFC 7230 -- the redactor already lowercases, but lock the
+    behavior so a future refactor can't break it."""
+    # Use an integer index for the subdir name -- on Windows the filesystem
+    # is case-insensitive, so casing-based names collide.
+    for idx, casing in enumerate(("Set-Cookie", "set-cookie", "SET-COOKIE", "sEt-CoOkIe")):
+        sub_dir = tmp_path / f"case_{idx}"
+        sub_dir.mkdir()
+        logger = _make_logger(sub_dir)
+        logger.log_response(
+            "GET",
+            "https://example.com",
+            status_code=200,
+            headers={casing: "ReqClientId=leak-me"},
+        )
+        content = _read_log(sub_dir)
+        assert "leak-me" not in content, f"case {casing!r} failed to redact"
+        assert "[REDACTED]" in content
+
+
+def test_other_headers_still_logged_alongside_cookie(tmp_path):
+    """Adding cookie to the redact set must not over-redact -- benign headers
+    in the same response (Content-Type, OData-Version, ...) still need to be
+    readable for debugging."""
+    logger = _make_logger(tmp_path)
+    logger.log_response(
+        "GET",
+        "https://example.com",
+        status_code=200,
+        headers={
+            "Set-Cookie": "ReqClientId=secret",
+            "Content-Type": "application/json",
+            "OData-Version": "4.0",
+        },
+    )
+    content = _read_log(tmp_path)
+    assert "application/json" in content
+    assert "OData-Version: 4.0" in content
+    assert "secret" not in content
+
+
+def test_session_header_lists_cookie_in_redacted_summary(tmp_path):
+    """The one-time config summary block at the top of the log file lists
+    the configured redacted headers. After this fix it must include the new
+    cookie entries so a reader can confirm at a glance that cookies are safe."""
+    _make_logger(tmp_path)
+    content = _read_log(tmp_path)
+    assert "set-cookie" in content
+    assert "cookie" in content
 
 
 # ---------------------------------------------------------------------------

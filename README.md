@@ -16,7 +16,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 - [Key features](#key-features)
 - [Getting started](#getting-started)
   - [Prerequisites](#prerequisites)
-  - [Install the package](#install-the-package)  
+  - [Install the package](#install-the-package)
   - [Authenticate the client](#authenticate-the-client)
 - [Key concepts](#key-concepts)
 - [Examples](#examples)
@@ -30,6 +30,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Relationship management](#relationship-management)
   - [File operations](#file-operations)
   - [Batch operations](#batch-operations)
+- [Async client](#async-client)
 - [Next steps](#next-steps)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -53,7 +54,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
 
 ### Prerequisites
 
-- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)  
+- **Python 3.10+** (3.10, 3.11, 3.12, 3.13 supported)
 - **Microsoft Dataverse environment** with appropriate permissions
 - **OAuth authentication configured** for your application
 
@@ -92,7 +93,7 @@ The client requires any Azure Identity `TokenCredential` implementation for OAut
 
 ```python
 from azure.identity import (
-    InteractiveBrowserCredential, 
+    InteractiveBrowserCredential,
     ClientSecretCredential,
     CertificateCredential,
     AzureCliCredential
@@ -103,7 +104,7 @@ from PowerPlatform.Dataverse.client import DataverseClient
 credential = InteractiveBrowserCredential()  # Browser authentication
 # credential = AzureCliCredential()          # If logged in via 'az login'
 
-# Production options  
+# Production options
 # credential = ClientSecretCredential(tenant_id, client_id, client_secret)
 # credential = CertificateCredential(tenant_id, client_id, cert_path)
 
@@ -209,7 +210,7 @@ a PATCH request; multiple items use the `UpsertMultiple` bulk action.
 > upsert requests will be rejected by Dataverse with a 400 error.
 
 ```python
-from PowerPlatform.Dataverse.models.upsert import UpsertItem
+from PowerPlatform.Dataverse.models import UpsertItem
 
 # Upsert a single record
 client.records.upsert("account", [
@@ -346,7 +347,7 @@ query = (client.query.builder("contact")
 For complex logic (OR, NOT, grouping), compose expressions with `&`, `|`, `~`:
 
 ```python
-from PowerPlatform.Dataverse.models.filters import col
+from PowerPlatform.Dataverse.models import col
 
 # OR conditions: (statecode = 0 OR statecode = 1) AND revenue > 100k
 for record in (client.query.builder("account")
@@ -397,7 +398,7 @@ if record:
 **Nested expand with options** -- expand navigation properties with `$select`, `$filter`, `$orderby`, and `$top`:
 
 ```python
-from PowerPlatform.Dataverse.models.query_builder import ExpandOption
+from PowerPlatform.Dataverse.models import ExpandOption
 
 # Expand related tasks with filtering and sorting
 for record in (client.query.builder("account")
@@ -614,12 +615,14 @@ client.tables.delete("new_Product")
 Create relationships between tables using the relationship API. For a complete working example, see [examples/advanced/relationships.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/relationships.py).
 
 ```python
-from PowerPlatform.Dataverse.models.relationship import (
+from PowerPlatform.Dataverse.models import (
+    CascadeConfiguration,
+    Label,
+    LocalizedLabel,
     LookupAttributeMetadata,
-    OneToManyRelationshipMetadata,
     ManyToManyRelationshipMetadata,
+    OneToManyRelationshipMetadata,
 )
-from PowerPlatform.Dataverse.models.labels import Label, LocalizedLabel
 
 # Create a one-to-many relationship: Department (1) -> Employee (N)
 # This adds a "Department" lookup field to the Employee table
@@ -783,6 +786,99 @@ result = batch.execute()
 
 For a complete example see [examples/advanced/batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py).
 
+## Async client
+
+The SDK ships a full async client, `AsyncDataverseClient`, for use in async applications. It mirrors every operation of the sync client — the same namespaces (`records`, `query`, `tables`, `files`, `batch`), the same method signatures, and the same return types.
+
+### Install
+
+The async client requires `aiohttp`, which is an optional extra:
+
+```bash
+pip install "PowerPlatform-Dataverse-Client[async]"
+```
+
+### Quick start
+
+```python
+import asyncio
+from azure.identity.aio import DefaultAzureCredential
+from PowerPlatform.Dataverse.aio import AsyncDataverseClient
+
+async def main():
+    async with DefaultAzureCredential() as credential:
+        async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+            # Create a contact
+            contact_id = await client.records.create("contact", {"firstname": "John", "lastname": "Doe"})
+
+            # Read it back
+            contact = await client.records.retrieve("contact", contact_id, select=["firstname", "lastname"])
+            print(f"Created: {contact['firstname']} {contact['lastname']}")
+
+            # Clean up
+            await client.records.delete("contact", contact_id)
+
+asyncio.run(main())
+```
+
+### Standalone usage (without `async with`)
+
+```python
+client = AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential)
+try:
+    account_id = await client.records.create("account", {"name": "Contoso Ltd"})
+finally:
+    await client.aclose()
+```
+
+### Query builder
+
+The async query builder API is identical to the sync one:
+
+```python
+from PowerPlatform.Dataverse.models.filters import col
+
+# Execute and collect all results
+result = await (
+    client.query.builder("account")
+    .select("name", "telephone1")
+    .where(col("statecode") == 0)
+    .top(10)
+    .execute()
+)
+for record in result:
+    print(record["name"])
+
+# Lazy page-by-page iteration (memory-efficient for large sets)
+async for page in (
+    client.query.builder("account")
+    .select("name")
+    .page_size(500)
+    .execute_pages()
+):
+    for record in page:
+        print(record["name"])
+```
+
+### Batch and changesets
+
+```python
+batch = client.batch.new()
+batch.records.create("account", {"name": "Alpha"})
+batch.records.create("account", {"name": "Beta"})
+result = await batch.execute()
+print(f"Created {len(result.entity_ids)} records")
+
+# Atomic changeset
+batch = client.batch.new()
+async with batch.changeset() as cs:
+    ref = cs.records.create("contact", {"firstname": "Alice"})
+    cs.records.update("account", account_id, {"primarycontactid@odata.bind": ref})
+result = await batch.execute()
+```
+
+See [examples/aio/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio) for async equivalents of all sync examples.
+
 ## Next steps
 
 ### More sample code
@@ -808,7 +904,7 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 | Resource | Description |
 |----------|-------------|
 | **[Dataverse Developer Guide](https://learn.microsoft.com/power-apps/developer/data-platform/)** | Complete developer documentation for Microsoft Dataverse |
-| **[Dataverse Web API Reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/)** | Detailed Web API reference and examples |  
+| **[Dataverse Web API Reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/)** | Detailed Web API reference and examples |
 | **[Azure Identity for Python](https://learn.microsoft.com/python/api/overview/azure/identity-readme)** | Authentication library documentation and credential types |
 | **[Power Platform Developer Center](https://learn.microsoft.com/power-platform/developer/)** | Broader Power Platform development resources |
 | **[Dataverse SDK for .NET](https://learn.microsoft.com/power-apps/developer/data-platform/org-service/overview)** | Official .NET SDK for Microsoft Dataverse |
@@ -862,8 +958,7 @@ Enable file-based HTTP logging to capture all requests and responses for debuggi
 
 ```python
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.config import DataverseConfig
-from PowerPlatform.Dataverse.core.log_config import LogConfig
+from PowerPlatform.Dataverse.core import DataverseConfig, LogConfig
 
 log_cfg = LogConfig(
     log_folder="./my_logs",      # Directory for log files (created if missing)
