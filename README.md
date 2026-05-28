@@ -104,14 +104,19 @@ from PowerPlatform.Dataverse.client import DataverseClient
 credential = InteractiveBrowserCredential()  # Browser authentication
 # credential = AzureCliCredential()          # If logged in via 'az login'
 
-# Production options
-# credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+# For Production options (service principal / app-only auth)
+# credential = ClientSecretCredential(
+#     tenant_id="...",      # ID of the service principal's tenant. Also called its "directory" ID.
+#     client_id="...",      # The service principal's client ID
+#     client_secret="...",  # Client secret value generated for the app (store in Key Vault / env var)
+# )
 # credential = CertificateCredential(tenant_id, client_id, cert_path)
 
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
+Ref: https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity?view=azure-python
 
-> **Complete authentication setup**: See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** for app registration, all credential types, and security configuration.
+> **Set up service principal authentication**: To use `ClientSecretCredential` or `CertificateCredential` you must first register an Azure AD app and grant it access to your Dataverse environment as an application user. See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** (covers app registration, obtaining `tenant_id` / `client_id` / `client_secret`, all credential types, and security configuration).
 
 ## Key concepts
 
@@ -180,6 +185,8 @@ client.records.update("account", account_id, {"telephone1": "555-0199"})
 client.records.delete("account", account_id)
 ```
 
+> **Deprecation note (migration from beta):** `client.records.get()` is deprecated and emits a `DeprecationWarning`. Use `client.records.retrieve(table, record_id)` for single-record reads (returns `None` on 404 instead of raising) and `client.records.list(table, filter=...)` / `client.records.list_pages(...)` for multi-record queries. Return types differ from the beta `get()`, so the codemod flags these for manual review rather than rewriting them — run `dataverse-migrate` (see [Query data](#query-data)) to locate every call site.
+
 ### Bulk operations
 
 ```python
@@ -192,7 +199,7 @@ payloads = [
 ids = client.records.create("account", payloads)
 
 # Bulk update (broadcast same change to all)
-client.records.update("account", ids, {"industry": "Technology"})
+client.records.update("account", ids, {"exchangerate": 1})
 
 # Bulk delete
 client.records.delete("account", ids, use_bulk_delete=True)
@@ -208,6 +215,26 @@ a PATCH request; multiple items use the `UpsertMultiple` bulk action.
 > columns used in `alternate_key`. Alternate keys are defined in the table's metadata (Power Apps
 > maker portal → Table → Keys, or via the Dataverse API). Without a configured alternate key,
 > upsert requests will be rejected by Dataverse with a 400 error.
+
+Set up the key once before running the upsert examples:
+
+```python
+# One-time setup for the examples below: make accountnumber an alternate key on account
+key = client.tables.create_alternate_key(
+    "account",
+    "account_accountnumber_ak",
+    ["accountnumber"],
+    display_name="Account Number",
+)
+print(f"Created key {key.schema_name} ({key.metadata_id}), status={key.status}")
+
+# Optional: check key status (useful right after creation; status transitions Pending -> Active)
+for k in client.tables.get_alternate_keys("account"):
+    if k.schema_name == "account_accountnumber_ak":
+        print(f"{k.schema_name}: {k.status}")
+```
+
+Upsert usage
 
 ```python
 from PowerPlatform.Dataverse.models import UpsertItem
@@ -332,12 +359,9 @@ print(f"Got {len(df)} accounts")
 ```python
 # Comparison filters using col() expressions
 query = (client.query.builder("contact")
-         .where(col("statecode") == 0)                        # statecode eq 0
-         .where(col("revenue") > 1000000)                     # revenue gt 1000000
-         .where(col("name").contains("Corp"))                 # contains(name, 'Corp')
-         .where(col("statecode").in_([0, 1]))                 # Microsoft.Dynamics.CRM.In(...)
-         .where(col("revenue").between(100000, 500000))       # revenue ge 100000 and revenue le 500000
-         .where(col("telephone1").is_null())                  # telephone1 eq null
+         .where(col("email").contains("outlook.com"))       # contains(email from domain, 'outlook.com')
+         .where(col("creditlimit").between(10000, 50000))   # credit limit ge 10000 and revenue le 50000
+         .where(col("telephone1").is_null())                # telephone1 eq null
          )
 ```
 
@@ -458,10 +482,14 @@ results = (client.query.builder("account")
            .where(col("statecode") == 0)
            .count()
            .execute())
+print(len(results))   # QueryResult is sized — use len() to get the count
 
 # Via records.list() — count=True adds $count=true to the OData request
 results = client.records.list("account", filter="statecode eq 0", count=True)
+print(len(results))
 ```
+
+> **Accessing the count:** `QueryResult` is iterable and sized — call `len(results)` to get the number of records. There is no separate `.count` or `.total_count` attribute. Because the client auto-paginates, `len(results)` reflects every matching row fetched; the server's raw `@odata.count` annotation is not surfaced as a standalone field.
 
 **FetchXML queries** -- `client.query.fetchxml()` returns an inert `FetchXmlQuery` object; no HTTP request is made until you call `.execute()` or `.execute_pages()`:
 
@@ -636,7 +664,7 @@ relationship = OneToManyRelationshipMetadata(
 )
 
 result = client.tables.create_one_to_many_relationship(lookup, relationship)
-print(f"Created lookup field: {result['lookup_schema_name']}")
+print(f"Created lookup field: {result.lookup_schema_name}")
 
 # Create a many-to-many relationship: Employee (N) <-> Project (N)
 # Employees work on multiple projects; projects have multiple team members
@@ -647,25 +675,25 @@ m2m_relationship = ManyToManyRelationshipMetadata(
 )
 
 result = client.tables.create_many_to_many_relationship(m2m_relationship)
-print(f"Created M:N relationship: {result['relationship_schema_name']}")
+print(f"Created M:N relationship: {result.relationship_schema_name}")
 
 # Query relationship metadata
 rel = client.tables.get_relationship("new_Department_Employee")
 if rel:
-    print(f"Found: {rel['SchemaName']}")
+    print(f"Found: {rel.relationship_schema_name}")
 
 # List all relationships
 rels = client.tables.list_relationships()
 for rel in rels:
-    print(f"{rel['SchemaName']} ({rel.get('@odata.type')})")
+    print(f"{rel['SchemaName']} ({rel.get('RelationshipType')})")
 
 # List relationships for a specific table (one-to-many + many-to-one + many-to-many)
 account_rels = client.tables.list_table_relationships("account")
 for rel in account_rels:
-    print(f"{rel['SchemaName']} -> {rel.get('@odata.type')}")
+    print(f"{rel['SchemaName']} -> {rel.get('RelationshipType')}")
 
 # Delete a relationship
-client.tables.delete_relationship(result['relationship_id'])
+client.tables.delete_relationship(result.relationship_id)
 ```
 
 For simpler scenarios, use the convenience method:
@@ -757,6 +785,13 @@ for item in result.failed:
     print(f"[ERR] {item.status_code}: {item.error_message}")
 ```
 
+> `continue_on_error=True` only affects how Dataverse handles per-operation
+> failures on the server. Client-side errors raised before the batch is sent
+> — such as `ValidationError` (e.g. exceeding the 1000-operation limit) or
+> `MetadataError` from metadata pre-resolution (`tables.delete`,
+> `tables.add_columns`, `tables.remove_columns`) — are still raised as
+> exceptions and must be handled with `try`/`except`.
+
 **DataFrame integration** -- feed pandas DataFrames directly into a batch:
 
 ```python
@@ -787,6 +822,8 @@ For a complete example see [examples/advanced/batch.py](https://github.com/micro
 
 The SDK ships a full async client, `AsyncDataverseClient`, for use in async applications. It mirrors every operation of the sync client — the same namespaces (`records`, `query`, `tables`, `files`, `batch`), the same method signatures, and the same return types.
 
+> ⓘ **Async snippets below are fragments.** Every example after `### Quick start` assumes it is nested inside an `async def main(): ...` body, with `client` and `credential` already constructed as shown in Quick start. Copying a fragment into a top-level `.py` file will raise `SyntaxError: 'await' outside function`. See [examples/aio/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio) for full runnable scripts.
+
 ### Install
 
 The async client requires `aiohttp`, which is an optional extra:
@@ -799,10 +836,13 @@ pip install "PowerPlatform-Dataverse-Client[async]"
 
 ```python
 import asyncio
-from azure.identity.aio import DefaultAzureCredential
+from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 async def main():
+    # Connect to Dataverse
+    credential = InteractiveBrowserCredential()
+
     async with DefaultAzureCredential() as credential:
         async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
             # Create a contact
@@ -821,6 +861,7 @@ asyncio.run(main())
 ### Standalone usage (without `async with`)
 
 ```python
+# given: credential constructed as in Quick start (e.g. DefaultAzureCredential())
 client = AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential)
 try:
     account_id = await client.records.create("account", {"name": "Contoso Ltd"})
@@ -833,6 +874,7 @@ finally:
 The async query builder API is identical to the sync one:
 
 ```python
+# given: client is an open AsyncDataverseClient
 from PowerPlatform.Dataverse.models.filters import col
 
 # Execute and collect all results
@@ -860,6 +902,7 @@ async for page in (
 ### Batch and changesets
 
 ```python
+# given: client is open; account_id is the GUID returned by an earlier records.create
 batch = client.batch.new()
 batch.records.create("account", {"name": "Alpha"})
 batch.records.create("account", {"name": "Beta"})
@@ -908,24 +951,64 @@ For comprehensive information on Microsoft Dataverse and related technologies:
 
 ## Troubleshooting
 
+### Exception hierarchy
+
+The SDK raises structured exceptions that all inherit from a common base, `DataverseError`. Catching the base class is the safest fallback; catch the specific subclasses when you need to react differently to validation, metadata, SQL, or HTTP failures.
+
+```
+Exception
+└── DataverseError              # Base class for every SDK-raised error
+    ├── ValidationError         # Client-side input validation failed
+    ├── MetadataError           # Table/column/relationship metadata problem
+    ├── SQLParseError           # SQL query could not be parsed
+    └── HttpError               # Dataverse Web API returned a non-success status
+```
+
+All classes are importable from `PowerPlatform.Dataverse.core.errors` (or re-exported from `PowerPlatform.Dataverse.core`).
+
+| Exception | When it is raised | Typical examples |
+|-----------|-------------------|------------------|
+| **`DataverseError`** | Base class. Catch it to handle any SDK-originated failure in one block. | Fallback `except` clause. |
+| **`ValidationError`** | Client-side argument validation fails **before** a request is sent. | Empty/`None` table name, missing primary key, non-string SQL, invalid batch payload, unsupported column type in `create_table`. |
+| **`MetadataError`** | A metadata lookup or definition operation fails — usually an unknown or invalid table, column, or relationship. | Unknown logical name passed to `batch.create/update/delete`, `tables.create_column`, `relationships.create_*`, or `tables.delete`. |
+| **`SQLParseError`** | A SQL string passed to `client.query.sql(...)` cannot be parsed into a valid SELECT. | Unsupported SQL syntax, write statements (`INSERT`/`UPDATE`/`DELETE`), malformed queries. |
+| **`HttpError`** | The Dataverse Web API responded with a non-2xx status. Exposes `status_code`, `service_error_code`, `correlation_id`, `service_request_id`, `retry_after`, and `is_transient` (set for 408/429/503/504). | 401 (auth), 403 (permissions), 404 (record/table not found), 412 (concurrency/ETag), 429 (throttling), 5xx (server). |
+
+> **Note on timeouts and network errors.** Low-level network failures from the underlying `httpx` client are **not** wrapped by the SDK and surface as their original `httpx` exceptions — most commonly `httpx.ReadTimeout`, `httpx.ConnectTimeout`, and `httpx.TimeoutException` (their common base) on slow endpoints such as `relationships.list()` or large queries, and `httpx.ConnectError`/`httpx.NetworkError` for connectivity issues. Catch `httpx.HTTPError` to cover all of them, or `httpx.TimeoutException` for timeouts specifically. The async client (`PowerPlatform.Dataverse.aio`) surfaces `aiohttp.ClientError` and `asyncio.TimeoutError` analogously.
+
 ### General
 
-The client raises structured exceptions for different error scenarios:
-
 ```python
+import httpx
 from PowerPlatform.Dataverse.client import DataverseClient
-from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+from PowerPlatform.Dataverse.core.errors import (
+    DataverseError,
+    HttpError,
+    MetadataError,
+    SQLParseError,
+    ValidationError,
+)
 
 try:
     client.records.retrieve("account", "invalid-id")
+except ValidationError as e:
+    print(f"Validation error: {e.message} (subcode={e.subcode})")
+except MetadataError as e:
+    print(f"Metadata error: {e.message} (subcode={e.subcode})")
+except SQLParseError as e:
+    print(f"SQL parse error: {e.message}")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
-    print(f"Error code: {e.code}")
-    print(f"Subcode: {e.subcode}")
+    print(f"Code: {e.code}  Subcode: {e.subcode}")
+    print(f"Service request id: {e.details.get('service_request_id')}")
     if e.is_transient:
-        print("This error may be retryable")
-except ValidationError as e:
-    print(f"Validation error: {e.message}")
+        print(f"Transient — retry after {e.details.get('retry_after')}s")
+except httpx.TimeoutException as e:
+    # ReadTimeout / ConnectTimeout / WriteTimeout from the underlying transport
+    print(f"Request timed out: {e}")
+except DataverseError as e:
+    # Catch-all for any other SDK-raised error
+    print(f"Dataverse error [{e.code}]: {e.message}")
 ```
 
 ### Authentication issues

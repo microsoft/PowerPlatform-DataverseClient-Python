@@ -561,7 +561,7 @@ class AsyncTableOperations:
                     required=True,
                     cascade_delete=CASCADE_BEHAVIOR_REMOVE_LINK,
                 )
-                print(f"Created lookup: {result['lookup_schema_name']}")
+                print(f"Created lookup: {result.lookup_schema_name}")
         """
         async with self._client._scoped_odata() as od:
             lookup, relationship = od._build_lookup_field_models(
