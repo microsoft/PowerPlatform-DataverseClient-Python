@@ -189,6 +189,18 @@ class TestDataframeToRecords(unittest.TestCase):
         result = dataframe_to_records(df)
         self.assertEqual(result, [])
 
+    def test_multiindex_columns_raises(self):
+        """MultiIndex columns produce tuple keys that don't survive JSON
+        serialization. Reject up-front with a clear message instead of
+        letting a TypeError surface deep in the HTTP layer.
+        """
+        cols = pd.MultiIndex.from_tuples([("a", "firstname"), ("a", "lastname")])
+        df = pd.DataFrame([["x", "y"]], columns=cols)
+        with self.assertRaises(ValueError) as ctx:
+            dataframe_to_records(df)
+        self.assertIn("MultiIndex", str(ctx.exception))
+        self.assertIn("to_flat_index", str(ctx.exception))
+
     def test_mixed_types(self):
         """DataFrame with mixed types (str, int, float, None, Timestamp) converts correctly."""
         ts = pd.Timestamp("2024-06-01")

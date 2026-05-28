@@ -511,7 +511,10 @@ class _ODataBase:
                 "RequiredLevel": {"Value": "None"},
                 "MinValue": -100000000000.0,
                 "MaxValue": 100000000000.0,
-                "Precision": 2,
+                # Default to the max DoubleAttributeMetadata.Precision (5) so
+                # round-trips of typical scientific/ML floats don't silently
+                # truncate; "float" implies precision, unlike money/decimal.
+                "Precision": 5,
             }
         if dtype_l in ("datetime", "date"):
             return {
@@ -768,10 +771,13 @@ class _ODataBase:
 
     # ----------------------- SQL guardrail patterns --------------------
     _SQL_WRITE_RE = re.compile(
-        r"^\s*(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
+        r"\b(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|EXEC|GRANT|REVOKE|BULK)\b",
         re.IGNORECASE,
     )
     _SQL_COMMENT_RE = re.compile(r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/|--[^\n]*", re.DOTALL)
+    # Mask single-quoted string literals (with '' escape) before keyword scans
+    # so values like 'DELETE ME' or ';' inside a WHERE clause don't false-positive.
+    _SQL_STRING_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")
     _SQL_LEADING_WILDCARD_RE = re.compile(r"\bLIKE\s+'%[^']", re.IGNORECASE)
     _SQL_IMPLICIT_CROSS_JOIN_RE = re.compile(
         r"\bFROM\s+[A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+)?\s*,\s*[A-Za-z0-9_]+",
@@ -831,9 +837,24 @@ class _ODataBase:
         """
         # --- BLOCKED (save server round-trip) ---
 
-        # 1. Block writes (strip SQL comments first to catch comment-prefixed writes)
+        # Strip comments and mask string literals before keyword/semicolon scans
+        # so write keywords and ';' tucked inside string values don't trip the
+        # checks, while ones hidden by comments or statement stacking do.
         sql_no_comments = self._SQL_COMMENT_RE.sub(" ", sql).strip()
-        if self._SQL_WRITE_RE.search(sql_no_comments):
+        sql_scan = self._SQL_STRING_LITERAL_RE.sub("''", sql_no_comments)
+
+        # 1a. Block statement stacking (semicolons separating statements).
+        if ";" in sql_scan:
+            raise ValidationError(
+                "Multiple SQL statements are not supported. The Dataverse SQL "
+                "endpoint accepts exactly one SELECT statement per call. "
+                "Remove the ';' and submit each query separately.",
+                subcode=VALIDATION_SQL_UNSUPPORTED_SYNTAX,
+            )
+
+        # 1b. Block writes anywhere in the query (not just at the start),
+        # to catch writes hidden after comments or earlier SELECTs.
+        if self._SQL_WRITE_RE.search(sql_scan):
             raise ValidationError(
                 "SQL endpoint is read-only. Use client.records or "
                 "client.dataframe for write operations "
