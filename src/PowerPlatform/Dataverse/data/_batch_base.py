@@ -399,6 +399,14 @@ def _raise_top_level_batch_error(response: Any) -> None:
         error = payload.get("error", {})
         service_error_code = error.get("code") or None
         message: str = error.get("message") or response.text or "Unexpected non-multipart response from $batch"
+        # Dataverse nests a more specific message (e.g. offending field/dtype)
+        # under error.innererror.message. Append it so users see actionable
+        # detail without inspecting the raw payload.
+        innererror = error.get("innererror") if isinstance(error, dict) else None
+        if isinstance(innererror, dict):
+            inner_msg = innererror.get("message")
+            if isinstance(inner_msg, str) and inner_msg.strip() and inner_msg.strip() != message:
+                message = f"{message}: {inner_msg.strip()}"
     except Exception:
         message = (getattr(response, "text", None) or "") or "Unexpected non-multipart response from $batch"
     raise HttpError(

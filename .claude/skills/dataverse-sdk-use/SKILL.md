@@ -271,9 +271,6 @@ df = client.query.builder("account").select("name").top(100).execute().to_datafr
 # Via records.list() (simpler for basic queries)
 df = client.records.list("account", filter="statecode eq 0", select=["name"]).to_dataframe()
 
-# Fetch single record as one-row DataFrame
-df = client.records.retrieve("account", account_id, select=["name"]).to_dataframe()
-
 # Create records from a DataFrame (returns a Series of GUIDs)
 new_accounts = pd.DataFrame([
     {"name": "Contoso", "telephone1": "555-0100"},

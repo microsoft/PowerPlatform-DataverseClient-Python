@@ -636,6 +636,41 @@ class TestRequestErrorParsing(unittest.TestCase):
             self.client._request("get", "http://example.com/test")
         self.assertEqual(ctx.exception.details.get("retry_after"), 30)
 
+    def test_innererror_message_appended_to_top_level(self):
+        """error.innererror.message is appended to the top-level message so the
+        offending field/dtype reaches the user instead of being hidden in the
+        wire payload."""
+        response = self._make_raw_response(
+            400,
+            json_data={
+                "error": {
+                    "code": "0x80060891",
+                    "message": "Error identified in Payload provided by the user for Entity :contacts",
+                    "innererror": {
+                        "message": "Field 'birthdate' is a Date type and cannot accept a DateTime value with offset.",
+                        "type": "System.Exception",
+                    },
+                }
+            },
+        )
+        self.client._raw_request = MagicMock(return_value=response)
+        with self.assertRaises(HttpError) as ctx:
+            self.client._request("post", "http://example.com/contacts")
+        self.assertIn("Error identified in Payload", str(ctx.exception))
+        self.assertIn("birthdate", str(ctx.exception))
+        self.assertIn("DateTime value with offset", str(ctx.exception))
+
+    def test_no_innererror_message_unchanged(self):
+        """Absence of innererror leaves the top-level message untouched."""
+        response = self._make_raw_response(
+            400,
+            json_data={"error": {"code": "0x0", "message": "Bad request"}},
+        )
+        self.client._raw_request = MagicMock(return_value=response)
+        with self.assertRaises(HttpError) as ctx:
+            self.client._request("get", "http://example.com/test")
+        self.assertEqual(ctx.exception.message, "Bad request")
+
 
 class TestCreateMultiple(unittest.TestCase):
     """Unit tests for _ODataClient._create_multiple."""
@@ -1557,6 +1592,20 @@ class TestAttributePayload(unittest.TestCase):
         """'double' is an alias for 'float'."""
         result = self.od._attribute_payload("new_Score", "double")
         self.assertIn("Double", result["@odata.type"])
+
+    def test_float_dtype_precision_default_is_5(self):
+        """'float' must default to the max Double precision (5) so values
+        like 2.718 round-trip without silent truncation. Regression guard
+        for the previous Precision=2 default."""
+        result = self.od._attribute_payload("new_Score", "float")
+        self.assertEqual(result["Precision"], 5)
+
+    def test_decimal_dtype_precision_unchanged_at_2(self):
+        """'decimal'/'money' should keep Precision=2 because that matches
+        currency semantics. Regression guard so a future cleanup doesn't
+        quietly broaden this along with float."""
+        result = self.od._attribute_payload("new_Revenue", "decimal")
+        self.assertEqual(result["Precision"], 2)
 
     def test_datetime_dtype(self):
         """'datetime' produces DateTimeAttributeMetadata."""
