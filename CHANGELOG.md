@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, `upload_file`, etc.) are removed; use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
+- Previously deprecated flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, `upload_file`, etc.) are now removed; use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
 - `client.query.sql_select()`, `client.query.sql_joins()`, `client.query.sql_join()` are removed (#175)
 - `QueryBuilder.execute()` now returns a flat `QueryResult` instead of `Iterable[Record]`; use `execute_pages()` for lazy iteration (#175)
 
