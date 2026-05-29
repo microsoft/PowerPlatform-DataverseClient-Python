@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-05-28
 
-This is the first stable release. It establishes the v1 public API and removes all v0 beta methods.
-
 ### Breaking Changes
 
 - All flat methods on `DataverseClient` (`create`, `update`, `delete`, `get`, `list`, `query_sql`, `upload_file`, etc.) are removed; use the namespaced operations: `client.records`, `client.query`, `client.tables`, `client.files`, `client.batch` (#175)
