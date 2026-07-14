@@ -126,7 +126,7 @@ fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
 headers = {"Authorization": f"Bearer {fno_token}"}
 ```
 
-The `/.default` scope is appended automatically. The customer's AAD app must already have the required permission on the target resource and admin consent granted. For Finance & Operations the standard permissions are `Odata.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
+The `/.default` scope is appended automatically. The customer's AAD app must already have the required permission on the target resource and admin consent granted. For Finance & Operations the standard permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
 
 ## Key concepts
 

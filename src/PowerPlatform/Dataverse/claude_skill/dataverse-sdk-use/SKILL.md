@@ -91,7 +91,7 @@ fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
 headers = {"Authorization": f"Bearer {fno_token}"}
 ```
 
-The customer's AAD app must already have the required permission on the target resource. For F&O the standard delegated permissions are `Odata.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
+The customer's AAD app must already have the required permission on the target resource. For F&O the standard delegated permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
 
 ### CRUD Operations
 
