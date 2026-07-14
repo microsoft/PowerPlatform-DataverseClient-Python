@@ -111,7 +111,7 @@ class _AuthManager:
                 fno_token = client.auth.acquire_token(
                     "https://myenv.operations.dynamics.com"
                 )
-        """        
+        """
         target = (resource_url or "").strip().rstrip("/")
         if not target:
             raise ValueError("resource_url must not be empty.")
