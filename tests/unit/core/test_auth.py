@@ -56,7 +56,7 @@ class TestAuthManager(unittest.TestCase):
         mock_credential.get_token.assert_called_once_with("https://myenv.operations.dynamics.com/.default")
 
     def test_acquire_token_public_supports_alternate_resource(self):
-        """acquire_token works for any resource URL (e.g. linked Finance & Operations env)."""
+        """acquire_token works for any resource URL (e.g. linked ERP env)."""
         mock_credential = MagicMock(spec=TokenCredential)
         mock_credential.get_token.return_value = MagicMock(token="fno-token")
 

@@ -62,7 +62,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
 
         Sets up authentication, base URL, configuration, and internal caches.
 
-        :param auth: Authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
+        :param auth: Authentication manager exposing ``acquire_token(resource_url)`` that returns the OAuth2 access token string for the given resource. The internal ``_headers()`` calls ``auth.acquire_token(self.base_url)`` so the token is scoped to this OData client's Dataverse organization.
         :type auth: ~PowerPlatform.Dataverse.core._auth._AuthManager
         :param base_url: Organization base URL (e.g. ``"https://<org>.crm.dynamics.com"``).
         :type base_url: ``str``

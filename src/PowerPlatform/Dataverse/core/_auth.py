@@ -6,7 +6,7 @@ Authentication helpers.
 
 This module provides :class:`~PowerPlatform.Dataverse.core._auth._AuthManager`, a thin wrapper over any Azure Identity
 ``TokenCredential`` for acquiring OAuth2 access tokens for Microsoft AAD-protected resources -- Dataverse by default,
-and any other resource (e.g. a linked Finance & Operations environment) when an explicit scope is supplied --
+and any other resource (e.g. a linked ERP environment) when an explicit scope is supplied --
 and :class:`~PowerPlatform.Dataverse.core._auth._TokenPair` for storing the acquired token alongside its scope.
 """
 
@@ -53,7 +53,7 @@ class _AuthManager:
     :meth:`acquire_token`, and the same method can be called externally
     (through ``client.auth.acquire_token(...)``) to obtain tokens for
     other Microsoft AAD-protected resources -- for example a linked
-    Finance & Operations environment.
+    ERP environment (Microsoft Dynamics 365 Finance & Operations).
 
     :param credential: Azure Identity credential implementation.
     :type credential: ~azure.core.credentials.TokenCredential
@@ -83,7 +83,7 @@ class _AuthManager:
         Acquire an OAuth2 access token for a Microsoft AAD-protected resource.
 
         Resource-agnostic helper: pass the resource URL (Dataverse env URL
-        for Dataverse, Finance & Operations env URL for F&O, etc.) and the
+        for Dataverse, ERP env URL for ERP, etc.) and the
         ``/.default`` scope suffix is appended automatically before
         delegating to the underlying credential. Token caching, refresh,
         and silent reauthentication are the credential's responsibility;
@@ -104,7 +104,7 @@ class _AuthManager:
             acquisition fails.
 
         Example:
-            Acquire a token for a linked Finance & Operations environment
+            Acquire a token for a linked ERP environment
             using the same credential the Dataverse client was built with::
 
                 client = DataverseClient(dv_url, credential)

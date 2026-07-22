@@ -3069,5 +3069,37 @@ class TestBuildCreateEntity(unittest.TestCase):
             self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
 
 
+class TestODataClientHeaders(unittest.TestCase):
+    """Regression tests for _ODataClient._headers auth wiring.
+
+    Locks the contract that _headers() delegates token acquisition to
+    ``auth.acquire_token(base_url)`` (the public resource-agnostic entry
+    point) and places the returned token verbatim in the ``Authorization``
+    header. Guards against future refactors silently switching back to
+    ``_acquire_token(scope)`` or to a different scope construction.
+    """
+
+    def test_headers_calls_auth_acquire_token_with_base_url(self):
+        """_headers passes the client's base_url (no /.default suffix) to auth.acquire_token."""
+        base_url = "https://example.crm.dynamics.com"
+        mock_auth = MagicMock()
+        mock_auth.acquire_token.return_value = "tok-abc"
+
+        client = _ODataClient(mock_auth, base_url)
+        client._headers()
+
+        mock_auth.acquire_token.assert_called_once_with(base_url)
+
+    def test_headers_places_token_in_authorization_bearer(self):
+        """_headers uses the string returned by auth.acquire_token as the bearer token."""
+        mock_auth = MagicMock()
+        mock_auth.acquire_token.return_value = "tok-xyz"
+
+        client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
+        headers = client._headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer tok-xyz")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -81,17 +81,17 @@ client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 
 ### Acquiring Tokens for Other Microsoft Resources
 
-`client.auth.acquire_token(resource_url)` returns an OAuth2 token from the same credential for any AAD-protected Microsoft resource (e.g. a linked Finance & Operations environment). The `/.default` scope is appended automatically.
+`client.auth.acquire_token(resource_url)` returns an OAuth2 token from the same credential for any AAD-protected Microsoft resource (e.g. a linked ERP environment, i.e. Microsoft Dynamics 365 Finance & Operations). The `/.default` scope is appended automatically.
 
 ```python
-# Token for a linked Finance & Operations environment
+# Token for a linked ERP environment
 fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
 
-# Use the F&O token to call F&O OData / Custom Service endpoints directly
+# Use the token to call ERP OData / Custom Service endpoints directly
 headers = {"Authorization": f"Bearer {fno_token}"}
 ```
 
-The customer's AAD app must already have the required permission on the target resource. For F&O the standard delegated permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
+The customer's AAD app must already have the required permission on the target resource. For ERP the standard delegated permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
 
 ### CRUD Operations
 
