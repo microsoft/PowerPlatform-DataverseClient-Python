@@ -604,12 +604,14 @@ class _ODataBase:
             ]
         }
         url = f"{self.api}/CreateEntities"
+        headers: Optional[Dict[str, str]] = None
         if solution:
-            url += f"?SolutionUniqueName={solution}"
+            headers = {"MSCRM.SolutionUniqueName": solution}
         return _RawRequest(
             method="POST",
             url=url,
             body=json.dumps(body, ensure_ascii=False),
+            headers=headers,
         )
 
     def _build_delete_entity(self, metadata_id: str) -> _RawRequest:

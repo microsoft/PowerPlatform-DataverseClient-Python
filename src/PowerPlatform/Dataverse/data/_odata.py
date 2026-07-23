@@ -841,10 +841,10 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
                 }
             ]
         }
-        params = None
+        headers = None
         if solution_unique_name:
-            params = {"SolutionUniqueName": solution_unique_name}
-        self._request("post", url, json=payload, params=params)
+            headers = {"MSCRM.SolutionUniqueName": solution_unique_name}
+        self._request("post", url, json=payload, headers=headers)
         ent = self._get_entity_by_table_schema_name(
             table_schema_name,
             headers={"Consistency": "Strong"},
