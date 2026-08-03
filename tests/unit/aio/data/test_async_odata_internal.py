@@ -22,6 +22,7 @@ def _make_client() -> _AsyncODataClient:
     """Return _AsyncODataClient with _request mocked out at the HTTP boundary."""
     auth = MagicMock()
     auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="test-token"))
+    auth.acquire_token = AsyncMock(return_value="test-token")
     client = _AsyncODataClient(auth, "https://example.crm.dynamics.com")
     client._request = AsyncMock()
     return client
@@ -105,6 +106,7 @@ class TestRequest:
         """Return a client with a real auth mock but _raw_request not yet patched."""
         auth = MagicMock()
         auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="token"))
+        auth.acquire_token = AsyncMock(return_value="token")
         return _AsyncODataClient(auth, "https://example.crm.dynamics.com")
 
     async def test_ok_response_returned(self):
@@ -1377,6 +1379,7 @@ class TestRequestMergeAndEdgeCases:
     def _auth_client(self):
         auth = MagicMock()
         auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="token"))
+        auth.acquire_token = AsyncMock(return_value="token")
         return _AsyncODataClient(auth, "https://example.crm.dynamics.com")
 
     async def test_caller_headers_merged_with_base_headers(self):
@@ -1880,6 +1883,7 @@ class TestAsyncOperationContextUserAgent:
         config = DataverseConfig(operation_context=OperationContext(user_agent_context=ctx_str))
         auth = MagicMock()
         auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="test-token"))
+        auth.acquire_token = AsyncMock(return_value="test-token")
         client = _AsyncODataClient(auth, "https://example.crm.dynamics.com", config=config)
         headers = await client._headers()
         assert headers["User-Agent"] == f"{_USER_AGENT} ({ctx_str})"
@@ -1890,6 +1894,53 @@ class TestAsyncOperationContextUserAgent:
         config = DataverseConfig(operation_context=None)
         auth = MagicMock()
         auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="test-token"))
+        auth.acquire_token = AsyncMock(return_value="test-token")
         client = _AsyncODataClient(auth, "https://example.crm.dynamics.com", config=config)
         headers = await client._headers()
         assert "(" not in headers["User-Agent"]
+
+
+class TestAsyncODataClientHeadersAuthWiring:
+    """Regression tests for ``_AsyncODataClient._headers`` auth wiring.
+
+    Async counterpart of ``tests/unit/data/test_odata_internal.py::TestODataClientHeadersAuthWiring``.
+    Locks the contract that ``_headers()`` awaits the public, resource-agnostic
+    ``auth.acquire_token(base_url)`` entry point and places the returned token verbatim in the
+    ``Authorization`` header.
+    """
+
+    async def test_headers_calls_acquire_token_with_base_url(self):
+        """_headers passes the client's base_url (no /.default suffix) to auth.acquire_token."""
+        base_url = "https://example.crm.dynamics.com"
+        auth = MagicMock()
+        auth.acquire_token = AsyncMock(return_value="tok-abc")
+
+        client = _AsyncODataClient(auth, base_url)
+        await client._headers()
+
+        auth.acquire_token.assert_awaited_once_with(base_url)
+
+    async def test_headers_places_token_in_authorization_bearer(self):
+        """_headers uses the string returned by auth.acquire_token as the bearer token."""
+        auth = MagicMock()
+        auth.acquire_token = AsyncMock(return_value="tok-xyz")
+
+        client = _AsyncODataClient(auth, "https://example.crm.dynamics.com")
+        headers = await client._headers()
+
+        assert headers["Authorization"] == "Bearer tok-xyz"
+
+    async def test_headers_end_to_end_scope_through_real_async_auth_manager(self):
+        """A real _AsyncAuthManager wired into _headers requests the Dataverse /.default scope."""
+        from azure.core.credentials_async import AsyncTokenCredential
+
+        from PowerPlatform.Dataverse.aio.core._async_auth import _AsyncAuthManager
+
+        mock_cred = MagicMock(spec=AsyncTokenCredential)
+        mock_cred.get_token = AsyncMock(return_value=MagicMock(token="real-token"))
+
+        client = _AsyncODataClient(_AsyncAuthManager(mock_cred), "https://example.crm.dynamics.com")
+        headers = await client._headers()
+
+        mock_cred.get_token.assert_awaited_once_with("https://example.crm.dynamics.com/.default")
+        assert headers["Authorization"] == "Bearer real-token"

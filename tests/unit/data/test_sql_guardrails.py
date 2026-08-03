@@ -20,6 +20,9 @@ class DummyAuth:
 
         return T()
 
+    def acquire_token(self, resource_url):
+        return self._acquire_token(f"{(resource_url or '').strip().rstrip('/')}/.default").access_token
+
 
 def _client():
     return _ODataClient(DummyAuth(), "https://org.example", None)

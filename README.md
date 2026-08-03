@@ -15,6 +15,7 @@ A Python client library for Microsoft Dataverse that provides a unified interfac
   - [Prerequisites](#prerequisites)
   - [Install the package](#install-the-package)
   - [Authenticate the client](#authenticate-the-client)
+    - [Acquire tokens for other Microsoft resources](#acquire-tokens-for-other-microsoft-resources)
 - [Key concepts](#key-concepts)
 - [Examples](#examples)
   - [Quick start](#quick-start)
@@ -114,6 +115,28 @@ client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 Ref: https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity?view=azure-python
 
 > **Set up service principal authentication**: To use `ClientSecretCredential` or `CertificateCredential` you must first register an Azure AD app and grant it access to your Dataverse environment as an application user. See **[Use OAuth with Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth)** (covers app registration, obtaining `tenant_id` / `client_id` / `client_secret`, all credential types, and security configuration).
+
+#### Acquire tokens for other Microsoft resources
+
+The credential you already gave the client can also mint tokens for **other Microsoft Entra ID protected resources** — most commonly a linked Dynamics 365 Finance & Operations environment that sits alongside the same Dataverse org. Use `client.auth.acquire_token(resource_url)` instead of constructing a second credential:
+
+```python
+# Sync client
+fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
+
+headers = {"Authorization": f"Bearer {fno_token}"}
+# Call the ERP OData / Custom Service endpoints directly with `requests`, `httpx`, ...
+```
+
+```python
+# Async client
+async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
+    fno_token = await client.auth.acquire_token("https://myenv.operations.dynamics.com")
+```
+
+The `/.default` scope is appended automatically, so pass the bare resource URL (trailing slashes and surrounding whitespace are trimmed; a blank value raises `ValueError`). Token caching and refresh remain the credential's responsibility — Azure Identity credentials cache in memory, so repeated calls are cheap.
+
+The app registration must already hold the required permission on the target resource, with admin consent granted. For Finance & Operations the standard delegated permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
 
 ## Key concepts
 

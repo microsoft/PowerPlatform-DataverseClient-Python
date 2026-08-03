@@ -79,6 +79,24 @@ with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
 client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 ```
 
+### Acquiring Tokens for Other Microsoft Resources
+
+`client.auth.acquire_token(resource_url)` returns an OAuth2 access token from the **same credential** for any Microsoft Entra ID protected resource — for example a linked Dynamics 365 Finance & Operations environment. Use it instead of building a second credential. The `/.default` scope is appended automatically.
+
+```python
+# Sync client
+fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
+
+# Use the token to call the ERP OData / Custom Service endpoints directly
+headers = {"Authorization": f"Bearer {fno_token}"}
+
+# Async client
+async with AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as aclient:
+    fno_token = await aclient.auth.acquire_token("https://myenv.operations.dynamics.com")
+```
+
+Pass the bare resource URL — trailing slashes and surrounding whitespace are trimmed, and a blank value raises `ValueError`. The app registration must already hold the required permission on the target resource with admin consent granted. For Finance & Operations the standard delegated permissions are `OData.FullAccess` and `CustomService.FullAccess` on the **Microsoft Dynamics ERP** API (`00000015-0000-0000-c000-000000000000`).
+
 ### CRUD Operations
 
 #### Create Records

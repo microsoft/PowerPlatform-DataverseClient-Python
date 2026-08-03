@@ -1044,6 +1044,7 @@ class TestRobustnessEdgeCases(unittest.TestCase):
 
         mock_auth = MagicMock()
         mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+        mock_auth.acquire_token.return_value = "token"
         od = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
 
         # _escape_odata_quotes doubles single quotes
