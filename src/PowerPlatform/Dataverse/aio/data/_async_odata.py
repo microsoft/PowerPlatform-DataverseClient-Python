@@ -61,7 +61,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
 
         Sets up authentication, base URL, configuration, and internal caches.
 
-        :param auth: Async authentication manager providing ``_acquire_token(scope)`` that returns an object with ``access_token``.
+        :param auth: Async authentication manager exposing awaitable ``acquire_token(resource_url)`` that returns the OAuth2 access token string for the given resource. ``_headers()`` awaits ``auth.acquire_token(self.base_url)`` so the token is scoped to this OData client's Dataverse organization.
         :type auth: ~PowerPlatform.Dataverse.aio.core._async_auth._AsyncAuthManager
         :param base_url: Organization base URL (e.g. ``"https://<org>.crm.dynamics.com"``).
         :type base_url: ``str``
@@ -96,8 +96,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
 
     async def _headers(self) -> Dict[str, str]:
         """Build standard OData headers with bearer auth."""
-        scope = f"{self.base_url}/.default"
-        token = (await self.auth._acquire_token(scope)).access_token
+        token = await self.auth.acquire_token(self.base_url)
         ua = f"{_USER_AGENT} ({self._operation_context})" if self._operation_context else _USER_AGENT
         return {
             "Authorization": f"Bearer {token}",

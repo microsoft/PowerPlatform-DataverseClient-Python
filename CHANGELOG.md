@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Cross-resource token acquisition** — `client.auth.acquire_token(resource_url)` (and `await client.auth.acquire_token(resource_url)` on `AsyncDataverseClient`) returns an OAuth2 access token for any Microsoft Entra ID protected resource using the same credential the Dataverse client was constructed with — for example a linked Dynamics 365 Finance & Operations environment. The `/.default` scope is appended automatically; token caching and refresh remain the credential's responsibility. The internal Dataverse request path now routes through the same method, removing the duplicated inline scope construction in `_ODataClient._headers()` and `_AsyncODataClient._headers()`.
+
 ## [1.0.0] - 2026-05-28
 
 ### Breaking Changes

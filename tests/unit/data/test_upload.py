@@ -13,6 +13,7 @@ def _make_odata_client() -> _ODataClient:
     """Return an _ODataClient with HTTP calls mocked out."""
     mock_auth = MagicMock()
     mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+    mock_auth.acquire_token.return_value = "token"
     client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
     client._request = MagicMock()
     return client

@@ -7,6 +7,9 @@ import unittest
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
+from azure.core.credentials import TokenCredential
+
+from PowerPlatform.Dataverse.core._auth import _AuthManager
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
@@ -15,6 +18,7 @@ def _make_odata_client() -> _ODataClient:
     """Return an _ODataClient with HTTP calls mocked out."""
     mock_auth = MagicMock()
     mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+    mock_auth.acquire_token.return_value = "token"
     client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
     client._request = MagicMock()
     return client
@@ -602,6 +606,7 @@ class TestRequestErrorParsing(unittest.TestCase):
     def setUp(self):
         mock_auth = MagicMock()
         mock_auth._acquire_token.return_value = MagicMock(access_token="token")
+        mock_auth.acquire_token.return_value = "token"
         self.client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
 
     def _make_raw_response(self, status_code, json_data=None, headers=None):
@@ -3067,6 +3072,48 @@ class TestBuildCreateEntity(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
+
+
+class TestODataClientHeadersAuthWiring(unittest.TestCase):
+    """Regression tests for ``_ODataClient._headers`` auth wiring.
+
+    Locks the contract that ``_headers()`` delegates token acquisition to the public,
+    resource-agnostic ``auth.acquire_token(base_url)`` entry point and places the returned
+    token verbatim in the ``Authorization`` header. Guards against a future refactor
+    silently reverting to inline scope construction or routing through a different scope.
+    """
+
+    def test_headers_calls_acquire_token_with_base_url(self):
+        """_headers passes the client's base_url (no /.default suffix) to auth.acquire_token."""
+        base_url = "https://example.crm.dynamics.com"
+        mock_auth = MagicMock()
+        mock_auth.acquire_token.return_value = "tok-abc"
+
+        client = _ODataClient(mock_auth, base_url)
+        client._headers()
+
+        mock_auth.acquire_token.assert_called_once_with(base_url)
+
+    def test_headers_places_token_in_authorization_bearer(self):
+        """_headers uses the string returned by auth.acquire_token as the bearer token."""
+        mock_auth = MagicMock()
+        mock_auth.acquire_token.return_value = "tok-xyz"
+
+        client = _ODataClient(mock_auth, "https://example.crm.dynamics.com")
+        headers = client._headers()
+
+        self.assertEqual(headers["Authorization"], "Bearer tok-xyz")
+
+    def test_headers_end_to_end_scope_through_real_auth_manager(self):
+        """A real _AuthManager wired into _headers requests the Dataverse /.default scope."""
+        mock_credential = MagicMock(spec=TokenCredential)
+        mock_credential.get_token.return_value = MagicMock(token="real-token")
+
+        client = _ODataClient(_AuthManager(mock_credential), "https://example.crm.dynamics.com")
+        headers = client._headers()
+
+        mock_credential.get_token.assert_called_once_with("https://example.crm.dynamics.com/.default")
+        self.assertEqual(headers["Authorization"], "Bearer real-token")
 
 
 if __name__ == "__main__":
