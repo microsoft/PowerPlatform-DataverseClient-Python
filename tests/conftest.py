@@ -10,6 +10,7 @@ that can be used across all test modules.
 
 import pytest
 from unittest.mock import Mock
+from PowerPlatform.Dataverse.core._auth import _build_default_scope
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 
 
@@ -19,7 +20,9 @@ def dummy_auth():
 
     Mirrors the real ``_AuthManager`` surface: both the internal
     ``_acquire_token(scope)`` and the public ``acquire_token(resource_url)``
-    used by ``_ODataClient._headers()``.
+    used by ``_ODataClient._headers()``. Scope construction reuses the
+    production ``_build_default_scope`` helper so the double preserves its
+    normalization and ``ValueError`` validation instead of drifting from it.
     """
 
     class DummyAuth:
@@ -30,7 +33,7 @@ def dummy_auth():
             return Token()
 
         def acquire_token(self, resource_url):
-            return self._acquire_token(f"{(resource_url or '').strip().rstrip('/')}/.default").access_token
+            return self._acquire_token(_build_default_scope(resource_url)).access_token
 
     return DummyAuth()
 

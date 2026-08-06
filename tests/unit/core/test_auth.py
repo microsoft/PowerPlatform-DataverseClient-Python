@@ -4,6 +4,7 @@
 import unittest
 from unittest.mock import MagicMock
 
+import pytest
 from azure.core.credentials import TokenCredential
 
 from PowerPlatform.Dataverse.core._auth import _AuthManager, _TokenPair, _build_default_scope
@@ -207,3 +208,20 @@ class TestTokenPairReprRedaction(unittest.TestCase):
         pair = manager._acquire_token("https://org.crm.dynamics.com/.default")
         self.assertNotIn(self.JWT, repr(pair))
         self.assertIn("[REDACTED]", repr(pair))
+
+
+class TestSharedDummyAuthFixtureContract:
+    """The shared ``dummy_auth`` test double must not drift from the real ``_AuthManager``.
+
+    It reuses :func:`_build_default_scope`, so the double inherits the production
+    normalization and ``ValueError`` validation instead of silently minting a token
+    for a malformed ``/.default`` scope.
+    """
+
+    def test_returns_token_for_valid_resource(self, dummy_auth):
+        assert dummy_auth.acquire_token("https://org.crm.dynamics.com") == "test_token_12345"
+
+    @pytest.mark.parametrize("bad", ["", "   ", "/", "  //  ", None])
+    def test_blank_resource_raises_value_error(self, dummy_auth, bad):
+        with pytest.raises(ValueError):
+            dummy_auth.acquire_token(bad)
