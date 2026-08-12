@@ -13,14 +13,14 @@ The Dataverse SDK for Python enables Python developers to interact directly with
 Following are some links to our Microsoft Learn documentation covering the Dataverse SDK for Python.
 
 _Table of contents_
-[Overview](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/overview)
-[Quick guide to Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/quick-guide-dataverse)
-[Getting started](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/get-started)
-[Work with Dataverse data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/work-data)
-[Query data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/query)
-[Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)
-[Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)
-[Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)
+[Overview](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/overview)  
+[Quick guide to Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/quick-guide-dataverse)  
+[Getting started](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/get-started)  
+[Work with Dataverse data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/work-data)  
+[Query data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/query)  
+[Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)  
+[Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)  
+[Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)  
 
 ## Contributing
 
