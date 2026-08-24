@@ -2963,7 +2963,7 @@ class TestBuildCreateEntity(unittest.TestCase):
         self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "new_TestTable")
 
     def test_display_collection_name_derived_from_display_name(self):
-        """_build_create_entity appends 's' to display_name for DisplayCollectionName."""
+        """_build_create_entity pluralizes display_name for DisplayCollectionName."""
         body = self._body(display_name="Test Table")
         self.assertEqual(body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"], "Test Tables")
 
@@ -3067,6 +3067,94 @@ class TestBuildCreateEntity(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
+
+
+class TestPluralize(unittest.TestCase):
+    """Unit tests for the _pluralize / _inflect_word helpers."""
+
+    def setUp(self):
+        from PowerPlatform.Dataverse.data._odata_base import _pluralize
+        self._p = _pluralize
+
+    def test_regular_word(self):
+        self.assertEqual(self._p("Product"), "Products")
+
+    def test_consonant_y_ending(self):
+        self.assertEqual(self._p("Category"), "Categories")
+
+    def test_s_ending(self):
+        self.assertEqual(self._p("Status"), "Statuses")
+
+    def test_irregular_person(self):
+        self.assertEqual(self._p("Person"), "People")
+
+    def test_irregular_child(self):
+        self.assertEqual(self._p("Child"), "Children")
+
+    def test_publisher_prefix(self):
+        self.assertEqual(self._p("new_Category"), "new_Categories")
+
+    def test_publisher_prefix_irregular(self):
+        self.assertEqual(self._p("new_Person"), "new_People")
+
+    def test_multiword(self):
+        self.assertEqual(self._p("My Category"), "My Categories")
+
+    def test_empty_string(self):
+        self.assertEqual(self._p(""), "")
+
+    def test_lowercase_preserved(self):
+        self.assertEqual(self._p("category"), "categories")
+
+
+class TestCreateTableDisplayCollectionName(unittest.TestCase):
+    """Verify _create_table generates correct DisplayCollectionName via _pluralize."""
+
+    def _setup_for_create(self, od):
+        created = {
+            "MetadataId": "meta-001",
+            "EntitySetName": "new_categories",
+            "LogicalName": "new_category",
+            "SchemaName": "new_Category",
+            "PrimaryNameAttribute": "new_name",
+            "PrimaryIdAttribute": "new_categoryid",
+        }
+        call_count = [0]
+
+        def mock_get_entity(table_schema_name, headers=None):
+            call_count[0] += 1
+            return None if call_count[0] == 1 else created
+
+        od._get_entity_by_table_schema_name = MagicMock(side_effect=mock_get_entity)
+        od._request = MagicMock(return_value=MagicMock(status_code=200, json=lambda: {}))
+
+    def _collection_label(self, od):
+        post_json = od._request.call_args.kwargs["json"]
+        return post_json["Entities"][0]["DisplayCollectionName"]["LocalizedLabels"][0]["Label"]
+
+    def test_category_pluralized_correctly(self):
+        od = _make_odata_client()
+        self._setup_for_create(od)
+        od._create_table("new_Category", {}, display_name="Category")
+        self.assertEqual(self._collection_label(od), "Categories")
+
+    def test_person_pluralized_correctly(self):
+        od = _make_odata_client()
+        self._setup_for_create(od)
+        od._create_table("new_Person", {}, display_name="Person")
+        self.assertEqual(self._collection_label(od), "People")
+
+    def test_status_pluralized_correctly(self):
+        od = _make_odata_client()
+        self._setup_for_create(od)
+        od._create_table("new_Status", {}, display_name="Status")
+        self.assertEqual(self._collection_label(od), "Statuses")
+
+    def test_prefixed_display_name_pluralized_correctly(self):
+        od = _make_odata_client()
+        self._setup_for_create(od)
+        od._create_table("new_Category", {}, display_name="new_Category")
+        self.assertEqual(self._collection_label(od), "new_Categories")
 
 
 if __name__ == "__main__":

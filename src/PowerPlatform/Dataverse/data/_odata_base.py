@@ -9,6 +9,7 @@ URL construction, payload building, cache helpers, and other stateless logic.
 
 from __future__ import annotations
 
+import inflect
 import json
 import re
 import unicodedata
@@ -42,6 +43,37 @@ from ._raw_request import _RawRequest
 __all__ = []
 
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+_inflect = inflect.engine()
+
+
+def _inflect_word(word: str) -> str:
+    """Pluralize a single word via inflect, preserving leading capitalisation."""
+    if not word:
+        return word
+    is_title = word[0].isupper()
+    plural = _inflect.plural(word.lower())
+    return (plural[0].upper() + plural[1:]) if is_title and plural else plural
+
+
+def _pluralize(display_name: str) -> str:
+    """Pluralize the last word of a Dataverse display name for use as DisplayCollectionName.
+
+    Handles publisher-prefixed tokens (e.g. ``"new_Category"`` → ``"new_Categories"``)
+    and multi-word names (e.g. ``"My Category"`` → ``"My Categories"``).
+    """
+    if not display_name:
+        return display_name
+    parts = display_name.split(" ")
+    last = parts[-1]
+    if "_" in last:
+        prefix, _, tail = last.rpartition("_")
+        parts[-1] = f"{prefix}_{_inflect_word(tail)}" if tail else last
+    else:
+        parts[-1] = _inflect_word(last)
+    return " ".join(parts)
+
+
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
@@ -593,7 +625,7 @@ class _ODataBase:
                     "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
                     "SchemaName": table,
                     "DisplayName": self._label(label),
-                    "DisplayCollectionName": self._label(label + "s"),
+                    "DisplayCollectionName": self._label(_pluralize(label)),
                     "Description": self._label(f"Custom entity for {label}"),
                     "OwnershipType": "UserOwned",
                     "HasActivities": False,
