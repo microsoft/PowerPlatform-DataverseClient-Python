@@ -9,7 +9,6 @@ URL construction, payload building, cache helpers, and other stateless logic.
 
 from __future__ import annotations
 
-import inflect
 import json
 import re
 import unicodedata
@@ -21,6 +20,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import parse_qs, urlparse
+
+import inflect
 
 from .. import __version__ as _SDK_VERSION
 
