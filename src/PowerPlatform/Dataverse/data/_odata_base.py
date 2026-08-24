@@ -49,12 +49,26 @@ _inflect = inflect.engine()
 
 
 def _inflect_word(word: str) -> str:
-    """Pluralize a single word via inflect, preserving leading capitalisation."""
+    """Pluralize a single word via inflect, preserving the original casing.
+
+    ``inflect`` only applies its full pluralization rules (e.g. ``y`` -> ``ies``)
+    to lowercase input, so the word is lowercased before pluralizing. The
+    result is then spliced onto the original (cased) word at the point where
+    the lowercase singular and plural diverge, so casing internal to the word
+    (e.g. PascalCase like ``TestTable`` -> ``TestTables``) is preserved rather
+    than collapsed by re-capitalizing only the first letter.
+    """
     if not word:
         return word
-    is_title = word[0].isupper()
-    plural = _inflect.plural(word.lower())
-    return (plural[0].upper() + plural[1:]) if is_title and plural else plural
+    lower = word.lower()
+    plural_lower = _inflect.plural(lower)
+    if not plural_lower:
+        return word
+    common_len = 0
+    max_common = min(len(word), len(plural_lower))
+    while common_len < max_common and lower[common_len] == plural_lower[common_len]:
+        common_len += 1
+    return word[:common_len] + plural_lower[common_len:]
 
 
 def _pluralize(display_name: str) -> str:

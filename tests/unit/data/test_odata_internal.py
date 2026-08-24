@@ -3106,6 +3106,15 @@ class TestPluralize(unittest.TestCase):
     def test_lowercase_preserved(self):
         self.assertEqual(self._p("category"), "categories")
 
+    def test_pascal_case_internal_casing_preserved(self):
+        self.assertEqual(self._p("TestTable"), "TestTables")
+
+    def test_pascal_case_irregular_word_boundary(self):
+        self.assertEqual(self._p("SalesOrder"), "SalesOrders")
+
+    def test_pascal_case_publisher_prefix(self):
+        self.assertEqual(self._p("new_TestTable"), "new_TestTables")
+
 
 class TestCreateTableDisplayCollectionName(unittest.TestCase):
     """Verify _create_table generates correct DisplayCollectionName via _pluralize."""
@@ -3155,6 +3164,16 @@ class TestCreateTableDisplayCollectionName(unittest.TestCase):
         self._setup_for_create(od)
         od._create_table("new_Category", {}, display_name="new_Category")
         self.assertEqual(self._collection_label(od), "new_Categories")
+
+    def test_default_display_name_preserves_pascal_case_when_pluralized(self):
+        """Regression test: when display_name is omitted, it defaults to
+        table_schema_name, and pluralizing it must not collapse internal
+        PascalCase (e.g. "new_TestTable" -> "new_TestTables", not
+        "new_Testtables")."""
+        od = _make_odata_client()
+        self._setup_for_create(od)
+        od._create_table("new_TestTable", {})
+        self.assertEqual(self._collection_label(od), "new_TestTables")
 
 
 if __name__ == "__main__":

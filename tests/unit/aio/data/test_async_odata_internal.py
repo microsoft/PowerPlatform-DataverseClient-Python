@@ -1938,3 +1938,13 @@ class TestAsyncCreateTableDisplayCollectionName:
         self._setup_for_create(client)
         await client._create_table("new_Status", {}, display_name="Status")
         assert self._collection_label(client) == "Statuses"
+
+    async def test_default_display_name_preserves_pascal_case_when_pluralized(self):
+        """Regression test: when display_name is omitted, it defaults to
+        table_schema_name, and pluralizing it must not collapse internal
+        PascalCase (e.g. "new_TestTable" -> "new_TestTables", not
+        "new_Testtables")."""
+        client = _make_client()
+        self._setup_for_create(client)
+        await client._create_table("new_TestTable", {})
+        assert self._collection_label(client) == "new_TestTables"
