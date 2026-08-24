@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `DisplayCollectionName` now uses correct English pluralization when creating tables
   (e.g. `"Category"` → `"Categories"`, `"Person"` → `"People"`) instead of naive `+ "s"` (#166).
+- Pluralization of `DisplayCollectionName` no longer collapses the casing of PascalCase
+  display names (e.g. `"SalesOrder"` → `"SalesOrders"` instead of `"Salesorders"`), and a
+  `display_name` with surrounding whitespace (e.g. `"Product "`) is trimmed before use
+  instead of being sent un-pluralized and padded (#166).
 
 ### Changed
 

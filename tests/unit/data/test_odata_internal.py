@@ -2967,6 +2967,15 @@ class TestBuildCreateEntity(unittest.TestCase):
         body = self._body(display_name="Test Table")
         self.assertEqual(body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"], "Test Tables")
 
+    def test_display_name_surrounding_whitespace_stripped(self):
+        """Regression test: a trailing/leading space in display_name must not
+        leave DisplayName/DisplayCollectionName unpluralized or padded, e.g.
+        "Product " should behave exactly like "Product", not send "Product "
+        as DisplayName and leave DisplayCollectionName un-pluralized."""
+        body = self._body(display_name="Product ")
+        self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "Product")
+        self.assertEqual(body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"], "Products")
+
     def test_display_name_empty_string_raises(self):
         """_build_create_entity raises TypeError when display_name is an empty string."""
         with self.assertRaises(TypeError):

@@ -633,6 +633,7 @@ class _ODataBase:
         if display_name is not None:
             if not isinstance(display_name, str) or not display_name.strip():
                 raise TypeError("display_name must be a non-empty string when provided")
+            display_name = display_name.strip()
         label = display_name if display_name is not None else table
         body = {
             "Entities": [
