@@ -8,19 +8,18 @@ The Dataverse SDK for Python enables Python developers to interact directly with
 
 **[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference documentation](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
-## Getting Started
+## Programming information
 
-The following links direct you to our Microsoft Learn documentation covering the Dataverse SDK for Python.
+Read our Microsoft Learn documentation to learn how to access Dataverse by using the SDK for Python.
 
-_Table of contents_  
-[Overview](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/overview)  
-[Quick guide to Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/quick-guide-dataverse)  
-[Getting started](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/get-started)  
-[Work with Dataverse data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/work-data)  
-[Query data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/query)  
-[Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)  
-[Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)  
-[Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)  
+- [Overview](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/overview)  
+- [Quick guide to Dataverse](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/quick-guide-dataverse)  
+- [Getting started](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/get-started)  
+- [Work with Dataverse data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/work-data)  
+- [Query data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/query)  
+- [Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)  
+- [Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)  
+- [Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)  
 
 ## Contributing
 
