@@ -19,7 +19,8 @@ Read our Microsoft Learn documentation to learn how to access Dataverse by using
 - [Query data](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/query)  
 - [Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)  
 - [Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)  
-- [Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)  
+- [Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)
+- [Handle errors and enable HTTP diagnostics](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python//error-handling)  
 
 ## Contributing
 
