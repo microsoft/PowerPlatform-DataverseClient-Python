@@ -8,7 +8,7 @@ The Dataverse SDK for Python enables Python developers to interact directly with
 
 **[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference documentation](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
-## Programming information
+## Documentation
 
 Read our Microsoft Learn documentation to learn how to access Dataverse by using the SDK for Python.
 
