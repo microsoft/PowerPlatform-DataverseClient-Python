@@ -26,7 +26,7 @@ Read our Microsoft Learn documentation to learn how to access Dataverse by using
 
 Following is a short example that demonstrates some basic Dataverse operations by using the SDK for Python. Read the documentation to learn more.
 
-```csharp
+```python
 from azure.identity import InteractiveBrowserCredential
 from PowerPlatform.Dataverse.client import DataverseClient
 
