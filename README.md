@@ -8,6 +8,22 @@ The Dataverse SDK for Python lets Python developers access, manage, and manipula
 
 **[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
+## Table of contents
+
+- [Key features](#key-features)
+- [Getting started](#getting-started)
+- [Usage](#usage)
+  - [Create, read, update, delete](#create-read-update-delete)
+  - [Query records](#query-records)
+  - [Define and evolve schema](#define-and-evolve-schema)
+  - [Work in bulk](#work-in-bulk)
+  - [Upload files and group requests](#upload-files-and-group-requests)
+  - [Use the async client](#use-the-async-client)
+  - [Handle errors](#handle-errors)
+- [Documentation](#documentation)
+- [Samples](#samples)
+- [Contributing](#contributing)
+
 ## Key features
 
 - **CRUD & bulk** — single records plus native `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` / `BulkDelete`.
@@ -131,7 +147,7 @@ Relationship methods take logical names, which are always the schema name in low
 
 ### Work in bulk
 
-Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete` for large sets. `upsert()` creates or updates each record by an alternate key — ideal for idempotent syncs. The key must already exist on the table and its index must have reached `Active`; create one with `client.tables.create_alternate_key` and poll `client.tables.get_alternate_keys` until it does.
+Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete`, which returns a job ID and removes the records in the background — pass `use_bulk_delete=False` to delete them one at a time instead. `upsert()` creates or updates each record by an alternate key — ideal for idempotent syncs. The key must already exist on the table and its index must have reached `Active`; create one with `client.tables.create_alternate_key` and poll `client.tables.get_alternate_keys` until it does.
 
 ```python
 from PowerPlatform.Dataverse.models import UpsertItem
@@ -141,7 +157,7 @@ ids = client.records.create("account", [{"name": "Company A"}, {"name": "Company
 
 # Apply the same change to every record, then delete them all
 client.records.update("account", ids, {"industrycode": 1})
-client.records.delete("account", ids)
+job_id = client.records.delete("account", ids)
 
 # Upsert by alternate key (create if missing, update if present)
 client.records.upsert("account", [
@@ -189,8 +205,8 @@ from azure.identity.aio import DefaultAzureCredential
 from PowerPlatform.Dataverse.aio import AsyncDataverseClient
 
 async def main():
-    async with AsyncDataverseClient("https://yourorg.crm.dynamics.com",
-                                    DefaultAzureCredential()) as client:
+    async with DefaultAzureCredential() as credential, \
+               AsyncDataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
         # Independent calls run concurrently
         a_id, b_id = await asyncio.gather(
             client.records.create("account", {"name": "Company A"}),
