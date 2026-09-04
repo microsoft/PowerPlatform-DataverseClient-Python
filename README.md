@@ -20,7 +20,42 @@ Read our Microsoft Learn documentation to learn how to access Dataverse by using
 - [Customize tables and columns](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/metadata)  
 - [Manage table relationships](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/relationships)  
 - [Asynchronous client operations](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python/async-client)
-- [Handle errors and enable HTTP diagnostics](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python//error-handling)  
+- [Handle errors and enable HTTP diagnostics](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/sdk-python//error-handling)
+
+## An example
+
+Following is a short example that demonstrates some basic Dataverse operations by using the SDK for Python. Read the documentation to learn more.
+
+```csharp
+from azure.identity import InteractiveBrowserCredential
+from PowerPlatform.Dataverse.client import DataverseClient
+
+# Replace <myorg> with the name of a valid environment.
+base_url = "https://<myorg>.crm.dynamics.com"
+client = DataverseClient(base_url=base_url, credential=InteractiveBrowserCredential())
+
+# Create a record
+account_id = client.records.create("account", {"name": "Contoso Ltd"})
+
+# Read a record
+account = client.records.retrieve("account", account_id)
+print(account["name"])
+
+# Read with expand fetches a related record in the same HTTP request
+account = client.records.retrieve(
+    "account", account_id,
+    select=["name"],
+    expand=["primarycontactid"],
+)
+contact = (account.get("primarycontactid") or {})
+print(contact.get("fullname"))
+
+# Update a record
+client.records.update("account", account_id, {"telephone1": "555-0199"})
+
+# Delete a record
+client.records.delete("account", account_id)
+```
 
 ## Contributing
 
