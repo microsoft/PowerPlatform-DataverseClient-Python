@@ -170,27 +170,15 @@ For DataFrame-driven loads, `client.dataframe.create(table, df)` writes an entir
 
 ### Upload files and group requests
 
-`client.files.upload` writes a local file to a file column, splitting large files into chunks automatically. `client.batch` packs many operations into a single HTTP request; wrap them in a changeset to make them commit or roll back together.
+`client.files.upload` writes a local file to a file column, chunking large files automatically. `client.batch` packs many operations into one HTTP request, and `batch.changeset()` groups them so they commit or roll back together.
 
 ```python
-# Upload a file to a file column
 client.files.upload("account", account_id, "new_Attachment", "report.pdf")
 
-# Many operations, one HTTP request
 batch = client.batch.new()
 batch.records.create("account", {"name": "Company A"})
 batch.records.update("account", account_id, {"telephone1": "555-0199"})
 result = batch.execute()
-
-# A changeset is transactional, and each create returns a reference the next one can bind to
-batch = client.batch.new()
-with batch.changeset() as cs:
-    lead_ref = cs.records.create("lead", {"firstname": "Ada", "lastname": "Lovelace"})
-    cs.records.create("account", {"name": "Babbage & Co.",
-                                 "originatingleadid@odata.bind": lead_ref})
-result = batch.execute()
-if result.has_errors:
-    print("Changeset rolled back")
 ```
 
 See the [file_upload.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/file_upload.py) and [batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py) samples.
