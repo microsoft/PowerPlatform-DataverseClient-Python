@@ -4,20 +4,20 @@
 [![Python](https://img.shields.io/pypi/pyversions/PowerPlatform-Dataverse-Client.svg)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The Dataverse SDK for Python lets Python developers access, manage, and manipulate Microsoft Dataverse business data using familiar Python syntax -- no .NET knowledge required. It wraps the Dataverse Web API in a single typed client that works with tables and records as native Python dictionaries and pandas DataFrames.
+The Dataverse SDK for Python lets Python developers access, manage, and manipulate Microsoft Dataverse business data using familiar Python syntax — no .NET knowledge required. It wraps the Dataverse Web API in a single typed client that works with tables and records as native Python dictionaries and pandas DataFrames.
 
 **[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
 ## Key features
 
-- **CRUD & bulk** -- single records plus native `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` / `BulkDelete`.
-- **Fluent QueryBuilder** -- type-safe `col()` filters; plus read-only SQL and FetchXML.
-- **Schema & relationships** -- create tables, columns, and 1:N / N:N relationships.
-- **pandas DataFrames** -- read and write records as DataFrames and Series.
-- **File uploads** -- to file columns, with automatic chunking for large files.
-- **Batch** -- many operations per HTTP request, with transactional changesets.
-- **Azure Identity auth & typed errors** -- any `TokenCredential`; structured exception hierarchy with retry guidance.
-- **Async** -- `AsyncDataverseClient` mirrors the sync API.
+- **CRUD & bulk** — single records plus native `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` / `BulkDelete`.
+- **Fluent QueryBuilder** — type-safe `col()` filters; plus read-only SQL and FetchXML.
+- **Schema & relationships** — create tables, columns, and 1:N / N:N relationships.
+- **pandas DataFrames** — read and write records as DataFrames and Series.
+- **File uploads** — to file columns, with automatic chunking for large files.
+- **Batch** — many operations per HTTP request, with transactional changesets.
+- **Azure Identity auth & typed errors** — any `TokenCredential`; structured exception hierarchy with retry guidance.
+- **Async** — `AsyncDataverseClient` mirrors the sync API.
 
 ## Getting started
 
@@ -55,7 +55,7 @@ The examples below pass this `credential` to `DataverseClient`, opened as a cont
 
 ## Usage
 
-Every operation hangs off a namespace on the client: `records` for CRUD, `query` for filtered reads, `tables` for schema and metadata, `dataframe` for pandas, `files` for uploads, and `batch` for multi-operation requests. Records are plain Python dictionaries keyed by column schema names -- custom tables and columns keep their customization prefix (for example `"new_"`). The sections below cover the capabilities in the order you typically reach for them; each links to the Learn article and runnable sample that go deeper.
+Every operation hangs off a namespace on the client: `records` for CRUD, `query` for filtered reads, `tables` for schema and metadata, `dataframe` for pandas, `files` for uploads, and `batch` for multi-operation requests. Records are plain Python dictionaries keyed by column schema names — custom tables and columns keep their customization prefix (for example `"new_"`). The sections below cover the capabilities in the order you typically reach for them; each links to the Learn article and runnable sample that go deeper.
 
 ### Create, read, update, delete
 
@@ -79,7 +79,7 @@ More on reading and writing records: [Work with Dataverse data](https://learn.mi
 
 ### Query records
 
-`client.query.builder()` builds type-safe OData for you -- filters use `col()` with standard Python operators, and it escapes values automatically. Results are iterable and can be handed straight to pandas with `.to_dataframe()`.
+`client.query.builder()` builds type-safe OData for you — filters use `col()` with standard Python operators, and it escapes values automatically. Results are iterable and can be handed straight to pandas with `.to_dataframe()`.
 
 ```python
 from PowerPlatform.Dataverse.models import col
@@ -129,7 +129,7 @@ For choice columns, many-to-many relationships, and alternate keys, see [Customi
 
 ### Work in bulk
 
-Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete` for large sets. `upsert()` creates or updates each record by an alternate key -- ideal for idempotent syncs.
+Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete` for large sets. `upsert()` creates or updates each record by an alternate key — ideal for idempotent syncs.
 
 ```python
 from PowerPlatform.Dataverse.models import UpsertItem
@@ -148,11 +148,38 @@ client.records.upsert("account", [
 ])
 ```
 
-For DataFrame-driven loads, `client.dataframe.create(table, df)` writes an entire pandas DataFrame in one call -- see the [dataframe_operations.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/dataframe_operations.py) and [alternate_keys_upsert.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/alternate_keys_upsert.py) samples.
+For DataFrame-driven loads, `client.dataframe.create(table, df)` writes an entire pandas DataFrame in one call — see the [dataframe_operations.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/dataframe_operations.py) and [alternate_keys_upsert.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/alternate_keys_upsert.py) samples.
+
+### Upload files and group requests
+
+`client.files.upload` writes a local file to a file column, splitting large files into chunks automatically. `client.batch` packs many operations into a single HTTP request; wrap them in a changeset to make them commit or roll back together.
+
+```python
+# Upload a file to a file column
+client.files.upload("account", account_id, "new_Attachment", "report.pdf")
+
+# Many operations, one HTTP request
+batch = client.batch.new()
+batch.records.create("account", {"name": "Company A"})
+batch.records.update("account", account_id, {"telephone1": "555-0199"})
+result = batch.execute()
+
+# A changeset is transactional, and each create returns a reference the next one can bind to
+batch = client.batch.new()
+with batch.changeset() as cs:
+    lead_ref = cs.records.create("lead", {"firstname": "Ada", "lastname": "Lovelace"})
+    cs.records.create("account", {"name": "Babbage & Co.",
+                                 "originatingleadid@odata.bind": lead_ref})
+result = batch.execute()
+if result.has_errors:
+    print("Changeset rolled back")
+```
+
+See the [file_upload.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/file_upload.py) and [batch.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/batch.py) samples.
 
 ### Use the async client
 
-`AsyncDataverseClient` (from the `[async]` extra) exposes the same namespaces and methods as the sync client, each awaitable -- so independent operations can run concurrently with `asyncio.gather()`.
+`AsyncDataverseClient` (from the `[async]` extra) exposes the same namespaces and methods as the sync client, each awaitable — so independent operations can run concurrently with `asyncio.gather()`.
 
 ```python
 import asyncio
@@ -181,9 +208,8 @@ The SDK raises a typed exception hierarchy rooted at `DataverseError`. `HttpErro
 ```python
 from PowerPlatform.Dataverse.core.errors import (
     DataverseError,   # base class -- catch last as a fallback
-    ValidationError,  # client-side input validation failed
+    ValidationError,  # client-side input validation failed, including unsupported SQL
     MetadataError,    # unknown table / column / relationship
-    SQLParseError,    # unsupported SQL passed to query.sql()
     HttpError,        # Dataverse Web API returned a non-2xx status
 )
 
@@ -193,9 +219,9 @@ except ValidationError as e:
     print(f"Invalid input: {e.message}")
 except HttpError as e:
     print(f"HTTP {e.status_code}: {e.message}")
-    if e.is_transient:                     # 429 / 503 / 504
+    if e.is_transient:                     # 429 / 502 / 503 / 504
         print(f"Retry after {e.details.get('retry_after')}s")
-except DataverseError as e:                # catches MetadataError, SQLParseError, etc.
+except DataverseError as e:                # catches MetadataError, etc.
     print(f"Dataverse error: {e.message}")
 ```
 
@@ -211,7 +237,7 @@ For retry patterns, timeouts, and HTTP diagnostics logging, see [Handle errors a
 
 ## Samples
 
-The [examples/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples) directory has complete, runnable scripts for every operation, including advanced scenarios -- relationships, batch changesets, file uploads, SQL and FetchXML queries, and DataFrames -- plus a full [async mirror](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio). Start with the [examples guide](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for a suggested learning progression.
+The [examples/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples) directory has complete, runnable scripts for every operation, including advanced scenarios — relationships, batch changesets, file uploads, SQL and FetchXML queries, and DataFrames — plus a full [async mirror](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio). Start with the [examples guide](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for a suggested learning progression.
 
 ## Contributing
 
