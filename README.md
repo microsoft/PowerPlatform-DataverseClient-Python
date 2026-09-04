@@ -102,16 +102,18 @@ df = results.to_dataframe()          # same rows as a pandas DataFrame
 
 ### Define and evolve schema
 
-`client.tables` creates and inspects tables, columns, relationships, and alternate keys. Column types are simple strings (`"string"`, `"int"`, `"decimal"`, `"money"`, `"datetime"`, `"bool"`, `"memo"`); pass an `IntEnum` subclass to create a choice column. `tables.get` returns `None` when the table does not exist, which makes schema setup idempotent.
+`client.tables` creates and inspects tables, columns, relationships, and alternate keys. Column types are simple strings (`"string"`, `"int"`, `"decimal"`, `"money"`, `"datetime"`, `"bool"`, `"memo"`); pass an `IntEnum` subclass to create a choice column. `tables.get` returns `None` when the table does not exist, which makes schema setup idempotent. Every table gets a primary name column automatically — `<prefix>_Name` unless you pass `primary_column` — so do not list it in `columns`.
 
 ```python
 # Create a custom table with typed columns
 if client.tables.get("new_Project") is None:
     client.tables.create("new_Project", {
-        "new_Name": "string",
         "new_Budget": "money",
         "new_StartDate": "datetime",
     }, display_name="Project")
+
+if client.tables.get("new_Task") is None:
+    client.tables.create("new_Task", {"new_DueDate": "datetime"}, display_name="Task")
 
 # Add a column to an existing table
 client.tables.add_columns("new_Project", {"new_Status": "string"})
@@ -125,11 +127,11 @@ client.tables.create_lookup_field(
 )
 ```
 
-For choice columns, many-to-many relationships, and alternate keys, see [Customize tables and columns](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/metadata) and [Manage table relationships](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/relationships).
+Relationship methods take logical names, which are always the schema name in lowercase. For choice columns, many-to-many relationships, and alternate keys, see [Customize tables and columns](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/metadata) and [Manage table relationships](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/relationships).
 
 ### Work in bulk
 
-Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete` for large sets. `upsert()` creates or updates each record by an alternate key — ideal for idempotent syncs.
+Passing a list to `create()` uses Dataverse's native `CreateMultiple`; a single change dict applied to a list of IDs uses `UpdateMultiple`; and deleting a list uses `BulkDelete` for large sets. `upsert()` creates or updates each record by an alternate key — ideal for idempotent syncs. The key must already exist on the table and its index must have reached `Active`; create one with `client.tables.create_alternate_key` and poll `client.tables.get_alternate_keys` until it does.
 
 ```python
 from PowerPlatform.Dataverse.models import UpsertItem
