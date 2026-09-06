@@ -21,6 +21,8 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
+import inflect
+
 from .. import __version__ as _SDK_VERSION
 
 from ..core.errors import ValidationError
@@ -42,6 +44,51 @@ from ._raw_request import _RawRequest
 __all__ = []
 
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+_inflect = inflect.engine()
+
+
+def _inflect_word(word: str) -> str:
+    """Pluralize a single word via inflect, preserving the original casing.
+
+    ``inflect`` only applies its full pluralization rules (e.g. ``y`` -> ``ies``)
+    to lowercase input, so the word is lowercased before pluralizing. The
+    result is then spliced onto the original (cased) word at the point where
+    the lowercase singular and plural diverge, so casing internal to the word
+    (e.g. PascalCase like ``TestTable`` -> ``TestTables``) is preserved rather
+    than collapsed by re-capitalizing only the first letter.
+    """
+    if not word:
+        return word
+    lower = word.lower()
+    plural_lower = _inflect.plural(lower)
+    if not plural_lower:
+        return word
+    common_len = 0
+    max_common = min(len(word), len(plural_lower))
+    while common_len < max_common and lower[common_len] == plural_lower[common_len]:
+        common_len += 1
+    return word[:common_len] + plural_lower[common_len:]
+
+
+def _pluralize(display_name: str) -> str:
+    """Pluralize the last word of a Dataverse display name for use as DisplayCollectionName.
+
+    Handles publisher-prefixed tokens (e.g. ``"new_Category"`` → ``"new_Categories"``)
+    and multi-word names (e.g. ``"My Category"`` → ``"My Categories"``).
+    """
+    if not display_name:
+        return display_name
+    parts = display_name.split(" ")
+    last = parts[-1]
+    if "_" in last:
+        prefix, _, tail = last.rpartition("_")
+        parts[-1] = f"{prefix}_{_inflect_word(tail)}" if tail else last
+    else:
+        parts[-1] = _inflect_word(last)
+    return " ".join(parts)
+
+
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
@@ -586,6 +633,7 @@ class _ODataBase:
         if display_name is not None:
             if not isinstance(display_name, str) or not display_name.strip():
                 raise TypeError("display_name must be a non-empty string when provided")
+            display_name = display_name.strip()
         label = display_name if display_name is not None else table
         body = {
             "Entities": [
@@ -593,7 +641,7 @@ class _ODataBase:
                     "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
                     "SchemaName": table,
                     "DisplayName": self._label(label),
-                    "DisplayCollectionName": self._label(label + "s"),
+                    "DisplayCollectionName": self._label(_pluralize(label)),
                     "Description": self._label(f"Custom entity for {label}"),
                     "OwnershipType": "UserOwned",
                     "HasActivities": False,
