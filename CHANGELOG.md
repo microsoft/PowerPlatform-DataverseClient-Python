@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-09-08
+
+### Fixed
+
+- The package documentation incorrectly stated that the library was in preview and might contain breaking changes. The library has been generally available since 1.0.0; the notice has been removed. (#190)
+
 ## [1.0.0] - 2026-05-28
 
 ### Breaking Changes
@@ -172,7 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b10...v1.0.0
 [0.1.0b10]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b9...v0.1.0b10
 [0.1.0b9]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...v0.1.0b9
