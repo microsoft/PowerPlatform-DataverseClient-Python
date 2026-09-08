@@ -86,6 +86,15 @@ with DataverseClient("https://yourorg.crm.dynamics.com", credential) as client:
 
 More on reading and writing records: [Work with Dataverse data](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/work-data) and the [walkthrough.py](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/advanced/walkthrough.py) sample.
 
+### Acquire tokens for other resources
+
+Reuse the client's credential for another Microsoft Entra ID protected resource, such as Finance & Operations. Pass the resource URL without a scope suffix; `/.default` is appended automatically. The app must already have the target resource's required permissions and consent.
+
+```python
+fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
+# With AsyncDataverseClient: await client.auth.acquire_token(resource_url)
+```
+
 ### Query records
 
 `client.query.builder()` builds type-safe OData for you — filters use `col()` with standard Python operators, and it escapes values automatically. Results are iterable and can be handed straight to pandas with `.to_dataframe()`.
