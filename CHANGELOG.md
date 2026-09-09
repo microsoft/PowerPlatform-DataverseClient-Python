@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Cross-resource token acquisition** — `client.auth.acquire_token(resource_url)` (and `await client.auth.acquire_token(resource_url)` on `AsyncDataverseClient`) returns an OAuth2 access token for any Microsoft Entra ID protected resource using the same credential the Dataverse client was constructed with — for example a linked Dynamics 365 Finance & Operations environment. The `/.default` scope is appended automatically; token caching and refresh remain the credential's responsibility. The internal Dataverse request path now routes through the same method, removing the duplicated inline scope construction in `_ODataClient._headers()` and `_AsyncODataClient._headers()`.
+## [1.0.1] - 2026-09-08
+
+### Fixed
+
+- The package documentation incorrectly stated that the library was in preview and might contain breaking changes. The library has been generally available since 1.0.0; the notice has been removed. (#190)
 
 ## [1.0.0] - 2026-05-28
 
@@ -178,7 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b10...v1.0.0
 [0.1.0b10]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b9...v0.1.0b10
 [0.1.0b9]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b8...v0.1.0b9
