@@ -7,6 +7,7 @@ from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.config import DataverseConfig
 from PowerPlatform.Dataverse.core.errors import HttpError
 from PowerPlatform.Dataverse.core._error_codes import HTTP_404, HTTP_429, HTTP_500
+from PowerPlatform.Dataverse.core._auth import _build_default_scope
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -16,6 +17,9 @@ class DummyAuth:
             access_token = "x"
 
         return T()
+
+    def acquire_token(self, resource_url):
+        return self._acquire_token(_build_default_scope(resource_url)).access_token
 
 
 class DummyHTTP:

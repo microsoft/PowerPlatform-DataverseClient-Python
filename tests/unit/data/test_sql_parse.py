@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from PowerPlatform.Dataverse.core._auth import _build_default_scope
 from PowerPlatform.Dataverse.data._odata import _ODataClient, _extract_pagingcookie
 
 
@@ -14,6 +15,9 @@ class DummyAuth:
             access_token = "x"  # no real token needed for parsing tests
 
         return T()
+
+    def acquire_token(self, resource_url):
+        return self._acquire_token(_build_default_scope(resource_url)).access_token
 
 
 def _client():

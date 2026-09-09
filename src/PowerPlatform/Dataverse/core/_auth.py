@@ -5,8 +5,10 @@
 Authentication helpers for Dataverse.
 
 This module provides :class:`~PowerPlatform.Dataverse.core._auth._AuthManager`, a thin wrapper over any Azure Identity
-``TokenCredential`` for acquiring OAuth2 access tokens, and :class:`~PowerPlatform.Dataverse.core._auth._TokenPair` for
-storing the acquired token alongside its scope.
+``TokenCredential`` for acquiring OAuth2 access tokens for Microsoft Entra ID protected resources -- Dataverse by
+default, and any other resource (for example a linked Dynamics 365 Finance & Operations environment) when a different
+resource URL is supplied -- and :class:`~PowerPlatform.Dataverse.core._auth._TokenPair` for storing the acquired token
+alongside its scope.
 """
 
 from __future__ import annotations
@@ -14,6 +16,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from azure.core.credentials import TokenCredential
+
+#: Scope suffix appended to a resource URL to request the resource's default (statically consented) permission set.
+_DEFAULT_SCOPE_SUFFIX = "/.default"
+
+
+def _build_default_scope(resource_url: str) -> str:
+    """
+    Build the ``<resource>/.default`` OAuth2 scope for a resource URL.
+
+    Shared by the sync and async auth managers so scope construction lives in exactly one place.
+
+    :param resource_url: Resource URL for the target Microsoft service (e.g. ``"https://<org>.crm.dynamics.com"``).
+        Surrounding whitespace and trailing slashes are removed before the suffix is appended.
+    :type resource_url: :class:`str`
+    :return: The ``/.default`` scope string for ``resource_url``.
+    :rtype: :class:`str`
+    :raises ValueError: If ``resource_url`` is empty, whitespace-only, or only slashes.
+    """
+    target = (resource_url or "").strip().rstrip("/")
+    if not target:
+        raise ValueError("resource_url must not be empty.")
+    return f"{target}{_DEFAULT_SCOPE_SUFFIX}"
 
 
 @dataclass(repr=False)
@@ -44,7 +68,12 @@ class _TokenPair:
 
 class _AuthManager:
     """
-    Azure Identity-based authentication manager for Dataverse.
+    Azure Identity-based authentication manager.
+
+    Resource-agnostic: the resource URL passed to :meth:`acquire_token` selects the target resource. The Dataverse
+    client supplies its own organization URL on every internal request, and the same method can be called by
+    application code (through ``client.auth.acquire_token(...)``) to obtain tokens for other Microsoft Entra ID
+    protected resources -- for example a linked Dynamics 365 Finance & Operations environment.
 
     :param credential: Azure Identity credential implementation.
     :type credential: ~azure.core.credentials.TokenCredential
@@ -68,3 +97,30 @@ class _AuthManager:
         """
         token = self.credential.get_token(scope)
         return _TokenPair(resource=scope, access_token=token.token)
+
+    def acquire_token(self, resource_url: str) -> str:
+        """
+        Acquire an OAuth2 access token for a Microsoft Entra ID protected resource.
+
+        Resource-agnostic helper: pass the resource URL (the Dataverse environment URL for Dataverse, the Finance &
+        Operations environment URL for ERP, and so on) and the ``/.default`` scope suffix is appended automatically
+        before delegating to the underlying credential. Token caching, refresh, and silent reauthentication remain the
+        credential's responsibility; Azure Identity credentials cache in memory by default, so repeated calls are cheap.
+
+        :param resource_url: Resource URL for the target Microsoft service (for example
+            ``"https://myenv.operations.dynamics.com"``). Surrounding whitespace and trailing slashes are removed
+            before scope construction.
+        :type resource_url: :class:`str`
+        :return: OAuth2 access token string suitable for an ``Authorization: Bearer <token>`` header.
+        :rtype: :class:`str`
+        :raises ValueError: If ``resource_url`` is empty after trimming whitespace and trailing slashes.
+        :raises ~azure.core.exceptions.ClientAuthenticationError: If token acquisition fails.
+
+        Example:
+            Acquire a token for a linked Finance & Operations environment using the same credential the Dataverse
+            client was built with::
+
+                client = DataverseClient(dataverse_url, credential)
+                fno_token = client.auth.acquire_token("https://myenv.operations.dynamics.com")
+        """
+        return self._acquire_token(_build_default_scope(resource_url)).access_token

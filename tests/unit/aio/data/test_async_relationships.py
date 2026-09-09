@@ -25,6 +25,7 @@ def _make_client() -> _AsyncODataClient:
     """Return _AsyncODataClient with _request mocked at the HTTP boundary."""
     auth = MagicMock()
     auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="token"))
+    auth.acquire_token = AsyncMock(return_value="token")
     client = _AsyncODataClient(auth, "https://example.crm.dynamics.com")
     client._request = AsyncMock()
     return client

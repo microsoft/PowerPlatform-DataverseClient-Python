@@ -9,6 +9,7 @@ import pytest
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
+from PowerPlatform.Dataverse.core._auth import _build_default_scope
 from PowerPlatform.Dataverse.core.errors import ValidationError
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
@@ -19,6 +20,9 @@ class DummyAuth:
             access_token = "x"
 
         return T()
+
+    def acquire_token(self, resource_url):
+        return self._acquire_token(_build_default_scope(resource_url)).access_token
 
 
 def _client():

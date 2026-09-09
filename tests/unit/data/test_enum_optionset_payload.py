@@ -4,6 +4,7 @@
 import pytest
 from enum import Enum, IntEnum
 
+from PowerPlatform.Dataverse.core._auth import _build_default_scope
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -13,6 +14,9 @@ class DummyAuth:
             access_token = "token"
 
         return T()
+
+    def acquire_token(self, resource_url):  # pragma: no cover - simple stub
+        return self._acquire_token(_build_default_scope(resource_url)).access_token
 
 
 class DummyConfig:

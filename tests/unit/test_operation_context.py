@@ -144,6 +144,7 @@ class TestOperationContextUserAgent(unittest.TestCase):
         token_result = MagicMock()
         token_result.access_token = "test-token"
         self.dummy_auth._acquire_token.return_value = token_result
+        self.dummy_auth.acquire_token.return_value = "test-token"
         self.base_url = "https://org.example.com"
 
     def test_default_user_agent_unchanged(self):
