@@ -1700,7 +1700,7 @@ class TestCreateEntityEdgeCases:
     """Coverage for _create_entity() solution_name, missing EntitySetName, missing MetadataId."""
 
     async def test_create_entity_with_solution_unique_name(self):
-        """solution_unique_name is passed as a query parameter to the POST request."""
+        """solution_unique_name is passed as the MSCRM.SolutionUniqueName header on the POST request."""
         client = _make_client()
         client._request.return_value = _resp(status=204)
         entity_resp = {
@@ -1718,7 +1718,7 @@ class TestCreateEntityEdgeCases:
             solution_unique_name="MySolution",
         )
         _, kwargs = client._request.call_args
-        assert kwargs.get("params", {}).get("SolutionUniqueName") == "MySolution"
+        assert kwargs.get("headers", {}).get("MSCRM.SolutionUniqueName") == "MySolution"
         assert result["EntitySetName"] == "new_tables"
 
     async def test_create_entity_missing_entity_set_name_raises(self):

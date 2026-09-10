@@ -1338,12 +1338,12 @@ class TestCreateEntity(unittest.TestCase):
             self.od._create_entity("new_TestTable", "Test Table", [])
         self.assertIn("MetadataId missing", str(ctx.exception))
 
-    def test_solution_unique_name_passed_as_param(self):
-        """_create_entity passes SolutionUniqueName as query param when provided."""
+    def test_solution_unique_name_passed_as_header(self):
+        """_create_entity passes MSCRM.SolutionUniqueName header when provided."""
         self._setup_entity_creation()
         self.od._create_entity("new_TestTable", "Test Table", [], solution_unique_name="MySolution")
         post_call = next(c for c in self.od._request.call_args_list if c.args[0] == "post")
-        self.assertEqual(post_call.kwargs.get("params"), {"SolutionUniqueName": "MySolution"})
+        self.assertEqual(post_call.kwargs.get("headers"), {"MSCRM.SolutionUniqueName": "MySolution"})
 
 
 class TestGetAttributeMetadata(unittest.TestCase):
@@ -2994,10 +2994,11 @@ class TestBuildCreateEntity(unittest.TestCase):
         req = self.od._build_create_entity("new_TestTable", {})
         self.assertTrue(req.url.endswith("/CreateEntities"))
 
-    def test_solution_appended_to_url(self):
-        """_build_create_entity appends SolutionUniqueName to URL when solution is given."""
+    def test_solution_passed_as_header(self):
+        """_build_create_entity sets MSCRM.SolutionUniqueName header when solution is given."""
         req = self.od._build_create_entity("new_TestTable", {}, solution="MySolution")
-        self.assertIn("SolutionUniqueName=MySolution", req.url)
+        self.assertEqual(req.headers, {"MSCRM.SolutionUniqueName": "MySolution"})
+        self.assertNotIn("SolutionUniqueName", req.url)
 
     def test_no_solution_no_query_string(self):
         """_build_create_entity URL has no query string when solution is omitted."""
