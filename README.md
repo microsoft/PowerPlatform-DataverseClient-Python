@@ -14,9 +14,9 @@ The Dataverse SDK for Python lets Python developers access, manage, and manipula
 - [Sample code](#sample-code)
 - [Contribute](#contribute)
 
-### Learn to use
+## Learn to use
 
-Find complete documentation about how to use this SDK in the [Dataverse SDK for Python documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)
+Find complete documentation about how to use this SDK in the [Dataverse SDK for Python documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/):
 
 - [Overview](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/overview)
 - [Quick guide to Dataverse](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/quick-guide-dataverse)
