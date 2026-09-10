@@ -8,7 +8,13 @@ The Dataverse SDK for Python lets Python developers access, manage, and manipula
 
 **[Source code](https://github.com/microsoft/PowerPlatform-DataverseClient-Python)** | **[Package (PyPI)](https://pypi.org/project/PowerPlatform-Dataverse-Client/)** | **[API reference](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)** | **[Product documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)** | **[Samples](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples)**
 
-## Learn to use
+## Table of contents
+
+- [Learn to use](#learn-to-use)
+- [Sample code](#sample-code)
+- [Contribute](#contribute)
+
+### Learn to use
 
 Find complete documentation about how to use this SDK in the [Dataverse SDK for Python documentation](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/)
 
@@ -23,11 +29,11 @@ Find complete documentation about how to use this SDK in the [Dataverse SDK for 
 - [Handle errors and enable HTTP diagnostics](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/error-handling)
 - [Python Package Reference](https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview?view=dataverse-sdk-python-latest)
 
-## Samples
+### Sample code
 
 The [examples/](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples) directory has complete, runnable scripts for every operation, including advanced scenarios — relationships, batch changesets, file uploads, SQL and FetchXML queries, and DataFrames — plus a full [async mirror](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/tree/main/examples/aio). Start with the [examples guide](https://github.com/microsoft/PowerPlatform-DataverseClient-Python/blob/main/examples/README.md) for a suggested learning progression.
 
-## Contributing
+### Contribute
 
 This project welcomes contributions and suggestions. Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
