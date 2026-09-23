@@ -1893,3 +1893,58 @@ class TestAsyncOperationContextUserAgent:
         client = _AsyncODataClient(auth, "https://example.crm.dynamics.com", config=config)
         headers = await client._headers()
         assert "(" not in headers["User-Agent"]
+
+
+@pytest.mark.asyncio
+class TestAsyncCreateTableDisplayCollectionName:
+    """Verify async _create_table generates correct DisplayCollectionName via _pluralize."""
+
+    def _setup_for_create(self, client):
+        created = {
+            "MetadataId": "meta-001",
+            "EntitySetName": "new_categories",
+            "LogicalName": "new_category",
+            "SchemaName": "new_Category",
+            "PrimaryNameAttribute": "new_name",
+            "PrimaryIdAttribute": "new_categoryid",
+        }
+        call_count = [0]
+
+        async def mock_get_entity(table_schema_name, headers=None):
+            call_count[0] += 1
+            return None if call_count[0] == 1 else created
+
+        client._get_entity_by_table_schema_name = AsyncMock(side_effect=mock_get_entity)
+        client._request = AsyncMock(return_value=_resp(json_data={}))
+
+    def _collection_label(self, client):
+        post_json = client._request.call_args.kwargs["json"]
+        return post_json["Entities"][0]["DisplayCollectionName"]["LocalizedLabels"][0]["Label"]
+
+    async def test_category_pluralized_correctly(self):
+        client = _make_client()
+        self._setup_for_create(client)
+        await client._create_table("new_Category", {}, display_name="Category")
+        assert self._collection_label(client) == "Categories"
+
+    async def test_person_pluralized_correctly(self):
+        client = _make_client()
+        self._setup_for_create(client)
+        await client._create_table("new_Person", {}, display_name="Person")
+        assert self._collection_label(client) == "People"
+
+    async def test_status_pluralized_correctly(self):
+        client = _make_client()
+        self._setup_for_create(client)
+        await client._create_table("new_Status", {}, display_name="Status")
+        assert self._collection_label(client) == "Statuses"
+
+    async def test_default_display_name_preserves_pascal_case_when_pluralized(self):
+        """Regression test: when display_name is omitted, it defaults to
+        table_schema_name, and pluralizing it must not collapse internal
+        PascalCase (e.g. "new_TestTable" -> "new_TestTables", not
+        "new_Testtables")."""
+        client = _make_client()
+        self._setup_for_create(client)
+        await client._create_table("new_TestTable", {})
+        assert self._collection_label(client) == "new_TestTables"

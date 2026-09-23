@@ -44,6 +44,7 @@ from ...data._odata_base import (
     _USER_AGENT,
     _DEFAULT_EXPECTED_STATUSES,
     _RequestContext,
+    _pluralize,
 )
 
 
@@ -852,7 +853,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
                     "@odata.type": "Microsoft.Dynamics.CRM.ComplexEntityMetadata",
                     "SchemaName": table_schema_name,
                     "DisplayName": self._label(display_name),
-                    "DisplayCollectionName": self._label(display_name + "s"),
+                    "DisplayCollectionName": self._label(_pluralize(display_name)),
                     "Description": self._label(f"Custom entity for {display_name}"),
                     "OwnershipType": "UserOwned",
                     "HasActivities": False,
