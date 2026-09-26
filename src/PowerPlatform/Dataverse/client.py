@@ -170,8 +170,19 @@ class DataverseClient:
         self.query = QueryOperations(self)
         self.tables = TableOperations(self)
         self.files = FileOperations(self)
-        self.dataframe = DataFrameOperations(self)
+        self._dataframe: Optional[DataFrameOperations] = None
         self.batch = BatchOperations(self)
+
+    @property
+    def dataframe(self) -> DataFrameOperations:
+        """pandas DataFrame wrappers for record CRUD operations."""
+        if self._dataframe is None:
+            self._dataframe = DataFrameOperations(self)
+        return self._dataframe
+
+    @dataframe.setter
+    def dataframe(self, value: DataFrameOperations) -> None:
+        self._dataframe = value
 
     def _get_odata(self) -> _ODataClient:
         """

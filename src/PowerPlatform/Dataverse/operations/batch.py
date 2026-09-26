@@ -8,7 +8,8 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Union
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 from ..core.errors import ValidationError
 from ..core._error_codes import VALIDATION_SQL_EMPTY
@@ -798,6 +799,15 @@ class BatchDataFrameOperations:
     """
 
     def __init__(self, batch: "_BatchContext") -> None:
+        try:
+            import importlib
+
+            importlib.import_module("pandas")
+        except ImportError as exc:
+            raise ImportError(
+                "pandas is required to use DataFrame features. "
+                "Install it with: pip install 'PowerPlatform-Dataverse-Client[dataframe]'"
+            ) from exc
         self._batch = batch
 
     def create(self, table: str, records: pd.DataFrame) -> None:
@@ -819,6 +829,8 @@ class BatchDataFrameOperations:
             df = pd.DataFrame([{"name": "Contoso"}, {"name": "Fabrikam"}])
             batch.dataframe.create("account", df)
         """
+        import pandas as pd
+
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
         if records.empty:
@@ -870,6 +882,8 @@ class BatchDataFrameOperations:
             ])
             batch.dataframe.update("account", df, id_column="accountid")
         """
+        import pandas as pd
+
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
         if changes.empty:
@@ -927,6 +941,8 @@ class BatchDataFrameOperations:
             ids_series = pd.Series(["guid-1", "guid-2", "guid-3"])
             batch.dataframe.delete("account", ids_series)
         """
+        import pandas as pd
+
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
         raw_list = ids.tolist()
@@ -981,7 +997,18 @@ class BatchRequest:
         self.records = BatchRecordOperations(self)
         self.tables = BatchTableOperations(self)
         self.query = BatchQueryOperations(self)
-        self.dataframe = BatchDataFrameOperations(self)
+        self._dataframe: Optional[BatchDataFrameOperations] = None
+
+    @property
+    def dataframe(self) -> BatchDataFrameOperations:
+        """pandas DataFrame wrappers for batch operations."""
+        if self._dataframe is None:
+            self._dataframe = BatchDataFrameOperations(self)
+        return self._dataframe
+
+    @dataframe.setter
+    def dataframe(self, value: BatchDataFrameOperations) -> None:
+        self._dataframe = value
 
     def changeset(self) -> ChangeSet:
         """

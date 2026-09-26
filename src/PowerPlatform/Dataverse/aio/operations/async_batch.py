@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from ...data._batch_base import _ChangeSet
 from ...operations.batch import (
@@ -103,7 +103,18 @@ class AsyncBatchRequest:
         self.records = BatchRecordOperations(self)
         self.tables = BatchTableOperations(self)
         self.query = BatchQueryOperations(self)
-        self.dataframe = BatchDataFrameOperations(self)
+        self._dataframe: Optional[BatchDataFrameOperations] = None
+
+    @property
+    def dataframe(self) -> BatchDataFrameOperations:
+        """pandas DataFrame wrappers for batch operations."""
+        if self._dataframe is None:
+            self._dataframe = BatchDataFrameOperations(self)
+        return self._dataframe
+
+    @dataframe.setter
+    def dataframe(self, value: BatchDataFrameOperations) -> None:
+        self._dataframe = value
 
     def changeset(self) -> AsyncChangeSet:
         """
