@@ -3225,15 +3225,11 @@ class TestRetrieveMetadataChanges(unittest.TestCase):
         self.assertIn("RetrieveMetadataChanges(Query=@p1)", call.args[1])
         query = json.loads(call.kwargs["params"]["@p1"])
         self.assertEqual(query["Criteria"]["Conditions"][0]["Value"]["Value"], "account")
-        self.assertEqual(
-            query["AttributeQuery"]["Criteria"]["Conditions"][0]["Value"]["Value"], "emailaddress1"
-        )
+        self.assertEqual(query["AttributeQuery"]["Criteria"]["Conditions"][0]["Value"]["Value"], "emailaddress1")
         self.assertIn("MaxLength", query["AttributeQuery"]["Properties"]["PropertyNames"])
 
     def test_table_not_found_raises(self):
-        self.od._request_metadata_with_retry = MagicMock(
-            return_value=_mock_response(json_data={"EntityMetadata": []})
-        )
+        self.od._request_metadata_with_retry = MagicMock(return_value=_mock_response(json_data={"EntityMetadata": []}))
         with self.assertRaises(MetadataError):
             self.od._retrieve_metadata_changes("nope")
 

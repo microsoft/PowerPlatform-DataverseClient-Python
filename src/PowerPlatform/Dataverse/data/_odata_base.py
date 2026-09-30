@@ -53,9 +53,19 @@ _COLUMN_OVERRIDE_KEYS = frozenset(
 # Typed column-metadata properties projected by the RetrieveMetadataChanges
 # typed-read path (#203); covers the constraints create/update can set.
 _TYPED_COLUMN_PROPERTIES = [
-    "LogicalName", "SchemaName", "AttributeType", "AttributeTypeName",
-    "MetadataId", "DisplayName", "RequiredLevel", "MaxLength", "Format",
-    "FormatName", "MinValue", "MaxValue", "Precision",
+    "LogicalName",
+    "SchemaName",
+    "AttributeType",
+    "AttributeTypeName",
+    "MetadataId",
+    "DisplayName",
+    "RequiredLevel",
+    "MaxLength",
+    "Format",
+    "FormatName",
+    "MinValue",
+    "MaxValue",
+    "Precision",
 ]
 
 
@@ -481,14 +491,10 @@ class _ODataBase:
             spec = dict(dtype)
             base_type = spec.pop("type", None)
             if base_type is None:
-                raise ValueError(
-                    f"Column spec dict for '{column_schema_name}' must include a 'type' key"
-                )
+                raise ValueError(f"Column spec dict for '{column_schema_name}' must include a 'type' key")
             unknown = set(spec) - _COLUMN_OVERRIDE_KEYS
             if unknown:
-                raise ValueError(
-                    f"Unknown column spec key(s) for '{column_schema_name}': {sorted(unknown)}"
-                )
+                raise ValueError(f"Unknown column spec key(s) for '{column_schema_name}': {sorted(unknown)}")
             overrides = spec
             dtype = base_type
         payload = self._base_attribute_payload(

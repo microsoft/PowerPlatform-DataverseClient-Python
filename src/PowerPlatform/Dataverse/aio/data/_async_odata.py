@@ -997,9 +997,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             "AttributeQuery": attr_query,
         }
         url = f"{self.api}/RetrieveMetadataChanges(Query=@p1)"
-        r = await self._request_metadata_with_retry(
-            "get", url, params={"@p1": json.dumps(query, ensure_ascii=False)}
-        )
+        r = await self._request_metadata_with_retry("get", url, params={"@p1": json.dumps(query, ensure_ascii=False)})
         entities = (r.json()).get("EntityMetadata", [])
         if not entities:
             raise MetadataError(
@@ -1053,9 +1051,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             raise TypeError("overrides must be a non-empty dict of column constraints")
         unknown = set(overrides) - (_COLUMN_OVERRIDE_KEYS - {"type"})
         if unknown:
-            raise ValueError(
-                f"Unknown column constraint override(s) for '{column_name}': {sorted(unknown)}"
-            )
+            raise ValueError(f"Unknown column constraint override(s) for '{column_name}': {sorted(unknown)}")
         ent = await self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
