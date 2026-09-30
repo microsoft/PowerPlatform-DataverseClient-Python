@@ -87,7 +87,13 @@ class AsyncTableOperations:
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
-            (for local option sets).
+            (for local option sets). A value may instead be a dict that pairs
+            a base ``type`` with constraint overrides -- ``max_length``,
+            ``min_value``, ``max_value``, ``precision``, ``format``,
+            ``required`` (``"None"``/``"ApplicationRequired"``/``"Recommended"``),
+            and ``display_name`` -- e.g.
+            ``{"type": "int", "min_value": 1, "max_value": 5}`` or
+            ``{"type": "memo", "max_length": 2000, "display_name": "Comment"}``.
         :type columns: :class:`dict`
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.

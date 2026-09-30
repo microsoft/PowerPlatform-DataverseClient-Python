@@ -45,6 +45,11 @@ _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 _CALL_SCOPE_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar("_CALL_SCOPE_CORRELATION_ID", default=None)
 _USER_AGENT = f"DataverseSvcPythonClient:{_SDK_VERSION}"
 _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
+# Keys accepted in a dict column spec (#194): "type" selects the base attribute
+# type; the rest override the per-type constraint defaults.
+_COLUMN_OVERRIDE_KEYS = frozenset(
+    {"type", "max_length", "min_value", "max_value", "precision", "format", "required", "display_name"}
+)
 
 
 def _extract_pagingcookie(next_link: str) -> Optional[str]:
@@ -449,6 +454,73 @@ class _ODataBase:
         complex: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """Build attribute metadata payload for a column.
+
+        ``dtype`` accepts a type string (``"string"``, ``"int"``, ...), an
+        ``Enum`` subclass (local option set), or a dict spec pairing a base
+        ``type`` with constraint overrides, e.g.
+        ``{"type": "int", "min_value": 1, "max_value": 5}`` or
+        ``{"type": "memo", "max_length": 2000, "display_name": "Comment"}``.
+        Override keys: ``max_length``, ``min_value``, ``max_value``,
+        ``precision``, ``format``, ``required``
+        (``None``/``ApplicationRequired``/``Recommended``), ``display_name``.
+
+        :param complex: When ``True``, emit ``Complex*AttributeMetadata`` types
+            required by the ``CreateEntities`` action. When ``False`` (default),
+            emit the standard ``*AttributeMetadata`` types used by the
+            ``EntityDefinitions/{id}/Attributes`` endpoint.
+        """
+        overrides: Dict[str, Any] = {}
+        if isinstance(dtype, dict):
+            spec = dict(dtype)
+            base_type = spec.pop("type", None)
+            if base_type is None:
+                raise ValueError(
+                    f"Column spec dict for '{column_schema_name}' must include a 'type' key"
+                )
+            unknown = set(spec) - _COLUMN_OVERRIDE_KEYS
+            if unknown:
+                raise ValueError(
+                    f"Unknown column spec key(s) for '{column_schema_name}': {sorted(unknown)}"
+                )
+            overrides = spec
+            dtype = base_type
+        payload = self._base_attribute_payload(
+            column_schema_name, dtype, is_primary_name=is_primary_name, complex=complex
+        )
+        if payload is not None and overrides:
+            self._apply_column_overrides(payload, overrides)
+        return payload
+
+    def _apply_column_overrides(self, payload: Dict[str, Any], overrides: Dict[str, Any]) -> None:
+        """Apply per-column constraint overrides onto a base attribute payload (#194)."""
+        if "max_length" in overrides:
+            payload["MaxLength"] = overrides["max_length"]
+        if "min_value" in overrides:
+            payload["MinValue"] = overrides["min_value"]
+        if "max_value" in overrides:
+            payload["MaxValue"] = overrides["max_value"]
+        if "precision" in overrides:
+            payload["Precision"] = overrides["precision"]
+        if "format" in overrides:
+            # string/memo carry FormatName; int/date carry Format.
+            if "FormatName" in payload:
+                payload["FormatName"] = {"Value": overrides["format"]}
+            else:
+                payload["Format"] = overrides["format"]
+        if "required" in overrides:
+            payload["RequiredLevel"] = {"Value": overrides["required"]}
+        if "display_name" in overrides:
+            payload["DisplayName"] = self._label(overrides["display_name"])
+
+    def _base_attribute_payload(
+        self,
+        column_schema_name: str,
+        dtype: Any,
+        *,
+        is_primary_name: bool = False,
+        complex: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Build the base attribute metadata payload for a single column type.
 
         :param complex: When ``True``, emit ``Complex*AttributeMetadata`` types
             required by the ``CreateEntities`` action. When ``False`` (default),

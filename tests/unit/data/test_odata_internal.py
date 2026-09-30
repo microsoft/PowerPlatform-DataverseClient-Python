@@ -1607,6 +1607,66 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_Revenue", "decimal")
         self.assertEqual(result["Precision"], 2)
 
+    # --- dict column spec with constraint overrides (#194) -----------
+
+    def test_dict_spec_int_bounds(self):
+        """A dict spec applies min/max overrides onto IntegerAttributeMetadata."""
+        result = self.od._attribute_payload("new_Rating", {"type": "int", "min_value": 1, "max_value": 5})
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        self.assertEqual(result["MinValue"], 1)
+        self.assertEqual(result["MaxValue"], 5)
+
+    def test_dict_spec_memo_max_length_and_display_name(self):
+        """A dict spec applies max_length + display_name onto MemoAttributeMetadata."""
+        result = self.od._attribute_payload(
+            "new_Comment", {"type": "memo", "max_length": 2000, "display_name": "Comment"}
+        )
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(result["MaxLength"], 2000)
+        self.assertEqual(result["DisplayName"]["LocalizedLabels"][0]["Label"], "Comment")
+
+    def test_dict_spec_required_level(self):
+        """'required' override maps to RequiredLevel.Value."""
+        result = self.od._attribute_payload("new_Name", {"type": "string", "required": "ApplicationRequired"})
+        self.assertEqual(result["RequiredLevel"], {"Value": "ApplicationRequired"})
+
+    def test_dict_spec_string_format_sets_formatname(self):
+        """'format' on a string/memo type sets FormatName.Value (not Format)."""
+        result = self.od._attribute_payload("new_Email", {"type": "string", "format": "Email"})
+        self.assertEqual(result["FormatName"], {"Value": "Email"})
+
+    def test_dict_spec_int_format_sets_format(self):
+        """'format' on an int type sets Format (which has no FormatName)."""
+        result = self.od._attribute_payload("new_Dur", {"type": "int", "format": "Duration"})
+        self.assertEqual(result["Format"], "Duration")
+
+    def test_dict_spec_precision_override(self):
+        """'precision' override applies to DecimalAttributeMetadata."""
+        result = self.od._attribute_payload("new_Price", {"type": "decimal", "precision": 4})
+        self.assertEqual(result["Precision"], 4)
+
+    def test_dict_spec_complex_flag_preserved(self):
+        """A dict spec still honors complex=True for CreateEntities payloads."""
+        result = self.od._attribute_payload("new_Rating", {"type": "int", "max_value": 5}, complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata")
+        self.assertEqual(result["MaxValue"], 5)
+
+    def test_dict_spec_missing_type_raises(self):
+        """A dict spec without 'type' raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._attribute_payload("new_X", {"min_value": 1})
+
+    def test_dict_spec_unknown_key_raises(self):
+        """A dict spec with an unknown key raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._attribute_payload("new_X", {"type": "int", "bogus": 1})
+
+    def test_str_spec_unchanged_defaults(self):
+        """A plain str spec keeps the hardcoded defaults (no override regression)."""
+        result = self.od._attribute_payload("new_Title", "string")
+        self.assertEqual(result["MaxLength"], 200)
+        self.assertEqual(result["RequiredLevel"], {"Value": "None"})
+
     def test_datetime_dtype(self):
         """'datetime' produces DateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime")
