@@ -712,6 +712,7 @@ class TableOperations:
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
+        typed: bool = False,
     ) -> List[Dict[str, Any]]:
         """List all attribute (column) definitions for a table.
 
@@ -753,7 +754,84 @@ class TableOperations:
             )
         """
         with self._client._scoped_odata() as od:
-            return od._list_columns(table, select=select, filter=filter)
+            return od._list_columns(table, select=select, filter=filter, typed=typed)
+
+    def get_column(
+        self,
+        table: str,
+        column: str,
+        *,
+        typed: bool = False,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a single column's metadata, or ``None`` if it does not exist.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :param column: Logical/schema name of the column (e.g. ``"emailaddress1"``).
+        :param typed: When ``True``, read via ``RetrieveMetadataChanges`` so
+            type-specific fields (``MaxLength``, ``MinValue``/``MaxValue``, ...)
+            come back in a single request without the ``@odata.type`` URL cast.
+        :param select: Optional list of property names to project.
+        :rtype: dict[str, typing.Any] or None
+        """
+        with self._client._scoped_odata() as od:
+            return od._get_column(table, column, typed=typed, select=select)
+
+    def update_column(
+        self,
+        table: str,
+        column: str,
+        spec: Dict[str, Any],
+    ) -> str:
+        """Update constraints on an existing column.
+
+        Accepts the same override keys as the dict column spec in
+        :meth:`create` -- ``max_length``, ``min_value``, ``max_value``,
+        ``precision``, ``format``, ``required``, ``display_name`` -- and applies
+        them to the existing column. The SDK reads the current typed attribute
+        and issues the metadata update internally; callers never pass an HTTP
+        verb or ``@odata.type``.
+
+        :param table: Schema name of the table.
+        :param column: Logical/schema name of the column to update.
+        :param spec: Dict of constraint overrides (non-empty).
+        :return: The updated column name.
+        :rtype: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table or column does not exist.
+
+        Example::
+
+            client.tables.update_column(
+                "new_ProjectBudget", "new_Comment",
+                {"max_length": 4000, "display_name": "Customer Comment"},
+            )
+        """
+        with self._client._scoped_odata() as od:
+            return od._update_attribute(table, column, spec)
+
+    def update_columns(
+        self,
+        table: str,
+        columns: Dict[str, Dict[str, Any]],
+    ) -> List[str]:
+        """Update constraints on multiple existing columns.
+
+        :param table: Schema name of the table.
+        :param columns: Mapping of column name -> constraint-override dict
+            (same shape as :meth:`update_column`).
+        :return: The updated column names.
+        :rtype: list[str]
+        """
+        if not isinstance(columns, dict) or not columns:
+            raise TypeError("columns must be a non-empty dict of {column: overrides}")
+        updated: List[str] = []
+        with self._client._scoped_odata() as od:
+            for col, spec in columns.items():
+                od._update_attribute(table, col, spec)
+                updated.append(col)
+        return updated
 
     # ------------------------------------------------- list_relationships
 

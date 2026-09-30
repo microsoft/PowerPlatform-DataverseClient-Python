@@ -282,7 +282,7 @@ class TestAsyncTableListColumns:
         """list_columns() calls _list_columns and returns its result."""
         mock_od._list_columns.return_value = [{"LogicalName": "name"}]
         result = await async_client.tables.list_columns("account")
-        mock_od._list_columns.assert_called_once_with("account", select=None, filter=None)
+        mock_od._list_columns.assert_called_once_with("account", select=None, filter=None, typed=False)
         assert result == [{"LogicalName": "name"}]
 
     async def test_list_columns_with_params(self, async_client, mock_od):
@@ -294,7 +294,7 @@ class TestAsyncTableListColumns:
             filter="AttributeType eq 'String'",
         )
         mock_od._list_columns.assert_called_once_with(
-            "account", select=["LogicalName"], filter="AttributeType eq 'String'"
+            "account", select=["LogicalName"], filter="AttributeType eq 'String'", typed=False
         )
 
 

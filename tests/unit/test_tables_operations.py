@@ -442,7 +442,7 @@ class TestTableOperations(unittest.TestCase):
 
         result = self.client.tables.list_columns("account")
 
-        self.client._odata._list_columns.assert_called_once_with("account", select=None, filter=None)
+        self.client._odata._list_columns.assert_called_once_with("account", select=None, filter=None, typed=False)
         self.assertEqual(result, expected)
 
     def test_list_columns_with_select_and_filter(self):
@@ -459,6 +459,7 @@ class TestTableOperations(unittest.TestCase):
             "account",
             select=["LogicalName", "AttributeType"],
             filter="AttributeType eq 'String'",
+            typed=False,
         )
 
     # ------------------------------------------------- list_relationships

@@ -711,6 +711,7 @@ class AsyncTableOperations:
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
+        typed: bool = False,
     ) -> List[Dict[str, Any]]:
         """List all attribute (column) definitions for a table.
 
@@ -752,7 +753,55 @@ class AsyncTableOperations:
             )
         """
         async with self._client._scoped_odata() as od:
-            return await od._list_columns(table, select=select, filter=filter)
+            return await od._list_columns(table, select=select, filter=filter, typed=typed)
+
+    async def get_column(
+        self,
+        table: str,
+        column: str,
+        *,
+        typed: bool = False,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a single column's metadata, or ``None`` if it does not exist.
+
+        When ``typed`` is ``True``, reads via ``RetrieveMetadataChanges`` so
+        type-specific fields come back in one request (no ``@odata.type`` cast).
+        """
+        async with self._client._scoped_odata() as od:
+            return await od._get_column(table, column, typed=typed, select=select)
+
+    async def update_column(
+        self,
+        table: str,
+        column: str,
+        spec: Dict[str, Any],
+    ) -> str:
+        """Update constraints on an existing column.
+
+        Accepts the same override keys as the dict column spec in
+        :meth:`create` (``max_length``, ``min_value``, ``max_value``,
+        ``precision``, ``format``, ``required``, ``display_name``). The SDK
+        reads the current typed attribute and issues the update internally;
+        callers never pass an HTTP verb or ``@odata.type``.
+        """
+        async with self._client._scoped_odata() as od:
+            return await od._update_attribute(table, column, spec)
+
+    async def update_columns(
+        self,
+        table: str,
+        columns: Dict[str, Dict[str, Any]],
+    ) -> List[str]:
+        """Update constraints on multiple existing columns."""
+        if not isinstance(columns, dict) or not columns:
+            raise TypeError("columns must be a non-empty dict of {column: overrides}")
+        updated: List[str] = []
+        async with self._client._scoped_odata() as od:
+            for col, spec in columns.items():
+                await od._update_attribute(table, col, spec)
+                updated.append(col)
+        return updated
 
     # ------------------------------------------------- list_relationships
 

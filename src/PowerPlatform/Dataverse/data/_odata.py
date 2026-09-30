@@ -45,6 +45,8 @@ from ._odata_base import (
     _USER_AGENT,
     _DEFAULT_EXPECTED_STATUSES,
     _RequestContext,
+    _COLUMN_OVERRIDE_KEYS,
+    _TYPED_COLUMN_PROPERTIES,
 )
 
 
@@ -899,6 +901,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
+        typed: bool = False,
     ) -> List[Dict[str, Any]]:
         """List all attribute (column) definitions for a table.
 
@@ -921,6 +924,8 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises MetadataError: If the table is not found.
         :raises HttpError: If the Web API request fails.
         """
+        if typed:
+            return self._retrieve_metadata_changes(table_schema_name, properties=select)
         ent = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
@@ -936,6 +941,150 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             params["$filter"] = filter
         r = self._request("get", url, params=params)
         return r.json().get("value", [])
+
+    def _retrieve_metadata_changes(
+        self,
+        table_schema_name: str,
+        *,
+        attribute_logical_name: Optional[str] = None,
+        properties: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return typed column metadata in one request (RetrieveMetadataChanges, #203).
+
+        One ``GET RetrieveMetadataChanges(Query=@p1)`` with an
+        ``EntityQueryExpression`` whose ``AttributeQuery.Properties`` projects
+        only the requested typed fields -- derived typed attributes
+        (``MaxLength`` on string/memo, ``MinValue``/``MaxValue`` on int, ...)
+        come back in one small payload, with no ``@odata.type`` URL cast.
+        """
+        props = properties or _TYPED_COLUMN_PROPERTIES
+        attr_query: Dict[str, Any] = {"Properties": {"PropertyNames": props}}
+        if attribute_logical_name:
+            attr_query["Criteria"] = {
+                "Conditions": [
+                    {
+                        "PropertyName": "LogicalName",
+                        "ConditionOperator": "Equals",
+                        "Value": {"Type": "System.String", "Value": attribute_logical_name.lower()},
+                    }
+                ]
+            }
+        query: Dict[str, Any] = {
+            "Properties": {"PropertyNames": ["LogicalName", "Attributes"]},
+            "Criteria": {
+                "Conditions": [
+                    {
+                        "PropertyName": "LogicalName",
+                        "ConditionOperator": "Equals",
+                        "Value": {"Type": "System.String", "Value": table_schema_name.lower()},
+                    }
+                ]
+            },
+            "AttributeQuery": attr_query,
+        }
+        url = f"{self.api}/RetrieveMetadataChanges(Query=@p1)"
+        r = self._request_metadata_with_retry(
+            "get", url, params={"@p1": json.dumps(query, ensure_ascii=False)}
+        )
+        entities = r.json().get("EntityMetadata", [])
+        if not entities:
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        return entities[0].get("Attributes", []) or []
+
+    def _get_column(
+        self,
+        table_schema_name: str,
+        column_name: str,
+        *,
+        typed: bool = False,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return one column's metadata (typed via RetrieveMetadataChanges when ``typed``)."""
+        if typed:
+            attrs = self._retrieve_metadata_changes(
+                table_schema_name, attribute_logical_name=column_name, properties=select
+            )
+            return attrs[0] if attrs else None
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        metadata_id = ent["MetadataId"]
+        logical = self._escape_odata_quotes(column_name.lower())
+        url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes(LogicalName='{logical}')"
+        params: Dict[str, str] = {}
+        if select:
+            params["$select"] = ",".join(select)
+        try:
+            return self._request("get", url, params=params).json()
+        except HttpError as err:
+            if getattr(err, "status_code", None) == 404:
+                return None
+            raise
+
+    def _update_attribute(
+        self,
+        table_schema_name: str,
+        column_name: str,
+        overrides: Dict[str, Any],
+    ) -> str:
+        """Update constraints on an existing column: GET typed attr -> PUT + @odata.type (#202).
+
+        Hides the PUT-not-PATCH metadata-update contract and the derived
+        ``@odata.type`` discriminator. GETs the existing attribute to learn its
+        derived type + ``MetadataId``, applies the override spec (same shape as
+        create; see ``_apply_column_overrides``), then PUTs a merge payload.
+        """
+        if not isinstance(overrides, dict) or not overrides:
+            raise TypeError("overrides must be a non-empty dict of column constraints")
+        unknown = set(overrides) - (_COLUMN_OVERRIDE_KEYS - {"type"})
+        if unknown:
+            raise ValueError(
+                f"Unknown column constraint override(s) for '{column_name}': {sorted(unknown)}"
+            )
+        ent = self._get_entity_by_table_schema_name(table_schema_name)
+        if not ent or not ent.get("MetadataId"):
+            raise MetadataError(
+                f"Table '{table_schema_name}' not found.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        metadata_id = ent["MetadataId"]
+        logical = self._escape_odata_quotes(column_name.lower())
+        attr_url = f"{self.api}/EntityDefinitions({metadata_id})/Attributes(LogicalName='{logical}')"
+        try:
+            existing = self._request("get", attr_url, params={"$select": "MetadataId,SchemaName"}).json()
+        except HttpError as err:
+            if getattr(err, "status_code", None) == 404:
+                raise MetadataError(
+                    f"Column '{column_name}' not found on table '{table_schema_name}'.",
+                    subcode=METADATA_TABLE_NOT_FOUND,
+                ) from err
+            raise
+        attr_metadata_id = existing.get("MetadataId")
+        odata_type = str(existing.get("@odata.type", "")).lstrip("#")
+        if not attr_metadata_id or not odata_type:
+            raise MetadataError(
+                f"Column '{column_name}' not found on table '{table_schema_name}'.",
+                subcode=METADATA_TABLE_NOT_FOUND,
+            )
+        body: Dict[str, Any] = {
+            "@odata.type": odata_type,
+            "MetadataId": attr_metadata_id,
+            "SchemaName": existing.get("SchemaName", column_name),
+        }
+        self._apply_column_overrides(body, overrides)
+        req = _RawRequest(
+            method="PUT",
+            url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes({attr_metadata_id})",
+            body=json.dumps(body, ensure_ascii=False),
+        )
+        self._execute_raw(req)
+        return column_name
 
     def _wait_for_attribute_visibility(
         self,

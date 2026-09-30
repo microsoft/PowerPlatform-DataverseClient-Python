@@ -3129,5 +3129,120 @@ class TestBuildCreateEntity(unittest.TestCase):
             self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
 
 
+class TestUpdateAttribute(unittest.TestCase):
+    """Unit tests for _ODataClient._update_attribute (#202)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value={"MetadataId": "ent-1"})
+        self.od._request = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                    "MetadataId": "attr-1",
+                    "SchemaName": "new_Comment",
+                }
+            )
+        )
+        self.od._execute_raw = MagicMock()
+
+    def test_update_issues_put_with_odata_type_and_override(self):
+        """update -> PUT to Attributes({id}) carrying the derived @odata.type + the override; no caller verb."""
+        self.od._update_attribute(
+            "new_Feedback", "new_Comment", {"max_length": 4000, "display_name": "Customer Comment"}
+        )
+        self.od._execute_raw.assert_called_once()
+        req = self.od._execute_raw.call_args.args[0]
+        self.assertEqual(req.method, "PUT")
+        self.assertIn("Attributes(attr-1)", req.url)
+        body = json.loads(req.body)
+        self.assertEqual(body["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(body["MetadataId"], "attr-1")
+        self.assertEqual(body["MaxLength"], 4000)
+        self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "Customer Comment")
+
+    def test_update_string_format_uses_formatname(self):
+        """A string column's 'format' override routes to FormatName by @odata.type."""
+        self.od._request = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                    "MetadataId": "attr-2",
+                    "SchemaName": "new_Email",
+                }
+            )
+        )
+        self.od._update_attribute("new_Feedback", "new_Email", {"format": "Email"})
+        body = json.loads(self.od._execute_raw.call_args.args[0].body)
+        self.assertEqual(body["FormatName"], {"Value": "Email"})
+
+    def test_update_unknown_key_raises(self):
+        with self.assertRaises(ValueError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {"bogus": 1})
+
+    def test_update_empty_overrides_raises(self):
+        with self.assertRaises(TypeError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {})
+
+    def test_update_table_not_found_raises(self):
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value=None)
+        with self.assertRaises(MetadataError):
+            self.od._update_attribute("nope", "new_Comment", {"max_length": 10})
+
+
+class TestRetrieveMetadataChanges(unittest.TestCase):
+    """Unit tests for _ODataClient._retrieve_metadata_changes / _get_column typed (#203)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._request_metadata_with_retry = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "EntityMetadata": [
+                        {
+                            "LogicalName": "account",
+                            "Attributes": [
+                                {
+                                    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                                    "LogicalName": "emailaddress1",
+                                    "MaxLength": 100,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+
+    def test_typed_read_single_request_with_projection_and_criteria(self):
+        """One RetrieveMetadataChanges GET, projecting typed fields, scoped to table + column."""
+        attrs = self.od._retrieve_metadata_changes("account", attribute_logical_name="emailaddress1")
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(attrs[0]["MaxLength"], 100)
+        self.od._request_metadata_with_retry.assert_called_once()
+        call = self.od._request_metadata_with_retry.call_args
+        self.assertEqual(call.args[0], "get")
+        self.assertIn("RetrieveMetadataChanges(Query=@p1)", call.args[1])
+        query = json.loads(call.kwargs["params"]["@p1"])
+        self.assertEqual(query["Criteria"]["Conditions"][0]["Value"]["Value"], "account")
+        self.assertEqual(
+            query["AttributeQuery"]["Criteria"]["Conditions"][0]["Value"]["Value"], "emailaddress1"
+        )
+        self.assertIn("MaxLength", query["AttributeQuery"]["Properties"]["PropertyNames"])
+
+    def test_table_not_found_raises(self):
+        self.od._request_metadata_with_retry = MagicMock(
+            return_value=_mock_response(json_data={"EntityMetadata": []})
+        )
+        with self.assertRaises(MetadataError):
+            self.od._retrieve_metadata_changes("nope")
+
+    def test_get_column_typed_returns_single_attr(self):
+        col = self.od._get_column("account", "emailaddress1", typed=True)
+        self.assertIsNotNone(col)
+        self.assertEqual(col["LogicalName"], "emailaddress1")
+        self.assertEqual(col["MaxLength"], 100)
+
+
 if __name__ == "__main__":
     unittest.main()

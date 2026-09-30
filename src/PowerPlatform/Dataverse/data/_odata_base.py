@@ -50,6 +50,13 @@ _DEFAULT_EXPECTED_STATUSES: tuple[int, ...] = (200, 201, 202, 204)
 _COLUMN_OVERRIDE_KEYS = frozenset(
     {"type", "max_length", "min_value", "max_value", "precision", "format", "required", "display_name"}
 )
+# Typed column-metadata properties projected by the RetrieveMetadataChanges
+# typed-read path (#203); covers the constraints create/update can set.
+_TYPED_COLUMN_PROPERTIES = [
+    "LogicalName", "SchemaName", "AttributeType", "AttributeTypeName",
+    "MetadataId", "DisplayName", "RequiredLevel", "MaxLength", "Format",
+    "FormatName", "MinValue", "MaxValue", "Precision",
+]
 
 
 def _extract_pagingcookie(next_link: str) -> Optional[str]:
@@ -502,8 +509,11 @@ class _ODataBase:
         if "precision" in overrides:
             payload["Precision"] = overrides["precision"]
         if "format" in overrides:
-            # string/memo carry FormatName; int/date carry Format.
-            if "FormatName" in payload:
+            # string/memo carry FormatName; int/date carry Format. Route by the
+            # derived @odata.type so this works for both create (full base
+            # payload) and update (minimal PUT body).
+            at = str(payload.get("@odata.type", ""))
+            if "String" in at or "Memo" in at:
                 payload["FormatName"] = {"Value": overrides["format"]}
             else:
                 payload["Format"] = overrides["format"]
