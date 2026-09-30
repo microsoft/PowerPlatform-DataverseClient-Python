@@ -312,3 +312,41 @@ class TestAsyncTableListRelationships:
         result = await async_client.tables.list_table_relationships("account")
         mock_od._list_table_relationships.assert_called_once_with("account", filter=None, select=None)
         assert result == [{"SchemaName": "new_Dept_Emp"}]
+
+
+class TestAsyncTableGetUpdateColumn:
+    async def test_get_column(self, async_client, mock_od):
+        """get_column() delegates to _get_column with defaults and returns the dict."""
+        mock_od._get_column.return_value = {"LogicalName": "emailaddress1", "MaxLength": 100}
+        result = await async_client.tables.get_column("account", "emailaddress1")
+        mock_od._get_column.assert_called_once_with("account", "emailaddress1", typed=False, select=None)
+        assert result["MaxLength"] == 100
+
+    async def test_get_column_typed_with_select(self, async_client, mock_od):
+        """get_column() forwards typed and select."""
+        mock_od._get_column.return_value = None
+        await async_client.tables.get_column("account", "emailaddress1", typed=True, select=["MaxLength"])
+        mock_od._get_column.assert_called_once_with("account", "emailaddress1", typed=True, select=["MaxLength"])
+
+    async def test_update_column(self, async_client, mock_od):
+        """update_column() delegates to _update_attribute and returns the column name."""
+        mock_od._update_attribute.return_value = "new_Comment"
+        result = await async_client.tables.update_column("new_Feedback", "new_Comment", {"max_length": 4000})
+        mock_od._update_attribute.assert_called_once_with("new_Feedback", "new_Comment", {"max_length": 4000})
+        assert result == "new_Comment"
+
+    async def test_update_columns(self, async_client, mock_od):
+        """update_columns() updates each column and returns the names in order."""
+        result = await async_client.tables.update_columns(
+            "new_Feedback",
+            {"new_Comment": {"max_length": 4000}, "new_Rating": {"max_value": 10}},
+        )
+        assert result == ["new_Comment", "new_Rating"]
+        assert mock_od._update_attribute.await_count == 2
+
+    async def test_update_columns_empty_raises(self, async_client, mock_od):
+        """update_columns() rejects an empty mapping before touching the client."""
+        import pytest
+
+        with pytest.raises(TypeError):
+            await async_client.tables.update_columns("new_Feedback", {})

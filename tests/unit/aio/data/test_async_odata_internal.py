@@ -1893,3 +1893,162 @@ class TestAsyncOperationContextUserAgent:
         client = _AsyncODataClient(auth, "https://example.crm.dynamics.com", config=config)
         headers = await client._headers()
         assert "(" not in headers["User-Agent"]
+
+
+class TestAsyncRetrieveMetadataChanges:
+    """_AsyncODataClient._retrieve_metadata_changes / _get_column typed (#203)."""
+
+    def _client_with_attrs(self, entities):
+        client = _make_client()
+        client._request_metadata_with_retry = AsyncMock(return_value=_resp(json_data={"EntityMetadata": entities}))
+        return client
+
+    async def test_typed_read_single_request_with_projection_and_criteria(self):
+        client = self._client_with_attrs(
+            [
+                {
+                    "LogicalName": "account",
+                    "Attributes": [
+                        {
+                            "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                            "LogicalName": "emailaddress1",
+                            "MaxLength": 100,
+                        }
+                    ],
+                }
+            ]
+        )
+        attrs = await client._retrieve_metadata_changes("account", attribute_logical_name="emailaddress1")
+        assert len(attrs) == 1
+        assert attrs[0]["MaxLength"] == 100
+        call = client._request_metadata_with_retry.call_args
+        assert call.args[0] == "get"
+        assert "RetrieveMetadataChanges(Query=@p1)" in call.args[1]
+        query = json.loads(call.kwargs["params"]["@p1"])
+        assert query["Criteria"]["Conditions"][0]["Value"]["Value"] == "account"
+        assert query["AttributeQuery"]["Criteria"]["Conditions"][0]["Value"]["Value"] == "emailaddress1"
+        assert "MaxLength" in query["AttributeQuery"]["Properties"]["PropertyNames"]
+
+    async def test_table_not_found_raises(self):
+        client = self._client_with_attrs([])
+        with pytest.raises(MetadataError):
+            await client._retrieve_metadata_changes("nope")
+
+    async def test_get_column_typed_returns_single_attr(self):
+        client = _make_client()
+        client._retrieve_metadata_changes = AsyncMock(return_value=[{"LogicalName": "emailaddress1", "MaxLength": 100}])
+        col = await client._get_column("account", "emailaddress1", typed=True)
+        assert col["MaxLength"] == 100
+
+    async def test_get_column_typed_empty_returns_none(self):
+        client = _make_client()
+        client._retrieve_metadata_changes = AsyncMock(return_value=[])
+        assert await client._get_column("account", "ghost", typed=True) is None
+
+
+class TestAsyncGetColumn:
+    """_AsyncODataClient._get_column non-typed paths (#203)."""
+
+    def _client(self):
+        client = _make_client()
+        client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "ent-1"})
+        client._request = AsyncMock(return_value=_resp(json_data={"LogicalName": "emailaddress1", "MaxLength": 100}))
+        return client
+
+    async def test_untyped_returns_json(self):
+        client = self._client()
+        col = await client._get_column("account", "emailaddress1")
+        assert col["MaxLength"] == 100
+        assert "Attributes(LogicalName='emailaddress1')" in client._request.call_args.args[1]
+
+    async def test_untyped_with_select_projects(self):
+        client = self._client()
+        await client._get_column("account", "emailaddress1", select=["MaxLength"])
+        assert client._request.call_args.kwargs["params"]["$select"] == "MaxLength"
+
+    async def test_untyped_404_returns_none(self):
+        client = self._client()
+        client._request = AsyncMock(side_effect=HttpError("nope", 404))
+        assert await client._get_column("account", "ghost") is None
+
+    async def test_untyped_other_error_propagates(self):
+        client = self._client()
+        client._request = AsyncMock(side_effect=HttpError("boom", 500))
+        with pytest.raises(HttpError):
+            await client._get_column("account", "emailaddress1")
+
+    async def test_untyped_table_not_found_raises(self):
+        client = self._client()
+        client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
+        with pytest.raises(MetadataError):
+            await client._get_column("nope", "emailaddress1")
+
+
+class TestAsyncUpdateAttribute:
+    """_AsyncODataClient._update_attribute (#202)."""
+
+    def _client(self):
+        client = _make_client()
+        client._get_entity_by_table_schema_name = AsyncMock(return_value={"MetadataId": "ent-1"})
+        client._request = AsyncMock(
+            return_value=_resp(
+                json_data={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                    "MetadataId": "attr-1",
+                    "SchemaName": "new_Comment",
+                }
+            )
+        )
+        client._execute_raw = AsyncMock()
+        return client
+
+    async def test_update_issues_put_with_odata_type_and_override(self):
+        client = self._client()
+        await client._update_attribute(
+            "new_Feedback", "new_Comment", {"max_length": 4000, "display_name": "Customer Comment"}
+        )
+        client._execute_raw.assert_awaited_once()
+        req = client._execute_raw.call_args.args[0]
+        assert req.method == "PUT"
+        assert "Attributes(attr-1)" in req.url
+        body = json.loads(req.body)
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
+        assert body["MetadataId"] == "attr-1"
+        assert body["MaxLength"] == 4000
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Customer Comment"
+
+    async def test_update_unknown_key_raises(self):
+        client = self._client()
+        with pytest.raises(ValueError):
+            await client._update_attribute("new_Feedback", "new_Comment", {"bogus": 1})
+
+    async def test_update_empty_overrides_raises(self):
+        client = self._client()
+        with pytest.raises(TypeError):
+            await client._update_attribute("new_Feedback", "new_Comment", {})
+
+    async def test_update_table_not_found_raises(self):
+        client = self._client()
+        client._get_entity_by_table_schema_name = AsyncMock(return_value=None)
+        with pytest.raises(MetadataError):
+            await client._update_attribute("nope", "new_Comment", {"max_length": 10})
+
+    async def test_update_column_get_404_raises_metadata_error(self):
+        client = self._client()
+        client._request = AsyncMock(side_effect=HttpError("not found", 404))
+        with pytest.raises(MetadataError):
+            await client._update_attribute("new_Feedback", "ghost", {"max_length": 10})
+        client._execute_raw.assert_not_awaited()
+
+    async def test_update_column_get_500_propagates(self):
+        client = self._client()
+        client._request = AsyncMock(side_effect=HttpError("boom", 500))
+        with pytest.raises(HttpError):
+            await client._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+
+    async def test_update_column_missing_odata_type_raises(self):
+        client = self._client()
+        client._request = AsyncMock(return_value=_resp(json_data={"SchemaName": "new_Comment"}))
+        with pytest.raises(MetadataError):
+            await client._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+        client._execute_raw.assert_not_awaited()

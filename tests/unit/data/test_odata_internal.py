@@ -3189,6 +3189,65 @@ class TestUpdateAttribute(unittest.TestCase):
         with self.assertRaises(MetadataError):
             self.od._update_attribute("nope", "new_Comment", {"max_length": 10})
 
+    def test_update_column_get_404_raises_metadata_error(self):
+        """A 404 fetching the existing attribute -> MetadataError (column not found)."""
+        self.od._request = MagicMock(side_effect=HttpError("not found", 404))
+        with self.assertRaises(MetadataError):
+            self.od._update_attribute("new_Feedback", "ghost", {"max_length": 10})
+        self.od._execute_raw.assert_not_called()
+
+    def test_update_column_get_500_propagates(self):
+        """A non-404 error fetching the existing attribute propagates unchanged."""
+        self.od._request = MagicMock(side_effect=HttpError("boom", 500))
+        with self.assertRaises(HttpError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+
+    def test_update_column_missing_odata_type_raises(self):
+        """Existing attribute lacking @odata.type/MetadataId -> MetadataError, no PUT."""
+        self.od._request = MagicMock(return_value=_mock_response(json_data={"SchemaName": "new_Comment"}))
+        with self.assertRaises(MetadataError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+        self.od._execute_raw.assert_not_called()
+
+
+class TestGetColumn(unittest.TestCase):
+    """Unit tests for _ODataClient._get_column (typed and non-typed paths, #203)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value={"MetadataId": "ent-1"})
+        self.od._request = MagicMock(
+            return_value=_mock_response(json_data={"LogicalName": "emailaddress1", "MaxLength": 100})
+        )
+
+    def test_untyped_returns_json(self):
+        col = self.od._get_column("account", "emailaddress1")
+        self.assertEqual(col["MaxLength"], 100)
+        url = self.od._request.call_args.args[1]
+        self.assertIn("Attributes(LogicalName='emailaddress1')", url)
+
+    def test_untyped_with_select_projects(self):
+        self.od._get_column("account", "emailaddress1", select=["MaxLength"])
+        self.assertEqual(self.od._request.call_args.kwargs["params"]["$select"], "MaxLength")
+
+    def test_untyped_404_returns_none(self):
+        self.od._request = MagicMock(side_effect=HttpError("nope", 404))
+        self.assertIsNone(self.od._get_column("account", "ghost"))
+
+    def test_untyped_other_error_propagates(self):
+        self.od._request = MagicMock(side_effect=HttpError("boom", 500))
+        with self.assertRaises(HttpError):
+            self.od._get_column("account", "emailaddress1")
+
+    def test_untyped_table_not_found_raises(self):
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value=None)
+        with self.assertRaises(MetadataError):
+            self.od._get_column("nope", "emailaddress1")
+
+    def test_typed_empty_returns_none(self):
+        self.od._retrieve_metadata_changes = MagicMock(return_value=[])
+        self.assertIsNone(self.od._get_column("account", "ghost", typed=True))
+
 
 class TestRetrieveMetadataChanges(unittest.TestCase):
     """Unit tests for _ODataClient._retrieve_metadata_changes / _get_column typed (#203)."""
