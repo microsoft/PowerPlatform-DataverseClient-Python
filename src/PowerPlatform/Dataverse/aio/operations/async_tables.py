@@ -721,9 +721,15 @@ class AsyncTableOperations:
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
         :type select: list[str] or None
-        :param filter: Optional OData ``$filter`` expression.  For example,
-            ``"AttributeType eq 'String'"`` returns only string columns.
+        :param filter: Optional OData ``$filter`` expression (only when
+            ``typed=False``).  For example, ``"AttributeType eq 'String'"``
+            returns only string columns.
         :type filter: :class:`str` or None
+        :param typed: When ``True``, read via ``RetrieveMetadataChanges`` so
+            type-specific fields (``MaxLength``, ``MinValue``/``MaxValue``, ...)
+            come back in one request without the ``@odata.type`` URL cast.
+            ``filter`` is not supported in this mode.
+        :type typed: :class:`bool`
 
         :return: List of raw attribute metadata dictionaries.
         :rtype: list[dict[str, typing.Any]]
@@ -732,6 +738,8 @@ class AsyncTableOperations:
             If the table is not found.
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
+        :raises ValueError:
+            If ``filter`` is combined with ``typed=True``.
 
         Example::
 

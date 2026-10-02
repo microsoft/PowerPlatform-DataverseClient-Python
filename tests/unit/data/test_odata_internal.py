@@ -3305,6 +3305,21 @@ class TestRetrieveMetadataChanges(unittest.TestCase):
         self.assertEqual(col["LogicalName"], "emailaddress1")
         self.assertEqual(col["MaxLength"], 100)
 
+    def test_list_columns_typed_with_filter_raises(self):
+        """filter + typed=True is rejected (not silently dropped)."""
+        with self.assertRaises(ValueError):
+            self.od._list_columns("account", typed=True, filter="AttributeType eq 'String'")
+
+
+class TestBuildCreateColumnDictSpec(unittest.TestCase):
+    """Batch create/add-columns reaches dict constraint specs via the shared builder."""
+
+    def test_build_create_column_accepts_dict_spec(self):
+        od = _make_odata_client()
+        req = od._build_create_column("meta-1", "new_Comment", {"type": "memo", "max_length": 2000})
+        self.assertEqual(req.method, "POST")
+        self.assertEqual(json.loads(req.body)["MaxLength"], 2000)
+
 
 if __name__ == "__main__":
     unittest.main()

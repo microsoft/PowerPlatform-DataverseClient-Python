@@ -924,6 +924,12 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         :raises HttpError: If the Web API request fails.
         """
         if typed:
+            if filter:
+                raise ValueError(
+                    "The 'filter' argument is not supported with typed=True: RetrieveMetadataChanges "
+                    "projects typed fields but does not accept an OData $filter. Use typed=False to "
+                    "filter, or drop filter when typed=True."
+                )
             return self._retrieve_metadata_changes(table_schema_name, properties=select)
         ent = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):

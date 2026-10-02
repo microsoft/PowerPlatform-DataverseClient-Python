@@ -1946,6 +1946,12 @@ class TestAsyncRetrieveMetadataChanges:
         client._retrieve_metadata_changes = AsyncMock(return_value=[])
         assert await client._get_column("account", "ghost", typed=True) is None
 
+    async def test_list_columns_typed_with_filter_raises(self):
+        """filter + typed=True is rejected (not silently dropped)."""
+        client = _make_client()
+        with pytest.raises(ValueError):
+            await client._list_columns("account", typed=True, filter="AttributeType eq 'String'")
+
 
 class TestAsyncGetColumn:
     """_AsyncODataClient._get_column non-typed paths (#203)."""
