@@ -45,7 +45,6 @@ from ._odata_base import (
     _USER_AGENT,
     _DEFAULT_EXPECTED_STATUSES,
     _RequestContext,
-    _COLUMN_OVERRIDE_KEYS,
     _TYPED_COLUMN_PROPERTIES,
 )
 
@@ -1031,18 +1030,17 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         column_name: str,
         overrides: Dict[str, Any],
     ) -> str:
-        """Update constraints on an existing column: GET typed attr -> PUT + @odata.type (#202).
+        """Update constraints on an existing column: retrieve the full attr -> PUT it back (#202).
 
-        Hides the PUT-not-PATCH metadata-update contract and the derived
-        ``@odata.type`` discriminator. GETs the existing attribute to learn its
-        derived type + ``MetadataId``, applies the override spec (same shape as
-        create; see ``_apply_column_overrides``), then PUTs a merge payload.
+        Follows the documented column-update contract: the attribute is updated
+        with ``PUT`` carrying the *entire* current definition (not a sparse body),
+        so properties the caller did not touch are preserved. We learn the derived
+        ``@odata.type``, retrieve the complete concrete attribute via the type
+        cast, apply the override spec (same shape as create; see
+        ``_apply_column_overrides``), and ``PUT`` the merged definition back with
+        ``MSCRM.MergeLabels: true`` so localized labels in other languages survive.
         """
-        if not isinstance(overrides, dict) or not overrides:
-            raise TypeError("overrides must be a non-empty dict of column constraints")
-        unknown = set(overrides) - (_COLUMN_OVERRIDE_KEYS - {"type"})
-        if unknown:
-            raise ValueError(f"Unknown column constraint override(s) for '{column_name}': {sorted(unknown)}")
+        self._validate_column_overrides(column_name, overrides)
         ent = self._get_entity_by_table_schema_name(table_schema_name)
         if not ent or not ent.get("MetadataId"):
             raise MetadataError(
@@ -1058,7 +1056,7 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
             if getattr(err, "status_code", None) == 404:
                 raise MetadataError(
                     f"Column '{column_name}' not found on table '{table_schema_name}'.",
-                    subcode=METADATA_TABLE_NOT_FOUND,
+                    subcode=METADATA_COLUMN_NOT_FOUND,
                 ) from err
             raise
         attr_metadata_id = existing.get("MetadataId")
@@ -1066,18 +1064,22 @@ class _ODataClient(_FileUploadMixin, _RelationshipOperationsMixin, _ODataBase):
         if not attr_metadata_id or not odata_type:
             raise MetadataError(
                 f"Column '{column_name}' not found on table '{table_schema_name}'.",
-                subcode=METADATA_TABLE_NOT_FOUND,
+                subcode=METADATA_COLUMN_NOT_FOUND,
             )
-        body: Dict[str, Any] = {
-            "@odata.type": odata_type,
-            "MetadataId": attr_metadata_id,
-            "SchemaName": existing.get("SchemaName", column_name),
-        }
+        # Retrieve the COMPLETE concrete definition (via the @odata.type cast) so the
+        # PUT round-trips every property the caller did not override, per the
+        # documented column-update contract.
+        full = self._request("get", f"{attr_url}/{odata_type}").json()
+        body: Dict[str, Any] = {k: v for k, v in full.items() if not str(k).startswith("@odata.")}
+        body["@odata.type"] = odata_type
+        body["MetadataId"] = attr_metadata_id
+        body.setdefault("SchemaName", existing.get("SchemaName", column_name))
         self._apply_column_overrides(body, overrides)
         req = _RawRequest(
             method="PUT",
             url=f"{self.api}/EntityDefinitions({metadata_id})/Attributes({attr_metadata_id})",
             body=json.dumps(body, ensure_ascii=False),
+            headers={"MSCRM.MergeLabels": "true"},
         )
         self._execute_raw(req)
         return column_name

@@ -115,13 +115,13 @@ class _AsyncHttpClient:
             raise RuntimeError("No aiohttp.ClientSession set. Set _session before making requests.")
 
         # If no timeout is provided, use the user-specified default timeout if set;
-        # otherwise, apply per-method defaults (120s for POST/PATCH/DELETE, 10s for others).
+        # otherwise, apply per-method defaults (120s for POST/PUT/PATCH/DELETE, 10s for others).
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
                 t = self.default_timeout
             else:
                 m = (method or "").lower()
-                t = _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
+                t = _TIMEOUT_WRITE_METHODS if m in ("post", "put", "patch", "delete") else _TIMEOUT_READ_METHODS
             kwargs["timeout"] = aiohttp.ClientTimeout(total=t)
 
         # Log outbound request once (before retry loop).

@@ -337,12 +337,27 @@ class TestAsyncTableGetUpdateColumn:
 
     async def test_update_columns(self, async_client, mock_od):
         """update_columns() updates each column and returns the names in order."""
+        from unittest.mock import MagicMock
+
+        mock_od._validate_column_overrides = MagicMock()  # sync helper, not a coroutine
         result = await async_client.tables.update_columns(
             "new_Feedback",
             {"new_Comment": {"max_length": 4000}, "new_Rating": {"max_value": 10}},
         )
         assert result == ["new_Comment", "new_Rating"]
         assert mock_od._update_attribute.await_count == 2
+
+    async def test_update_columns_validates_all_before_updating(self, async_client, mock_od):
+        """A bad spec is rejected before ANY column is updated (no partial update)."""
+        from unittest.mock import MagicMock
+        import pytest
+
+        mock_od._validate_column_overrides = MagicMock(side_effect=[None, TypeError("empty")])
+        with pytest.raises(TypeError):
+            await async_client.tables.update_columns(
+                "new_Feedback", {"new_First": {"max_length": 100}, "new_Second": {}}
+            )
+        mock_od._update_attribute.assert_not_awaited()
 
     async def test_update_columns_empty_raises(self, async_client, mock_od):
         """update_columns() rejects an empty mapping before touching the client."""

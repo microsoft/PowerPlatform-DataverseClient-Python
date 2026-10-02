@@ -8,6 +8,7 @@ from enum import Enum
 from unittest.mock import MagicMock, patch
 
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
+from PowerPlatform.Dataverse.core._error_codes import METADATA_COLUMN_NOT_FOUND
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -3147,14 +3148,18 @@ class TestUpdateAttribute(unittest.TestCase):
         self.od._execute_raw = MagicMock()
 
     def test_update_issues_put_with_odata_type_and_override(self):
-        """update -> PUT to Attributes({id}) carrying the derived @odata.type + the override; no caller verb."""
+        """update -> retrieve full attr (via cast) then PUT it back with MSCRM.MergeLabels; no caller verb."""
         self.od._update_attribute(
             "new_Feedback", "new_Comment", {"max_length": 4000, "display_name": "Customer Comment"}
         )
+        # Two GETs: lightweight (learn @odata.type) then the full concrete definition via the type cast.
+        self.assertEqual(self.od._request.call_count, 2)
+        self.assertIn("Microsoft.Dynamics.CRM.MemoAttributeMetadata", self.od._request.call_args_list[1].args[1])
         self.od._execute_raw.assert_called_once()
         req = self.od._execute_raw.call_args.args[0]
         self.assertEqual(req.method, "PUT")
         self.assertIn("Attributes(attr-1)", req.url)
+        self.assertEqual(req.headers, {"MSCRM.MergeLabels": "true"})
         body = json.loads(req.body)
         self.assertEqual(body["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
         self.assertEqual(body["MetadataId"], "attr-1")
@@ -3190,10 +3195,11 @@ class TestUpdateAttribute(unittest.TestCase):
             self.od._update_attribute("nope", "new_Comment", {"max_length": 10})
 
     def test_update_column_get_404_raises_metadata_error(self):
-        """A 404 fetching the existing attribute -> MetadataError (column not found)."""
+        """A 404 fetching the existing attribute -> MetadataError with the COLUMN subcode."""
         self.od._request = MagicMock(side_effect=HttpError("not found", 404))
-        with self.assertRaises(MetadataError):
+        with self.assertRaises(MetadataError) as cm:
             self.od._update_attribute("new_Feedback", "ghost", {"max_length": 10})
+        self.assertEqual(cm.exception.subcode, METADATA_COLUMN_NOT_FOUND)
         self.od._execute_raw.assert_not_called()
 
     def test_update_column_get_500_propagates(self):
@@ -3203,10 +3209,11 @@ class TestUpdateAttribute(unittest.TestCase):
             self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
 
     def test_update_column_missing_odata_type_raises(self):
-        """Existing attribute lacking @odata.type/MetadataId -> MetadataError, no PUT."""
+        """Existing attribute lacking @odata.type/MetadataId -> MetadataError (COLUMN subcode), no PUT."""
         self.od._request = MagicMock(return_value=_mock_response(json_data={"SchemaName": "new_Comment"}))
-        with self.assertRaises(MetadataError):
+        with self.assertRaises(MetadataError) as cm:
             self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+        self.assertEqual(cm.exception.subcode, METADATA_COLUMN_NOT_FOUND)
         self.od._execute_raw.assert_not_called()
 
 

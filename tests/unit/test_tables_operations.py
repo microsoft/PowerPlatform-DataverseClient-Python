@@ -510,6 +510,13 @@ class TestTableOperations(unittest.TestCase):
         with self.assertRaises(TypeError):
             self.client.tables.update_columns("new_Feedback", {})
 
+    def test_update_columns_validates_all_before_updating(self):
+        """A bad spec is rejected before ANY column is updated (no partial update)."""
+        self.client._odata._validate_column_overrides.side_effect = [None, TypeError("empty")]
+        with self.assertRaises(TypeError):
+            self.client.tables.update_columns("new_Feedback", {"new_First": {"max_length": 100}, "new_Second": {}})
+        self.client._odata._update_attribute.assert_not_called()
+
     # ------------------------------------------------- list_relationships
 
     def test_list_relationships(self):

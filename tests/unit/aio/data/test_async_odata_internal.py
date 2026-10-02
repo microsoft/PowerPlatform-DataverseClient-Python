@@ -12,6 +12,7 @@ import pytest
 
 from PowerPlatform.Dataverse.aio.data._async_odata import _AsyncODataClient
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
+from PowerPlatform.Dataverse.core._error_codes import METADATA_COLUMN_NOT_FOUND
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -2007,10 +2008,14 @@ class TestAsyncUpdateAttribute:
         await client._update_attribute(
             "new_Feedback", "new_Comment", {"max_length": 4000, "display_name": "Customer Comment"}
         )
+        # Two GETs: lightweight (learn @odata.type) then the full concrete definition via the type cast.
+        assert client._request.await_count == 2
+        assert "Microsoft.Dynamics.CRM.MemoAttributeMetadata" in client._request.call_args_list[1].args[1]
         client._execute_raw.assert_awaited_once()
         req = client._execute_raw.call_args.args[0]
         assert req.method == "PUT"
         assert "Attributes(attr-1)" in req.url
+        assert req.headers == {"MSCRM.MergeLabels": "true"}
         body = json.loads(req.body)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
         assert body["MetadataId"] == "attr-1"
@@ -2036,8 +2041,9 @@ class TestAsyncUpdateAttribute:
     async def test_update_column_get_404_raises_metadata_error(self):
         client = self._client()
         client._request = AsyncMock(side_effect=HttpError("not found", 404))
-        with pytest.raises(MetadataError):
+        with pytest.raises(MetadataError) as ei:
             await client._update_attribute("new_Feedback", "ghost", {"max_length": 10})
+        assert ei.value.subcode == METADATA_COLUMN_NOT_FOUND
         client._execute_raw.assert_not_awaited()
 
     async def test_update_column_get_500_propagates(self):
@@ -2049,6 +2055,7 @@ class TestAsyncUpdateAttribute:
     async def test_update_column_missing_odata_type_raises(self):
         client = self._client()
         client._request = AsyncMock(return_value=_resp(json_data={"SchemaName": "new_Comment"}))
-        with pytest.raises(MetadataError):
+        with pytest.raises(MetadataError) as ei:
             await client._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+        assert ei.value.subcode == METADATA_COLUMN_NOT_FOUND
         client._execute_raw.assert_not_awaited()

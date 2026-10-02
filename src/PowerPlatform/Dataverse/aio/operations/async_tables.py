@@ -798,6 +798,10 @@ class AsyncTableOperations:
             raise TypeError("columns must be a non-empty dict of {column: overrides}")
         updated: List[str] = []
         async with self._client._scoped_odata() as od:
+            # Validate every spec up front so a bad entry can't leave the table
+            # partially modified by earlier successful updates.
+            for col, spec in columns.items():
+                od._validate_column_overrides(col, spec)
             for col, spec in columns.items():
                 await od._update_attribute(table, col, spec)
                 updated.append(col)

@@ -504,6 +504,14 @@ class _ODataBase:
             self._apply_column_overrides(payload, overrides)
         return payload
 
+    def _validate_column_overrides(self, column_name: str, overrides: Dict[str, Any]) -> None:
+        """Validate a column-override spec locally (shape + known keys) before any I/O (#202)."""
+        if not isinstance(overrides, dict) or not overrides:
+            raise TypeError("overrides must be a non-empty dict of column constraints")
+        unknown = set(overrides) - (_COLUMN_OVERRIDE_KEYS - {"type"})
+        if unknown:
+            raise ValueError(f"Unknown column constraint override(s) for '{column_name}': {sorted(unknown)}")
+
     def _apply_column_overrides(self, payload: Dict[str, Any], overrides: Dict[str, Any]) -> None:
         """Apply per-column constraint overrides onto a base attribute payload (#194)."""
         if "max_length" in overrides:
