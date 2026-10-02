@@ -24,6 +24,12 @@ class TestOperationContextValidation(unittest.TestCase):
         ctx = OperationContext(user_agent_context="app=test/1.0;skill=dv-data;agent=claude-code")
         self.assertEqual(ctx.user_agent_context, "app=test/1.0;skill=dv-data;agent=claude-code")
 
+    def test_valid_dv_overview_and_erp_xpp_skills(self):
+        """dv-overview and erp-xpp are valid skills (parity with the plugin auth.py allowlist)."""
+        for skill in ("dv-overview", "erp-xpp"):
+            ctx = OperationContext(user_agent_context=f"app=test/1.0;skill={skill};agent=copilot")
+            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;skill={skill};agent=copilot")
+
     def test_valid_with_dots_slashes_hyphens(self):
         ctx = OperationContext(user_agent_context="app=dataverse-skills/1.2.1")
         self.assertEqual(ctx.user_agent_context, "app=dataverse-skills/1.2.1")

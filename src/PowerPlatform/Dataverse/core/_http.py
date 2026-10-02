@@ -76,14 +76,14 @@ class _HttpClient:
         :raises requests.exceptions.RequestException: If all retry attempts fail.
         """
         # If no timeout is provided, use the user-specified default timeout if set;
-        # otherwise, apply per-method defaults (120s for POST/PATCH/DELETE, 10s for others).
+        # otherwise, apply per-method defaults (120s for POST/PUT/PATCH/DELETE, 10s for others).
         if "timeout" not in kwargs:
             if self.default_timeout is not None:
                 kwargs["timeout"] = self.default_timeout
             else:
                 m = (method or "").lower()
                 kwargs["timeout"] = (
-                    _TIMEOUT_WRITE_METHODS if m in ("post", "patch", "delete") else _TIMEOUT_READ_METHODS
+                    _TIMEOUT_WRITE_METHODS if m in ("post", "put", "patch", "delete") else _TIMEOUT_READ_METHODS
                 )
 
         # Log outbound request once (before retry loop).

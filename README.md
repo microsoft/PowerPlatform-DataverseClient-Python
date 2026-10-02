@@ -111,7 +111,7 @@ df = results.to_dataframe()          # same rows as a pandas DataFrame
 
 ### Define and evolve schema
 
-`client.tables` creates and inspects tables, columns, relationships, and alternate keys. Column types are simple strings (`"string"`, `"int"`, `"decimal"`, `"money"`, `"datetime"`, `"bool"`, `"memo"`); pass an `IntEnum` subclass to create a choice column. `tables.get` returns `None` when the table does not exist, which makes schema setup idempotent. Every table gets a primary name column automatically — `<prefix>_Name` unless you pass `primary_column` — so do not list it in `columns`.
+`client.tables` creates and inspects tables, columns, relationships, and alternate keys. Column types are simple strings (`"string"`, `"int"`, `"decimal"`, `"money"`, `"datetime"`, `"bool"`, `"memo"`); pass an `IntEnum` subclass to create a choice column, or a dict spec (e.g. `{"type": "memo", "max_length": 2000}`) to set constraints like length, range, format, required level, or display name. `tables.get` returns `None` when the table does not exist, which makes schema setup idempotent. Every table gets a primary name column automatically — `<prefix>_Name` unless you pass `primary_column` — so do not list it in `columns`.
 
 ```python
 # Create a custom table with typed columns
@@ -134,6 +134,30 @@ client.tables.create_lookup_field(
     referenced_table="new_project",
     display_name="Project",
 )
+```
+
+Columns can carry constraints, be updated in place, and be read back with their
+type-specific metadata in a single request:
+
+```python
+# Create columns with constraints -- pass a dict spec instead of a bare type.
+# Keys: max_length, min_value, max_value, precision, format, required, display_name.
+client.tables.create("new_Feedback", {
+    "new_Rating":  {"type": "int",  "min_value": 1, "max_value": 5},
+    "new_Comment": {"type": "memo", "max_length": 2000, "display_name": "Comment"},
+})
+
+# Update an existing column's constraints (same override keys as create).
+client.tables.update_column("new_Feedback", "new_Comment", {"max_length": 4000})
+client.tables.update_columns("new_Feedback", {
+    "new_Rating":  {"max_value": 10},
+    "new_Comment": {"display_name": "Customer Comment"},
+})
+
+# Read a column (or all columns) with typed fields in one request (typed=True).
+col = client.tables.get_column("new_Feedback", "new_Comment", typed=True)
+print(col["MaxLength"])  # -> 4000
+cols = client.tables.list_columns("new_Feedback", typed=True)
 ```
 
 Relationship methods take logical names, which are always the schema name in lowercase. For choice columns, many-to-many relationships, and alternate keys, see [Customize tables and columns](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/metadata) and [Manage table relationships](https://learn.microsoft.com/power-apps/developer/data-platform/sdk-python/relationships).
