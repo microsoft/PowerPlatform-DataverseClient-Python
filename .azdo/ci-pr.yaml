@@ -39,7 +39,14 @@ extends:
             versionSpec: '3.12'
             addToPath: true
           displayName: 'Use Python 3.12'
-        
+
+        # 1ES managed pools have no public PyPI egress; route pip through the
+        # internal Azure Artifacts feed (PyPI upstream), same as the Official pipeline.
+        - task: PipAuthenticate@1
+          inputs:
+            artifactFeeds: 'OneCRM/DPX-Tools-Upstream'
+          displayName: 'Authenticate pip to internal feed'
+
         - script: |
             python -m pip install --upgrade pip
             python -m pip install flake8 black build diff-cover

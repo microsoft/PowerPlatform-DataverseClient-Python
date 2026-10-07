@@ -30,6 +30,7 @@ _CONTEXT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+(;[a-zA-Z0-9_-]+
 _ALLOWED_KEYS = frozenset({"app", "skill", "agent"})
 _ALLOWED_SKILLS = frozenset(
     {
+        "dv-overview",
         "dv-connect",
         "dv-data",
         "dv-query",
@@ -37,6 +38,7 @@ _ALLOWED_SKILLS = frozenset(
         "dv-solution",
         "dv-admin",
         "dv-security",
+        "erp-xpp",
         "unknown",
     }
 )
