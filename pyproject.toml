@@ -29,7 +29,6 @@ dependencies = [
     "azure-identity>=1.17.0",
     "azure-core>=1.30.2",
     "requests>=2.32.0",
-    "pandas>=2.0.0",
 ]
 
 [project.urls]
@@ -46,6 +45,9 @@ dataverse-migrate = "PowerPlatform.Dataverse.migration.migrate_v0_to_v1:main"
 async = [
     "aiohttp>=3.9",
 ]
+dataframe = [
+    "pandas>=2.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -55,6 +57,7 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "libcst>=1.0.0",
+    "pandas>=2.0.0",
 ]
 migration = ["libcst>=1.0.0"]
 

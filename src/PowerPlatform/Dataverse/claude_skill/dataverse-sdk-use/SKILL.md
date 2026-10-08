@@ -253,7 +253,7 @@ client.records.delete("account", [id1, id2, id3], use_bulk_delete=True)
 
 ### DataFrame Operations
 
-The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output.
+The SDK provides DataFrame wrappers for all CRUD operations via the `client.dataframe` namespace, using pandas DataFrames and Series as input/output. Requires the `[dataframe]` extra: `pip install "PowerPlatform-Dataverse-Client[dataframe]"`.
 
 > **Note:** `client.dataframe.get()` is deprecated. Use `client.query.builder(table).select(...).where(...).execute().to_dataframe()` instead. `QueryBuilder.to_dataframe()` (without `.execute()`) is also deprecated — always call `.execute()` first.
 
@@ -686,6 +686,8 @@ result = await batch.execute()
 ```
 
 ### DataFrame Operations
+
+Requires the `[dataframe]` extra: `pip install "PowerPlatform-Dataverse-Client[dataframe]"`.
 ```python
 # given: client is an open AsyncDataverseClient
 import pandas as pd
