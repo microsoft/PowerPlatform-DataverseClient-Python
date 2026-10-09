@@ -65,6 +65,19 @@ class TestOperationContextValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             OperationContext(user_agent_context="app=test/1.0;skill=dv-data;agent=not-a-real-agent")
 
+    def test_valid_agent_host_suffix(self):
+        for good in ("codex/jetbrains", "copilot/vscode", "claude-code/cli", "unknown/jetbrains"):
+            ctx = OperationContext(user_agent_context=f"app=test/1.0;agent={good}")
+            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;agent={good}")
+
+    def test_reject_unknown_agent_host_suffix(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="app=test/1.0;agent=codex/pycharm")
+
+    def test_reject_unknown_base_agent_with_valid_host_suffix(self):
+        with self.assertRaises(ValueError):
+            OperationContext(user_agent_context="app=test/1.0;agent=not-a-real-agent/jetbrains")
+
     def test_reject_pii_in_valid_key_format(self):
         """Even structurally valid key=value should fail if key is not in allowlist."""
         with self.assertRaises(ValueError):

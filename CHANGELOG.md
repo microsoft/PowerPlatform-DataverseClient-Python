@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-24
+
+### Added
+
+- `OperationContext` now accepts an optional IDE-surface suffix on the `agent` value, written as `agent/<host>` (e.g. `codex/jetbrains`), drawn from a closed host allowlist (`jetbrains`, `vscode`, `cli`). This lets plugin/tool attribution record the IDE surface it ran under while preserving the closed key/value allowlist model. Unknown base agents and unknown host suffixes are still rejected.
+
 ## [1.0.0] - 2026-05-28
 
 ### Breaking Changes

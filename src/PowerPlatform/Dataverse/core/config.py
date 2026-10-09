@@ -49,6 +49,9 @@ _ALLOWED_AGENTS = frozenset(
         "unknown",
     }
 )
+# Optional IDE-surface suffix on the agent value, as "agent/<host>" (e.g.
+# "codex/jetbrains"). Closed allowlist; an unknown suffix is rejected.
+_ALLOWED_HOSTS = frozenset({"jetbrains", "vscode", "cli"})
 # app values: must start with a known prefix followed by /<semver-like>
 _APP_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
 
@@ -59,7 +62,9 @@ class OperationContext:
 
     The context string is validated to be semicolon-separated ``key=value`` pairs
     using only allowed keys (``app``, ``skill``, ``agent``) with values from
-    closed allowlists.  Free-form text, email addresses, PII, and unknown keys
+    closed allowlists.  The ``agent`` value may carry an optional IDE-surface
+    suffix as ``agent/<host>`` (e.g. ``codex/jetbrains``) drawn from a closed
+    host allowlist.  Free-form text, email addresses, PII, and unknown keys
     are rejected.
 
     :param user_agent_context: Attribution string in ``key=value;key=value`` format.
@@ -92,8 +97,14 @@ class OperationContext:
                 raise ValueError(f"Unknown operation_context key '{key}'. " f"Allowed keys: {sorted(_ALLOWED_KEYS)}")
             if key == "skill" and value not in _ALLOWED_SKILLS:
                 raise ValueError(f"Unknown skill '{value}'. Allowed: {sorted(_ALLOWED_SKILLS)}")
-            if key == "agent" and value not in _ALLOWED_AGENTS:
-                raise ValueError(f"Unknown agent '{value}'. Allowed: {sorted(_ALLOWED_AGENTS)}")
+            if key == "agent":
+                base, sep, host = value.partition("/")
+                if base not in _ALLOWED_AGENTS:
+                    raise ValueError(f"Unknown agent '{base}'. Allowed: {sorted(_ALLOWED_AGENTS)}")
+                if sep and host not in _ALLOWED_HOSTS:
+                    raise ValueError(
+                        f"Unknown agent host suffix '{host}'. Allowed: {sorted(_ALLOWED_HOSTS)}"
+                    )
             if key == "app" and not _APP_PATTERN.match(value):
                 raise ValueError(f"Invalid app value '{value}'. Expected format: '<name>/<version>'.")
 
