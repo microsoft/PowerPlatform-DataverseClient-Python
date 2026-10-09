@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-08-24
 
-### Added
+### Changed
 
-- `OperationContext` now accepts an optional IDE-surface suffix on the `agent` value, written as `agent/<host>` (e.g. `codex/jetbrains`), drawn from a closed host allowlist (`jetbrains`, `vscode`, `cli`). This lets plugin/tool attribution record the IDE surface it ran under while preserving the closed key/value allowlist model. Unknown base agents and unknown host suffixes are still rejected.
+- `OperationContext` validation is loosened: `skill` and `agent` values are **no longer enumerated** against closed allowlists. The validator keeps the key allowlist (`app`, `skill`, `agent`), the safe-character pattern (which still excludes spaces, control characters, and PII such as email addresses), and the `app` `<name>/<version>` format guard. New agents and skills — including an `agent/<surface>` suffix such as `codex/jetbrains` — are now accepted without an SDK code change. Unknown keys and unsafe characters are still rejected.
 
 ## [1.0.0] - 2026-05-28
 

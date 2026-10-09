@@ -57,26 +57,18 @@ class TestOperationContextValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             OperationContext(user_agent_context="ssn=123-45-6789")
 
-    def test_reject_unknown_skill(self):
-        with self.assertRaises(ValueError):
-            OperationContext(user_agent_context="app=test/1.0;skill=not-a-real-skill;agent=claude-code")
+    def test_accepts_any_safe_skill_value(self):
+        # Skill values are not enumerated -- new skills are added constantly.
+        for skill in ("dv-data", "erp-xpp", "dv-some-future-skill"):
+            ctx = OperationContext(user_agent_context=f"app=test/1.0;skill={skill};agent=claude-code")
+            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;skill={skill};agent=claude-code")
 
-    def test_reject_unknown_agent(self):
-        with self.assertRaises(ValueError):
-            OperationContext(user_agent_context="app=test/1.0;skill=dv-data;agent=not-a-real-agent")
-
-    def test_valid_agent_host_suffix(self):
-        for good in ("codex/jetbrains", "copilot/vscode", "claude-code/cli", "unknown/jetbrains"):
-            ctx = OperationContext(user_agent_context=f"app=test/1.0;agent={good}")
-            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;agent={good}")
-
-    def test_reject_unknown_agent_host_suffix(self):
-        with self.assertRaises(ValueError):
-            OperationContext(user_agent_context="app=test/1.0;agent=codex/pycharm")
-
-    def test_reject_unknown_base_agent_with_valid_host_suffix(self):
-        with self.assertRaises(ValueError):
-            OperationContext(user_agent_context="app=test/1.0;agent=not-a-real-agent/jetbrains")
+    def test_accepts_any_safe_agent_value(self):
+        # Agent values are not enumerated -- new agents (and an agent/<surface>
+        # suffix such as codex/jetbrains) are accepted without a code change.
+        for agent in ("claude-code", "gemini-cli", "some-future-agent", "codex/jetbrains", "windsurf/rider"):
+            ctx = OperationContext(user_agent_context=f"app=test/1.0;agent={agent}")
+            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;agent={agent}")
 
     def test_reject_pii_in_valid_key_format(self):
         """Even structurally valid key=value should fail if key is not in allowlist."""
