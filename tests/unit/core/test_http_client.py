@@ -41,6 +41,14 @@ class TestHttpClientTimeout(unittest.TestCase):
             _, kwargs = mock_req.call_args
             self.assertEqual(kwargs["timeout"], 120)
 
+    def test_put_uses_120s_default_timeout(self):
+        """PUT requests use 120s default (it is a write method, like POST/PATCH/DELETE)."""
+        client = _HttpClient(retries=1)
+        with patch("requests.request", return_value=self._make_response()) as mock_req:
+            client._request("put", "https://example.com/data")
+            _, kwargs = mock_req.call_args
+            self.assertEqual(kwargs["timeout"], 120)
+
     def test_default_timeout_overrides_per_method_default(self):
         """Explicit default_timeout on the client overrides per-method defaults."""
         client = _HttpClient(retries=1, timeout=30.0)

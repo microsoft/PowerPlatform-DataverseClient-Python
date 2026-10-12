@@ -527,7 +527,10 @@ class BatchTableOperations:
 
         :param table: Schema name of the new table (e.g. ``"new_Product"``).
         :type table: :class:`str`
-        :param columns: Mapping of column schema names to type strings or Enum subclasses.
+        :param columns: Mapping of column schema name to a type string, an
+            :class:`~enum.Enum` subclass, or a dict constraint spec (e.g.
+            ``{"type": "memo", "max_length": 2000}``) -- the same shape accepted
+            by :meth:`PowerPlatform.Dataverse.operations.tables.TableOperations.create`.
         :type columns: dict[str, typing.Any]
         :param solution: Optional solution unique name.
         :type solution: str or None
@@ -601,7 +604,10 @@ class BatchTableOperations:
 
         :param table: Schema name of the target table.
         :type table: :class:`str`
-        :param columns: Mapping of column schema names to type strings or Enum subclasses.
+        :param columns: Mapping of column schema name to a type string, an
+            :class:`~enum.Enum` subclass, or a dict constraint spec (e.g.
+            ``{"type": "memo", "max_length": 2000}``) -- the same shape accepted
+            by :meth:`PowerPlatform.Dataverse.operations.tables.TableOperations.add_columns`.
         :type columns: dict[str, typing.Any]
         """
         self._batch._items.append(_TableAddColumns(table=table, columns=columns))

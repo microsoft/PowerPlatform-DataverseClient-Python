@@ -24,6 +24,12 @@ class TestOperationContextValidation(unittest.TestCase):
         ctx = OperationContext(user_agent_context="app=test/1.0;skill=dv-data;agent=claude-code")
         self.assertEqual(ctx.user_agent_context, "app=test/1.0;skill=dv-data;agent=claude-code")
 
+    def test_valid_dv_overview_and_erp_xpp_skills(self):
+        """dv-overview and erp-xpp are valid skills (parity with the plugin auth.py allowlist)."""
+        for skill in ("dv-overview", "erp-xpp"):
+            ctx = OperationContext(user_agent_context=f"app=test/1.0;skill={skill};agent=copilot")
+            self.assertEqual(ctx.user_agent_context, f"app=test/1.0;skill={skill};agent=copilot")
+
     def test_valid_with_dots_slashes_hyphens(self):
         ctx = OperationContext(user_agent_context="app=dataverse-skills/1.2.1")
         self.assertEqual(ctx.user_agent_context, "app=dataverse-skills/1.2.1")
@@ -69,6 +75,13 @@ class TestOperationContextValidation(unittest.TestCase):
         for agent in ("claude-code", "gemini-cli", "some-future-agent", "codex/jetbrains", "windsurf/rider"):
             ctx = OperationContext(user_agent_context=f"app=test/1.0;agent={agent}")
             self.assertEqual(ctx.user_agent_context, f"app=test/1.0;agent={agent}")
+
+    def test_value_filter_is_structural_not_semantic_pii_detector(self):
+        # The charset filter blocks spaces/control chars/email-shaped text but does
+        # not semantically detect sensitive strings: a digit-hyphen value passes.
+        # Callers are responsible for passing non-sensitive attribution literals.
+        ctx = OperationContext(user_agent_context="app=test/1.0;agent=123-45-6789")
+        self.assertEqual(ctx.user_agent_context, "app=test/1.0;agent=123-45-6789")
 
     def test_reject_pii_in_valid_key_format(self):
         """Even structurally valid key=value should fail if key is not in allowlist."""

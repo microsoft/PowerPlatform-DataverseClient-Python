@@ -442,7 +442,7 @@ class TestTableOperations(unittest.TestCase):
 
         result = self.client.tables.list_columns("account")
 
-        self.client._odata._list_columns.assert_called_once_with("account", select=None, filter=None)
+        self.client._odata._list_columns.assert_called_once_with("account", select=None, filter=None, typed=False)
         self.assertEqual(result, expected)
 
     def test_list_columns_with_select_and_filter(self):
@@ -459,7 +459,63 @@ class TestTableOperations(unittest.TestCase):
             "account",
             select=["LogicalName", "AttributeType"],
             filter="AttributeType eq 'String'",
+            typed=False,
         )
+
+    # ------------------------------------------------- get_column / update_column
+
+    def test_get_column(self):
+        """get_column() delegates to _get_column with defaults and returns the dict."""
+        expected = {"LogicalName": "emailaddress1", "MaxLength": 100}
+        self.client._odata._get_column.return_value = expected
+
+        result = self.client.tables.get_column("account", "emailaddress1")
+
+        self.client._odata._get_column.assert_called_once_with("account", "emailaddress1", typed=False, select=None)
+        self.assertEqual(result, expected)
+
+    def test_get_column_typed_with_select(self):
+        """get_column() forwards typed and select."""
+        self.client._odata._get_column.return_value = None
+
+        self.client.tables.get_column("account", "emailaddress1", typed=True, select=["MaxLength"])
+
+        self.client._odata._get_column.assert_called_once_with(
+            "account", "emailaddress1", typed=True, select=["MaxLength"]
+        )
+
+    def test_update_column(self):
+        """update_column() delegates to _update_attribute and returns the column name."""
+        self.client._odata._update_attribute.return_value = "new_Comment"
+
+        result = self.client.tables.update_column("new_Feedback", "new_Comment", {"max_length": 4000})
+
+        self.client._odata._update_attribute.assert_called_once_with(
+            "new_Feedback", "new_Comment", {"max_length": 4000}
+        )
+        self.assertEqual(result, "new_Comment")
+
+    def test_update_columns(self):
+        """update_columns() updates each column and returns the names in order."""
+        result = self.client.tables.update_columns(
+            "new_Feedback",
+            {"new_Comment": {"max_length": 4000}, "new_Rating": {"max_value": 10}},
+        )
+
+        self.assertEqual(result, ["new_Comment", "new_Rating"])
+        self.assertEqual(self.client._odata._update_attribute.call_count, 2)
+
+    def test_update_columns_empty_raises(self):
+        """update_columns() rejects an empty mapping before touching the client."""
+        with self.assertRaises(TypeError):
+            self.client.tables.update_columns("new_Feedback", {})
+
+    def test_update_columns_validates_all_before_updating(self):
+        """A bad spec is rejected before ANY column is updated (no partial update)."""
+        self.client._odata._validate_column_overrides.side_effect = [None, TypeError("empty")]
+        with self.assertRaises(TypeError):
+            self.client.tables.update_columns("new_Feedback", {"new_First": {"max_length": 100}, "new_Second": {}})
+        self.client._odata._update_attribute.assert_not_called()
 
     # ------------------------------------------------- list_relationships
 

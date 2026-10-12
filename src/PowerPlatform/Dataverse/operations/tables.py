@@ -88,7 +88,13 @@ class TableOperations:
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
-            (for local option sets).
+            (for local option sets). A value may instead be a dict that pairs
+            a base ``type`` with constraint overrides -- ``max_length``,
+            ``min_value``, ``max_value``, ``precision``, ``format``,
+            ``required`` (``"None"``/``"ApplicationRequired"``/``"Recommended"``),
+            and ``display_name`` -- e.g.
+            ``{"type": "int", "min_value": 1, "max_value": 5}`` or
+            ``{"type": "memo", "max_length": 2000, "display_name": "Comment"}``.
         :type columns: :class:`dict`
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.
@@ -706,6 +712,7 @@ class TableOperations:
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
+        typed: bool = False,
     ) -> List[Dict[str, Any]]:
         """List all attribute (column) definitions for a table.
 
@@ -715,9 +722,15 @@ class TableOperations:
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
         :type select: list[str] or None
-        :param filter: Optional OData ``$filter`` expression.  For example,
-            ``"AttributeType eq 'String'"`` returns only string columns.
+        :param filter: Optional OData ``$filter`` expression (only when
+            ``typed=False``).  For example, ``"AttributeType eq 'String'"``
+            returns only string columns.
         :type filter: :class:`str` or None
+        :param typed: When ``True``, read via ``RetrieveMetadataChanges`` so
+            type-specific fields (``MaxLength``, ``MinValue``/``MaxValue``, ...)
+            come back in one request without the ``@odata.type`` URL cast.
+            ``filter`` is not supported in this mode.
+        :type typed: :class:`bool`
 
         :return: List of raw attribute metadata dictionaries.
         :rtype: list[dict[str, typing.Any]]
@@ -726,6 +739,8 @@ class TableOperations:
             If the table is not found.
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
+        :raises ValueError:
+            If ``filter`` is combined with ``typed=True``.
 
         Example::
 
@@ -747,7 +762,88 @@ class TableOperations:
             )
         """
         with self._client._scoped_odata() as od:
-            return od._list_columns(table, select=select, filter=filter)
+            return od._list_columns(table, select=select, filter=filter, typed=typed)
+
+    def get_column(
+        self,
+        table: str,
+        column: str,
+        *,
+        typed: bool = False,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a single column's metadata, or ``None`` if it does not exist.
+
+        :param table: Schema name of the table (e.g. ``"account"``).
+        :param column: Logical/schema name of the column (e.g. ``"emailaddress1"``).
+        :param typed: When ``True``, read via ``RetrieveMetadataChanges`` so
+            type-specific fields (``MaxLength``, ``MinValue``/``MaxValue``, ...)
+            come back in a single request without the ``@odata.type`` URL cast.
+        :param select: Optional list of property names to project.
+        :rtype: dict[str, typing.Any] or None
+        """
+        with self._client._scoped_odata() as od:
+            return od._get_column(table, column, typed=typed, select=select)
+
+    def update_column(
+        self,
+        table: str,
+        column: str,
+        spec: Dict[str, Any],
+    ) -> str:
+        """Update constraints on an existing column.
+
+        Accepts the same override keys as the dict column spec in
+        :meth:`create` -- ``max_length``, ``min_value``, ``max_value``,
+        ``precision``, ``format``, ``required``, ``display_name`` -- and applies
+        them to the existing column. The SDK reads the current typed attribute
+        and issues the metadata update internally; callers never pass an HTTP
+        verb or ``@odata.type``.
+
+        :param table: Schema name of the table.
+        :param column: Logical/schema name of the column to update.
+        :param spec: Dict of constraint overrides (non-empty).
+        :return: The updated column name.
+        :rtype: :class:`str`
+
+        :raises ~PowerPlatform.Dataverse.core.errors.MetadataError:
+            If the table or column does not exist.
+
+        Example::
+
+            client.tables.update_column(
+                "new_ProjectBudget", "new_Comment",
+                {"max_length": 4000, "display_name": "Customer Comment"},
+            )
+        """
+        with self._client._scoped_odata() as od:
+            return od._update_attribute(table, column, spec)
+
+    def update_columns(
+        self,
+        table: str,
+        columns: Dict[str, Dict[str, Any]],
+    ) -> List[str]:
+        """Update constraints on multiple existing columns.
+
+        :param table: Schema name of the table.
+        :param columns: Mapping of column name -> constraint-override dict
+            (same shape as :meth:`update_column`).
+        :return: The updated column names.
+        :rtype: list[str]
+        """
+        if not isinstance(columns, dict) or not columns:
+            raise TypeError("columns must be a non-empty dict of {column: overrides}")
+        updated: List[str] = []
+        with self._client._scoped_odata() as od:
+            # Validate every spec up front so a bad entry can't leave the table
+            # partially modified by earlier successful updates.
+            for col, spec in columns.items():
+                od._validate_column_overrides(col, spec)
+            for col, spec in columns.items():
+                od._update_attribute(table, col, spec)
+                updated.append(col)
+        return updated
 
     # ------------------------------------------------- list_relationships
 

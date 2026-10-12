@@ -8,6 +8,7 @@ from enum import Enum
 from unittest.mock import MagicMock, patch
 
 from PowerPlatform.Dataverse.core.errors import HttpError, MetadataError, ValidationError
+from PowerPlatform.Dataverse.core._error_codes import METADATA_COLUMN_NOT_FOUND
 from PowerPlatform.Dataverse.data._odata import _ODataClient
 
 
@@ -1607,6 +1608,66 @@ class TestAttributePayload(unittest.TestCase):
         result = self.od._attribute_payload("new_Revenue", "decimal")
         self.assertEqual(result["Precision"], 2)
 
+    # --- dict column spec with constraint overrides (#194) -----------
+
+    def test_dict_spec_int_bounds(self):
+        """A dict spec applies min/max overrides onto IntegerAttributeMetadata."""
+        result = self.od._attribute_payload("new_Rating", {"type": "int", "min_value": 1, "max_value": 5})
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        self.assertEqual(result["MinValue"], 1)
+        self.assertEqual(result["MaxValue"], 5)
+
+    def test_dict_spec_memo_max_length_and_display_name(self):
+        """A dict spec applies max_length + display_name onto MemoAttributeMetadata."""
+        result = self.od._attribute_payload(
+            "new_Comment", {"type": "memo", "max_length": 2000, "display_name": "Comment"}
+        )
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(result["MaxLength"], 2000)
+        self.assertEqual(result["DisplayName"]["LocalizedLabels"][0]["Label"], "Comment")
+
+    def test_dict_spec_required_level(self):
+        """'required' override maps to RequiredLevel.Value."""
+        result = self.od._attribute_payload("new_Name", {"type": "string", "required": "ApplicationRequired"})
+        self.assertEqual(result["RequiredLevel"], {"Value": "ApplicationRequired"})
+
+    def test_dict_spec_string_format_sets_formatname(self):
+        """'format' on a string/memo type sets FormatName.Value (not Format)."""
+        result = self.od._attribute_payload("new_Email", {"type": "string", "format": "Email"})
+        self.assertEqual(result["FormatName"], {"Value": "Email"})
+
+    def test_dict_spec_int_format_sets_format(self):
+        """'format' on an int type sets Format (which has no FormatName)."""
+        result = self.od._attribute_payload("new_Dur", {"type": "int", "format": "Duration"})
+        self.assertEqual(result["Format"], "Duration")
+
+    def test_dict_spec_precision_override(self):
+        """'precision' override applies to DecimalAttributeMetadata."""
+        result = self.od._attribute_payload("new_Price", {"type": "decimal", "precision": 4})
+        self.assertEqual(result["Precision"], 4)
+
+    def test_dict_spec_complex_flag_preserved(self):
+        """A dict spec still honors complex=True for CreateEntities payloads."""
+        result = self.od._attribute_payload("new_Rating", {"type": "int", "max_value": 5}, complex=True)
+        self.assertEqual(result["@odata.type"], "Microsoft.Dynamics.CRM.ComplexIntegerAttributeMetadata")
+        self.assertEqual(result["MaxValue"], 5)
+
+    def test_dict_spec_missing_type_raises(self):
+        """A dict spec without 'type' raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._attribute_payload("new_X", {"min_value": 1})
+
+    def test_dict_spec_unknown_key_raises(self):
+        """A dict spec with an unknown key raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.od._attribute_payload("new_X", {"type": "int", "bogus": 1})
+
+    def test_str_spec_unchanged_defaults(self):
+        """A plain str spec keeps the hardcoded defaults (no override regression)."""
+        result = self.od._attribute_payload("new_Title", "string")
+        self.assertEqual(result["MaxLength"], 200)
+        self.assertEqual(result["RequiredLevel"], {"Value": "None"})
+
     def test_datetime_dtype(self):
         """'datetime' produces DateTimeAttributeMetadata."""
         result = self.od._attribute_payload("new_CreatedDate", "datetime")
@@ -3067,6 +3128,197 @@ class TestBuildCreateEntity(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.od._build_create_entity("new_TestTable", {"new_Bad": "unsupported_type"})
+
+
+class TestUpdateAttribute(unittest.TestCase):
+    """Unit tests for _ODataClient._update_attribute (#202)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value={"MetadataId": "ent-1"})
+        self.od._request = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                    "MetadataId": "attr-1",
+                    "SchemaName": "new_Comment",
+                }
+            )
+        )
+        self.od._execute_raw = MagicMock()
+
+    def test_update_issues_put_with_odata_type_and_override(self):
+        """update -> retrieve full attr (via cast) then PUT it back with MSCRM.MergeLabels; no caller verb."""
+        self.od._update_attribute(
+            "new_Feedback", "new_Comment", {"max_length": 4000, "display_name": "Customer Comment"}
+        )
+        # Two GETs: lightweight (learn @odata.type) then the full concrete definition via the type cast.
+        self.assertEqual(self.od._request.call_count, 2)
+        self.assertIn("Microsoft.Dynamics.CRM.MemoAttributeMetadata", self.od._request.call_args_list[1].args[1])
+        self.od._execute_raw.assert_called_once()
+        req = self.od._execute_raw.call_args.args[0]
+        self.assertEqual(req.method, "PUT")
+        self.assertIn("Attributes(attr-1)", req.url)
+        self.assertEqual(req.headers, {"MSCRM.MergeLabels": "true"})
+        body = json.loads(req.body)
+        self.assertEqual(body["@odata.type"], "Microsoft.Dynamics.CRM.MemoAttributeMetadata")
+        self.assertEqual(body["MetadataId"], "attr-1")
+        self.assertEqual(body["MaxLength"], 4000)
+        self.assertEqual(body["DisplayName"]["LocalizedLabels"][0]["Label"], "Customer Comment")
+
+    def test_update_string_format_uses_formatname(self):
+        """A string column's 'format' override routes to FormatName by @odata.type."""
+        self.od._request = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                    "MetadataId": "attr-2",
+                    "SchemaName": "new_Email",
+                }
+            )
+        )
+        self.od._update_attribute("new_Feedback", "new_Email", {"format": "Email"})
+        body = json.loads(self.od._execute_raw.call_args.args[0].body)
+        self.assertEqual(body["FormatName"], {"Value": "Email"})
+
+    def test_update_unknown_key_raises(self):
+        with self.assertRaises(ValueError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {"bogus": 1})
+
+    def test_update_empty_overrides_raises(self):
+        with self.assertRaises(TypeError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {})
+
+    def test_update_table_not_found_raises(self):
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value=None)
+        with self.assertRaises(MetadataError):
+            self.od._update_attribute("nope", "new_Comment", {"max_length": 10})
+
+    def test_update_column_get_404_raises_metadata_error(self):
+        """A 404 fetching the existing attribute -> MetadataError with the COLUMN subcode."""
+        self.od._request = MagicMock(side_effect=HttpError("not found", 404))
+        with self.assertRaises(MetadataError) as cm:
+            self.od._update_attribute("new_Feedback", "ghost", {"max_length": 10})
+        self.assertEqual(cm.exception.subcode, METADATA_COLUMN_NOT_FOUND)
+        self.od._execute_raw.assert_not_called()
+
+    def test_update_column_get_500_propagates(self):
+        """A non-404 error fetching the existing attribute propagates unchanged."""
+        self.od._request = MagicMock(side_effect=HttpError("boom", 500))
+        with self.assertRaises(HttpError):
+            self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+
+    def test_update_column_missing_odata_type_raises(self):
+        """Existing attribute lacking @odata.type/MetadataId -> MetadataError (COLUMN subcode), no PUT."""
+        self.od._request = MagicMock(return_value=_mock_response(json_data={"SchemaName": "new_Comment"}))
+        with self.assertRaises(MetadataError) as cm:
+            self.od._update_attribute("new_Feedback", "new_Comment", {"max_length": 10})
+        self.assertEqual(cm.exception.subcode, METADATA_COLUMN_NOT_FOUND)
+        self.od._execute_raw.assert_not_called()
+
+
+class TestGetColumn(unittest.TestCase):
+    """Unit tests for _ODataClient._get_column (typed and non-typed paths, #203)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value={"MetadataId": "ent-1"})
+        self.od._request = MagicMock(
+            return_value=_mock_response(json_data={"LogicalName": "emailaddress1", "MaxLength": 100})
+        )
+
+    def test_untyped_returns_json(self):
+        col = self.od._get_column("account", "emailaddress1")
+        self.assertEqual(col["MaxLength"], 100)
+        url = self.od._request.call_args.args[1]
+        self.assertIn("Attributes(LogicalName='emailaddress1')", url)
+
+    def test_untyped_with_select_projects(self):
+        self.od._get_column("account", "emailaddress1", select=["MaxLength"])
+        self.assertEqual(self.od._request.call_args.kwargs["params"]["$select"], "MaxLength")
+
+    def test_untyped_404_returns_none(self):
+        self.od._request = MagicMock(side_effect=HttpError("nope", 404))
+        self.assertIsNone(self.od._get_column("account", "ghost"))
+
+    def test_untyped_other_error_propagates(self):
+        self.od._request = MagicMock(side_effect=HttpError("boom", 500))
+        with self.assertRaises(HttpError):
+            self.od._get_column("account", "emailaddress1")
+
+    def test_untyped_table_not_found_raises(self):
+        self.od._get_entity_by_table_schema_name = MagicMock(return_value=None)
+        with self.assertRaises(MetadataError):
+            self.od._get_column("nope", "emailaddress1")
+
+    def test_typed_empty_returns_none(self):
+        self.od._retrieve_metadata_changes = MagicMock(return_value=[])
+        self.assertIsNone(self.od._get_column("account", "ghost", typed=True))
+
+
+class TestRetrieveMetadataChanges(unittest.TestCase):
+    """Unit tests for _ODataClient._retrieve_metadata_changes / _get_column typed (#203)."""
+
+    def setUp(self):
+        self.od = _make_odata_client()
+        self.od._request_metadata_with_retry = MagicMock(
+            return_value=_mock_response(
+                json_data={
+                    "EntityMetadata": [
+                        {
+                            "LogicalName": "account",
+                            "Attributes": [
+                                {
+                                    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                                    "LogicalName": "emailaddress1",
+                                    "MaxLength": 100,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+
+    def test_typed_read_single_request_with_projection_and_criteria(self):
+        """One RetrieveMetadataChanges GET, projecting typed fields, scoped to table + column."""
+        attrs = self.od._retrieve_metadata_changes("account", attribute_logical_name="emailaddress1")
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(attrs[0]["MaxLength"], 100)
+        self.od._request_metadata_with_retry.assert_called_once()
+        call = self.od._request_metadata_with_retry.call_args
+        self.assertEqual(call.args[0], "get")
+        self.assertIn("RetrieveMetadataChanges(Query=@p1)", call.args[1])
+        query = json.loads(call.kwargs["params"]["@p1"])
+        self.assertEqual(query["Criteria"]["Conditions"][0]["Value"]["Value"], "account")
+        self.assertEqual(query["AttributeQuery"]["Criteria"]["Conditions"][0]["Value"]["Value"], "emailaddress1")
+        self.assertIn("MaxLength", query["AttributeQuery"]["Properties"]["PropertyNames"])
+
+    def test_table_not_found_raises(self):
+        self.od._request_metadata_with_retry = MagicMock(return_value=_mock_response(json_data={"EntityMetadata": []}))
+        with self.assertRaises(MetadataError):
+            self.od._retrieve_metadata_changes("nope")
+
+    def test_get_column_typed_returns_single_attr(self):
+        col = self.od._get_column("account", "emailaddress1", typed=True)
+        self.assertIsNotNone(col)
+        self.assertEqual(col["LogicalName"], "emailaddress1")
+        self.assertEqual(col["MaxLength"], 100)
+
+    def test_list_columns_typed_with_filter_raises(self):
+        """filter + typed=True is rejected (not silently dropped)."""
+        with self.assertRaises(ValueError):
+            self.od._list_columns("account", typed=True, filter="AttributeType eq 'String'")
+
+
+class TestBuildCreateColumnDictSpec(unittest.TestCase):
+    """Batch create/add-columns reaches dict constraint specs via the shared builder."""
+
+    def test_build_create_column_accepts_dict_spec(self):
+        od = _make_odata_client()
+        req = od._build_create_column("meta-1", "new_Comment", {"type": "memo", "max_length": 2000})
+        self.assertEqual(req.method, "POST")
+        self.assertEqual(json.loads(req.body)["MaxLength"], 2000)
 
 
 if __name__ == "__main__":

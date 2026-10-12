@@ -87,7 +87,13 @@ class AsyncTableOperations:
             (or ``"money"``), ``"float"`` (or ``"double"``), ``"datetime"``
             (or ``"date"``), ``"bool"`` (or ``"boolean"``), ``"file"``, and
             ``Enum`` subclasses
-            (for local option sets).
+            (for local option sets). A value may instead be a dict that pairs
+            a base ``type`` with constraint overrides -- ``max_length``,
+            ``min_value``, ``max_value``, ``precision``, ``format``,
+            ``required`` (``"None"``/``"ApplicationRequired"``/``"Recommended"``),
+            and ``display_name`` -- e.g.
+            ``{"type": "int", "min_value": 1, "max_value": 5}`` or
+            ``{"type": "memo", "max_length": 2000, "display_name": "Comment"}``.
         :type columns: :class:`dict`
         :param solution: Optional solution unique name that should own the new
             table. When omitted the table is created in the default solution.
@@ -705,6 +711,7 @@ class AsyncTableOperations:
         *,
         select: Optional[List[str]] = None,
         filter: Optional[str] = None,
+        typed: bool = False,
     ) -> List[Dict[str, Any]]:
         """List all attribute (column) definitions for a table.
 
@@ -714,9 +721,15 @@ class AsyncTableOperations:
         :param select: Optional list of property names to project via
             ``$select``.  Values are passed as-is (PascalCase).
         :type select: list[str] or None
-        :param filter: Optional OData ``$filter`` expression.  For example,
-            ``"AttributeType eq 'String'"`` returns only string columns.
+        :param filter: Optional OData ``$filter`` expression (only when
+            ``typed=False``).  For example, ``"AttributeType eq 'String'"``
+            returns only string columns.
         :type filter: :class:`str` or None
+        :param typed: When ``True``, read via ``RetrieveMetadataChanges`` so
+            type-specific fields (``MaxLength``, ``MinValue``/``MaxValue``, ...)
+            come back in one request without the ``@odata.type`` URL cast.
+            ``filter`` is not supported in this mode.
+        :type typed: :class:`bool`
 
         :return: List of raw attribute metadata dictionaries.
         :rtype: list[dict[str, typing.Any]]
@@ -725,6 +738,8 @@ class AsyncTableOperations:
             If the table is not found.
         :raises ~PowerPlatform.Dataverse.core.errors.HttpError:
             If the Web API request fails.
+        :raises ValueError:
+            If ``filter`` is combined with ``typed=True``.
 
         Example::
 
@@ -746,7 +761,59 @@ class AsyncTableOperations:
             )
         """
         async with self._client._scoped_odata() as od:
-            return await od._list_columns(table, select=select, filter=filter)
+            return await od._list_columns(table, select=select, filter=filter, typed=typed)
+
+    async def get_column(
+        self,
+        table: str,
+        column: str,
+        *,
+        typed: bool = False,
+        select: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a single column's metadata, or ``None`` if it does not exist.
+
+        When ``typed`` is ``True``, reads via ``RetrieveMetadataChanges`` so
+        type-specific fields come back in one request (no ``@odata.type`` cast).
+        """
+        async with self._client._scoped_odata() as od:
+            return await od._get_column(table, column, typed=typed, select=select)
+
+    async def update_column(
+        self,
+        table: str,
+        column: str,
+        spec: Dict[str, Any],
+    ) -> str:
+        """Update constraints on an existing column.
+
+        Accepts the same override keys as the dict column spec in
+        :meth:`create` (``max_length``, ``min_value``, ``max_value``,
+        ``precision``, ``format``, ``required``, ``display_name``). The SDK
+        reads the current typed attribute and issues the update internally;
+        callers never pass an HTTP verb or ``@odata.type``.
+        """
+        async with self._client._scoped_odata() as od:
+            return await od._update_attribute(table, column, spec)
+
+    async def update_columns(
+        self,
+        table: str,
+        columns: Dict[str, Dict[str, Any]],
+    ) -> List[str]:
+        """Update constraints on multiple existing columns."""
+        if not isinstance(columns, dict) or not columns:
+            raise TypeError("columns must be a non-empty dict of {column: overrides}")
+        updated: List[str] = []
+        async with self._client._scoped_odata() as od:
+            # Validate every spec up front so a bad entry can't leave the table
+            # partially modified by earlier successful updates.
+            for col, spec in columns.items():
+                od._validate_column_overrides(col, spec)
+            for col, spec in columns.items():
+                await od._update_attribute(table, col, spec)
+                updated.append(col)
+        return updated
 
     # ------------------------------------------------- list_relationships
 

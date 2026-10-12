@@ -27,10 +27,11 @@ _CONTEXT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+(;[a-zA-Z0-9_-]+
 
 # Allowed keys. Only these keys are accepted; unknown keys are rejected.
 # Values are intentionally NOT enumerated: new agents and skills are added
-# constantly, so values are validated for safe characters only (the
-# _CONTEXT_PATTERN charset above already excludes spaces, control characters,
-# and the punctuation that PII such as emails would require). The `app` value
-# keeps a light <name>/<version> format guard.
+# constantly, so values are validated for safe characters only. The
+# _CONTEXT_PATTERN charset above constrains values to [A-Za-z0-9_./-], which
+# excludes spaces, control characters, and email-shaped text (no '@'); it is a
+# structural filter, not a semantic PII detector. Callers must pass non-sensitive
+# attribution literals. The `app` value keeps a light <name>/<version> guard.
 _ALLOWED_KEYS = frozenset({"app", "skill", "agent"})
 # app values: must start with a name followed by /<semver-like>
 _APP_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
@@ -43,11 +44,13 @@ class OperationContext:
     The context string is validated to be semicolon-separated ``key=value`` pairs
     using only allowed keys (``app``, ``skill``, ``agent``).  Values are validated
     for safe characters only (alphanumerics, hyphens, underscores, dots, slashes),
-    which excludes spaces, control characters, and PII such as email addresses --
+    which excludes spaces, control characters, and email-shaped text (no ``@``) --
     values are **not** enumerated, so new agents and skills (including an
     ``agent/<surface>`` suffix such as ``codex/jetbrains``) are accepted without a
-    code change.  The ``app`` value additionally follows a ``<name>/<version>``
-    format.  Unknown keys are rejected.
+    code change.  The character filter is a structural guard, not a semantic PII
+    detector: callers must pass non-sensitive attribution literals.  The ``app``
+    value additionally follows a ``<name>/<version>`` format.  Unknown keys are
+    rejected.
 
     :param user_agent_context: Attribution string in ``key=value;key=value`` format.
     :type user_agent_context: :class:`str`
