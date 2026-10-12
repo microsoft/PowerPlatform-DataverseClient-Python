@@ -25,33 +25,15 @@ __all__ = ["DataverseConfig", "OperationContext"]
 # Values: alphanumeric, hyphens, underscores, dots, slashes.
 _CONTEXT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+(;[a-zA-Z0-9_-]+=[a-zA-Z0-9_./-]+)*$")
 
-# Allowed keys and their value patterns for PII prevention.
-# Only these keys are accepted; unknown keys are rejected.
+# Allowed keys. Only these keys are accepted; unknown keys are rejected.
+# Values are intentionally NOT enumerated: new agents and skills are added
+# constantly, so values are validated for safe characters only. The
+# _CONTEXT_PATTERN charset above constrains values to [A-Za-z0-9_./-], which
+# excludes spaces, control characters, and email-shaped text (no '@'); it is a
+# structural filter, not a semantic PII detector. Callers must pass non-sensitive
+# attribution literals. The `app` value keeps a light <name>/<version> guard.
 _ALLOWED_KEYS = frozenset({"app", "skill", "agent"})
-_ALLOWED_SKILLS = frozenset(
-    {
-        "dv-overview",
-        "dv-connect",
-        "dv-data",
-        "dv-query",
-        "dv-metadata",
-        "dv-solution",
-        "dv-admin",
-        "dv-security",
-        "erp-xpp",
-        "unknown",
-    }
-)
-_ALLOWED_AGENTS = frozenset(
-    {
-        "claude-code",
-        "copilot",
-        "cursor",
-        "codex",
-        "unknown",
-    }
-)
-# app values: must start with a known prefix followed by /<semver-like>
+# app values: must start with a name followed by /<semver-like>
 _APP_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
 
 
@@ -60,9 +42,15 @@ class OperationContext:
     """Caller-defined context appended to outbound ``User-Agent`` headers.
 
     The context string is validated to be semicolon-separated ``key=value`` pairs
-    using only allowed keys (``app``, ``skill``, ``agent``) with values from
-    closed allowlists.  Free-form text, email addresses, PII, and unknown keys
-    are rejected.
+    using only allowed keys (``app``, ``skill``, ``agent``).  Values are validated
+    for safe characters only (alphanumerics, hyphens, underscores, dots, slashes),
+    which excludes spaces, control characters, and email-shaped text (no ``@``) --
+    values are **not** enumerated, so new agents and skills (including an
+    ``agent/<surface>`` suffix such as ``codex/jetbrains``) are accepted without a
+    code change.  The character filter is a structural guard, not a semantic PII
+    detector: callers must pass non-sensitive attribution literals.  The ``app``
+    value additionally follows a ``<name>/<version>`` format.  Unknown keys are
+    rejected.
 
     :param user_agent_context: Attribution string in ``key=value;key=value`` format.
     :type user_agent_context: :class:`str`
@@ -87,15 +75,13 @@ class OperationContext:
                 "Keys and values may contain alphanumerics, hyphens, underscores, "
                 "dots, and slashes."
             )
-        # Key/value allowlist validation
+        # Key allowlist + safe-value validation. Values are not enumerated (new
+        # agents/skills are added constantly); the _CONTEXT_PATTERN charset above
+        # already guards against spaces/control characters/PII.
         for pair in val.split(";"):
             key, _, value = pair.partition("=")
             if key not in _ALLOWED_KEYS:
                 raise ValueError(f"Unknown operation_context key '{key}'. " f"Allowed keys: {sorted(_ALLOWED_KEYS)}")
-            if key == "skill" and value not in _ALLOWED_SKILLS:
-                raise ValueError(f"Unknown skill '{value}'. Allowed: {sorted(_ALLOWED_SKILLS)}")
-            if key == "agent" and value not in _ALLOWED_AGENTS:
-                raise ValueError(f"Unknown agent '{value}'. Allowed: {sorted(_ALLOWED_AGENTS)}")
             if key == "app" and not _APP_PATTERN.match(value):
                 raise ValueError(f"Invalid app value '{value}'. Expected format: '<name>/<version>'.")
 

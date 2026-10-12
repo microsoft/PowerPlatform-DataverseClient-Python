@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-12
+
+### Changed
+
+- `OperationContext` validation is loosened: `skill` and `agent` values are **no longer enumerated** against closed allowlists. The validator keeps the key allowlist (`app`, `skill`, `agent`), the safe-character pattern (a structural filter that excludes spaces, control characters, and email-shaped text), and the `app` `<name>/<version>` format guard. New agents and skills — including an `agent/<surface>` suffix such as `codex/jetbrains` — are now accepted without an SDK code change. Unknown keys and unsafe characters are still rejected.
+
 ## [1.1.0] - 2026-10-07
 
 ### Added
@@ -192,7 +198,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b10...v1.0.0
