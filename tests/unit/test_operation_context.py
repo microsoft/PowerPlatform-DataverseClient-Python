@@ -25,7 +25,7 @@ class TestOperationContextValidation(unittest.TestCase):
         self.assertEqual(ctx.user_agent_context, "app=test/1.0;skill=dv-data;agent=claude-code")
 
     def test_valid_dv_overview_and_erp_xpp_skills(self):
-        """dv-overview and erp-xpp are valid skills (parity with the plugin auth.py allowlist)."""
+        """dv-overview and erp-xpp, skills shipped by the Dataverse plugin, are accepted."""
         for skill in ("dv-overview", "erp-xpp"):
             ctx = OperationContext(user_agent_context=f"app=test/1.0;skill={skill};agent=copilot")
             self.assertEqual(ctx.user_agent_context, f"app=test/1.0;skill={skill};agent=copilot")

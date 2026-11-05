@@ -56,8 +56,8 @@ class OperationContext:
     :type user_agent_context: :class:`str`
 
     :raises ValueError: If the string is empty, contains control characters,
-        does not match the required ``key=value`` format, or uses unknown
-        keys/values.
+        does not match the required ``key=value`` format, uses an unknown key,
+        or has an ``app`` value that is not in ``<name>/<version>`` form.
     """
 
     user_agent_context: str
@@ -77,7 +77,7 @@ class OperationContext:
             )
         # Key allowlist + safe-value validation. Values are not enumerated (new
         # agents/skills are added constantly); the _CONTEXT_PATTERN charset above
-        # already guards against spaces/control characters/PII.
+        # already rejects spaces, control characters, and email-shaped text.
         for pair in val.split(";"):
             key, _, value = pair.partition("=")
             if key not in _ALLOWED_KEYS:
