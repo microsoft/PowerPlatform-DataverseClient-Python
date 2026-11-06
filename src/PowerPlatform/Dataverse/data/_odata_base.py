@@ -904,6 +904,49 @@ class _ODataBase:
         re.IGNORECASE,
     )
 
+    # Scan quoted tokens before comments so comment markers inside values do
+    # not hide a real limit. Keep quoted identifiers opaque rather than deleting
+    # them, which could join unrelated keywords into a clause.
+    _SQL_LIMIT_IGNORED_RE = re.compile(
+        r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|\[(?:[^\]]|\]\])*\]|--[^\r\n]*|/\*.*?\*/",
+        re.DOTALL,
+    )
+    _SQL_TOP_LIMIT_RE = re.compile(
+        r"^\s*SELECT\s+(?:DISTINCT\s+|ALL\s+)?TOP\b\s*(?:\(\s*([0-9]+)\s*\)|([0-9]+))(?=\s)",
+        re.IGNORECASE,
+    )
+    _SQL_FETCH_LIMIT_RE = re.compile(
+        r"\bOFFSET\s+[0-9]+\s+ROWS?\s+FETCH\s+(?:NEXT|FIRST)\s+([0-9]+)\s+ROWS?\s+ONLY\s*$",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _sql_row_limit(cls, sql: str) -> int | None:
+        """Return an integer-literal row cap in the supported SELECT subset.
+
+        Percentage and WITH TIES limits are not absolute row caps. Expressions
+        and parameters are left to the server rather than evaluated locally.
+        """
+        # A non-recursive comment regex cannot safely infer limits inside
+        # nested block comments, so leave those queries to the server.
+        for token in cls._SQL_LIMIT_IGNORED_RE.finditer(sql):
+            if token.group().startswith("/*") and "/*" in token.group()[2:]:
+                return None
+        scan = cls._SQL_LIMIT_IGNORED_RE.sub(
+            lambda match: " " if match.group().startswith(("--", "/*")) else "?", sql
+        )
+        # Do not infer a cap from an incompletely masked or nested block comment.
+        if "/*" in scan or "*/" in scan:
+            return None
+        top = cls._SQL_TOP_LIMIT_RE.match(scan)
+        if top:
+            suffix = scan[top.end() :].lstrip()
+            if re.match(r"(?:PERCENT\b|WITH\s+TIES\b)", suffix, re.IGNORECASE):
+                return None
+            return int(top.group(1) or top.group(2))
+        fetch = cls._SQL_FETCH_LIMIT_RE.search(scan)
+        return int(fetch.group(1)) if fetch else None
+
     def _sql_guardrails(self, sql: str) -> str:
         """Apply safety guardrails to a SQL query before sending to the server.
 
