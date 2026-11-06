@@ -52,6 +52,13 @@ class OperationContext:
     value additionally follows a ``<name>/<version>`` format.  Unknown keys are
     rejected.
 
+    When the context says ``agent=unknown`` (optionally with a ``/<surface>``
+    suffix), the client replaces ``unknown`` in the outbound ``User-Agent`` with
+    the coding agent that started the process, if one is detected from its
+    environment markers (``AI_AGENT``, ``CLAUDECODE``, ``CODEX_THREAD_ID``,
+    ``GEMINI_CLI``, ...).  Any other agent value is sent as given, and a client
+    created without an operation context is not affected.
+
     :param user_agent_context: Attribution string in ``key=value;key=value`` format.
     :type user_agent_context: :class:`str`
 

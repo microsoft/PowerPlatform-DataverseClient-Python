@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .. import __version__ as _SDK_VERSION
 
+from ..core._agent_detection import _fill_unknown_agent
 from ..core.errors import ValidationError
 from ..core._error_codes import (
     VALIDATION_UNSUPPORTED_COLUMN_TYPE,
@@ -165,7 +166,7 @@ class _ODataBase:
         self._picklist_label_cache: dict[str, dict] = {}
         self._picklist_cache_ttl_seconds = 3600  # 1 hour TTL
         ctx_obj = self.config.operation_context
-        self._operation_context: Optional[str] = ctx_obj.user_agent_context if ctx_obj else None
+        self._operation_context: Optional[str] = _fill_unknown_agent(ctx_obj.user_agent_context) if ctx_obj else None
         self._http_logger = None
         if self.config.log_config is not None:
             from ..core._http_logger import _HttpLogger
