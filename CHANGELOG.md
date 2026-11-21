@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-20
+
+### Added
+
+- When an `OperationContext` reports `agent=unknown`, the client now fills in the AI coding
+  agent that started the process, detected from the markers agents set in the environment
+  (`AI_AGENT`, `CLAUDECODE`, `CODEX_THREAD_ID`, `GEMINI_CLI`, `COPILOT_CLI`,
+  `ANTIGRAVITY_AGENT`, `CURSOR_AGENT`). A `/<surface>` suffix is kept, and a client created
+  without an operation context never reads these variables. (#209)
+
+### Changed
+
+- `OperationContext` no longer limits `skill` and `agent` to a fixed list of values, so new
+  agents and skills (for example `gemini-cli`, `antigravity-cli`) and `agent/<surface>`
+  values such as `codex/jetbrains` are accepted without an SDK update. Unknown keys, and
+  values containing spaces, control characters or e-mail addresses, are still rejected. (#209)
+
 ## [1.1.0] - 2026-10-07
 
 ### Added
@@ -192,7 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive error handling with specific exception types (`DataverseError`, `AuthenticationError`, etc.) (#22, #24)
 - HTTP retry logic with exponential backoff for resilient operations (#72)
 
-[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/microsoft/PowerPlatform-DataverseClient-Python/compare/v0.1.0b10...v1.0.0
