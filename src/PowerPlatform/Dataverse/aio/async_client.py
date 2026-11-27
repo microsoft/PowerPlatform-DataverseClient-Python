@@ -126,8 +126,19 @@ class AsyncDataverseClient:
         self.query = AsyncQueryOperations(self)
         self.tables = AsyncTableOperations(self)
         self.files = AsyncFileOperations(self)
-        self.dataframe = AsyncDataFrameOperations(self)
+        self._dataframe: Optional[AsyncDataFrameOperations] = None
         self.batch = AsyncBatchOperations(self)
+
+    @property
+    def dataframe(self) -> AsyncDataFrameOperations:
+        """pandas DataFrame wrappers for record CRUD operations."""
+        if self._dataframe is None:
+            self._dataframe = AsyncDataFrameOperations(self)
+        return self._dataframe
+
+    @dataframe.setter
+    def dataframe(self, value: AsyncDataFrameOperations) -> None:
+        self._dataframe = value
 
     def _get_odata(self) -> _AsyncODataClient:
         """

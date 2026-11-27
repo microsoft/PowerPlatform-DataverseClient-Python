@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import sys
 import warnings
-from typing import Any, Iterator, List, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Iterator, List, Optional, TypedDict, Union
 
 # typing.Self (PEP 673, Python 3.11+) makes fluent methods return the concrete
 # subclass type. TypeVar fallback for Python 3.10 uses the same name so docs render identically.
@@ -62,7 +62,8 @@ else:
 
     Self = TypeVar("Self", bound="_QueryBuilderBase")  # type: ignore[assignment]
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 from . import filters
 from .record import QueryResult, Record
@@ -666,6 +667,14 @@ class QueryBuilder(_QueryBuilderBase):
             DeprecationWarning,
             stacklevel=2,
         )
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError(
+                "pandas is required for to_dataframe(). "
+                "Install it with: pip install 'PowerPlatform-Dataverse-Client[dataframe]'"
+            ) from exc
+
         if self._query_ops is None:
             raise RuntimeError(
                 "Cannot execute: query was not created via client.query.builder(). "

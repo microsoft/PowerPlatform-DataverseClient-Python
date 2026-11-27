@@ -8,11 +8,8 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import pandas as pd
-
-from ..utils._pandas import dataframe_to_records
-
 if TYPE_CHECKING:
+    import pandas as pd
     from ..client import DataverseClient
 
 
@@ -50,6 +47,15 @@ class DataFrameOperations:
     """
 
     def __init__(self, client: DataverseClient) -> None:
+        try:
+            import importlib
+
+            importlib.import_module("pandas")
+        except ImportError as exc:
+            raise ImportError(
+                "pandas is required to use DataFrame features. "
+                "Install it with: pip install 'PowerPlatform-Dataverse-Client[dataframe]'"
+            ) from exc
         self._client = client
 
     # --------------------------------------------------------------------- sql
@@ -89,6 +95,8 @@ class DataFrameOperations:
                     "GROUP BY a.name"
                 )
         """
+        import pandas as pd
+
         rows = self._client.query.sql(sql)
         if not rows:
             return pd.DataFrame()
@@ -165,6 +173,8 @@ class DataFrameOperations:
 
                 df = client.dataframe.get("account", select=["name"], top=100)
         """
+        import pandas as pd
+
         warnings.warn(
             "'dataframe.get()' is deprecated; use "
             "client.query.builder(table).where(...).execute().to_dataframe() instead.",
@@ -247,6 +257,9 @@ class DataFrameOperations:
                 ])
                 df["accountid"] = client.dataframe.create("account", df)
         """
+        import pandas as pd
+        from ..utils._pandas import dataframe_to_records
+
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
 
@@ -333,8 +346,12 @@ class DataFrameOperations:
                 df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
                 client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
         """
+        import pandas as pd
+        from ..utils._pandas import dataframe_to_records
+
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
+
         if changes.empty:
             raise ValueError("changes must be a non-empty DataFrame")
         if id_column not in changes.columns:
@@ -403,6 +420,8 @@ class DataFrameOperations:
                 ids = pd.Series(["guid-1", "guid-2", "guid-3"])
                 client.dataframe.delete("account", ids)
         """
+        import pandas as pd
+
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
 

@@ -162,7 +162,10 @@ class QueryResult:
         try:
             import pandas as pd
         except ImportError as exc:
-            raise ImportError("pandas is required for to_dataframe(). " "Install it with: pip install pandas") from exc
+            raise ImportError(
+                "pandas is required for to_dataframe(). "
+                "Install it with: pip install 'PowerPlatform-Dataverse-Client[dataframe]'"
+            ) from exc
 
         if not self.records:
             return pd.DataFrame()

@@ -42,7 +42,9 @@ The Dataverse SDK for Python lets Python developers access, manage, and manipula
 pip install PowerPlatform-Dataverse-Client
 ```
 
-The `pandas` library is installed automatically and powers the `client.dataframe` namespace. The async client requires an optional extra: `pip install "PowerPlatform-Dataverse-Client[async]"`.
+The core SDK installs with minimal dependencies. Optional extras:
+- DataFrame integration: `pip install "PowerPlatform-Dataverse-Client[dataframe]"`
+- Async client: `pip install "PowerPlatform-Dataverse-Client[async]"`
 
 ### Authenticate
 

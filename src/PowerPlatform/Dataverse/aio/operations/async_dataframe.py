@@ -7,11 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import pandas as pd
-
-from ...utils._pandas import dataframe_to_records
-
 if TYPE_CHECKING:
+    import pandas as pd
     from ..async_client import AsyncDataverseClient
 
 
@@ -51,6 +48,15 @@ class AsyncDataFrameOperations:
     """
 
     def __init__(self, client: "AsyncDataverseClient") -> None:
+        try:
+            import importlib
+
+            importlib.import_module("pandas")
+        except ImportError as exc:
+            raise ImportError(
+                "pandas is required to use DataFrame features. "
+                "Install it with: pip install 'PowerPlatform-Dataverse-Client[dataframe]'"
+            ) from exc
         self._client = client
 
     # --------------------------------------------------------------------- sql
@@ -90,6 +96,8 @@ class AsyncDataFrameOperations:
                     "GROUP BY a.name"
                 )
         """
+        import pandas as pd
+
         rows = await self._client.query.sql(sql)
         if not rows:
             return pd.DataFrame()
@@ -132,6 +140,9 @@ class AsyncDataFrameOperations:
                 ])
                 df["accountid"] = await client.dataframe.create("account", df)
         """
+        import pandas as pd
+        from ...utils._pandas import dataframe_to_records
+
         if not isinstance(records, pd.DataFrame):
             raise TypeError("records must be a pandas DataFrame")
 
@@ -218,6 +229,9 @@ class AsyncDataFrameOperations:
                 df = pd.DataFrame([{"accountid": "guid-1", "websiteurl": None}])
                 await client.dataframe.update("account", df, id_column="accountid", clear_nulls=True)
         """
+        import pandas as pd
+        from ...utils._pandas import dataframe_to_records
+
         if not isinstance(changes, pd.DataFrame):
             raise TypeError("changes must be a pandas DataFrame")
         if changes.empty:
@@ -289,6 +303,8 @@ class AsyncDataFrameOperations:
                 ids = pd.Series(["guid-1", "guid-2", "guid-3"])
                 await client.dataframe.delete("account", ids)
         """
+        import pandas as pd
+
         if not isinstance(ids, pd.Series):
             raise TypeError("ids must be a pandas Series")
 
