@@ -1895,6 +1895,27 @@ class TestAsyncOperationContextUserAgent:
         headers = await client._headers()
         assert "(" not in headers["User-Agent"]
 
+    async def test_unknown_agent_filled_from_process_markers(self):
+        from PowerPlatform.Dataverse.aio.data._async_odata import _USER_AGENT
+        from PowerPlatform.Dataverse.core.config import DataverseConfig, OperationContext
+
+        ctx_str = "app=dataverse-skills/1.17.0;agent=unknown"
+        config = DataverseConfig(operation_context=OperationContext(user_agent_context=ctx_str))
+        auth = MagicMock()
+        auth._acquire_token = AsyncMock(return_value=MagicMock(access_token="test-token"))
+        with patch.dict("os.environ", {"CLAUDECODE": "1"}, clear=True):
+            client = _AsyncODataClient(auth, "https://example.crm.dynamics.com", config=config)
+        headers = await client._headers()
+        assert headers["User-Agent"] == f"{_USER_AGENT} (app=dataverse-skills/1.17.0;agent=claude-code)"
+
+    async def test_no_context_unchanged_inside_an_agent(self):
+        from PowerPlatform.Dataverse.aio.data._async_odata import _USER_AGENT
+
+        with patch.dict("os.environ", {"CLAUDECODE": "1", "AI_AGENT": "codex"}):
+            client = _make_client()
+        headers = await client._headers()
+        assert headers["User-Agent"] == _USER_AGENT
+
 
 class TestAsyncRetrieveMetadataChanges:
     """_AsyncODataClient._retrieve_metadata_changes / _get_column typed (#203)."""
