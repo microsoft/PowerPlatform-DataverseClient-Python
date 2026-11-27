@@ -677,6 +677,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         # warn on risky patterns). SELECT * raises ValidationError here before
         # any table resolution.
         sql = self._sql_guardrails(sql)
+        row_limit = self._sql_row_limit(sql)
 
         r = await self._execute_raw(await self._build_sql(sql))
         try:
@@ -687,7 +688,7 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         # Collect first page
         results: list[dict[str, Any]] = []
         if isinstance(body, list):
-            return [row for row in body if isinstance(row, dict)]
+            return [row for row in body if isinstance(row, dict)][:row_limit]
         if not isinstance(body, dict):
             return results
 
@@ -695,7 +696,10 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
         if isinstance(value, list):
             results = [row for row in value if isinstance(row, dict)]
 
-        # Follow pagination links until exhausted
+        if row_limit is not None and len(results) >= row_limit:
+            return results[:row_limit]
+
+        # Follow pagination links until exhausted or the query limit is reached.
         raw_link = body.get("@odata.nextLink") or body.get("odata.nextLink")
         next_link: str | None = raw_link if isinstance(raw_link, str) else None
         visited: set[str] = set()
@@ -759,6 +763,8 @@ class _AsyncODataClient(_AsyncFileUploadMixin, _AsyncRelationshipOperationsMixin
             if not isinstance(page_value, list) or not page_value:
                 break
             results.extend(row for row in page_value if isinstance(row, dict))
+            if row_limit is not None and len(results) >= row_limit:
+                return results[:row_limit]
             raw_link = page_body.get("@odata.nextLink") or page_body.get("odata.nextLink")
             next_link = raw_link if isinstance(raw_link, str) else None
 
